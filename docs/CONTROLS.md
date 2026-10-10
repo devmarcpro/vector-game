@@ -12,6 +12,7 @@
 | V (maintenir) | Laser de minage (cible asteroide a < 2 km, visee dans le cone) |
 | D | Amarrer (station < 500 m, vitesse relative < 8 m/s) |
 | I | Soute / inventaire (J = jeter la ressource) |
+| H | Ecran vaisseau (emplacements, santé, énergie ; amarré : Entrée installer, X retirer, Y chantier naval) |
 | F5 / F9 | Sauvegarde / chargement rapide (saves/slot1.sav) |
 | Echap | Menu pause |
 | G | Pilote auto vers la cible (brachistochrone limitee par le delta-v) |

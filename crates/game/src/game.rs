@@ -27,6 +27,8 @@ pub enum Screen {
     Station,
     Inventory,
     Pause,
+    Ship,
+    Shipyard,
 }
 
 pub struct Game {
@@ -46,6 +48,10 @@ pub struct Game {
     pub seed_text: String,
     pub sel_res: usize,
     pub quit: bool,
+    pub ship_sel: usize,
+    pub picker: bool,
+    pub pick_sel: usize,
+    pub yard_sel: usize,
     pub save_path: PathBuf,
 }
 
@@ -78,6 +84,10 @@ impl Game {
             seed_text: String::new(),
             sel_res: 0,
             quit: false,
+            ship_sel: 0,
+            picker: false,
+            pick_sel: 0,
+            yard_sel: 0,
             save_path: PathBuf::from("saves").join("slot1.sav"),
         };
         g.fit_map();
@@ -198,6 +208,10 @@ impl Game {
                     self.timescale = 1.0;
                 }
                 Event::CargoFull => self.say("SOUTE PLEINE"),
+                Event::Overheat => self.say("ALERTE: SURCHAUFFE !"),
+                Event::ModuleLost { slot } => {
+                    self.say(format!("MODULE PERDU (EMPLACEMENT {})", slot + 1))
+                }
                 Event::Docked { body } => {
                     let name = self.sim.bodies[body].name.clone();
                     self.sim.market(body);
@@ -333,6 +347,8 @@ impl Game {
             Screen::Pause => self.pause_key(code),
             Screen::Station => self.station_key(code),
             Screen::Inventory => self.inventory_key(code),
+            Screen::Ship => self.ship_key(code),
+            Screen::Shipyard => self.shipyard_key(code),
             Screen::Flight => self.flight_key(code),
         }
     }
@@ -456,6 +472,14 @@ impl Game {
                 .sim
                 .refuel()
                 .map(|(kg, c)| format!("PLEIN: +{kg:.0} KG POUR {c:.0} CR")),
+            KeyCode::KeyH => {
+                self.open_ship();
+                return;
+            }
+            KeyCode::KeyY => {
+                self.screen = Screen::Shipyard;
+                return;
+            }
             KeyCode::KeyR => self.sim.repair().map(|c| format!("REPARATIONS: {c:.0} CR")),
             KeyCode::KeyU | KeyCode::Escape => {
                 self.sim.undock();
@@ -467,6 +491,103 @@ impl Game {
         match msg {
             Ok(m) => self.say(m),
             Err(e) => self.say(e.to_uppercase()),
+        }
+    }
+
+    fn open_ship(&mut self) {
+        self.screen = Screen::Ship;
+        self.picker = false;
+        self.ship_sel = 0;
+    }
+
+    /// Modules that can go into slot `slot` of the current hull, grouped by category then size.
+    pub fn compatible_modules(&self, slot: usize) -> Vec<usize> {
+        let (ty, size) = self.data.hulls[self.sim.ship.design.hull].slots[slot];
+        let mut v: Vec<usize> = (0..self.data.modules.len())
+            .filter(|&i| self.data.modules[i].slot == ty && self.data.modules[i].size <= size)
+            .collect();
+        v.sort_by(|&a, &b| {
+            let (ma, mb) = (&self.data.modules[a], &self.data.modules[b]);
+            ma.category.cmp(&mb.category).then(ma.size.cmp(&mb.size))
+        });
+        v
+    }
+
+    fn ship_key(&mut self, code: KeyCode) {
+        let n = self.sim.ship.design.slots.len();
+        let docked = self.sim.docked.is_some();
+        if self.picker {
+            let list = self.compatible_modules(self.ship_sel);
+            let len = list.len().max(1);
+            match code {
+                KeyCode::ArrowUp => self.pick_sel = (self.pick_sel + len - 1) % len,
+                KeyCode::ArrowDown => self.pick_sel = (self.pick_sel + 1) % len,
+                KeyCode::Escape => self.picker = false,
+                KeyCode::Enter => {
+                    if let Some(&mi) = list.get(self.pick_sel) {
+                        let res = if self.sim.module_stock[mi] > 0 {
+                            Ok(())
+                        } else {
+                            self.sim.shop_buy_module(mi).map(|_| ())
+                        }
+                        .and_then(|()| self.sim.install_module(self.ship_sel, mi));
+                        match res {
+                            Ok(()) => {
+                                let name = self.data.modules[mi].name.clone();
+                                self.say(format!("INSTALLE: {name}"));
+                                self.picker = false;
+                            }
+                            Err(e) => self.say(e.to_uppercase()),
+                        }
+                    }
+                }
+                _ => {}
+            }
+            return;
+        }
+        match code {
+            KeyCode::ArrowUp => self.ship_sel = (self.ship_sel + n - 1) % n,
+            KeyCode::ArrowDown => self.ship_sel = (self.ship_sel + 1) % n,
+            KeyCode::Enter if docked => {
+                if self.sim.ship.design.slots[self.ship_sel].is_some() {
+                    self.say("EMPLACEMENT OCCUPE - [X] RETIRER D ABORD");
+                } else {
+                    self.picker = true;
+                    self.pick_sel = 0;
+                }
+            }
+            KeyCode::KeyX if docked => match self.sim.uninstall_module(self.ship_sel) {
+                Ok(()) => self.say("MODULE RETIRE (STOCK)"),
+                Err(e) => self.say(e.to_uppercase()),
+            },
+            KeyCode::KeyY if docked => self.screen = Screen::Shipyard,
+            KeyCode::Escape | KeyCode::KeyH => {
+                self.screen = if docked {
+                    Screen::Station
+                } else {
+                    Screen::Flight
+                };
+            }
+            _ => {}
+        }
+    }
+
+    fn shipyard_key(&mut self, code: KeyCode) {
+        let n = self.data.hulls.len();
+        match code {
+            KeyCode::ArrowUp => self.yard_sel = (self.yard_sel + n - 1) % n,
+            KeyCode::ArrowDown => self.yard_sel = (self.yard_sel + 1) % n,
+            KeyCode::Enter => match self.sim.buy_hull(self.yard_sel) {
+                Ok(p) => {
+                    let name = self.data.hulls[self.yard_sel].name.clone();
+                    self.say(format!("NOUVELLE COQUE: {name} ({p:.0} CR)"));
+                    self.screen = Screen::Ship;
+                    self.ship_sel = 0;
+                }
+                Err(e) => self.say(e.to_uppercase()),
+            },
+            KeyCode::Escape => self.screen = Screen::Station,
+            _ => {}
         }
     }
 
@@ -518,6 +639,7 @@ impl Game {
             KeyCode::KeyM => self.map = !self.map,
             KeyCode::KeyC => self.map_on_ship = !self.map_on_ship,
             KeyCode::KeyI => self.screen = Screen::Inventory,
+            KeyCode::KeyH => self.open_ship(),
             KeyCode::KeyD => match self.sim.try_dock() {
                 Ok(_) => self.handle_events(),
                 Err(e) => self.say(format!("AMARRAGE IMPOSSIBLE: {}", e.to_uppercase())),

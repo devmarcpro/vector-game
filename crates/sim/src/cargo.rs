@@ -2,15 +2,14 @@
 use serde::{Deserialize, Serialize};
 use vector_data::GameData;
 
-pub const CARGO_MASS_CAP: f64 = 30_000.0;
-/// m^3
-pub const CARGO_VOL_CAP: f64 = 40.0;
-
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct Cargo {
     pub kg: Vec<f64>,
     pub mass: f64,
     pub volume: f64,
+    /// Capacity, set from the installed cargo modules.
+    pub cap_mass: f64,
+    pub cap_vol: f64,
 }
 
 impl Cargo {
@@ -19,6 +18,8 @@ impl Cargo {
             kg: vec![0.0; n_resources],
             mass: 0.0,
             volume: 0.0,
+            cap_mass: 0.0,
+            cap_vol: 0.0,
         }
     }
 
@@ -28,8 +29,8 @@ impl Cargo {
             return 0.0;
         }
         let density = data.resources[res].density;
-        let by_mass = CARGO_MASS_CAP - self.mass;
-        let by_vol = (CARGO_VOL_CAP - self.volume) * density;
+        let by_mass = self.cap_mass - self.mass;
+        let by_vol = (self.cap_vol - self.volume) * density;
         let ok = kg.min(by_mass).min(by_vol).max(0.0);
         self.kg[res] += ok;
         self.mass += ok;
@@ -50,6 +51,6 @@ impl Cargo {
     }
 
     pub fn is_full(&self) -> bool {
-        self.mass >= CARGO_MASS_CAP - 1e-6 || self.volume >= CARGO_VOL_CAP - 1e-9
+        self.mass >= self.cap_mass - 1e-6 || self.volume >= self.cap_vol - 1e-9
     }
 }

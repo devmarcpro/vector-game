@@ -1,6 +1,6 @@
 //! Debug console commands (toggle with the ~ / backquote key).
 use vector_core::Vec3;
-use vector_sim::{Sim, FUEL_CAP, HULL_MAX};
+use vector_sim::Sim;
 
 #[derive(Default)]
 pub struct Console {
@@ -69,11 +69,14 @@ pub fn run(cmd: &str, sim: &mut Sim, timescale: &mut f64) -> Vec<String> {
             None => vec!["usage: speed v".into()],
         },
         Some("fuel") => {
-            sim.ship.fuel = FUEL_CAP;
+            sim.ship.fuel = sim.ship.stats.fuel_cap;
             vec!["fuel refilled".into()]
         }
         Some("repair") => {
-            sim.ship.hull = HULL_MAX;
+            sim.ship.hull = sim.ship.stats.hull_max;
+            sim.ship.sys.health.fill(1.0);
+            let data = std::sync::Arc::clone(&sim.data);
+            sim.ship.refresh_stats(&data);
             vec!["hull repaired".into()]
         }
         Some("assist") => {
@@ -113,6 +116,6 @@ mod tests {
         assert!(run("tpbody nowhere", &mut sim, &mut ts)[0].contains("unknown"));
         sim.ship.fuel = 0.0;
         run("fuel", &mut sim, &mut ts);
-        assert_eq!(sim.ship.fuel, FUEL_CAP);
+        assert_eq!(sim.ship.fuel, sim.ship.stats.fuel_cap);
     }
 }

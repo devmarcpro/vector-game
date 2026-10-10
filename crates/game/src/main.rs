@@ -171,6 +171,26 @@ fn snapshot(path: &str, scene: &str, data: Arc<GameData>) {
             g.advance(0.1);
         }
         "pause" => g.screen = Screen::Pause,
+        "ship" | "picker" | "yard" => {
+            let (st, _) = g.sim.nearest_station().expect("station");
+            g.sim.spawn_near(st, g.sim.bodies[st].radius + 200.0);
+            g.key(KeyCode::KeyD, None, true);
+            g.sim.ship.sys.health[1] = 0.55;
+            g.sim.ship.sys.health[3] = 0.2;
+            g.sim.credits = 250_000.0;
+            g.advance(0.2);
+            g.screen = Screen::Ship;
+            g.ship_sel = 2;
+            if scene == "picker" {
+                g.ship_sel = 7;
+                g.picker = true;
+                g.pick_sel = 2;
+            }
+            if scene == "yard" {
+                g.screen = Screen::Shipyard;
+                g.yard_sel = 5;
+            }
+        }
         _ => {
             g.cycle_target(|_| true);
             g.cycle_target(|_| true);

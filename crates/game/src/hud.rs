@@ -2,7 +2,8 @@
 use crate::console::Console;
 use vector_core::{Mat3, Vec3};
 use vector_render::{Camera, Framebuffer, Wireframe};
-use vector_sim::{Sim, FUEL_CAP, HULL_MAX};
+use vector_sim::design::{T_DAMAGE, T_SCRAM};
+use vector_sim::Sim;
 use vector_world::BodyKind;
 
 pub const GREEN: u32 = 0x0030_E050;
@@ -297,9 +298,9 @@ fn draw_status(fb: &mut Framebuffer, v: &View) {
         1,
         rows - 4,
         "CARBURANT",
-        ship.fuel / FUEL_CAP,
+        ship.fuel / ship.stats.fuel_cap.max(1.0),
         20,
-        if ship.fuel < FUEL_CAP * 0.1 {
+        if ship.fuel < ship.stats.fuel_cap * 0.1 {
             RED
         } else {
             GREEN
@@ -309,13 +310,42 @@ fn draw_status(fb: &mut Framebuffer, v: &View) {
         1,
         rows - 3,
         "COQUE    ",
-        ship.hull / HULL_MAX,
+        ship.hull / ship.stats.hull_max.max(1.0),
         20,
-        if ship.hull < HULL_MAX * 0.3 {
+        if ship.hull < ship.stats.hull_max * 0.3 {
             RED
         } else {
             GREEN
         },
+    );
+    let batt = ship.sys.battery_mj / ship.stats.battery_cap.max(1.0);
+    fb.gauge(
+        1,
+        rows - 6,
+        "BATTERIE ",
+        batt,
+        20,
+        if batt < 0.15 { RED } else { GREEN },
+    );
+    let temp_frac = ((ship.sys.temp_k - 150.0) / (T_SCRAM - 150.0)).clamp(0.0, 1.0);
+    let temp_col = if ship.sys.temp_k > T_DAMAGE {
+        RED
+    } else if ship.sys.temp_k > 500.0 {
+        AMBER
+    } else {
+        GREEN
+    };
+    fb.gauge(1, rows - 5, "TEMP     ", temp_frac, 20, temp_col);
+    fb.text(
+        28,
+        rows - 5,
+        &format!(
+            "{:.0} K  {:.1}/{:.1} MW",
+            ship.sys.temp_k,
+            ship.sys.demand_kw / 1e3,
+            ship.sys.supply_kw / 1e3
+        ),
+        DIM,
     );
     fb.text(
         1,
@@ -328,11 +358,7 @@ fn draw_status(fb: &mut Framebuffer, v: &View) {
     fb.text(
         1,
         6,
-        &format!(
-            "SOUTE {:.0}/{:.0} KG",
-            ship.cargo.mass,
-            vector_sim::cargo::CARGO_MASS_CAP
-        ),
+        &format!("SOUTE {:.0}/{:.0} KG", ship.cargo.mass, ship.cargo.cap_mass),
         if ship.cargo.is_full() { RED } else { GREEN },
     );
     if let Some((_, range)) = sim.nearest_station() {
@@ -380,7 +406,13 @@ fn draw_status(fb: &mut Framebuffer, v: &View) {
                 &format!(
                     "MASSE {:.0} T  [V] LASER <{}",
                     sim.remaining_mass(i) / 1e3,
-                    fmt_dist(vector_sim::MINING_RANGE)
+                    fmt_dist(
+                        sim.ship
+                            .design
+                            .modules(&sim.data)
+                            .map(|(_, m)| m.mining_range)
+                            .fold(0.0, f64::max)
+                    )
                 ),
                 DIM,
             );

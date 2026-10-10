@@ -6,8 +6,8 @@
 | Classes stellaires | 7 (O..M) | >= 8 |
 | Types de planetes | 12 | >= 12 OK |
 | Recettes | 0 | >= 100 |
-| Modules de vaisseau | 0 | >= 60 |
-| Coques | 1 (fixe) | >= 15 |
+| Modules de vaisseau | 70 | >= 60 OK |
+| Coques | 15 | >= 15 OK |
 | Batiments de colonie | 0 | >= 25 |
 | Armes/defenses | 0 | >= 20 |
 | Technologies | 0 | >= 60 |

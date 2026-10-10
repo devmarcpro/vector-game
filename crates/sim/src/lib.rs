@@ -1,12 +1,14 @@
-//! Deterministic simulation: flight model, gravity, collisions, autopilot, mining, trade, saves.
+//! Deterministic simulation: flight model, modular ships, gravity, collisions, autopilot, mining, trade, saves.
 //! Units: SI (m, s, kg, N). See docs/SIM_MODEL.md.
 pub mod autopilot;
 pub mod cargo;
+pub mod design;
 pub mod market;
 pub mod save;
 
 use autopilot::Autopilot;
 use cargo::Cargo;
+use design::{Activity, Effective, ShipDesign, ShipStats, Systems, RCS_ISP};
 use market::Market;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -21,23 +23,16 @@ pub const SIM_DT: f64 = 1.0 / 30.0;
 /// Smallest sub-step used near surfaces.
 pub const MIN_DT: f64 = 1.0 / 240.0;
 
-pub const DRY_MASS: f64 = 20_000.0;
-pub const FUEL_CAP: f64 = 8_000.0;
-pub const MAIN_THRUST: f64 = 1.4e6;
-pub const RCS_THRUST: f64 = 2.8e5;
-pub const ISP: f64 = 200_000.0;
-pub const MAX_ANG_RATE: f64 = 1.5;
-pub const ANG_ACCEL: f64 = 2.0;
-pub const HULL_MAX: f64 = 1000.0;
 pub const SHIP_RADIUS: f64 = 15.0;
-
-/// Mining laser: reach (from asteroid surface), throughput.
-pub const MINING_RANGE: f64 = 2_000.0;
-pub const MINING_RATE: f64 = 25.0;
+/// Linear flight assist only acts below this speed relative to the reference body (m/s).
+pub const ASSIST_MAX_SPEED: f64 = 500.0;
 pub const DOCK_RANGE: f64 = 500.0;
 pub const DOCK_MAX_SPEED: f64 = 8.0;
 pub const START_CREDITS: f64 = 500.0;
+/// Hull repair cost per structure point; modules cost 30 % of their price to restore.
 pub const REPAIR_COST: f64 = 2.0;
+/// Fraction of the price refunded when selling a module or trading in a hull.
+pub const RESALE: f64 = 0.5;
 
 /// Player (or NPC) control demand, each axis in [-1, 1].
 /// pitch>0 = nose down, yaw>0 = nose right, roll>0 = roll left (right-handed about body axes).
@@ -62,27 +57,51 @@ pub struct Ship {
     /// Angular velocity in body frame (pitch, yaw, roll) rad/s.
     pub ang: Vec3,
     pub fuel: f64,
+    /// Structure points (separate from per-module health).
     pub hull: f64,
     pub assist: bool,
     pub cargo: Cargo,
+    pub design: ShipDesign,
+    pub sys: Systems,
+    pub stats: ShipStats,
 }
 
 impl Ship {
-    pub fn new(pos: Vec3, vel: Vec3, n_resources: usize) -> Self {
-        Ship {
+    pub fn new(pos: Vec3, vel: Vec3, data: &GameData, design: ShipDesign) -> Self {
+        let sys = Systems::new(&design, 0.0);
+        let mut s = Ship {
             pos,
             vel,
             rot: Mat3::IDENTITY,
             ang: Vec3::ZERO,
-            fuel: FUEL_CAP,
-            hull: HULL_MAX,
+            fuel: 0.0,
+            hull: 0.0,
             assist: true,
-            cargo: Cargo::new(n_resources),
-        }
+            cargo: Cargo::new(data.resources.len()),
+            design,
+            sys,
+            stats: ShipStats::default(),
+        };
+        s.refresh_stats(data);
+        s.fuel = s.stats.fuel_cap;
+        s.hull = s.stats.hull_max;
+        s.sys.battery_mj = s.stats.battery_cap;
+        s
     }
-    /// Mass without propellant (hull + cargo).
+
+    /// Recompute derived numbers after any design or health change.
+    pub fn refresh_stats(&mut self, data: &GameData) {
+        self.stats = ShipStats::compute(data, &self.design, &self.sys.health);
+        self.cargo.cap_mass = self.stats.cargo_kg;
+        self.cargo.cap_vol = self.stats.cargo_m3;
+        self.fuel = self.fuel.min(self.stats.fuel_cap);
+        self.hull = self.hull.min(self.stats.hull_max);
+        self.sys.battery_mj = self.sys.battery_mj.min(self.stats.battery_cap);
+    }
+
+    /// Mass without propellant (hull + modules + cargo).
     pub fn dry_mass(&self) -> f64 {
-        DRY_MASS + self.cargo.mass
+        self.stats.mass_dry + self.cargo.mass
     }
     pub fn mass(&self) -> f64 {
         self.dry_mass() + self.fuel
@@ -92,7 +111,7 @@ impl Ship {
     }
     /// Remaining delta-v (m/s), Tsiolkovsky.
     pub fn delta_v(&self) -> f64 {
-        ISP * G0 * (self.mass() / self.dry_mass()).ln()
+        self.stats.isp * G0 * (self.mass() / self.dry_mass()).ln()
     }
 }
 
@@ -123,6 +142,10 @@ pub enum Event {
         body: usize,
     },
     Undocked,
+    Overheat,
+    ModuleLost {
+        slot: usize,
+    },
 }
 
 pub struct Sim {
@@ -144,18 +167,24 @@ pub struct Sim {
     pub docked: Option<usize>,
     /// True while the mining laser is actually hitting something (for rendering).
     pub laser_on: bool,
+    /// Spare modules owned by the player, by module index.
+    pub module_stock: Vec<u32>,
+    pub effective: Effective,
 }
 
-/// Tsiolkovsky: propellant mass flow (kg/s) for a thrust force (N).
-pub fn mass_flow(force: f64) -> f64 {
-    force.abs() / (ISP * G0)
+/// Propellant mass flow (kg/s) for a thrust force (N) at a given specific impulse.
+pub fn mass_flow(force: f64, isp: f64) -> f64 {
+    if isp <= 0.0 {
+        0.0
+    } else {
+        force.abs() / (isp * G0)
+    }
 }
 
 fn influence_radius(b: &Body) -> f64 {
     match b.kind {
-        BodyKind::Star(_) => 0.0,
+        BodyKind::Star(_) | BodyKind::Asteroid(_) => 0.0,
         BodyKind::Station => 20_000.0,
-        BodyKind::Asteroid(_) => 0.0,
         _ => 60.0 * b.radius,
     }
 }
@@ -175,9 +204,11 @@ impl Sim {
                 gm: b.gm(),
             })
             .collect();
-        let ship = Ship::new(Vec3::ZERO, Vec3::ZERO, data.resources.len());
+        let design = ShipDesign::starter(&data);
+        let ship = Ship::new(Vec3::ZERO, Vec3::ZERO, &data, design);
         let mut s = Sim {
             system,
+            module_stock: vec![0; data.modules.len()],
             data,
             ship,
             bodies,
@@ -191,6 +222,7 @@ impl Sim {
             markets: BTreeMap::new(),
             docked: None,
             laser_on: false,
+            effective: Effective::default(),
         };
         s.refresh_bodies();
         s.update_ref();
@@ -250,6 +282,12 @@ impl Sim {
         a
     }
 
+    /// Stellar flux at the ship relative to 1 AU (for solar panels).
+    pub fn solar_flux(&self) -> f64 {
+        let d_au = self.ship.pos.length() / vector_world::orbit::AU;
+        self.system.luminosity / (d_au * d_au).max(1e-6)
+    }
+
     /// Largest step that keeps integration accurate near attractors and surfaces.
     pub fn safe_dt(&self) -> f64 {
         let mut dt = f64::MAX;
@@ -290,10 +328,52 @@ impl Sim {
         self.step_dt(input, SIM_DT);
     }
 
+    /// The asteroid the laser is currently pointed at, if any (target, in range, aimed).
+    fn laser_target(&self, range: f64) -> Option<(usize, vector_world::AstType)> {
+        let t = self.target?;
+        let BodyKind::Asteroid(class) = self.bodies[t].kind else {
+            return None;
+        };
+        let b = &self.bodies[t];
+        let r = b.pos - self.ship.pos;
+        let d = r.length();
+        if d - b.radius > range || self.remaining_mass(t) <= 1.0 {
+            return None;
+        }
+        let tolerance = 0.06 + (b.radius / d.max(1.0)).atan();
+        (self.ship.forward().dot(r * (1.0 / d)) >= tolerance.cos()).then_some((t, class))
+    }
+
+    fn run_systems(&mut self, act: &Activity, dt: f64) {
+        let flux = self.solar_flux();
+        let mass = self.ship.mass();
+        let was_hot = self.ship.sys.overheating;
+        let lost_before: Vec<bool> = self.ship.sys.health.iter().map(|&h| h <= 0.0).collect();
+        self.effective = self.ship.sys.step(
+            &self.data,
+            &self.ship.design,
+            &self.ship.stats,
+            mass,
+            act,
+            flux,
+            dt,
+        );
+        if self.ship.sys.overheating && !was_hot {
+            self.events.push(Event::Overheat);
+        }
+        for (i, &h) in self.ship.sys.health.iter().enumerate() {
+            if h <= 0.0 && !lost_before[i] && self.ship.design.slots[i].is_some() {
+                self.events.push(Event::ModuleLost { slot: i });
+            }
+        }
+        self.ship.refresh_stats(&self.data);
+    }
+
     pub fn step_dt(&mut self, manual: &ShipInput, dt: f64) {
         self.laser_on = false;
         if let Some(st) = self.docked {
             self.time += dt;
+            self.run_systems(&Activity::default(), dt);
             self.refresh_bodies();
             let b = &self.bodies[st];
             self.ship.pos = b.pos - Vec3::new(0.0, 0.0, b.radius + 60.0);
@@ -323,18 +403,43 @@ impl Sim {
             None => *manual,
         };
         let clamp = |v: f64| v.clamp(-1.0, 1.0);
+
+        // Power bus, heat, module health -> what the ship can actually do this step.
+        let range_hint = self
+            .ship
+            .design
+            .modules(&self.data)
+            .map(|(_, m)| m.mining_range)
+            .fold(0.0, f64::max);
+        let aimed = input.mine && self.laser_target(range_hint).is_some();
+        let rcs_use = [input.pitch, input.yaw, input.roll, input.lat, input.vert]
+            .iter()
+            .fold(0.0f64, |a, v| a.max(v.abs()));
+        let act = Activity {
+            throttle: clamp(input.fwd).max(0.0),
+            mining: aimed,
+            rcs_use,
+        };
+        self.run_systems(&act, dt);
+        let eff = self.effective.clone();
+
         let assist = self.ship.assist;
-        let lin_assist = assist && self.ref_body.is_some();
+        // Linear assist is for station-keeping: off under autopilot and at high relative speed.
+        let lin_assist = assist
+            && self.autopilot.is_none()
+            && self.ref_body.is_some()
+            && self.rel_velocity().length() < ASSIST_MAX_SPEED;
         let ref_vel = self.ref_body.map_or(Vec3::ZERO, |i| self.bodies[i].vel);
         let grav = self.gravity_at(self.ship.pos);
         let s = &mut self.ship;
 
         // Angular control: chase target rate. Assist always chases (zero when idle).
         let demand = Vec3::new(clamp(input.pitch), clamp(input.yaw), clamp(input.roll));
-        let target = demand * MAX_ANG_RATE;
+        let target = demand * eff.max_rate;
+        let accel = eff.ang_accel;
         let sel = |cur: f64, d: f64, tgt: f64| -> f64 {
             if d != 0.0 || assist {
-                cur + (tgt - cur).clamp(-ANG_ACCEL * dt, ANG_ACCEL * dt)
+                cur + (tgt - cur).clamp(-accel * dt, accel * dt)
             } else {
                 cur
             }
@@ -355,8 +460,8 @@ impl Sim {
         // Linear control in body frame.
         let mass = s.mass();
         let cmd = Vec3::new(clamp(input.lat), clamp(input.vert), clamp(input.fwd));
-        let rcs_a = RCS_THRUST / mass;
-        let main_a = MAIN_THRUST / mass;
+        let rcs_a = eff.rcs_n / mass;
+        let main_a = eff.thrust / mass;
         let vel_body = s.rot.transpose().mul_vec(s.vel - ref_vel);
         let axis_accel = |c: f64, v: f64, amax: f64| -> f64 {
             if c != 0.0 {
@@ -380,8 +485,19 @@ impl Sim {
         if cmd.z > 0.0 {
             acc_b.z = cmd.z * main_a;
         }
-        let force = Vec3::new(acc_b.x.abs(), acc_b.y.abs(), acc_b.z.abs()) * mass;
-        let burn = mass_flow(force.x + force.y + force.z) * dt;
+        // Propellant: main engine at its own isp, RCS-class motion at RCS isp.
+        let main_force = if acc_b.z > 0.0 || z_max == main_a {
+            acc_b.z.abs() * mass
+        } else {
+            0.0
+        };
+        let rcs_force = (acc_b.x.abs() + acc_b.y.abs()) * mass
+            + if main_force == 0.0 {
+                acc_b.z.abs() * mass
+            } else {
+                0.0
+            };
+        let burn = (mass_flow(main_force, eff.isp) + mass_flow(rcs_force, RCS_ISP)) * dt;
         if burn > s.fuel {
             if s.fuel > 0.0 {
                 self.events.push(Event::OutOfFuel);
@@ -397,35 +513,47 @@ impl Sim {
         self.refresh_bodies();
         self.update_ref();
         self.collide();
-        if input.mine {
-            self.mine_tick(dt);
+        if aimed && eff.mining_rate > 0.0 {
+            self.mine_tick(dt, eff.mining_rate, eff.mining_range);
         }
     }
 
     fn collide(&mut self) {
-        let s = &mut self.ship;
-        for (i, b) in self.bodies.iter().enumerate() {
-            let d = s.pos - b.pos;
-            let dist = d.length();
-            let min = b.radius + SHIP_RADIUS;
-            if dist < min && dist > 1e-9 {
-                let n = d * (1.0 / dist);
-                let vn = (s.vel - b.vel).dot(n);
-                s.pos = b.pos + n * min;
-                if vn < 0.0 {
-                    let speed = -vn;
-                    let damage = (0.5 * s.mass() * speed * speed / 5.0e6).min(HULL_MAX * 2.0);
-                    if speed > 5.0 {
-                        s.hull = (s.hull - damage).max(0.0);
+        let mut hits = Vec::new();
+        {
+            let s = &mut self.ship;
+            for (i, b) in self.bodies.iter().enumerate() {
+                let d = s.pos - b.pos;
+                let dist = d.length();
+                let min = b.radius + SHIP_RADIUS;
+                if dist < min && dist > 1e-9 {
+                    let n = d * (1.0 / dist);
+                    let vn = (s.vel - b.vel).dot(n);
+                    s.pos = b.pos + n * min;
+                    if vn < 0.0 {
+                        let speed = -vn;
+                        let damage =
+                            (0.5 * s.mass() * speed * speed / 5.0e6).min(s.stats.hull_max * 2.0);
+                        s.vel = s.vel - n * (vn * 1.2);
+                        hits.push((i, speed, damage));
                     }
-                    s.vel = s.vel - n * (vn * 1.2);
-                    self.events.push(Event::Impact {
-                        body: i,
-                        speed,
-                        damage,
-                    });
                 }
             }
+        }
+        for (i, speed, damage) in hits {
+            if speed > 5.0 {
+                self.ship.hull = (self.ship.hull - damage).max(0.0);
+                let pick = hash_coord(self.system.seed, i as i64, (self.time * 1000.0) as i64, 99);
+                self.ship
+                    .sys
+                    .damage_modules(&self.data, &self.ship.design, damage * 0.5, pick);
+                self.ship.refresh_stats(&self.data);
+            }
+            self.events.push(Event::Impact {
+                body: i,
+                speed,
+                damage,
+            });
         }
     }
 
@@ -435,23 +563,12 @@ impl Sim {
     }
 
     /// Mining laser: the aimed asteroid within range yields ore into the hold (magnetic scoop).
-    fn mine_tick(&mut self, dt: f64) {
-        let Some(t) = self.target else { return };
-        let BodyKind::Asteroid(class) = self.bodies[t].kind else {
+    fn mine_tick(&mut self, dt: f64, rate: f64, range: f64) {
+        let Some((t, class)) = self.laser_target(range) else {
             return;
         };
-        let b = &self.bodies[t];
-        let r = b.pos - self.ship.pos;
-        let d = r.length();
-        if d - b.radius > MINING_RANGE || self.remaining_mass(t) <= 1.0 {
-            return;
-        }
-        let tolerance = 0.06 + (b.radius / d.max(1.0)).atan();
-        if self.ship.forward().dot(r * (1.0 / d)) < tolerance.cos() {
-            return;
-        }
         self.laser_on = true;
-        let want = (MINING_RATE * dt).min(self.remaining_mass(t));
+        let want = (rate * dt).min(self.remaining_mass(t));
         let Some(cls) = self.data.asteroids.iter().find(|a| a.id == class.id()) else {
             return;
         };
@@ -537,7 +654,7 @@ impl Sim {
         let st = self.docked.ok_or("non amarre")?;
         let data = Arc::clone(&self.data);
         let ask = self.market(st).ask(&data, res);
-        let room = cargo::CARGO_MASS_CAP - self.ship.cargo.mass;
+        let room = self.ship.cargo.cap_mass - self.ship.cargo.mass;
         let afford = self.credits / ask;
         let kg = kg.min(afford).min(room).max(0.0);
         if kg <= 0.0 {
@@ -566,30 +683,37 @@ impl Sim {
             .resource_index("fuel")
             .ok_or("pas de carburant dans les donnees")?;
         let ask = self.market(st).ask(&data, fuel);
-        let need = FUEL_CAP - self.ship.fuel;
+        let need = self.ship.stats.fuel_cap - self.ship.fuel;
         let kg = need.min(self.credits / ask);
         if kg < 1e-6 {
             return Err("deja plein ou fonds insuffisants");
         }
         let (got, cost) = self.market(st).buy(&data, fuel, kg);
-        if got < kg {
-            // Station stock exhausted: we only receive what existed, charged accordingly.
-        }
         self.ship.fuel += got;
         self.credits -= cost;
         Ok((got, cost))
     }
 
+    /// Restore hull structure and module health. Returns the cost paid.
     pub fn repair(&mut self) -> Result<f64, &'static str> {
         self.docked.ok_or("non amarre")?;
-        let missing = HULL_MAX - self.ship.hull;
-        let pts = missing.min(self.credits / REPAIR_COST);
-        if pts < 1e-6 {
-            return Err("rien a reparer ou fonds insuffisants");
+        let hull_missing = self.ship.stats.hull_max - self.ship.hull;
+        let mut module_cost = 0.0;
+        for (i, m) in self.ship.design.modules(&self.data) {
+            module_cost += (1.0 - self.ship.sys.health[i]) * m.cost * 0.3;
         }
-        self.ship.hull += pts;
-        self.credits -= pts * REPAIR_COST;
-        Ok(pts * REPAIR_COST)
+        let total = hull_missing * REPAIR_COST + module_cost;
+        if total < 1e-6 {
+            return Err("rien a reparer");
+        }
+        if total > self.credits {
+            return Err("fonds insuffisants");
+        }
+        self.credits -= total;
+        self.ship.hull = self.ship.stats.hull_max;
+        self.ship.sys.health.fill(1.0);
+        self.ship.refresh_stats(&self.data);
+        Ok(total)
     }
 
     /// Throw cargo into space.
@@ -597,6 +721,92 @@ impl Sim {
         let data = Arc::clone(&self.data);
         let kg = self.ship.cargo.kg[res];
         self.ship.cargo.remove(&data, res, kg)
+    }
+
+    // ---- shipyard ---------------------------------------------------------
+
+    /// Buy a module into the spare-parts stock.
+    pub fn shop_buy_module(&mut self, mi: usize) -> Result<f64, &'static str> {
+        self.docked.ok_or("non amarre")?;
+        let cost = self.data.modules.get(mi).ok_or("module inconnu")?.cost;
+        if cost > self.credits {
+            return Err("fonds insuffisants");
+        }
+        self.credits -= cost;
+        self.module_stock[mi] += 1;
+        Ok(cost)
+    }
+
+    pub fn shop_sell_module(&mut self, mi: usize) -> Result<f64, &'static str> {
+        self.docked.ok_or("non amarre")?;
+        if self.module_stock.get(mi).copied().unwrap_or(0) == 0 {
+            return Err("aucun exemplaire en stock");
+        }
+        let v = self.data.modules[mi].cost * RESALE;
+        self.module_stock[mi] -= 1;
+        self.credits += v;
+        Ok(v)
+    }
+
+    /// Check the hold still fits after a design change.
+    fn design_fits(&self, design: &ShipDesign) -> Result<(), &'static str> {
+        let st = ShipStats::compute(&self.data, design, &self.ship.sys.health);
+        if self.ship.cargo.mass > st.cargo_kg + 1e-6 || self.ship.cargo.volume > st.cargo_m3 + 1e-9
+        {
+            return Err("videz la soute d'abord");
+        }
+        Ok(())
+    }
+
+    /// Install a spare module from stock into `slot`.
+    pub fn install_module(&mut self, slot: usize, mi: usize) -> Result<(), &'static str> {
+        self.docked.ok_or("non amarre")?;
+        if self.module_stock.get(mi).copied().unwrap_or(0) == 0 {
+            return Err("module absent du stock");
+        }
+        self.ship.design.install(&self.data, slot, mi)?;
+        self.module_stock[mi] -= 1;
+        self.ship.sys.health[slot] = 1.0;
+        self.ship.refresh_stats(&self.data);
+        Ok(())
+    }
+
+    /// Remove the module in `slot` back into stock.
+    pub fn uninstall_module(&mut self, slot: usize) -> Result<(), &'static str> {
+        self.docked.ok_or("non amarre")?;
+        let mut trial = self.ship.design.clone();
+        let mi = trial.remove(slot).ok_or("emplacement vide")?;
+        self.design_fits(&trial)?;
+        self.ship.design = trial;
+        self.module_stock[mi] += 1;
+        self.ship.refresh_stats(&self.data);
+        Ok(())
+    }
+
+    /// Trade the current hull in for a new (empty) one; modules go to stock.
+    pub fn buy_hull(&mut self, hi: usize) -> Result<f64, &'static str> {
+        self.docked.ok_or("non amarre")?;
+        let new = self.data.hulls.get(hi).ok_or("coque inconnue")?;
+        if hi == self.ship.design.hull {
+            return Err("deja cette coque");
+        }
+        if self.ship.cargo.mass > 0.0 {
+            return Err("videz la soute d'abord");
+        }
+        let trade_in = self.data.hulls[self.ship.design.hull].cost * RESALE;
+        let price = new.cost - trade_in;
+        if price > self.credits {
+            return Err("fonds insuffisants");
+        }
+        self.credits -= price;
+        for m in self.ship.design.slots.iter().flatten() {
+            self.module_stock[*m] += 1;
+        }
+        self.ship.design = ShipDesign::empty(&self.data, hi);
+        self.ship.sys = Systems::new(&self.ship.design, 0.0);
+        self.ship.refresh_stats(&self.data);
+        self.ship.hull = self.ship.stats.hull_max;
+        Ok(price)
     }
 }
 
@@ -662,7 +872,7 @@ mod tests {
         for _ in 0..300 {
             s.step(&input);
         }
-        let ideal = ISP * G0 * (m0 / s.ship.mass()).ln();
+        let ideal = s.ship.stats.isp * G0 * (m0 / s.ship.mass()).ln();
         let dv = s.ship.vel.length();
         assert!(
             (dv - ideal).abs() / ideal < 0.02,
@@ -719,19 +929,24 @@ mod tests {
     }
 
     #[test]
-    fn collision_pushes_out_and_damages() {
+    fn collision_pushes_out_damages_hull_and_modules() {
         let mut s = sim_with(
             void_system(500.0),
             Vec3::new(0.0, 0.0, -1000.0),
             Vec3::new(0.0, 0.0, 400.0),
         );
+        let max = s.ship.stats.hull_max;
         let mut hit = false;
         for _ in 0..90 {
             s.step(&ShipInput::default());
             hit |= s.events.iter().any(|e| matches!(e, Event::Impact { .. }));
             assert!(s.ship.pos.length() >= 500.0 + SHIP_RADIUS - 1e-6);
         }
-        assert!(hit && s.ship.hull < HULL_MAX);
+        assert!(hit && s.ship.hull < max);
+        assert!(
+            s.ship.sys.health.iter().any(|&h| h < 1.0),
+            "an impact must hurt some module"
+        );
     }
 
     #[test]
@@ -747,7 +962,7 @@ mod tests {
                     ..Default::default()
                 });
             }
-            (s.ship.pos, s.ship.fuel)
+            (s.ship.pos, s.ship.fuel, s.ship.sys.temp_k)
         };
         assert_eq!(run(), run());
     }
@@ -770,7 +985,7 @@ mod tests {
             (d - orbit_r).abs() / orbit_r < 0.05,
             "orbit radius drifted: {d} vs {orbit_r}"
         );
-        assert_eq!(s.ship.hull, HULL_MAX);
+        assert_eq!(s.ship.hull, s.ship.stats.hull_max);
     }
 
     #[test]
@@ -783,7 +998,7 @@ mod tests {
         s.update_ref();
         s.autopilot = Some(Autopilot::new(&s, pi).expect("autopilot should accept"));
         let mut arrived = false;
-        for _ in 0..4000 {
+        for _ in 0..400 {
             s.events.clear();
             s.advance(600.0, &ShipInput::default());
             if s.events.iter().any(|e| matches!(e, Event::Arrived { .. })) {
@@ -793,7 +1008,7 @@ mod tests {
         }
         let d = (s.bodies[pi].pos - s.ship.pos).length();
         assert!(arrived, "autopilot did not arrive, dist {d}");
-        assert!(s.ship.hull == HULL_MAX && s.ship.fuel > 0.0);
+        assert!(s.ship.hull == s.ship.stats.hull_max && s.ship.fuel > 0.0);
     }
 
     /// Put the ship 800 m from asteroid `ai`, aimed at it, co-moving.
@@ -820,7 +1035,6 @@ mod tests {
             ..Default::default()
         };
         for _ in 0..600 {
-            // Keep station: asteroid moves at orbital speed, re-aim each step.
             aim_at(&mut s, ai);
             s.step(&input);
         }
@@ -837,36 +1051,51 @@ mod tests {
     }
 
     #[test]
-    fn laser_needs_aim_and_range() {
+    fn laser_needs_aim_range_and_power() {
         let (sys, ai) = system_with(|b| matches!(b.kind, BodyKind::Asteroid(_)));
         let mut s = Sim::new(sys, data());
-        aim_at(&mut s, ai);
-        s.ship.rot = Mat3::rot_y(1.5); // looking away
-        s.step(&ShipInput {
+        let mine = ShipInput {
             mine: true,
             ..Default::default()
-        });
+        };
+        aim_at(&mut s, ai);
+        s.ship.rot = Mat3::rot_y(1.5); // looking away
+        s.step(&mine);
         assert_eq!(s.ship.cargo.mass, 0.0);
         aim_at(&mut s, ai);
         s.ship.pos = s.ship.pos - Vec3::new(0.0, 0.0, 5000.0); // out of range
-        s.step(&ShipInput {
-            mine: true,
-            ..Default::default()
-        });
+        s.step(&mine);
         assert_eq!(s.ship.cargo.mass, 0.0);
+        // No power: reactor dead and battery empty -> the laser stays off even when aimed.
+        aim_at(&mut s, ai);
+        let reactor = s
+            .ship
+            .design
+            .modules(&s.data)
+            .find(|(_, m)| m.category == "reactor")
+            .map(|(i, _)| i)
+            .expect("reactor");
+        s.ship.sys.health[reactor] = 0.0;
+        s.ship.sys.battery_mj = 0.0;
+        s.step(&mine);
+        assert_eq!(s.ship.cargo.mass, 0.0, "unpowered laser cannot mine");
     }
 
     #[test]
     fn cargo_capacity_is_enforced() {
         let d = data();
         let mut c = Cargo::new(d.resources.len());
+        c.cap_mass = 30_000.0;
+        c.cap_vol = 40.0;
         let gold = d.resource_index("gold").expect("gold");
         let regolith = d.resource_index("regolith").expect("regolith");
         assert!(c.add(&d, gold, 1.0e6) < 1.0e6);
-        assert!(c.volume <= cargo::CARGO_VOL_CAP + 1e-9 && c.mass <= cargo::CARGO_MASS_CAP + 1e-9);
+        assert!(c.volume <= 40.0 + 1e-9 && c.mass <= 30_000.0 + 1e-9);
         let mut c2 = Cargo::new(d.resources.len());
+        c2.cap_mass = 30_000.0;
+        c2.cap_vol = 40.0;
         let got = c2.add(&d, regolith, 1.0e6);
-        assert!(got <= cargo::CARGO_MASS_CAP + 1e-9 && c2.is_full());
+        assert!(got <= 30_000.0 + 1e-9 && c2.is_full());
         assert!((c2.remove(&d, regolith, got) - got).abs() < 1e-9 && c2.mass < 1e-9);
     }
 
@@ -891,8 +1120,10 @@ mod tests {
         let (kg, cost) = s.refuel().expect("refuel");
         assert!(kg > 0.0 && cost > 0.0 && s.ship.fuel > 1000.0);
         s.ship.hull = 500.0;
+        s.ship.sys.health[0] = 0.5;
         s.repair().expect("repair");
-        assert_eq!(s.ship.hull, HULL_MAX);
+        assert_eq!(s.ship.hull, s.ship.stats.hull_max);
+        assert!(s.ship.sys.health.iter().all(|&h| h == 1.0));
         s.undock();
         assert!(s.docked.is_none());
     }
@@ -906,5 +1137,72 @@ mod tests {
         s.advance(3600.0, &ShipInput::default());
         let d = (s.ship.pos - s.bodies[si].pos).length();
         assert!((d - (s.bodies[si].radius + 60.0)).abs() < 1.0);
+    }
+
+    fn docked_sim() -> Sim {
+        let (sys, si) = system_with(|b| b.kind == BodyKind::Station);
+        let mut s = Sim::new(sys, data());
+        s.spawn_near(si, s.bodies[si].radius + 100.0);
+        s.try_dock().expect("dock");
+        s.credits = 5.0e6;
+        s
+    }
+
+    #[test]
+    fn shipyard_buy_install_remove_and_rules() {
+        let mut s = docked_sim();
+        let radiator = s.data.module_index("radiator_mk1").expect("module");
+        assert!(s.install_module(7, radiator).is_err(), "not in stock yet");
+        let c0 = s.credits;
+        s.shop_buy_module(radiator).expect("buy");
+        assert!(s.credits < c0);
+        // Free an external slot first (the starter ship uses both).
+        let slot = s
+            .ship
+            .design
+            .modules(&s.data)
+            .find(|(_, m)| m.category == "radiator")
+            .map(|(i, _)| i)
+            .expect("radiator slot");
+        s.uninstall_module(slot).expect("remove stock radiator");
+        let rad_before = s.ship.stats.radiate_kw;
+        s.install_module(slot, radiator).expect("install");
+        assert!(s.ship.stats.radiate_kw > rad_before);
+        assert!(s.install_module(0, radiator).is_err());
+        s.uninstall_module(slot).expect("uninstall");
+        assert_eq!(s.module_stock[radiator], 1);
+        assert!(s.ship.stats.radiate_kw < rad_before + 1.0);
+        // Removing the only cargo module while the hold is loaded must be refused.
+        let iron = s.data.resource_index("iron").expect("iron");
+        let data = Arc::clone(&s.data);
+        s.ship.cargo.add(&data, iron, 5000.0);
+        let cargo_slot = s
+            .ship
+            .design
+            .modules(&s.data)
+            .find(|(_, m)| m.category == "cargo")
+            .map(|(i, _)| i)
+            .expect("cargo");
+        assert!(s.uninstall_module(cargo_slot).is_err());
+        let sold = s.shop_sell_module(radiator).expect("sell back");
+        assert!((sold - s.data.modules[radiator].cost * RESALE).abs() < 1e-9);
+    }
+
+    #[test]
+    fn buying_a_hull_moves_modules_to_stock() {
+        let mut s = docked_sim();
+        let hauler = s.data.hull_index("hauler").expect("hull");
+        let fitted = s.ship.design.slots.iter().flatten().count();
+        let iron = s.data.resource_index("iron").expect("iron");
+        let data = Arc::clone(&s.data);
+        s.ship.cargo.add(&data, iron, 100.0);
+        assert!(s.buy_hull(hauler).is_err(), "cargo must be emptied first");
+        s.jettison(iron);
+        let price = s.buy_hull(hauler).expect("buy hull");
+        assert!(price > 0.0);
+        assert_eq!(s.ship.design.hull, hauler);
+        assert_eq!(s.module_stock.iter().sum::<u32>() as usize, fitted);
+        assert_eq!(s.ship.sys.health.len(), s.data.hulls[hauler].slots.len());
+        assert_eq!(s.ship.stats.fuel_cap, 0.0, "empty hull has no tanks");
     }
 }

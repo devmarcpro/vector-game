@@ -24,6 +24,82 @@ pub struct AsteroidClass {
     pub composition: Vec<(String, f64)>,
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum SlotType {
+    #[default]
+    Core,
+    Internal,
+    External,
+    Hardpoint,
+}
+
+impl SlotType {
+    pub fn label(self) -> &'static str {
+        match self {
+            SlotType::Core => "NOYAU",
+            SlotType::Internal => "INTERNE",
+            SlotType::External => "EXTERNE",
+            SlotType::Hardpoint => "ARMEMENT",
+        }
+    }
+}
+
+/// A ship module. Unused stats default to zero so data files only list what matters.
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Module {
+    pub id: String,
+    pub name: String,
+    pub category: String,
+    pub slot: SlotType,
+    pub size: u8,
+    pub mass: f64,
+    pub hp: f64,
+    pub cost: f64,
+    /// kW: positive = produced (reactor/solar), negative = consumed at full load.
+    pub power: f64,
+    pub priority: u8,
+    pub thrust: f64,
+    pub isp: f64,
+    pub fuel: f64,
+    pub cargo_kg: f64,
+    pub cargo_m3: f64,
+    /// MJ
+    pub battery: f64,
+    /// kW dissipated at reference temperature
+    pub radiate: f64,
+    pub mining_rate: f64,
+    pub mining_range: f64,
+    pub life_support: f64,
+    pub crew_cap: f64,
+    pub medical: f64,
+    pub science: f64,
+    pub repair: f64,
+    pub food: f64,
+    pub scan_range: f64,
+    pub armor: f64,
+    pub agility: f64,
+    pub rcs: f64,
+    pub shield: f64,
+    pub dock: f64,
+    pub hangar: f64,
+    pub armory: f64,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct Hull {
+    pub id: String,
+    pub name: String,
+    pub class: String,
+    pub mass: f64,
+    pub hp: f64,
+    pub cost: f64,
+    pub rcs: f64,
+    pub max_rate: f64,
+    pub ang_accel: f64,
+    pub slots: Vec<(SlotType, u8)>,
+}
+
 #[derive(Debug)]
 pub enum DataError {
     Io(PathBuf, std::io::Error),
@@ -46,6 +122,8 @@ impl std::error::Error for DataError {}
 pub struct GameData {
     pub resources: Vec<Resource>,
     pub asteroids: Vec<AsteroidClass>,
+    pub modules: Vec<Module>,
+    pub hulls: Vec<Hull>,
 }
 
 fn read<T: for<'a> Deserialize<'a>>(path: &Path) -> Result<T, DataError> {
@@ -58,9 +136,18 @@ impl GameData {
         let d = GameData {
             resources: read(&dir.join("resources.ron"))?,
             asteroids: read(&dir.join("worldgen/asteroids.ron"))?,
+            modules: read(&dir.join("modules.ron"))?,
+            hulls: read(&dir.join("hulls.ron"))?,
         };
         d.validate()?;
         Ok(d)
+    }
+
+    pub fn module_index(&self, id: &str) -> Option<usize> {
+        self.modules.iter().position(|m| m.id == id)
+    }
+    pub fn hull_index(&self, id: &str) -> Option<usize> {
+        self.hulls.iter().position(|h| h.id == id)
     }
 
     pub fn resource_index(&self, id: &str) -> Option<usize> {
@@ -101,6 +188,32 @@ impl GameData {
                 return bad(format!("composition de {} somme a {sum}", a.id));
             }
         }
+        let mut mids = BTreeSet::new();
+        for m in &self.modules {
+            if !mids.insert(m.id.as_str()) {
+                return bad(format!("module en double: {}", m.id));
+            }
+            if !(1..=4).contains(&m.size) || m.mass <= 0.0 || m.hp <= 0.0 || m.cost < 0.0 {
+                return bad(format!("module invalide: {}", m.id));
+            }
+            let produces = matches!(m.category.as_str(), "reactor" | "solar");
+            if produces != (m.power > 0.0) && m.power != 0.0 {
+                return bad(format!("signe de puissance incoherent: {}", m.id));
+            }
+        }
+        let mut hids = BTreeSet::new();
+        for h in &self.hulls {
+            if !hids.insert(h.id.as_str()) {
+                return bad(format!("coque en double: {}", h.id));
+            }
+            if h.slots.is_empty()
+                || h.slots.iter().any(|(_, s)| !(1..=4).contains(s))
+                || h.mass <= 0.0
+                || h.hp <= 0.0
+            {
+                return bad(format!("coque invalide: {}", h.id));
+            }
+        }
         Ok(())
     }
 }
@@ -138,6 +251,8 @@ mod tests {
         let d = GameData::load(&dir()).expect("data loads");
         assert!(d.resources.len() >= 40, "{}", d.resources.len());
         assert!(d.asteroids.len() >= 4);
+        assert!(d.modules.len() >= 60, "{}", d.modules.len());
+        assert!(d.hulls.len() >= 15);
     }
 
     #[test]

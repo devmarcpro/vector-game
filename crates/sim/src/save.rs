@@ -6,7 +6,7 @@ use vector_data::GameData;
 use vector_world::generate_system;
 
 pub const MAGIC: [u8; 4] = *b"VECT";
-pub const VERSION: u32 = 1;
+pub const VERSION: u32 = 2;
 
 #[derive(Debug)]
 pub enum SaveError {
@@ -38,6 +38,7 @@ pub struct SaveGame {
     pub markets: Vec<(usize, Market)>,
     pub docked: Option<usize>,
     pub target: Option<usize>,
+    pub module_stock: Vec<u32>,
 }
 
 impl Sim {
@@ -51,6 +52,7 @@ impl Sim {
             markets: self.markets.iter().map(|(k, v)| (*k, v.clone())).collect(),
             docked: self.docked,
             target: self.target,
+            module_stock: self.module_stock.clone(),
         };
         let mut out = MAGIC.to_vec();
         out.extend_from_slice(&VERSION.to_le_bytes());
@@ -84,6 +86,10 @@ impl Sim {
         sim.markets = save.markets.into_iter().collect();
         sim.docked = save.docked;
         sim.target = save.target;
+        if save.module_stock.len() == sim.module_stock.len() {
+            sim.module_stock = save.module_stock;
+        }
+        sim.ship.refresh_stats(&sim.data.clone());
         sim.refresh_bodies();
         for i in 0..sim.bodies.len() {
             let m = sim.system.bodies[i].mass;

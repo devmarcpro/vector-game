@@ -165,16 +165,16 @@ impl Sim {
         }
     }
 
+    /// Reference frame = innermost body (smallest influence sphere) containing the ship.
     fn update_ref(&mut self) {
         let mut best: Option<(usize, f64)> = None;
         for (i, b) in self.bodies.iter().enumerate() {
             let infl = influence_radius(b);
-            if infl <= 0.0 {
-                continue;
-            }
-            let ratio = (self.ship.pos - b.pos).length() / infl;
-            if ratio < 1.0 && best.is_none_or(|(_, r)| ratio < r) {
-                best = Some((i, ratio));
+            if infl > 0.0
+                && (self.ship.pos - b.pos).length() < infl
+                && best.is_none_or(|(_, r)| infl < r)
+            {
+                best = Some((i, infl));
             }
         }
         self.ref_body = best.map(|(i, _)| i);
@@ -241,11 +241,13 @@ impl Sim {
     pub fn step_dt(&mut self, manual: &ShipInput, dt: f64) {
         let input = match self.autopilot.take() {
             Some(mut ap) => {
-                let (inp, face, state) = ap.control(self, dt);
+                let (mut inp, face, state) = ap.control(self, dt);
                 if let (Some(f), true) = (face, dt > 0.1) {
                     // Time-accelerated: perfect attitude control (no meaningful rotation dynamics at this dt).
                     self.ship.rot = Mat3::look_at(f, self.ship.rot.col(1));
                     self.ship.ang = Vec3::ZERO;
+                    inp.yaw = 0.0;
+                    inp.pitch = 0.0;
                 }
                 match state {
                     autopilot::State::Running => self.autopilot = Some(ap),

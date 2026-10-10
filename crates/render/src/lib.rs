@@ -76,6 +76,20 @@ impl Framebuffer {
             }
         }
     }
+    /// Text at an arbitrary pixel position.
+    pub fn text_at(&mut self, x: i32, y: i32, s: &str, c: u32) {
+        for (i, ch) in s.chars().enumerate() {
+            let g = font::glyph(ch);
+            let ox = x + (i * font::CELL_W) as i32;
+            for (cx, bits) in g.iter().enumerate() {
+                for cy in 0..7 {
+                    if bits >> cy & 1 == 1 {
+                        self.plot(ox + cx as i32, y + cy, c);
+                    }
+                }
+            }
+        }
+    }
     pub fn cols(&self) -> usize {
         self.w / font::CELL_W
     }

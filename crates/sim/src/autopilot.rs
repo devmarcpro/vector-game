@@ -1,5 +1,5 @@
 //! Fuel-limited brachistochrone autopilot: accelerate toward the target, flip, brake.
-use crate::{ShipInput, Sim, DRY_MASS, MAIN_THRUST, MAX_ANG_RATE};
+use crate::{ShipInput, Sim, DRY_MASS, MAIN_THRUST};
 use vector_world::BodyKind;
 
 pub enum State {
@@ -85,7 +85,7 @@ impl Autopilot {
         } else {
             0.0
         };
-        let k = 0.8 * 1.0 / (MAX_ANG_RATE / MAX_ANG_RATE);
+        let k = 0.8;
         let input = ShipInput {
             yaw: (k * yaw_err).clamp(-1.0, 1.0),
             pitch: (-k * pitch_err).clamp(-1.0, 1.0),

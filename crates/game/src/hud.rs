@@ -1,14 +1,16 @@
-//! Cockpit view: 3D scene + ASCII HUD.
+//! Cockpit view and system map: 3D scene + ASCII HUD.
 use crate::console::Console;
 use vector_core::{Mat3, Vec3};
 use vector_render::{Camera, Framebuffer, Wireframe};
-use vector_sim::{BodyKind, Sim, DRY_MASS, FUEL_CAP, G0, HULL_MAX, ISP};
+use vector_sim::{Sim, FUEL_CAP, HULL_MAX};
+use vector_world::BodyKind;
 
 pub const GREEN: u32 = 0x0030_E050;
 pub const DIM: u32 = 0x0010_6020;
 pub const AMBER: u32 = 0x00E0_A020;
 pub const RED: u32 = 0x00FF_3030;
 pub const STAR: u32 = 0x0040_5060;
+pub const SUN: u32 = 0x00E0_D060;
 
 pub struct View<'a> {
     pub sim: &'a Sim,
@@ -18,6 +20,10 @@ pub struct View<'a> {
     pub paused: bool,
     pub messages: &'a [String],
     pub console: &'a Console,
+    pub map: bool,
+    /// Metres per pixel on the system map.
+    pub map_scale: f64,
+    pub map_on_ship: bool,
 }
 
 pub fn fmt_dist(m: f64) -> String {
@@ -26,33 +32,68 @@ pub fn fmt_dist(m: f64) -> String {
         format!("{m:.0} m")
     } else if a < 1.0e9 {
         format!("{:.1} km", m / 1e3)
+    } else if a < 1.0e12 {
+        format!("{:.2} Gm", m / 1e9)
     } else {
-        format!("{:.3} Gm", m / 1e9)
+        format!("{:.3} AU", m / 1.496e11)
+    }
+}
+
+pub fn fmt_time(s: f64) -> String {
+    if s < 3600.0 {
+        format!("{:.0}s", s)
+    } else if s < 86400.0 {
+        format!("{:.1}h", s / 3600.0)
+    } else {
+        format!("{:.1}j", s / 86400.0)
     }
 }
 
 pub fn draw(fb: &mut Framebuffer, v: &View) {
     fb.clear();
+    if v.map {
+        draw_map(fb, v);
+    } else {
+        draw_cockpit(fb, v);
+    }
+    draw_status(fb, v);
+    draw_console(fb, v.console);
+}
+
+fn body_color(v: &View, i: usize) -> u32 {
+    if Some(i) == v.target {
+        AMBER
+    } else {
+        GREEN
+    }
+}
+
+fn draw_cockpit(fb: &mut Framebuffer, v: &View) {
     let ship = &v.sim.ship;
     let cam = Camera {
         pos: ship.pos,
         rot: ship.rot.transpose(),
         fov_y: 1.2,
     };
+    let focal = fb.h as f64 * 0.5 / (cam.fov_y * 0.5).tan();
 
     for s in v.stars {
         if let Some((x, y)) = cam.project_dir(*s, fb) {
             fb.plot(x as i32, y as i32, STAR);
         }
     }
-    let spin = Mat3::rot_y(v.sim.time * 0.05);
     for (i, b) in v.sim.bodies.iter().enumerate() {
-        let col = if Some(i) == v.target { AMBER } else { GREEN };
+        let col = body_color(v, i);
+        let dist = (b.pos - ship.pos).length();
+        let px = b.radius / dist.max(1.0) * focal;
+        let spin = Mat3::rot_y(v.sim.time * 2.0e-5 + i as f64);
         match b.kind {
-            BodyKind::Star => cam.draw_sphere(fb, b.pos, b.radius, &spin, 4, 8, 0x00E0_D060),
-            BodyKind::Planet => cam.draw_sphere(fb, b.pos, b.radius, &spin, 8, 14, col),
-            BodyKind::Moon => cam.draw_sphere(fb, b.pos, b.radius, &spin, 6, 10, col),
-            BodyKind::Asteroid => cam.draw_sphere(fb, b.pos, b.radius, &spin, 4, 6, col),
+            BodyKind::Star(_) => cam.draw_sphere(fb, b.pos, b.radius, &spin, 4, 8, SUN),
+            BodyKind::Planet(k) if k.is_giant() => {
+                cam.draw_sphere(fb, b.pos, b.radius, &spin, 12, 6, col)
+            }
+            BodyKind::Planet(_) => cam.draw_sphere(fb, b.pos, b.radius, &spin, 8, 14, col),
+            BodyKind::Moon(_) => cam.draw_sphere(fb, b.pos, b.radius, &spin, 5, 8, col),
             BodyKind::Station => {
                 let r = Mat3::rot_y(v.sim.time * 0.2);
                 Wireframe::cube(b.radius * 0.5).draw(&cam, fb, &r, b.pos, col);
@@ -60,31 +101,40 @@ pub fn draw(fb: &mut Framebuffer, v: &View) {
                 cam.draw_sphere(fb, b.pos, b.radius * 0.9, &ring, 2, 0, col);
             }
         }
+        // Marker + label for objects too small to see as shapes.
+        if let Some((x, y)) = cam.project_world(b.pos, fb) {
+            if px < 6.0 && !matches!(b.kind, BodyKind::Star(_)) {
+                fb.line(x - 3.0, y, x + 3.0, y, col);
+                fb.line(x, y - 3.0, x, y + 3.0, col);
+            }
+            if Some(i) == v.target
+                || (matches!(b.kind, BodyKind::Planet(_) | BodyKind::Station) && px < 40.0)
+            {
+                fb.text_at(x as i32 + 8, y as i32 - 12, &b.name, col);
+            }
+        }
     }
 
     let (w, h) = (fb.w as f32, fb.h as f32);
     let (cx, cy) = (w / 2.0, h / 2.0);
-    // Crosshair.
-    for (dx, dy) in [(-14.0, 0.0), (8.0, 0.0), (0.0, -14.0), (0.0, 8.0)] {
-        fb.line(
-            cx + dx,
-            cy + dy,
-            cx + dx + if dx == 0.0 { 0.0 } else { 6.0 },
-            cy + dy + if dy == 0.0 { 0.0 } else { 6.0 },
-            GREEN,
-        );
+    for (dx, dy, ex, ey) in [
+        (-14.0, 0.0, 6.0, 0.0),
+        (8.0, 0.0, 6.0, 0.0),
+        (0.0, -14.0, 0.0, 6.0),
+        (0.0, 8.0, 0.0, 6.0),
+    ] {
+        fb.line(cx + dx, cy + dy, cx + dx + ex, cy + dy + ey, GREEN);
     }
-    // Prograde marker.
-    let speed = ship.vel.length();
-    if speed > 0.5 {
-        if let Some((x, y)) = cam.project_dir(ship.vel.normalized(), fb) {
+    // Prograde marker (relative to the reference frame).
+    let rel = v.sim.rel_velocity();
+    if rel.length() > 0.5 {
+        if let Some((x, y)) = cam.project_dir(rel.normalized(), fb) {
             fb.circle(x, y, 6.0, GREEN);
             fb.line(x - 10.0, y, x - 6.0, y, GREEN);
             fb.line(x + 6.0, y, x + 10.0, y, GREEN);
             fb.line(x, y - 10.0, x, y - 6.0, GREEN);
         }
     }
-    // Target brackets.
     if let Some(t) = v.target.and_then(|i| v.sim.bodies.get(i)) {
         if let Some((x, y)) = cam.project_world(t.pos, fb) {
             let r = 16.0;
@@ -106,25 +156,129 @@ pub fn draw(fb: &mut Framebuffer, v: &View) {
             }
         }
     }
-
     draw_radar(fb, v);
+}
 
+fn draw_map(fb: &mut Framebuffer, v: &View) {
+    let sim = v.sim;
+    let center = if v.map_on_ship {
+        sim.ship.pos
+    } else {
+        Vec3::ZERO
+    };
+    let (cx, cy) = (fb.w as f64 / 2.0, fb.h as f64 / 2.0);
+    let to_px = |p: Vec3| -> (f32, f32) {
+        (
+            (cx + (p.x - center.x) / v.map_scale) as f32,
+            (cy + (p.z - center.z) / v.map_scale) as f32,
+        )
+    };
+    for (i, cb) in sim.system.bodies.iter().enumerate() {
+        let b = &sim.bodies[i];
+        let col = body_color(v, i);
+        if let Some(o) = &cb.orbit {
+            if o.a / v.map_scale > 3.0 {
+                let parent = sim.bodies[o.parent].pos;
+                let period = o.period();
+                let n = 120;
+                let mut prev: Option<(f32, f32)> = None;
+                for k in 0..=n {
+                    let t = sim.time + period * k as f64 / n as f64;
+                    let (rp, _) = o.state(t);
+                    let p = to_px(parent + rp);
+                    if let Some(q) = prev {
+                        fb.line(q.0, q.1, p.0, p.1, DIM);
+                    }
+                    prev = Some(p);
+                }
+            }
+        }
+        let (x, y) = to_px(b.pos);
+        let r = (b.radius / v.map_scale).clamp(2.0, 14.0) as f32;
+        match cb.kind {
+            BodyKind::Star(_) => fb.circle(x, y, r.max(4.0), SUN),
+            BodyKind::Station => {
+                fb.line(x - 3.0, y - 3.0, x + 3.0, y + 3.0, col);
+                fb.line(x - 3.0, y + 3.0, x + 3.0, y - 3.0, col);
+            }
+            _ => fb.circle(x, y, r.min(8.0), col),
+        }
+        let shown = match cb.kind {
+            BodyKind::Moon(_) | BodyKind::Station => {
+                cb.orbit.as_ref().is_some_and(|o| o.a / v.map_scale > 12.0)
+            }
+            _ => true,
+        };
+        if shown || Some(i) == v.target {
+            fb.text_at(x as i32 + 6, y as i32 - 12, &cb.name, col);
+        }
+    }
+    let (sx, sy) = to_px(sim.ship.pos);
+    fb.line(sx - 5.0, sy, sx + 5.0, sy, RED);
+    fb.line(sx, sy - 5.0, sx, sy + 5.0, RED);
+    fb.text_at(sx as i32 + 8, sy as i32 + 4, "VAISSEAU", RED);
+    let rows = fb.rows();
+    fb.text(
+        1,
+        rows - 5,
+        &format!(
+            "CARTE SYSTEME  ECHELLE {}/PX  [+/-] ZOOM  [C] CENTRE:{}",
+            fmt_dist(v.map_scale),
+            if v.map_on_ship { "VAISSEAU" } else { "ETOILE" }
+        ),
+        DIM,
+    );
+}
+
+fn draw_status(fb: &mut Framebuffer, v: &View) {
+    let ship = &v.sim.ship;
+    let sim = v.sim;
     let rows = fb.rows();
     let cols = fb.cols();
-    fb.text(1, 1, &format!("VITESSE {:>10}/s", fmt_dist(speed)), GREEN);
+    let rel = sim.rel_velocity();
+    let frame = sim
+        .ref_body
+        .map_or("ETOILE".to_string(), |i| sim.bodies[i].name.clone());
+    fb.text(
+        1,
+        1,
+        &format!(
+            "{} ({})  CLASSE {}",
+            sim.system.name,
+            sim.system.designation,
+            sim.system.star_class.letter()
+        ),
+        GREEN,
+    );
     fb.text(
         1,
         2,
+        &format!("VITESSE {}/S  REF {}", fmt_dist(rel.length()), frame),
+        GREEN,
+    );
+    fb.text(
+        1,
+        3,
         &format!(
-            "ASSISTANCE {}   TEMPS x{}{}",
-            if ship.assist { "ON " } else { "OFF" },
+            "ASSIST {}  TEMPS x{}{}  T+{}",
+            if ship.assist { "ON" } else { "OFF" },
             v.timescale,
-            if v.paused { " PAUSE" } else { "" }
+            if v.paused { " PAUSE" } else { "" },
+            fmt_time(sim.time)
         ),
         if ship.assist { GREEN } else { AMBER },
     );
-    fb.text(1, 3, &format!("T+{:.0}s", v.sim.time), DIM);
-    let dv = ISP * G0 * ((DRY_MASS + ship.fuel) / DRY_MASS).ln();
+    if let Some(ap) = &sim.autopilot {
+        fb.text(
+            1,
+            4,
+            &format!(
+                "PILOTE AUTO -> {}  A={:.2} M/S2",
+                sim.bodies[ap.target].name, ap.a_cruise
+            ),
+            AMBER,
+        );
+    }
     fb.gauge(
         1,
         rows - 4,
@@ -149,22 +303,52 @@ pub fn draw(fb: &mut Framebuffer, v: &View) {
             GREEN
         },
     );
-    fb.text(1, rows - 2, &format!("DELTA-V {:.1} KM/S", dv / 1e3), DIM);
+    fb.text(
+        1,
+        rows - 2,
+        &format!("DELTA-V {:.1} KM/S", ship.delta_v() / 1e3),
+        DIM,
+    );
 
-    // Target panel.
-    if let Some(t) = v.target.and_then(|i| v.sim.bodies.get(i)) {
-        let rel = t.pos - ship.pos;
-        let range = rel.length() - t.radius;
-        let closing = ship.vel.dot(rel.normalized());
-        let x = cols.saturating_sub(34);
-        fb.text(x, rows - 5, &format!("CIBLE {}", t.name), AMBER);
-        fb.text(x, rows - 4, &format!("DIST  {}", fmt_dist(range)), AMBER);
-        fb.text(x, rows - 3, &format!("APPR  {:+.1} M/S", closing), AMBER);
-        fb.text(x, rows - 2, &format!("RAYON {}", fmt_dist(t.radius)), DIM);
+    if let Some(i) = v.target {
+        let t = &sim.bodies[i];
+        let cb = &sim.system.bodies[i];
+        let r = t.pos - ship.pos;
+        let range = r.length() - t.radius;
+        let closing = (ship.vel - t.vel).dot(r.normalized());
+        let x = cols.saturating_sub(40);
+        fb.text(x, rows - 8, &format!("CIBLE {}", t.name), AMBER);
+        fb.text(
+            x,
+            rows - 7,
+            &format!("TYPE  {}", kind_label(cb.kind)),
+            AMBER,
+        );
+        fb.text(x, rows - 6, &format!("DIST  {}", fmt_dist(range)), AMBER);
+        fb.text(x, rows - 5, &format!("APPR  {:+.1} M/S", closing), AMBER);
+        fb.text(
+            x,
+            rows - 4,
+            &format!("RAYON {}  G {:.1}", fmt_dist(t.radius), cb.gravity),
+            DIM,
+        );
+        fb.text(
+            x,
+            rows - 3,
+            &format!("TEMP  {:.0} K  PRES {:.2} BAR", cb.temp, cb.pressure),
+            DIM,
+        );
+        if !cb.atmosphere.is_empty() {
+            let a: Vec<String> = cb
+                .atmosphere
+                .iter()
+                .map(|(g, f)| format!("{g} {:.0}%", f * 100.0))
+                .collect();
+            fb.text(x, rows - 2, &a.join(" "), DIM);
+        }
     } else {
-        fb.text(cols.saturating_sub(34), rows - 2, "AUCUNE CIBLE [TAB]", DIM);
+        fb.text(cols.saturating_sub(40), rows - 2, "AUCUNE CIBLE [TAB]", DIM);
     }
-    // Messages.
     for (i, m) in v.messages.iter().rev().take(4).enumerate() {
         fb.text(
             cols / 2 - m.len().min(cols) / 2,
@@ -176,7 +360,15 @@ pub fn draw(fb: &mut Framebuffer, v: &View) {
     if ship.hull <= 0.0 {
         fb.text(cols / 2 - 10, rows / 2 + 4, "*** COQUE DETRUITE ***", RED);
     }
-    draw_console(fb, v.console);
+}
+
+pub fn kind_label(k: BodyKind) -> String {
+    match k {
+        BodyKind::Star(c) => format!("ETOILE {}", c.letter()),
+        BodyKind::Planet(p) => format!("PLANETE {}", p.label()),
+        BodyKind::Moon(p) => format!("LUNE {}", p.label()),
+        BodyKind::Station => "STATION".into(),
+    }
 }
 
 fn draw_radar(fb: &mut Framebuffer, v: &View) {
@@ -184,7 +376,6 @@ fn draw_radar(fb: &mut Framebuffer, v: &View) {
     let (cx, cy) = (fb.w as f32 / 2.0, fb.h as f32 - 34.0);
     let (rx, ry) = (80.0f32, 26.0f32);
     let range = 20_000.0f64;
-    fb.circle(cx, cy, 1.0, DIM);
     for k in [1.0, 0.5] {
         ellipse(fb, cx, cy, rx * k, ry * k, DIM);
     }
@@ -192,17 +383,16 @@ fn draw_radar(fb: &mut Framebuffer, v: &View) {
     fb.line(cx, cy - ry, cx, cy + ry, DIM);
     let inv = ship.rot.transpose();
     for (i, b) in v.sim.bodies.iter().enumerate() {
-        if matches!(b.kind, BodyKind::Star) {
+        if matches!(b.kind, BodyKind::Star(_)) {
             continue;
         }
         let l = inv.mul_vec(b.pos - ship.pos);
         let flat = (l.x * l.x + l.z * l.z).sqrt();
         let scale = if flat > range { range / flat } else { 1.0 };
-        let (lx, lz, ly) = (l.x * scale, l.z * scale, l.y * scale);
-        let px = cx + (lx / range) as f32 * rx;
-        let py = cy - (lz / range) as f32 * ry;
-        let top = py - (ly / range) as f32 * ry * 1.5;
-        let col = if Some(i) == v.target { AMBER } else { GREEN };
+        let px = cx + (l.x * scale / range) as f32 * rx;
+        let py = cy - (l.z * scale / range) as f32 * ry;
+        let top = py - (l.y * scale / range) as f32 * ry * 1.5;
+        let col = body_color(v, i);
         fb.line(px, py, px, top, col);
         fb.plot(px as i32, top as i32, col);
         fb.plot(px as i32 + 1, top as i32, col);
@@ -224,7 +414,7 @@ fn draw_console(fb: &mut Framebuffer, c: &Console) {
         return;
     }
     let lines = c.log.len() + 1;
-    for y in 0..(lines * 8 + 4) {
+    for y in 0..(lines * 10 + 4) {
         for x in 0..fb.w {
             fb.plot(x as i32, y as i32, 0x0000_0800);
         }

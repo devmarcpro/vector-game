@@ -67,7 +67,7 @@ const GLYPHS: [[u8; 5]; 64] = [
 ];
 
 pub const CELL_W: usize = 8;
-pub const CELL_H: usize = 8;
+pub const CELL_H: usize = 10;
 
 /// Returns the 5 columns of a glyph (bit0 = top row).
 pub fn glyph(c: char) -> [u8; 5] {

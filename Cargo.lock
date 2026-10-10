@@ -1506,11 +1506,19 @@ dependencies = [
  "softbuffer",
  "vector-core",
  "vector-render",
+ "vector-sim",
  "winit",
 ]
 
 [[package]]
 name = "vector-render"
+version = "0.1.0"
+dependencies = [
+ "vector-core",
+]
+
+[[package]]
+name = "vector-sim"
 version = "0.1.0"
 dependencies = [
  "vector-core",

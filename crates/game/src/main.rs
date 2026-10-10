@@ -1,44 +1,183 @@
-use std::{num::NonZeroU32, rc::Rc, time::Instant};
-use vector_core::{Mat3, Vec3};
-use vector_render::{Camera, Framebuffer, Wireframe};
+mod console;
+mod hud;
+mod scene;
+
+use std::{collections::HashSet, num::NonZeroU32, rc::Rc, time::Instant};
+use vector_render::Framebuffer;
+use vector_sim::{Event, ShipInput, Sim, SIM_DT};
 use winit::{
     application::ApplicationHandler,
-    event::WindowEvent,
+    event::{ElementState, WindowEvent},
     event_loop::{ActiveEventLoop, EventLoop},
-    keyboard::{Key, NamedKey},
+    keyboard::{KeyCode, PhysicalKey},
     window::{Window, WindowId},
 };
 
-const GREEN: u32 = 0x0030_E050;
-const DIM: u32 = 0x0010_6020;
-const SIM_DT: f64 = 1.0 / 30.0;
+const SEED: u64 = 0x5EC7;
+const MAX_STEPS_PER_FRAME: usize = 64;
 
-struct State {
-    t: f64,
+struct Game {
+    sim: Sim,
+    stars: Vec<vector_core::Vec3>,
+    keys: HashSet<KeyCode>,
+    target: Option<usize>,
+    timescale: f64,
+    paused: bool,
+    messages: Vec<String>,
+    console: console::Console,
 }
 
-fn draw(fb: &mut Framebuffer, st: &State) {
-    fb.clear();
-    let cam = Camera {
-        pos: Vec3::new(0.0, 0.0, -6.0),
-        rot: Mat3::IDENTITY,
-        fov_y: 1.0,
-    };
-    let rot = Mat3::rot_y(st.t).mul(&Mat3::rot_x(st.t * 0.6));
-    Wireframe::cube(1.5).draw(&cam, fb, &rot, Vec3::ZERO, GREEN);
-    let (c, r) = (fb.cols(), fb.rows());
-    fb.text(1, 1, "VECTOR  M0 DEMO TECHNIQUE", GREEN);
-    fb.text(1, 3, &format!("T={:7.2}  CUBE WIREFRAME", st.t), DIM);
-    let gauge = format!("ENERGIE [{}{}]", "#".repeat(7), "-".repeat(3));
-    fb.text(1, r - 2, &gauge, GREEN);
-    fb.text(c - 14, r - 2, "ECHAP=QUITTER", DIM);
+impl Game {
+    fn new() -> Self {
+        Game {
+            sim: scene::new_sim(SEED),
+            stars: scene::star_field(SEED, 900),
+            keys: HashSet::new(),
+            target: None,
+            timescale: 1.0,
+            paused: false,
+            messages: vec!["BIENVENUE A BORD - [F1] AIDE".into()],
+            console: console::Console::default(),
+        }
+    }
+
+    fn input(&self) -> ShipInput {
+        if self.console.open {
+            return ShipInput::default();
+        }
+        let ax = |pos: KeyCode, neg: KeyCode| {
+            f64::from(self.keys.contains(&pos) as i8) - f64::from(self.keys.contains(&neg) as i8)
+        };
+        ShipInput {
+            pitch: ax(KeyCode::KeyS, KeyCode::KeyW),
+            yaw: ax(KeyCode::KeyD, KeyCode::KeyA),
+            roll: ax(KeyCode::KeyE, KeyCode::KeyQ),
+            fwd: ax(KeyCode::Space, KeyCode::KeyX),
+            lat: ax(KeyCode::ArrowRight, KeyCode::ArrowLeft),
+            vert: ax(KeyCode::ArrowUp, KeyCode::ArrowDown),
+        }
+    }
+
+    fn say(&mut self, s: impl Into<String>) {
+        self.messages.push(s.into());
+        if self.messages.len() > 8 {
+            self.messages.remove(0);
+        }
+    }
+
+    fn advance(&mut self, steps: usize) {
+        let input = self.input();
+        for _ in 0..steps {
+            self.sim.step(&input);
+            let evs = std::mem::take(&mut self.sim.events);
+            for e in evs {
+                match e {
+                    Event::Impact {
+                        body,
+                        speed,
+                        damage,
+                    } => {
+                        let name = self.sim.bodies[body].name.clone();
+                        self.say(format!("IMPACT {name} {speed:.0} M/S  DEGATS {damage:.0}"));
+                    }
+                    Event::OutOfFuel => self.say("CARBURANT EPUISE"),
+                }
+            }
+        }
+    }
+
+    fn cycle_target(&mut self) {
+        // Nearest-first ordering, excluding the star; Tab advances to the next-nearest.
+        let p = self.sim.ship.pos;
+        let mut idx: Vec<usize> = (0..self.sim.bodies.len()).collect();
+        idx.sort_by(|&a, &b| {
+            let da = (self.sim.bodies[a].pos - p).length();
+            let db = (self.sim.bodies[b].pos - p).length();
+            da.total_cmp(&db)
+        });
+        let next = match self.target.and_then(|t| idx.iter().position(|&i| i == t)) {
+            Some(k) => idx[(k + 1) % idx.len()],
+            None => idx[0],
+        };
+        self.target = Some(next);
+    }
+
+    fn key(&mut self, code: KeyCode, text: Option<&str>, pressed: bool) {
+        if pressed && code == KeyCode::Backquote {
+            self.console.open = !self.console.open;
+            return;
+        }
+        if self.console.open {
+            if !pressed {
+                return;
+            }
+            match code {
+                KeyCode::Enter => {
+                    let line = std::mem::take(&mut self.console.line);
+                    self.console.print(format!("> {line}"));
+                    for l in console::run(&line, &mut self.sim, &mut self.timescale) {
+                        self.console.print(l);
+                    }
+                }
+                KeyCode::Backspace => {
+                    self.console.line.pop();
+                }
+                KeyCode::Escape => self.console.open = false,
+                _ => {
+                    if let Some(t) = text {
+                        self.console
+                            .line
+                            .extend(t.chars().filter(|c| !c.is_control()));
+                    }
+                }
+            }
+            return;
+        }
+        if !pressed {
+            self.keys.remove(&code);
+            return;
+        }
+        self.keys.insert(code);
+        match code {
+            KeyCode::KeyF => {
+                self.sim.ship.assist = !self.sim.ship.assist;
+                let a = self.sim.ship.assist;
+                self.say(if a {
+                    "ASSISTANCE DE VOL ACTIVEE"
+                } else {
+                    "ASSISTANCE DE VOL COUPEE"
+                });
+            }
+            KeyCode::Tab => self.cycle_target(),
+            KeyCode::KeyP => self.paused = !self.paused,
+            KeyCode::PageUp => self.timescale = (self.timescale * 2.0).min(64.0),
+            KeyCode::PageDown => self.timescale = (self.timescale / 2.0).max(0.25),
+            KeyCode::F1 => {
+                self.say("WASD/QE:ROT  ESPACE/X:POUSSEE  FLECHES:RCS  F:ASSIST");
+                self.say("TAB:CIBLE  P:PAUSE  PGUP/PGDN:TEMPS  ~:CONSOLE");
+            }
+            _ => {}
+        }
+    }
+
+    fn view(&self) -> hud::View<'_> {
+        hud::View {
+            sim: &self.sim,
+            stars: &self.stars,
+            target: self.target,
+            timescale: self.timescale,
+            paused: self.paused,
+            messages: &self.messages,
+            console: &self.console,
+        }
+    }
 }
 
 struct App {
     window: Option<Rc<Window>>,
     surface: Option<softbuffer::Surface<Rc<Window>, Rc<Window>>>,
     fb: Framebuffer,
-    st: State,
+    game: Game,
     last: Instant,
     acc: f64,
 }
@@ -47,7 +186,7 @@ impl ApplicationHandler for App {
     fn resumed(&mut self, el: &ActiveEventLoop) {
         let attrs = Window::default_attributes()
             .with_title("VECTOR")
-            .with_inner_size(winit::dpi::LogicalSize::new(960, 540));
+            .with_inner_size(winit::dpi::LogicalSize::new(1024, 576));
         let Ok(w) = el.create_window(attrs) else {
             el.exit();
             return;
@@ -65,18 +204,25 @@ impl ApplicationHandler for App {
     fn window_event(&mut self, el: &ActiveEventLoop, _id: WindowId, ev: WindowEvent) {
         match ev {
             WindowEvent::CloseRequested => el.exit(),
-            WindowEvent::KeyboardInput { event, .. }
-                if event.logical_key == Key::Named(NamedKey::Escape) =>
-            {
-                el.exit()
+            WindowEvent::KeyboardInput { event, .. } => {
+                let pressed = event.state == ElementState::Pressed;
+                if let PhysicalKey::Code(code) = event.physical_key {
+                    if pressed && code == KeyCode::Escape && !self.game.console.open {
+                        el.exit();
+                        return;
+                    }
+                    self.game.key(code, event.text.as_deref(), pressed);
+                }
             }
             WindowEvent::RedrawRequested => {
                 let now = Instant::now();
-                self.acc += (now - self.last).as_secs_f64().min(0.25);
+                let dt = (now - self.last).as_secs_f64().min(0.25);
                 self.last = now;
-                while self.acc >= SIM_DT {
-                    self.st.t += SIM_DT;
-                    self.acc -= SIM_DT;
+                if !self.game.paused {
+                    self.acc += dt * self.game.timescale;
+                    let steps = ((self.acc / SIM_DT) as usize).min(MAX_STEPS_PER_FRAME);
+                    self.acc = (self.acc - steps as f64 * SIM_DT).min(SIM_DT);
+                    self.game.advance(steps);
                 }
                 let (Some(win), Some(surf)) = (&self.window, &mut self.surface) else {
                     return;
@@ -90,7 +236,7 @@ impl ApplicationHandler for App {
                 if self.fb.w != w.get() as usize || self.fb.h != h.get() as usize {
                     self.fb = Framebuffer::new(w.get() as usize, h.get() as usize);
                 }
-                draw(&mut self.fb, &self.st);
+                hud::draw(&mut self.fb, &self.game.view());
                 surf.resize(w, h).ok();
                 if let Ok(mut buf) = surf.buffer_mut() {
                     buf.copy_from_slice(&self.fb.px);
@@ -103,19 +249,58 @@ impl ApplicationHandler for App {
     }
 }
 
+fn snapshot(path: &str) {
+    let mut g = Game::new();
+    g.timescale = 1.0;
+    // Scripted: turn toward the station, thrust a bit, target it.
+    g.sim.ship.rot = vector_core::Mat3::rot_y(0.12).mul(&vector_core::Mat3::rot_x(-0.04));
+    g.keys.insert(KeyCode::Space);
+    g.advance(60);
+    g.keys.clear();
+    g.cycle_target();
+    g.say("SNAPSHOT SCRIPTE");
+    let mut fb = Framebuffer::new(1280, 720);
+    hud::draw(&mut fb, &g.view());
+    match std::fs::write(path, vector_render::png::encode(fb.w, fb.h, &fb.px)) {
+        Ok(()) => println!("snapshot -> {path}"),
+        Err(e) => eprintln!("write failed: {e}"),
+    }
+}
+
+fn bench() {
+    let mut g = Game::new();
+    g.cycle_target();
+    let mut fb = Framebuffer::new(1280, 720);
+    let t = Instant::now();
+    for _ in 0..200 {
+        hud::draw(&mut fb, &g.view());
+    }
+    println!(
+        "render 1280x720: {:.2} ms/frame",
+        t.elapsed().as_secs_f64() * 1000.0 / 200.0
+    );
+    let t = Instant::now();
+    for _ in 0..30_000 {
+        g.sim.step(&ShipInput::default());
+    }
+    println!(
+        "sim step: {:.4} ms",
+        t.elapsed().as_secs_f64() * 1000.0 / 30_000.0
+    );
+}
+
 fn main() {
     let args: Vec<String> = std::env::args().collect();
     if let Some(i) = args.iter().position(|a| a == "--snapshot") {
-        let path = args
-            .get(i + 1)
-            .map(String::as_str)
-            .unwrap_or("snapshot.png");
-        let mut fb = Framebuffer::new(960, 540);
-        draw(&mut fb, &State { t: 0.8 });
-        if let Err(e) = std::fs::write(path, vector_render::png::encode(fb.w, fb.h, &fb.px)) {
-            eprintln!("write failed: {e}");
-        }
-        println!("snapshot -> {path}");
+        snapshot(
+            args.get(i + 1)
+                .map(String::as_str)
+                .unwrap_or("snapshot.png"),
+        );
+        return;
+    }
+    if args.iter().any(|a| a == "--bench") {
+        bench();
         return;
     }
     let Ok(el) = EventLoop::new() else {
@@ -125,8 +310,8 @@ fn main() {
     let mut app = App {
         window: None,
         surface: None,
-        fb: Framebuffer::new(960, 540),
-        st: State { t: 0.0 },
+        fb: Framebuffer::new(1024, 576),
+        game: Game::new(),
         last: Instant::now(),
         acc: 0.0,
     };

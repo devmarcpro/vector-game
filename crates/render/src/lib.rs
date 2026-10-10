@@ -157,6 +157,125 @@ impl Camera {
     }
 }
 
+impl Camera {
+    /// Project a view-space point; None if behind the near plane.
+    pub fn project_view(&self, v: Vec3, fb: &Framebuffer) -> Option<(f32, f32)> {
+        (v.z > NEAR).then(|| self.project(v, fb))
+    }
+    /// Project a world point to screen; None if behind the camera.
+    pub fn project_world(&self, p: Vec3, fb: &Framebuffer) -> Option<(f32, f32)> {
+        self.project_view(self.to_view(p), fb)
+    }
+    /// Infinitely distant point (stars): only the rotation matters.
+    pub fn project_dir(&self, dir: Vec3, fb: &Framebuffer) -> Option<(f32, f32)> {
+        self.project_view(self.rot.mul_vec(dir), fb)
+    }
+
+    /// Wireframe sphere: limb circle plus front-facing latitude/longitude lines.
+    #[allow(clippy::too_many_arguments)]
+    pub fn draw_sphere(
+        &self,
+        fb: &mut Framebuffer,
+        center: Vec3,
+        radius: f64,
+        spin: &Mat3,
+        lat: usize,
+        lon: usize,
+        c: u32,
+    ) {
+        let to_cam = self.pos - center;
+        let d = to_cam.length();
+        if d <= radius {
+            return;
+        }
+        let u = to_cam * (1.0 / d);
+        // Limb: circle of tangent points.
+        let helper = if u.x.abs() < 0.9 {
+            Vec3::new(1.0, 0.0, 0.0)
+        } else {
+            Vec3::new(0.0, 1.0, 0.0)
+        };
+        let e1 = u.cross(helper).normalized();
+        let e2 = u.cross(e1);
+        let lc = center + u * (radius * radius / d);
+        let lr = radius * (1.0 - (radius / d).powi(2)).sqrt();
+        const SEG: usize = 64;
+        let mut prev = lc + e1 * lr;
+        for i in 1..=SEG {
+            let a = i as f64 / SEG as f64 * std::f64::consts::TAU;
+            let p = lc + e1 * (lr * a.cos()) + e2 * (lr * a.sin());
+            self.draw_line(fb, prev, p, c);
+            prev = p;
+        }
+        let thresh = radius / d;
+        let visible = |dir: Vec3| dir.dot(u) > thresh;
+        let pt = |dir: Vec3| center + dir * radius;
+        const STEPS: usize = 32;
+        // Latitudes.
+        for i in 1..lat {
+            let phi = std::f64::consts::PI * i as f64 / lat as f64 - std::f64::consts::FRAC_PI_2;
+            let mut prev: Option<Vec3> = None;
+            for j in 0..=STEPS {
+                let th = std::f64::consts::TAU * j as f64 / STEPS as f64;
+                let dir = spin.mul_vec(Vec3::new(
+                    phi.cos() * th.cos(),
+                    phi.sin(),
+                    phi.cos() * th.sin(),
+                ));
+                if let Some(p) = prev {
+                    if visible(dir) && visible(p) {
+                        self.draw_line(fb, pt(p), pt(dir), c);
+                    }
+                }
+                prev = Some(dir);
+            }
+        }
+        // Longitudes.
+        for i in 0..lon {
+            let th = std::f64::consts::TAU * i as f64 / lon as f64;
+            let mut prev: Option<Vec3> = None;
+            for j in 0..=STEPS {
+                let phi =
+                    std::f64::consts::PI * j as f64 / STEPS as f64 - std::f64::consts::FRAC_PI_2;
+                let dir = spin.mul_vec(Vec3::new(
+                    phi.cos() * th.cos(),
+                    phi.sin(),
+                    phi.cos() * th.sin(),
+                ));
+                if let Some(p) = prev {
+                    if visible(dir) && visible(p) {
+                        self.draw_line(fb, pt(p), pt(dir), c);
+                    }
+                }
+                prev = Some(dir);
+            }
+        }
+    }
+}
+
+impl Framebuffer {
+    pub fn circle(&mut self, cx: f32, cy: f32, r: f32, c: u32) {
+        let n = ((r * 2.0) as usize).clamp(12, 64);
+        let mut prev = (cx + r, cy);
+        for i in 1..=n {
+            let a = i as f32 / n as f32 * std::f32::consts::TAU;
+            let p = (cx + r * a.cos(), cy + r * a.sin());
+            self.line(prev.0, prev.1, p.0, p.1, c);
+            prev = p;
+        }
+    }
+    /// Horizontal gauge in text cells: `[#####-----]`.
+    pub fn gauge(&mut self, col: usize, row: usize, label: &str, frac: f64, width: usize, c: u32) {
+        let filled = (frac.clamp(0.0, 1.0) * width as f64).round() as usize;
+        let s = format!(
+            "{label} [{}{}]",
+            "#".repeat(filled),
+            "-".repeat(width - filled)
+        );
+        self.text(col, row, &s, c);
+    }
+}
+
 pub struct Wireframe {
     pub verts: Vec<Vec3>,
     pub edges: Vec<(usize, usize)>,

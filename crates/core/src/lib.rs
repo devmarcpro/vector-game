@@ -82,6 +82,39 @@ impl Mat3 {
         let (s, c) = a.sin_cos();
         Mat3([[c, -s, 0.0], [s, c, 0.0], [0.0, 0.0, 1.0]])
     }
+    pub fn transpose(&self) -> Mat3 {
+        let m = &self.0;
+        Mat3([
+            [m[0][0], m[1][0], m[2][0]],
+            [m[0][1], m[1][1], m[2][1]],
+            [m[0][2], m[1][2], m[2][2]],
+        ])
+    }
+    /// Rotation of `angle` radians about unit `axis` (Rodrigues).
+    pub fn from_axis_angle(axis: Vec3, angle: f64) -> Mat3 {
+        let (s, c) = angle.sin_cos();
+        let t = 1.0 - c;
+        let Vec3 { x, y, z } = axis;
+        Mat3([
+            [t * x * x + c, t * x * y - s * z, t * x * z + s * y],
+            [t * x * y + s * z, t * y * y + c, t * y * z - s * x],
+            [t * x * z - s * y, t * y * z + s * x, t * z * z + c],
+        ])
+    }
+    /// Columns as vectors: (right, up, forward) when used as ship->world.
+    pub fn col(&self, i: usize) -> Vec3 {
+        Vec3::new(self.0[0][i], self.0[1][i], self.0[2][i])
+    }
+    pub fn from_cols(a: Vec3, b: Vec3, c: Vec3) -> Mat3 {
+        Mat3([[a.x, b.x, c.x], [a.y, b.y, c.y], [a.z, b.z, c.z]])
+    }
+    /// Gram-Schmidt re-orthonormalisation (call each step to avoid drift).
+    pub fn orthonormalized(&self) -> Mat3 {
+        let f = self.col(2).normalized();
+        let r = self.col(1).cross(f).normalized();
+        let u = f.cross(r);
+        Mat3::from_cols(r, u, f)
+    }
     pub fn mul_vec(&self, v: Vec3) -> Vec3 {
         let m = &self.0;
         Vec3::new(

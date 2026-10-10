@@ -5,5 +5,6 @@ edition.workspace = true
 [dependencies]
 vector-core = { path = "../core" }
 vector-render = { path = "../render" }
+vector-sim = { path = "../sim" }
 winit = "0.30"
 softbuffer = "0.4"

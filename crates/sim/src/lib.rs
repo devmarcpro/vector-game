@@ -1,9 +1,18 @@
-//! Deterministic simulation: flight model, gravity, collisions, autopilot.
+//! Deterministic simulation: flight model, gravity, collisions, autopilot, mining, trade, saves.
 //! Units: SI (m, s, kg, N). See docs/SIM_MODEL.md.
 pub mod autopilot;
+pub mod cargo;
+pub mod market;
+pub mod save;
 
 use autopilot::Autopilot;
-use vector_core::{Mat3, Vec3};
+use cargo::Cargo;
+use market::Market;
+use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
+use std::sync::Arc;
+use vector_core::{hash_coord, Mat3, Vec3};
+use vector_data::GameData;
 use vector_world::{BodyKind, System};
 
 pub const G0: f64 = 9.806_65;
@@ -22,6 +31,14 @@ pub const ANG_ACCEL: f64 = 2.0;
 pub const HULL_MAX: f64 = 1000.0;
 pub const SHIP_RADIUS: f64 = 15.0;
 
+/// Mining laser: reach (from asteroid surface), throughput.
+pub const MINING_RANGE: f64 = 2_000.0;
+pub const MINING_RATE: f64 = 25.0;
+pub const DOCK_RANGE: f64 = 500.0;
+pub const DOCK_MAX_SPEED: f64 = 8.0;
+pub const START_CREDITS: f64 = 500.0;
+pub const REPAIR_COST: f64 = 2.0;
+
 /// Player (or NPC) control demand, each axis in [-1, 1].
 /// pitch>0 = nose down, yaw>0 = nose right, roll>0 = roll left (right-handed about body axes).
 #[derive(Clone, Copy, Debug, Default)]
@@ -32,9 +49,10 @@ pub struct ShipInput {
     pub fwd: f64,
     pub lat: f64,
     pub vert: f64,
+    pub mine: bool,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Ship {
     /// Position in the system's inertial star-centred frame.
     pub pos: Vec3,
@@ -46,10 +64,11 @@ pub struct Ship {
     pub fuel: f64,
     pub hull: f64,
     pub assist: bool,
+    pub cargo: Cargo,
 }
 
 impl Ship {
-    pub fn new(pos: Vec3, vel: Vec3) -> Self {
+    pub fn new(pos: Vec3, vel: Vec3, n_resources: usize) -> Self {
         Ship {
             pos,
             vel,
@@ -58,17 +77,22 @@ impl Ship {
             fuel: FUEL_CAP,
             hull: HULL_MAX,
             assist: true,
+            cargo: Cargo::new(n_resources),
         }
     }
+    /// Mass without propellant (hull + cargo).
+    pub fn dry_mass(&self) -> f64 {
+        DRY_MASS + self.cargo.mass
+    }
     pub fn mass(&self) -> f64 {
-        DRY_MASS + self.fuel
+        self.dry_mass() + self.fuel
     }
     pub fn forward(&self) -> Vec3 {
         self.rot.col(2)
     }
     /// Remaining delta-v (m/s), Tsiolkovsky.
     pub fn delta_v(&self) -> f64 {
-        ISP * G0 * (self.mass() / DRY_MASS).ln()
+        ISP * G0 * (self.mass() / self.dry_mass()).ln()
     }
 }
 
@@ -94,10 +118,16 @@ pub enum Event {
     Arrived {
         body: usize,
     },
+    CargoFull,
+    Docked {
+        body: usize,
+    },
+    Undocked,
 }
 
 pub struct Sim {
     pub system: System,
+    pub data: Arc<GameData>,
     pub ship: Ship,
     pub bodies: Vec<Body>,
     /// Seconds since the system epoch.
@@ -106,6 +136,14 @@ pub struct Sim {
     pub autopilot: Option<Autopilot>,
     /// Body used as velocity reference for flight assist (within its influence radius).
     pub ref_body: Option<usize>,
+    pub target: Option<usize>,
+    pub credits: f64,
+    /// Mass removed from each body by mining (kg).
+    pub mined: Vec<f64>,
+    pub markets: BTreeMap<usize, Market>,
+    pub docked: Option<usize>,
+    /// True while the mining laser is actually hitting something (for rendering).
+    pub laser_on: bool,
 }
 
 /// Tsiolkovsky: propellant mass flow (kg/s) for a thrust force (N).
@@ -117,12 +155,14 @@ fn influence_radius(b: &Body) -> f64 {
     match b.kind {
         BodyKind::Star(_) => 0.0,
         BodyKind::Station => 20_000.0,
+        BodyKind::Asteroid(_) => 0.0,
         _ => 60.0 * b.radius,
     }
 }
 
 impl Sim {
-    pub fn new(system: System, ship: Ship) -> Self {
+    pub fn new(system: System, data: Arc<GameData>) -> Self {
+        let n = system.bodies.len();
         let bodies = system
             .bodies
             .iter()
@@ -135,14 +175,22 @@ impl Sim {
                 gm: b.gm(),
             })
             .collect();
+        let ship = Ship::new(Vec3::ZERO, Vec3::ZERO, data.resources.len());
         let mut s = Sim {
             system,
+            data,
             ship,
             bodies,
             time: 0.0,
             events: Vec::new(),
             autopilot: None,
             ref_body: None,
+            target: None,
+            credits: START_CREDITS,
+            mined: vec![0.0; n],
+            markets: BTreeMap::new(),
+            docked: None,
+            laser_on: false,
         };
         s.refresh_bodies();
         s.update_ref();
@@ -166,7 +214,7 @@ impl Sim {
     }
 
     /// Reference frame = innermost body (smallest influence sphere) containing the ship.
-    fn update_ref(&mut self) {
+    pub(crate) fn update_ref(&mut self) {
         let mut best: Option<(usize, f64)> = None;
         for (i, b) in self.bodies.iter().enumerate() {
             let infl = influence_radius(b);
@@ -188,11 +236,11 @@ impl Sim {
         }
     }
 
-    /// Gravitational acceleration at `p` (stations are massless for gravity).
+    /// Gravitational acceleration at `p` (stations and asteroids are negligible).
     pub fn gravity_at(&self, p: Vec3) -> Vec3 {
         let mut a = Vec3::ZERO;
         for b in &self.bodies {
-            if b.kind == BodyKind::Station {
+            if matches!(b.kind, BodyKind::Station | BodyKind::Asteroid(_)) {
                 continue;
             }
             let d = b.pos - p;
@@ -208,7 +256,7 @@ impl Sim {
         for b in &self.bodies {
             let d = (self.ship.pos - b.pos).length();
             let alt = (d - b.radius).max(1.0);
-            if b.gm > 1e6 {
+            if b.gm > 1e6 && !matches!(b.kind, BodyKind::Asteroid(_)) {
                 dt = dt.min(0.02 * (d.powi(3) / b.gm).sqrt());
             }
             let vrel = (self.ship.vel - b.vel).length().max(1e-3);
@@ -226,7 +274,11 @@ impl Sim {
         let mut guard = 0;
         while left > 1e-9 && guard < 200_000 {
             guard += 1;
-            let dt = left.min(self.safe_dt());
+            let dt = if self.docked.is_some() {
+                left.min(60.0)
+            } else {
+                left.min(self.safe_dt())
+            };
             self.step_dt(input, dt);
             left -= dt;
         }
@@ -239,6 +291,17 @@ impl Sim {
     }
 
     pub fn step_dt(&mut self, manual: &ShipInput, dt: f64) {
+        self.laser_on = false;
+        if let Some(st) = self.docked {
+            self.time += dt;
+            self.refresh_bodies();
+            let b = &self.bodies[st];
+            self.ship.pos = b.pos - Vec3::new(0.0, 0.0, b.radius + 60.0);
+            self.ship.vel = b.vel;
+            self.ship.ang = Vec3::ZERO;
+            self.update_ref();
+            return;
+        }
         let input = match self.autopilot.take() {
             Some(mut ap) => {
                 let (mut inp, face, state) = ap.control(self, dt);
@@ -334,6 +397,9 @@ impl Sim {
         self.refresh_bodies();
         self.update_ref();
         self.collide();
+        if input.mine {
+            self.mine_tick(dt);
+        }
     }
 
     fn collide(&mut self) {
@@ -362,12 +428,189 @@ impl Sim {
             }
         }
     }
+
+    /// Remaining minable mass of body `i` (kg).
+    pub fn remaining_mass(&self, i: usize) -> f64 {
+        (self.system.bodies[i].mass - self.mined[i]).max(0.0)
+    }
+
+    /// Mining laser: the aimed asteroid within range yields ore into the hold (magnetic scoop).
+    fn mine_tick(&mut self, dt: f64) {
+        let Some(t) = self.target else { return };
+        let BodyKind::Asteroid(class) = self.bodies[t].kind else {
+            return;
+        };
+        let b = &self.bodies[t];
+        let r = b.pos - self.ship.pos;
+        let d = r.length();
+        if d - b.radius > MINING_RANGE || self.remaining_mass(t) <= 1.0 {
+            return;
+        }
+        let tolerance = 0.06 + (b.radius / d.max(1.0)).atan();
+        if self.ship.forward().dot(r * (1.0 / d)) < tolerance.cos() {
+            return;
+        }
+        self.laser_on = true;
+        let want = (MINING_RATE * dt).min(self.remaining_mass(t));
+        let Some(cls) = self.data.asteroids.iter().find(|a| a.id == class.id()) else {
+            return;
+        };
+        let mut taken = 0.0;
+        for (rid, frac) in &cls.composition {
+            if let Some(res) = self.data.resource_index(rid) {
+                taken += self.ship.cargo.add(&self.data, res, want * frac);
+            }
+        }
+        if taken < want * 0.999 {
+            self.events.push(Event::CargoFull);
+        }
+        self.mined[t] += taken;
+        let frac = (1.0 - self.mined[t] / self.system.bodies[t].mass).max(0.0);
+        self.bodies[t].radius = self.system.bodies[t].radius * frac.cbrt();
+    }
+
+    // ---- station services -------------------------------------------------
+
+    /// Market of station `i` (created on first use, relaxed to the current time).
+    pub fn market(&mut self, i: usize) -> &mut Market {
+        let (seed, time) = (self.system.seed, self.time);
+        let data = Arc::clone(&self.data);
+        let m = self
+            .markets
+            .entry(i)
+            .or_insert_with(|| Market::new(hash_coord(seed, i as i64, 0, 0), i, &data, time));
+        m.relax_to(time);
+        m
+    }
+
+    pub fn nearest_station(&self) -> Option<(usize, f64)> {
+        self.bodies
+            .iter()
+            .enumerate()
+            .filter(|(_, b)| b.kind == BodyKind::Station)
+            .map(|(i, b)| (i, (b.pos - self.ship.pos).length() - b.radius))
+            .min_by(|a, b| a.1.total_cmp(&b.1))
+    }
+
+    pub fn try_dock(&mut self) -> Result<usize, &'static str> {
+        let (i, range) = self.nearest_station().ok_or("aucune station")?;
+        if range > DOCK_RANGE {
+            return Err("trop loin de la station");
+        }
+        if (self.ship.vel - self.bodies[i].vel).length() > DOCK_MAX_SPEED {
+            return Err("vitesse relative trop elevee");
+        }
+        self.docked = Some(i);
+        self.autopilot = None;
+        self.events.push(Event::Docked { body: i });
+        Ok(i)
+    }
+
+    pub fn undock(&mut self) {
+        if let Some(i) = self.docked.take() {
+            let b = &self.bodies[i];
+            self.ship.pos = b.pos - Vec3::new(0.0, 0.0, b.radius + 120.0);
+            self.ship.vel = b.vel;
+            self.ship.rot = Mat3::IDENTITY;
+            self.update_ref();
+            self.events.push(Event::Undocked);
+        }
+    }
+
+    /// Sell `kg` of resource `res` (None = everything) to the docked station. Returns credits earned.
+    pub fn sell(&mut self, res: usize, kg: Option<f64>) -> Result<f64, &'static str> {
+        let st = self.docked.ok_or("non amarre")?;
+        let have = self.ship.cargo.kg[res];
+        let kg = kg.unwrap_or(have).min(have);
+        if kg <= 0.0 {
+            return Err("rien a vendre");
+        }
+        let data = Arc::clone(&self.data);
+        let earned = self.market(st).sell(&data, res, kg);
+        self.ship.cargo.remove(&data, res, kg);
+        self.credits += earned;
+        Ok(earned)
+    }
+
+    /// Buy up to `kg` of resource `res` into the hold.
+    pub fn buy(&mut self, res: usize, kg: f64) -> Result<(f64, f64), &'static str> {
+        let st = self.docked.ok_or("non amarre")?;
+        let data = Arc::clone(&self.data);
+        let ask = self.market(st).ask(&data, res);
+        let room = cargo::CARGO_MASS_CAP - self.ship.cargo.mass;
+        let afford = self.credits / ask;
+        let kg = kg.min(afford).min(room).max(0.0);
+        if kg <= 0.0 {
+            return Err("achat impossible (credits ou soute)");
+        }
+        let (got, cost) = self.market(st).buy(&data, res, kg);
+        let accepted = self.ship.cargo.add(&data, res, got);
+        // Refund anything the hold could not take (volume limit).
+        let refund = if got > 0.0 {
+            cost * (got - accepted) / got
+        } else {
+            0.0
+        };
+        if got > accepted {
+            self.market(st).stock[res] += got - accepted;
+        }
+        self.credits -= cost - refund;
+        Ok((accepted, cost - refund))
+    }
+
+    /// Fill the propellant tank at the station's fuel price. Returns (kg, cost).
+    pub fn refuel(&mut self) -> Result<(f64, f64), &'static str> {
+        let st = self.docked.ok_or("non amarre")?;
+        let data = Arc::clone(&self.data);
+        let fuel = data
+            .resource_index("fuel")
+            .ok_or("pas de carburant dans les donnees")?;
+        let ask = self.market(st).ask(&data, fuel);
+        let need = FUEL_CAP - self.ship.fuel;
+        let kg = need.min(self.credits / ask);
+        if kg < 1e-6 {
+            return Err("deja plein ou fonds insuffisants");
+        }
+        let (got, cost) = self.market(st).buy(&data, fuel, kg);
+        if got < kg {
+            // Station stock exhausted: we only receive what existed, charged accordingly.
+        }
+        self.ship.fuel += got;
+        self.credits -= cost;
+        Ok((got, cost))
+    }
+
+    pub fn repair(&mut self) -> Result<f64, &'static str> {
+        self.docked.ok_or("non amarre")?;
+        let missing = HULL_MAX - self.ship.hull;
+        let pts = missing.min(self.credits / REPAIR_COST);
+        if pts < 1e-6 {
+            return Err("rien a reparer ou fonds insuffisants");
+        }
+        self.ship.hull += pts;
+        self.credits -= pts * REPAIR_COST;
+        Ok(pts * REPAIR_COST)
+    }
+
+    /// Throw cargo into space.
+    pub fn jettison(&mut self, res: usize) -> f64 {
+        let data = Arc::clone(&self.data);
+        let kg = self.ship.cargo.kg[res];
+        self.ship.cargo.remove(&data, res, kg)
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use vector_world::generate_system;
+
+    fn data() -> Arc<GameData> {
+        Arc::new(
+            GameData::load(&std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../data"))
+                .expect("data"),
+        )
+    }
 
     /// A system with a single, nearly massless star: gravity-free flight.
     fn void_system(star_radius: f64) -> System {
@@ -379,11 +622,16 @@ mod tests {
         s
     }
 
+    fn sim_with(sys: System, pos: Vec3, vel: Vec3) -> Sim {
+        let mut s = Sim::new(sys, data());
+        s.ship.pos = pos;
+        s.ship.vel = vel;
+        s.update_ref();
+        s
+    }
+
     fn void_sim() -> Sim {
-        Sim::new(
-            void_system(1.0),
-            Ship::new(Vec3::new(0.0, 0.0, -1.0e9), Vec3::ZERO),
-        )
+        sim_with(void_system(1.0), Vec3::new(0.0, 0.0, -1.0e9), Vec3::ZERO)
     }
 
     fn first_planet(sys: &System) -> usize {
@@ -391,6 +639,16 @@ mod tests {
             .iter()
             .position(|b| matches!(b.kind, BodyKind::Planet(_)))
             .expect("system has a planet")
+    }
+
+    fn system_with<F: Fn(&vector_world::CelBody) -> bool>(f: F) -> (System, usize) {
+        for seed in 0..2000u64 {
+            let sys = generate_system(seed);
+            if let Some(i) = sys.bodies.iter().position(&f) {
+                return (sys, i);
+            }
+        }
+        panic!("no system with requested body");
     }
 
     #[test]
@@ -414,12 +672,14 @@ mod tests {
 
     #[test]
     fn assist_stops_rotation_and_drift_near_a_reference_body() {
-        let mut s = Sim::new(void_system(100.0), Ship::new(Vec3::ZERO, Vec3::ZERO));
+        let mut s = sim_with(
+            void_system(100.0),
+            Vec3::new(0.0, 0.0, -3000.0),
+            Vec3::new(30.0, -20.0, 50.0),
+        );
         // Treat the massless "star" as a moon so it can serve as reference frame.
         s.bodies[0].kind = BodyKind::Moon(vector_world::PlanetKind::Barren);
-        s.ship.pos = Vec3::new(0.0, 0.0, -3000.0);
         s.ship.ang = Vec3::new(1.0, 0.5, -1.0);
-        s.ship.vel = Vec3::new(30.0, -20.0, 50.0);
         s.update_ref();
         assert_eq!(s.ref_body, Some(0));
         for _ in 0..300 {
@@ -460,9 +720,10 @@ mod tests {
 
     #[test]
     fn collision_pushes_out_and_damages() {
-        let mut s = Sim::new(
+        let mut s = sim_with(
             void_system(500.0),
-            Ship::new(Vec3::new(0.0, 0.0, -1000.0), Vec3::new(0.0, 0.0, 400.0)),
+            Vec3::new(0.0, 0.0, -1000.0),
+            Vec3::new(0.0, 0.0, 400.0),
         );
         let mut hit = false;
         for _ in 0..90 {
@@ -476,10 +737,7 @@ mod tests {
     #[test]
     fn deterministic_replay() {
         let run = || {
-            let mut s = Sim::new(
-                generate_system(5),
-                Ship::new(Vec3::new(1.0e9, 0.0, 0.0), Vec3::ZERO),
-            );
+            let mut s = sim_with(generate_system(5), Vec3::new(1.0e9, 0.0, 0.0), Vec3::ZERO);
             for i in 0..500 {
                 let a = (i as f64 * 0.1).sin();
                 s.step(&ShipInput {
@@ -498,7 +756,7 @@ mod tests {
     fn ship_in_circular_orbit_stays_bound() {
         let sys = generate_system(11);
         let pi = first_planet(&sys);
-        let mut s = Sim::new(sys, Ship::new(Vec3::ZERO, Vec3::ZERO));
+        let mut s = Sim::new(sys, data());
         let (p, gm, r) = (s.bodies[pi].pos, s.bodies[pi].gm, s.bodies[pi].radius);
         let orbit_r = r * 3.0;
         let v = (gm / orbit_r).sqrt();
@@ -519,7 +777,7 @@ mod tests {
     fn autopilot_reaches_a_planet() {
         let sys = generate_system(11);
         let pi = first_planet(&sys);
-        let mut s = Sim::new(sys, Ship::new(Vec3::ZERO, Vec3::ZERO));
+        let mut s = Sim::new(sys, data());
         s.ship.pos = s.bodies[pi].pos + Vec3::new(2.0e9, 3.0e8, 1.0e9);
         s.ship.vel = s.bodies[pi].vel;
         s.update_ref();
@@ -536,5 +794,117 @@ mod tests {
         let d = (s.bodies[pi].pos - s.ship.pos).length();
         assert!(arrived, "autopilot did not arrive, dist {d}");
         assert!(s.ship.hull == HULL_MAX && s.ship.fuel > 0.0);
+    }
+
+    /// Put the ship 800 m from asteroid `ai`, aimed at it, co-moving.
+    fn aim_at(s: &mut Sim, ai: usize) {
+        let b = &s.bodies[ai];
+        let off = Vec3::new(0.0, 0.0, -(800.0 + b.radius));
+        s.ship.pos = b.pos + off;
+        s.ship.vel = b.vel;
+        s.ship.rot = Mat3::IDENTITY;
+        s.target = Some(ai);
+        s.update_ref();
+    }
+
+    #[test]
+    fn mining_conserves_mass_and_follows_composition() {
+        let (sys, ai) =
+            system_with(|b| matches!(b.kind, BodyKind::Asteroid(vector_world::AstType::M)));
+        let mut s = Sim::new(sys, data());
+        s.ship.assist = false;
+        aim_at(&mut s, ai);
+        let mass0 = s.remaining_mass(ai);
+        let input = ShipInput {
+            mine: true,
+            ..Default::default()
+        };
+        for _ in 0..600 {
+            // Keep station: asteroid moves at orbital speed, re-aim each step.
+            aim_at(&mut s, ai);
+            s.step(&input);
+        }
+        let got = s.ship.cargo.mass;
+        assert!(got > 200.0, "laser should have yielded ore: {got}");
+        assert!(
+            (mass0 - s.remaining_mass(ai) - got).abs() < 1e-6,
+            "mass must be conserved"
+        );
+        let iron = s.data.resource_index("iron").expect("iron");
+        let nickel = s.data.resource_index("nickel").expect("nickel");
+        assert!(s.ship.cargo.kg[iron] > s.ship.cargo.kg[nickel] * 2.0);
+        assert!(s.bodies[ai].radius < s.system.bodies[ai].radius);
+    }
+
+    #[test]
+    fn laser_needs_aim_and_range() {
+        let (sys, ai) = system_with(|b| matches!(b.kind, BodyKind::Asteroid(_)));
+        let mut s = Sim::new(sys, data());
+        aim_at(&mut s, ai);
+        s.ship.rot = Mat3::rot_y(1.5); // looking away
+        s.step(&ShipInput {
+            mine: true,
+            ..Default::default()
+        });
+        assert_eq!(s.ship.cargo.mass, 0.0);
+        aim_at(&mut s, ai);
+        s.ship.pos = s.ship.pos - Vec3::new(0.0, 0.0, 5000.0); // out of range
+        s.step(&ShipInput {
+            mine: true,
+            ..Default::default()
+        });
+        assert_eq!(s.ship.cargo.mass, 0.0);
+    }
+
+    #[test]
+    fn cargo_capacity_is_enforced() {
+        let d = data();
+        let mut c = Cargo::new(d.resources.len());
+        let gold = d.resource_index("gold").expect("gold");
+        let regolith = d.resource_index("regolith").expect("regolith");
+        assert!(c.add(&d, gold, 1.0e6) < 1.0e6);
+        assert!(c.volume <= cargo::CARGO_VOL_CAP + 1e-9 && c.mass <= cargo::CARGO_MASS_CAP + 1e-9);
+        let mut c2 = Cargo::new(d.resources.len());
+        let got = c2.add(&d, regolith, 1.0e6);
+        assert!(got <= cargo::CARGO_MASS_CAP + 1e-9 && c2.is_full());
+        assert!((c2.remove(&d, regolith, got) - got).abs() < 1e-9 && c2.mass < 1e-9);
+    }
+
+    #[test]
+    fn docking_trade_and_refuel() {
+        let (sys, si) = system_with(|b| b.kind == BodyKind::Station);
+        let mut s = Sim::new(sys, data());
+        s.spawn_near(si, 3000.0);
+        assert!(s.try_dock().is_err(), "too far");
+        s.spawn_near(si, s.bodies[si].radius + 200.0);
+        s.ship.vel = s.bodies[si].vel + Vec3::new(0.0, 0.0, 100.0);
+        assert!(s.try_dock().is_err(), "too fast");
+        s.ship.vel = s.bodies[si].vel;
+        s.try_dock().expect("dock");
+        let iron = s.data.resource_index("iron").expect("iron");
+        s.ship.cargo.add(&s.data.clone(), iron, 1000.0);
+        let c0 = s.credits;
+        let earned = s.sell(iron, None).expect("sell");
+        assert!(earned > 0.0 && (s.credits - c0 - earned).abs() < 1e-9 && s.ship.cargo.mass < 1e-9);
+        s.ship.fuel = 1000.0;
+        s.credits = 1.0e6;
+        let (kg, cost) = s.refuel().expect("refuel");
+        assert!(kg > 0.0 && cost > 0.0 && s.ship.fuel > 1000.0);
+        s.ship.hull = 500.0;
+        s.repair().expect("repair");
+        assert_eq!(s.ship.hull, HULL_MAX);
+        s.undock();
+        assert!(s.docked.is_none());
+    }
+
+    #[test]
+    fn docked_ship_follows_the_station() {
+        let (sys, si) = system_with(|b| b.kind == BodyKind::Station);
+        let mut s = Sim::new(sys, data());
+        s.spawn_near(si, s.bodies[si].radius + 100.0);
+        s.try_dock().expect("dock");
+        s.advance(3600.0, &ShipInput::default());
+        let d = (s.ship.pos - s.bodies[si].pos).length();
+        assert!((d - (s.bodies[si].radius + 60.0)).abs() < 1.0);
     }
 }

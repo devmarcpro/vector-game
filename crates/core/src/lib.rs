@@ -1,7 +1,7 @@
 //! Core math and deterministic RNG.
 use std::ops::{Add, Mul, Neg, Sub};
 
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Vec3 {
     pub x: f64,
     pub y: f64,
@@ -65,7 +65,7 @@ impl Neg for Vec3 {
 }
 
 /// Rotation matrix (row-major 3x3).
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]
 pub struct Mat3(pub [[f64; 3]; 3]);
 
 impl Mat3 {

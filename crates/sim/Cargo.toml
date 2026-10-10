@@ -5,3 +5,6 @@ edition.workspace = true
 [dependencies]
 vector-core = { path = "../core" }
 vector-world = { path = "../world" }
+vector-data = { path = "../data" }
+serde = { version = "1", features = ["derive"] }
+postcard = { version = "1", features = ["alloc"] }

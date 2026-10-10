@@ -1,5 +1,5 @@
 //! Fuel-limited brachistochrone autopilot: accelerate toward the target, flip, brake.
-use crate::{ShipInput, Sim, DRY_MASS, MAIN_THRUST};
+use crate::{ShipInput, Sim, MAIN_THRUST};
 use vector_world::BodyKind;
 
 pub enum State {
@@ -29,7 +29,7 @@ impl Autopilot {
         if d_surf < 100.0 {
             return Err("deja a destination");
         }
-        let a_main = MAIN_THRUST / (DRY_MASS + sim.ship.fuel);
+        let a_main = MAIN_THRUST / sim.ship.mass();
         let dv = sim.ship.delta_v();
         let a_cruise = (dv * dv / (16.0 * d_surf)).min(0.5 * a_main);
         if a_cruise < 1.0e-3 {

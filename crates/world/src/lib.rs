@@ -84,8 +84,27 @@ impl PlanetKind {
     }
 }
 
+/// Asteroid taxonomy: C carbonaceous, S silicate, M metallic, I icy.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum AstType {
+    C,
+    S,
+    M,
+    I,
+}
+
+impl AstType {
+    pub fn id(self) -> &'static str {
+        ["C", "S", "M", "I"][self as usize]
+    }
+    pub fn density(self) -> f64 {
+        [1400.0, 2700.0, 5300.0, 1000.0][self as usize]
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum BodyKind {
+    Asteroid(AstType),
     Star(StarClass),
     Planet(PlanetKind),
     Moon(PlanetKind),
@@ -436,6 +455,41 @@ pub fn generate_system(seed: u64) -> System {
         });
     }
 
+    // Asteroid families: clumps sharing nearly identical orbits, so they travel together.
+    for (bi, belt) in belts.clone().iter().enumerate() {
+        let n_clumps = 5 + (rng.next_u64() % 4) as usize;
+        for c in 0..n_clumps {
+            let base_a = rng.range(belt.inner, belt.outer);
+            let base = random_orbit(&mut rng, 0, base_a, 0.08, 0.05, mu_star);
+            let class = match rng.f64() {
+                x if x < 0.45 => AstType::C,
+                x if x < 0.75 => AstType::S,
+                x if x < 0.90 => AstType::M,
+                _ => AstType::I,
+            };
+            for k in 0..8 {
+                let mut o = base.clone();
+                o.a += rng.range(-30.0e3, 30.0e3);
+                o.m0 += rng.range(-3.0e4, 3.0e4) / o.a;
+                o.incl += rng.range(-1.0e4, 1.0e4) / o.a;
+                let radius = (rng.range(30.0f64.ln(), 1500.0f64.ln())).exp();
+                let mass = 4.0 / 3.0 * std::f64::consts::PI * radius.powi(3) * class.density();
+                bodies.push(CelBody {
+                    name: format!("{} B{}-{}{}", name, bi + 1, (b'A' + c as u8) as char, k + 1),
+                    kind: BodyKind::Asteroid(class),
+                    mass,
+                    radius,
+                    orbit: Some(o),
+                    rotation_period: rng.range(300.0, 40000.0),
+                    temp: 150.0,
+                    gravity: G * mass / (radius * radius),
+                    pressure: 0.0,
+                    atmosphere: vec![],
+                });
+            }
+        }
+    }
+
     // Stations around a random planet.
     if !planet_idx.is_empty() && rng.f64() < 0.6 {
         let host = *pick(&mut rng, &planet_idx);
@@ -524,6 +578,37 @@ mod tests {
         }
         assert_eq!(classes.len(), 7, "all star classes appear");
         assert!(kinds.len() >= 11, "planet kinds seen: {}", kinds.len());
+    }
+
+    #[test]
+    #[test]
+    fn belts_contain_clumped_asteroids() {
+        let mut found = false;
+        for s in 0..400u64 {
+            let sys = generate_system(s);
+            let rocks: Vec<usize> = (0..sys.bodies.len())
+                .filter(|&i| matches!(sys.bodies[i].kind, BodyKind::Asteroid(_)))
+                .collect();
+            if rocks.is_empty() {
+                continue;
+            }
+            found = true;
+            assert_eq!(rocks.len() % 8, 0);
+            // First clump: 8 asteroids within a few hundred km of each other.
+            let (p0, _) = sys.state(rocks[0], 0.0);
+            for &r in &rocks[..8] {
+                let (p, _) = sys.state(r, 0.0);
+                assert!(
+                    (p - p0).length() < 2.0e6,
+                    "clump spread {} seed {} a {:e} inner {:e}",
+                    (p - p0).length(),
+                    s,
+                    sys.bodies[r].orbit.as_ref().unwrap().a,
+                    sys.belts[0].inner
+                );
+            }
+        }
+        assert!(found);
     }
 
     #[test]

@@ -1,13 +1,19 @@
 //! Start scene: a generated system with a station, ship parked next to it.
+use std::sync::Arc;
 use vector_core::{Rng, Vec3};
-use vector_sim::{Ship, Sim};
+use vector_data::GameData;
+use vector_sim::Sim;
 use vector_world::{generate_system, BodyKind};
 
-/// Pick the first generated system (from `seed`) that has a station and a few planets.
-pub fn new_sim(seed: u64) -> Sim {
+/// Pick the first generated system (from `seed`) that has a station, a belt and a few planets.
+pub fn new_sim(seed: u64, data: Arc<GameData>) -> Sim {
     let mut sys = generate_system(seed);
-    for k in 1..500u64 {
+    for k in 1..3000u64 {
         let ok = sys.bodies.iter().any(|b| b.kind == BodyKind::Station)
+            && sys
+                .bodies
+                .iter()
+                .any(|b| matches!(b.kind, BodyKind::Asteroid(_)))
             && sys
                 .bodies
                 .iter()
@@ -20,7 +26,7 @@ pub fn new_sim(seed: u64) -> Sim {
         sys = generate_system(vector_core::mix64(seed.wrapping_add(k)));
     }
     let station = sys.bodies.iter().position(|b| b.kind == BodyKind::Station);
-    let mut sim = Sim::new(sys, Ship::new(Vec3::ZERO, Vec3::ZERO));
+    let mut sim = Sim::new(sys, data);
     sim.spawn_near(station.unwrap_or(0), 3000.0);
     sim
 }

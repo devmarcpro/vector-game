@@ -15,7 +15,6 @@ pub const SUN: u32 = 0x00E0_D060;
 pub struct View<'a> {
     pub sim: &'a Sim,
     pub stars: &'a [Vec3],
-    pub target: Option<usize>,
     pub timescale: f64,
     pub paused: bool,
     pub messages: &'a [String],
@@ -61,7 +60,7 @@ pub fn draw(fb: &mut Framebuffer, v: &View) {
 }
 
 fn body_color(v: &View, i: usize) -> u32 {
-    if Some(i) == v.target {
+    if Some(i) == v.sim.target {
         AMBER
     } else {
         GREEN
@@ -94,6 +93,7 @@ fn draw_cockpit(fb: &mut Framebuffer, v: &View) {
             }
             BodyKind::Planet(_) => cam.draw_sphere(fb, b.pos, b.radius, &spin, 8, 14, col),
             BodyKind::Moon(_) => cam.draw_sphere(fb, b.pos, b.radius, &spin, 5, 8, col),
+            BodyKind::Asteroid(_) => cam.draw_sphere(fb, b.pos, b.radius, &spin, 4, 6, col),
             BodyKind::Station => {
                 let r = Mat3::rot_y(v.sim.time * 0.2);
                 Wireframe::cube(b.radius * 0.5).draw(&cam, fb, &r, b.pos, col);
@@ -107,7 +107,7 @@ fn draw_cockpit(fb: &mut Framebuffer, v: &View) {
                 fb.line(x - 3.0, y, x + 3.0, y, col);
                 fb.line(x, y - 3.0, x, y + 3.0, col);
             }
-            if Some(i) == v.target
+            if Some(i) == v.sim.target
                 || (matches!(b.kind, BodyKind::Planet(_) | BodyKind::Station) && px < 40.0)
             {
                 fb.text_at(x as i32 + 8, y as i32 - 12, &b.name, col);
@@ -135,7 +135,7 @@ fn draw_cockpit(fb: &mut Framebuffer, v: &View) {
             fb.line(x, y - 10.0, x, y - 6.0, GREEN);
         }
     }
-    if let Some(t) = v.target.and_then(|i| v.sim.bodies.get(i)) {
+    if let Some(t) = v.sim.target.and_then(|i| v.sim.bodies.get(i)) {
         if let Some((x, y)) = cam.project_world(t.pos, fb) {
             let r = 16.0;
             for (sx, sy) in [(-1.0, -1.0), (1.0, -1.0), (-1.0, 1.0), (1.0, 1.0)] {
@@ -154,6 +154,18 @@ fn draw_cockpit(fb: &mut Framebuffer, v: &View) {
                     AMBER,
                 );
             }
+        }
+    }
+    if v.sim.laser_on {
+        if let Some((x, y)) = v
+            .sim
+            .target
+            .and_then(|i| cam.project_world(v.sim.bodies[i].pos, fb))
+        {
+            let flick = (v.sim.time * 40.0).sin() as f32 * 2.0;
+            fb.line(cx - 30.0, h - 90.0, x + flick, y, RED);
+            fb.line(cx + 30.0, h - 90.0, x - flick, y, RED);
+            fb.circle(x, y, 4.0 + flick.abs(), AMBER);
         }
     }
     draw_radar(fb, v);
@@ -197,6 +209,7 @@ fn draw_map(fb: &mut Framebuffer, v: &View) {
         let r = (b.radius / v.map_scale).clamp(2.0, 14.0) as f32;
         match cb.kind {
             BodyKind::Star(_) => fb.circle(x, y, r.max(4.0), SUN),
+            BodyKind::Asteroid(_) => fb.plot(x as i32, y as i32, col),
             BodyKind::Station => {
                 fb.line(x - 3.0, y - 3.0, x + 3.0, y + 3.0, col);
                 fb.line(x - 3.0, y + 3.0, x + 3.0, y - 3.0, col);
@@ -204,12 +217,13 @@ fn draw_map(fb: &mut Framebuffer, v: &View) {
             _ => fb.circle(x, y, r.min(8.0), col),
         }
         let shown = match cb.kind {
+            BodyKind::Asteroid(_) => false,
             BodyKind::Moon(_) | BodyKind::Station => {
                 cb.orbit.as_ref().is_some_and(|o| o.a / v.map_scale > 12.0)
             }
             _ => true,
         };
-        if shown || Some(i) == v.target {
+        if shown || Some(i) == v.sim.target {
             fb.text_at(x as i32 + 6, y as i32 - 12, &cb.name, col);
         }
     }
@@ -310,7 +324,28 @@ fn draw_status(fb: &mut Framebuffer, v: &View) {
         DIM,
     );
 
-    if let Some(i) = v.target {
+    fb.text(1, 5, &format!("CREDITS {:.0}", sim.credits), GREEN);
+    fb.text(
+        1,
+        6,
+        &format!(
+            "SOUTE {:.0}/{:.0} KG",
+            ship.cargo.mass,
+            vector_sim::cargo::CARGO_MASS_CAP
+        ),
+        if ship.cargo.is_full() { RED } else { GREEN },
+    );
+    if let Some((_, range)) = sim.nearest_station() {
+        if range < vector_sim::DOCK_RANGE * 4.0 {
+            fb.text(
+                1,
+                7,
+                &format!("STATION A {} - [D] AMARRER", fmt_dist(range)),
+                AMBER,
+            );
+        }
+    }
+    if let Some(i) = v.sim.target {
         let t = &sim.bodies[i];
         let cb = &sim.system.bodies[i];
         let r = t.pos - ship.pos;
@@ -338,7 +373,19 @@ fn draw_status(fb: &mut Framebuffer, v: &View) {
             &format!("TEMP  {:.0} K  PRES {:.2} BAR", cb.temp, cb.pressure),
             DIM,
         );
-        if !cb.atmosphere.is_empty() {
+        if let BodyKind::Asteroid(c) = cb.kind {
+            fb.text(
+                x,
+                rows - 2,
+                &format!(
+                    "MASSE {:.0} T  [V] LASER <{}",
+                    sim.remaining_mass(i) / 1e3,
+                    fmt_dist(vector_sim::MINING_RANGE)
+                ),
+                DIM,
+            );
+            let _ = c;
+        } else if !cb.atmosphere.is_empty() {
             let a: Vec<String> = cb
                 .atmosphere
                 .iter()
@@ -367,6 +414,7 @@ pub fn kind_label(k: BodyKind) -> String {
         BodyKind::Star(c) => format!("ETOILE {}", c.letter()),
         BodyKind::Planet(p) => format!("PLANETE {}", p.label()),
         BodyKind::Moon(p) => format!("LUNE {}", p.label()),
+        BodyKind::Asteroid(t) => format!("ASTEROIDE TYPE {}", t.id()),
         BodyKind::Station => "STATION".into(),
     }
 }
@@ -409,7 +457,7 @@ fn ellipse(fb: &mut Framebuffer, cx: f32, cy: f32, rx: f32, ry: f32, c: u32) {
     }
 }
 
-fn draw_console(fb: &mut Framebuffer, c: &Console) {
+pub fn draw_console(fb: &mut Framebuffer, c: &Console) {
     if !c.open {
         return;
     }

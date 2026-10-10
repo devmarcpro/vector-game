@@ -581,7 +581,6 @@ mod tests {
     }
 
     #[test]
-    #[test]
     fn belts_contain_clumped_asteroids() {
         let mut found = false;
         for s in 0..400u64 {

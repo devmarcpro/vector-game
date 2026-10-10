@@ -72,6 +72,9 @@ pub const CELL_H: usize = 10;
 /// Returns the 5 columns of a glyph (bit0 = top row).
 pub fn glyph(c: char) -> [u8; 5] {
     let code = c.to_ascii_uppercase() as u32;
+    if code == 0x7C {
+        return [0x00, 0x00, 0x7F, 0x00, 0x00];
+    }
     if (0x20..=0x5F).contains(&code) {
         GLYPHS[(code - 0x20) as usize]
     } else {

@@ -98,7 +98,13 @@ mod tests {
 
     #[test]
     fn commands_work() {
-        let mut sim = new_sim(1);
+        let data = std::sync::Arc::new(
+            vector_data::GameData::load(
+                &std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../data"),
+            )
+            .expect("data"),
+        );
+        let mut sim = new_sim(1, data);
         let mut ts = 1.0;
         run("tp 1 2 3", &mut sim, &mut ts);
         assert_eq!(sim.ship.pos, Vec3::new(1.0, 2.0, 3.0));

@@ -40,5 +40,5 @@
  (id:"argon", name:"Argon", category:"gas", density:1400.0, value:0.4),
  (id:"organics", name:"Composes organiques", category:"organic", density:1100.0, value:1.0),
  (id:"salts", name:"Sels", category:"mineral", density:2160.0, value:0.2),
- (id:"fuel", name:"Carburant fusion", category:"fuel", density:150.0, value:2.0),
+ (id:"fuel", name:"Carburant fusion", category:"fuel", density:150.0, value:0.6),
 ]

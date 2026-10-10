@@ -35,6 +35,9 @@ pub fn draw(fb: &mut Framebuffer, g: &Game) {
         Screen::Galaxy => draw_galaxy(fb, g),
         Screen::Contracts => draw_contracts(fb, g),
         Screen::Bank => draw_bank(fb, g),
+        Screen::Empire => draw_empire(fb, g),
+        Screen::Colony => draw_colony(fb, g),
+        Screen::Fleet => draw_fleet(fb, g),
         Screen::Flight => {}
     }
 }
@@ -915,4 +918,403 @@ fn draw_bank(fb: &mut Framebuffer, g: &Game) {
     for (i, msg) in g.messages.iter().rev().take(2).enumerate() {
         fb.text(1, b + 1 + i, msg, if i == 0 { AMBER } else { DIM });
     }
+}
+
+fn msgs(fb: &mut Framebuffer, g: &Game, row: usize) {
+    for (i, msg) in g.messages.iter().rev().take(2).enumerate() {
+        fb.text(1, row + i, msg, if i == 0 { AMBER } else { DIM });
+    }
+}
+
+fn draw_empire(fb: &mut Framebuffer, g: &Game) {
+    let s = &g.sim;
+    fb.text(1, 1, "EMPIRE - COLONIES", AMBER);
+    fb.text(
+        1,
+        2,
+        &format!(
+            "CREDITS {:.0}   COLONIES {}   FLOTTE {} VAISSEAUX   ROUTES {}",
+            s.credits,
+            s.colonies.len(),
+            s.fleet.len(),
+            s.routes.len()
+        ),
+        GREEN,
+    );
+    let total_pop: f64 = s.colonies.iter().map(|c| c.pop).sum();
+    let research: f64 = s.colonies.iter().map(|c| c.research).sum();
+    fb.text(
+        1,
+        3,
+        &format!(
+            "POPULATION TOTALE {:.0}   RECHERCHE {:.0} PTS   TRESORERIE {:.0} CR",
+            total_pop,
+            research,
+            s.colonies.iter().map(|c| c.treasury).sum::<f64>()
+        ),
+        GREEN,
+    );
+    let top = 6;
+    fb.text(1, top, "NOM                    SYSTEME / CORPS                 POP    MORAL     CAISSE    ENERGIE  ETAT", DIM);
+    for (i, c) in s.colonies.iter().enumerate() {
+        let sel = i == g.emp_sel;
+        let sys = if c.star == s.here {
+            s.system.name.clone()
+        } else {
+            g.sim
+                .galaxy
+                .star(c.star)
+                .map_or("?".into(), |e| e.header.name)
+        };
+        let state = if c.pop < 1.0 {
+            "ABANDONNEE"
+        } else if c.unrest > 0.7 {
+            "EMEUTES"
+        } else if c.stats.food_sat < 0.5 {
+            "FAMINE"
+        } else if c.stats.power_supply < c.stats.power_demand * 0.9 {
+            "PENURIE D ENERGIE"
+        } else {
+            "STABLE"
+        };
+        let col = if state == "STABLE" {
+            if sel {
+                AMBER
+            } else {
+                GREEN
+            }
+        } else {
+            RED
+        };
+        fb.text(
+            1,
+            top + 1 + i,
+            &format!(
+                "{}{:<22.22} {:<18.18} {:<12.12} {:>6.0} {} {:>9.0} {:>3.0}/{:<3.0}  {}",
+                if sel { ">" } else { " " },
+                c.name,
+                sys,
+                c.body_name,
+                c.pop,
+                bar(c.happiness, 6),
+                c.treasury,
+                c.stats.power_supply / 1000.0,
+                c.stats.power_demand / 1000.0,
+                state
+            ),
+            col,
+        );
+    }
+    if s.colonies.is_empty() {
+        fb.text(1, top + 2, "AUCUNE COLONIE. RAMENEZ UN KIT (3 T DE MATERIAUX, 400 KG DE COLONS, VIVRES, EAU) PRES D UN CORPS,", DIM);
+        fb.text(
+            1,
+            top + 3,
+            "CIBLEZ-LE [TAB] ET APPUYEZ SUR [O] (PERMIS : 20000 CR).",
+            DIM,
+        );
+    }
+    let b = fb.rows() - 4;
+    fb.text(
+        1,
+        b,
+        "HAUT/BAS:CHOISIR  ENTREE:DETAIL  F3:FLOTTE  F2/ECHAP:RETOUR",
+        DIM,
+    );
+    msgs(fb, g, b + 1);
+}
+
+fn draw_colony(fb: &mut Framebuffer, g: &Game) {
+    let s = &g.sim;
+    let Some(c) = s.colonies.get(g.col_idx) else {
+        return;
+    };
+    let focus = |f: u8| if g.col_focus == f { AMBER } else { GREEN };
+    fb.text(
+        1,
+        1,
+        &format!(
+            "COLONIE {}  -  {}",
+            c.name.to_uppercase(),
+            c.body_name.to_uppercase()
+        ),
+        AMBER,
+    );
+    let docked = s.docked_colony() == Some(g.col_idx);
+    fb.text(
+        1,
+        2,
+        &format!("POP {:.0}/{:.0}  MORAL {}  AGITATION {:.0}%  CAISSE {:.0} CR  (+{:.0}/-{:.0} PAR JOUR)  {}", c.pop, c.stats.housing, bar(c.happiness, 8), c.unrest * 100.0, c.treasury, c.stats.income, c.stats.upkeep, if docked { "[AMARRE]" } else { "" }),
+        GREEN,
+    );
+    fb.text(
+        1,
+        3,
+        &format!(
+            "ENERGIE {:.1}/{:.1} MW  EMPLOIS {:.0} / TRAVAILLEURS {:.0}  PRODUCTIVITE {:.0}%  VIVRES {:.0}%  EAU {:.0}%  RECHERCHE {:.0}  TERRAFORMAGE {:.1}%",
+            c.stats.power_supply / 1000.0,
+            c.stats.power_demand / 1000.0,
+            c.stats.jobs,
+            c.stats.workers,
+            c.stats.prod_mult * 100.0,
+            c.stats.food_sat * 100.0,
+            c.stats.water_sat * 100.0,
+            c.research,
+            c.terraform * 100.0
+        ),
+        GREEN,
+    );
+    // Buildings.
+    let top = 5;
+    fb.text(1, top, "BATIMENTS", focus(0));
+    let rows = 14usize;
+    let start = g
+        .b_sel
+        .saturating_sub(rows / 2)
+        .min(c.buildings.len().saturating_sub(rows));
+    for (line, k) in (start..(start + rows).min(c.buildings.len())).enumerate() {
+        let b = &c.buildings[k];
+        let d = &g.data.buildings[b.def];
+        let sel = g.col_focus == 0 && k == g.b_sel;
+        let status = if !b.built() {
+            format!("{:>3.0}%", b.progress * 100.0)
+        } else if !b.enabled {
+            "OFF".to_string()
+        } else {
+            "ON".to_string()
+        };
+        let recipe = if d.recipes.is_empty() {
+            String::new()
+        } else {
+            g.data.recipes[g
+                .data
+                .recipe_index(&d.recipes[b.recipe % d.recipes.len()])
+                .unwrap_or(0)]
+            .name
+            .clone()
+        };
+        fb.text(
+            1,
+            top + 1 + line,
+            &format!(
+                "{}{:<26.26} {:>4} {:>3.0}%  {:<24.24}",
+                if sel { ">" } else { " " },
+                d.name,
+                status,
+                b.health * 100.0,
+                recipe
+            ),
+            if sel {
+                AMBER
+            } else if b.built() {
+                GREEN
+            } else {
+                DIM
+            },
+        );
+    }
+    // Storage.
+    let x = 66;
+    fb.text(
+        x,
+        top,
+        &format!(
+            "STOCKS {:.0}/{:.0} KG",
+            c.total_stored(),
+            c.stats.storage_cap.max(5000.0)
+        ),
+        focus(1),
+    );
+    let items: Vec<usize> = (0..g.data.resources.len())
+        .filter(|&i| c.storage[i] > 0.5 || (g.col_focus == 1 && i == g.s_sel))
+        .collect();
+    for (line, &i) in items.iter().take(rows).enumerate() {
+        let sel = g.col_focus == 1 && i == g.s_sel;
+        fb.text(
+            x,
+            top + 1 + line,
+            &format!(
+                "{}{:<20.20} {:>10.0}",
+                if sel { ">" } else { " " },
+                g.data.resources[i].name,
+                c.storage[i]
+            ),
+            if sel { AMBER } else { GREEN },
+        );
+    }
+    // Policies.
+    let px = 100;
+    fb.text(px, top, "POLITIQUES", focus(2));
+    for (i, p) in g.data.policies.iter().enumerate() {
+        let sel = g.col_focus == 2 && i == g.p_sel;
+        fb.text(
+            px,
+            top + 1 + i,
+            &format!(
+                "{}{:<18.18} < {} >",
+                if sel { ">" } else { " " },
+                p.name,
+                p.levels[c.policies[i]].0
+            ),
+            if sel { AMBER } else { GREEN },
+        );
+    }
+    // Build menu.
+    let by = top + rows + 2;
+    fb.text(1, by, "CONSTRUIRE", focus(3));
+    if g.col_focus == 3 {
+        let n = g.data.buildings.len();
+        let show = 7usize;
+        let st = g
+            .build_sel
+            .saturating_sub(show / 2)
+            .min(n.saturating_sub(show));
+        for (line, k) in (st..(st + show).min(n)).enumerate() {
+            let d = &g.data.buildings[k];
+            let ok = d.sites.iter().any(|t| c.tags.contains(t));
+            let cost: Vec<String> = d
+                .cost
+                .iter()
+                .map(|(r, kg)| format!("{} {:.0}", r, kg))
+                .collect();
+            fb.text(
+                1,
+                by + 1 + line,
+                &format!(
+                    "{}{:<26.26} {:>3.0} J  {}",
+                    if k == g.build_sel { ">" } else { " " },
+                    d.name,
+                    d.days,
+                    cost.join(", ")
+                ),
+                if !ok {
+                    RED
+                } else if k == g.build_sel {
+                    AMBER
+                } else {
+                    GREEN
+                },
+            );
+        }
+    }
+    // Log.
+    let ly = by + 10;
+    fb.text(1, ly, "JOURNAL DE LA COLONIE", DIM);
+    for (i, (t, l)) in c.log.iter().rev().take(5).enumerate() {
+        fb.text(1, ly + 1 + i, &format!("{} {}", stamp(*t), l), DIM);
+    }
+    let b = fb.rows() - 4;
+    fb.text(1, b, "TAB:ZONE  HAUT/BAS  ESPACE:ON/OFF  R:RECETTE  X:DEMOLIR  D/W:DEPOSER/RETIRER (STOCKS)  GAUCHE/DROITE:POLITIQUE  ENTREE:CONSTRUIRE  T:CAISSE  U:DECOLLER", DIM);
+    msgs(fb, g, b + 1);
+}
+
+fn draw_fleet(fb: &mut Framebuffer, g: &Game) {
+    let s = &g.sim;
+    fb.text(1, 1, "FLOTTE DELEGUEE", AMBER);
+    fb.text(
+        1,
+        2,
+        &format!(
+            "CREDITS {:.0}   ENTRETIEN {:.0} CR/J",
+            s.credits,
+            s.fleet.iter().map(|f| f.upkeep).sum::<f64>()
+        ),
+        GREEN,
+    );
+    let top = 4;
+    let focus = |f: u8| if g.fleet_focus == f { AMBER } else { GREEN };
+    fb.text(1, top, "VAISSEAUX", focus(0));
+    for (i, f) in s.fleet.iter().enumerate() {
+        let sel = g.fleet_focus == 0 && i == g.ship_sel2;
+        let state = match &f.state {
+            vector_sim::fleet::FleetState::Idle => "EN ATTENTE".to_string(),
+            vector_sim::fleet::FleetState::Loading { .. } => "CHARGEMENT".to_string(),
+            vector_sim::fleet::FleetState::Outbound { t1 } => {
+                format!("ALLER (ARRIVEE J{:.0})", t1 / 86_400.0)
+            }
+            vector_sim::fleet::FleetState::Unloading { .. } => "DECHARGEMENT".to_string(),
+            vector_sim::fleet::FleetState::Returning { t1 } => {
+                format!("RETOUR (J{:.0})", t1 / 86_400.0)
+            }
+        };
+        let route = f.route.map_or("-".to_string(), |r| format!("ROUTE {r}"));
+        fb.text(
+            1,
+            top + 1 + i,
+            &format!(
+                "{}{:<26.26} {:>7.0} KG  {:<9} {:<24} VOYAGES {:>3}  GAINS {:>9.0}",
+                if sel { ">" } else { " " },
+                f.name,
+                f.capacity_kg,
+                route,
+                state,
+                f.trips,
+                f.earnings
+            ),
+            if sel { AMBER } else { GREEN },
+        );
+    }
+    let ry = top + 3 + s.fleet.len().max(1);
+    fb.text(1, ry, "ROUTES", focus(1));
+    for (i, r) in s.routes.iter().enumerate() {
+        let sel = g.fleet_focus == 1 && i == g.route_sel;
+        fb.text(
+            1,
+            ry + 1 + i,
+            &format!(
+                "{}#{:<3} {:<28.28} -> {:<28.28} {:>6.0} KG {:<14.14} {} TRAJETS {:>3} PROFIT {:>9.0}",
+                if sel { ">" } else { " " },
+                r.id,
+                r.from.label(s),
+                r.to.label(s),
+                r.kg,
+                g.data.resources[r.resource].name,
+                if r.active { "ACTIVE" } else { "INACTIVE" },
+                r.trips,
+                r.profit
+            ),
+            if sel { AMBER } else { GREEN },
+        );
+    }
+    if let Some(ed) = &g.editor {
+        let y = ry + 3 + s.routes.len().max(1);
+        fb.text(
+            1,
+            y,
+            "NOUVELLE ROUTE (GAUCHE/DROITE CHANGE LA VALEUR, TAB CHAMP SUIVANT, ENTREE CREE)",
+            AMBER,
+        );
+        let label = |i: usize| g.endpoints.get(i).map_or("?".into(), |e| e.label(s));
+        let f = |n: u8| if ed.field == n { AMBER } else { GREEN };
+        fb.text(1, y + 1, &format!("DE       : {}", label(ed.from)), f(0));
+        fb.text(1, y + 2, &format!("VERS     : {}", label(ed.to)), f(1));
+        fb.text(
+            1,
+            y + 3,
+            &format!("MARCHANDISE: {}", g.data.resources[ed.res].name),
+            f(2),
+        );
+        fb.text(1, y + 4, &format!("LOT      : {:.0} KG", ed.kg), f(3));
+    }
+    if let Some(sel) = g.hull_pick {
+        let y = ry + 3 + s.routes.len().max(1);
+        fb.text(1, y, "ACHETER UN VAISSEAU (ENTREE, ECHAP)", AMBER);
+        for (k, h) in g.data.hulls.iter().enumerate() {
+            fb.text(
+                1,
+                y + 1 + k,
+                &format!(
+                    "{}{:<26.26} {:<12.12} {:>10.0} CR",
+                    if k == sel { ">" } else { " " },
+                    h.name,
+                    h.class,
+                    h.cost * vector_sim::fleet::PURCHASE_FACTOR
+                ),
+                if k == sel { AMBER } else { GREEN },
+            );
+        }
+    }
+    let b = fb.rows() - 4;
+    fb.text(1, b, "TAB:LISTE  N:NOUVELLE ROUTE  A:AFFECTER  U:RETIRER  X:SUPPRIMER/VENDRE  B:ACHETER (A QUAI)  F2:EMPIRE  ECHAP:RETOUR", DIM);
+    msgs(fb, g, b + 1);
 }

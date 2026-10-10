@@ -2,9 +2,11 @@
 //! Units: SI (m, s, kg, N). See docs/SIM_MODEL.md.
 pub mod autopilot;
 pub mod cargo;
+pub mod colony;
 pub mod crew;
 pub mod design;
 pub mod economy;
+pub mod fleet;
 pub mod market;
 pub mod npc;
 pub mod save;
@@ -12,6 +14,7 @@ pub mod voyage;
 
 use autopilot::Autopilot;
 use cargo::Cargo;
+use colony::Colony;
 use crew::{Crew, CrewCtx};
 use design::{Activity, Effective, ShipDesign, ShipStats, Systems, RCS_ISP};
 use economy::{Bank, Contract};
@@ -176,6 +179,14 @@ pub enum Event {
     },
     PatrolScan,
     PirateAlert,
+    ColonyFounded {
+        index: usize,
+    },
+    ColonyNews(String),
+    FleetDelivery {
+        ship: usize,
+        revenue: f64,
+    },
 }
 
 pub struct Sim {
@@ -220,6 +231,13 @@ pub struct Sim {
     pub npcs: Vec<npc::Npc>,
     pub next_npc: u32,
     pub target_npc: Option<usize>,
+    pub colonies: Vec<Colony>,
+    pub next_colony: u32,
+    pub fleet: Vec<fleet::FleetShip>,
+    pub routes: Vec<fleet::Route>,
+    pub next_fleet: u32,
+    pub next_route: u32,
+    pub fleet_paid_day: i64,
 }
 
 /// Propellant mass flow (kg/s) for a thrust force (N) at a given specific impulse.
@@ -293,6 +311,13 @@ impl Sim {
             npcs: Vec::new(),
             next_npc: 1,
             target_npc: None,
+            colonies: Vec::new(),
+            next_colony: 1,
+            fleet: Vec::new(),
+            routes: Vec::new(),
+            next_fleet: 1,
+            next_route: 1,
+            fleet_paid_day: 0,
         };
         s.reputation = vec![0.0; s.data.factions.len()];
         s.scan = Self::initial_scan(&s.system);
@@ -345,6 +370,11 @@ impl Sim {
             }
         }
         self.ref_body = best.map(|(i, _)| i);
+    }
+
+    /// Advance the colonies to the current time (tools, console, tests).
+    pub fn update_colonies_pub(&mut self) {
+        self.update_colonies();
     }
 
     /// Recompute the reference body after teleporting the ship (tools, console, tests).
@@ -408,7 +438,7 @@ impl Sim {
         while left > 1e-9 && guard < 200_000 {
             guard += 1;
             let dt = if self.docked.is_some() {
-                left.min(60.0)
+                left.min(600.0)
             } else {
                 left.min(self.safe_dt())
             };
@@ -463,6 +493,8 @@ impl Sim {
         }
         self.ship.refresh_stats(&self.data);
         self.update_crew();
+        self.update_colonies();
+        self.update_fleet();
     }
 
     /// Advance the crew layer to the current time and apply what the engineers repaired.
@@ -758,7 +790,57 @@ impl Sim {
             .min_by(|a, b| a.1.total_cmp(&b.1))
     }
 
+    /// The station the ship is docked at (market services), as opposed to a colony port.
+    pub fn docked_station(&self) -> Result<usize, &'static str> {
+        let i = self.docked.ok_or("non amarre")?;
+        if self.bodies[i].kind == BodyKind::Station {
+            Ok(i)
+        } else {
+            Err("pas de marche sur cette base")
+        }
+    }
+
+    /// Dock at the spaceport of one of our colonies in this system.
+    pub fn try_dock_colony(&mut self) -> Result<usize, &'static str> {
+        let data = Arc::clone(&self.data);
+        let (ci, range) = self
+            .colonies
+            .iter()
+            .enumerate()
+            .filter(|(_, c)| c.star == self.here && c.has_port(&data))
+            .map(|(ci, c)| {
+                (
+                    ci,
+                    (self.bodies[c.body].pos - self.ship.pos).length() - self.bodies[c.body].radius,
+                )
+            })
+            .min_by(|a, b| a.1.total_cmp(&b.1))
+            .ok_or("aucun astroport colonial")?;
+        if range > colony::PORT_RANGE {
+            return Err("trop loin de l'astroport");
+        }
+        if (self.ship.vel - self.bodies[self.colonies[ci].body].vel).length() > 40.0 {
+            return Err("vitesse relative trop elevee");
+        }
+        let body = self.colonies[ci].body;
+        self.docked = Some(body);
+        self.autopilot = None;
+        self.events.push(Event::Docked { body });
+        Ok(body)
+    }
+
     pub fn try_dock(&mut self) -> Result<usize, &'static str> {
+        // A colony port in reach wins over a more distant station.
+        let station_range = self.nearest_station().map(|(_, r)| r);
+        let port_ok = self.colonies.iter().any(|c| {
+            c.star == self.here
+                && c.has_port(&self.data)
+                && (self.bodies[c.body].pos - self.ship.pos).length() - self.bodies[c.body].radius
+                    <= colony::PORT_RANGE
+        });
+        if port_ok && station_range.is_none_or(|r| r > DOCK_RANGE) {
+            return self.try_dock_colony();
+        }
         let (i, range) = self.nearest_station().ok_or("aucune station")?;
         if range > DOCK_RANGE {
             return Err("trop loin de la station");
@@ -772,7 +854,9 @@ impl Sim {
         self.docked = Some(i);
         self.autopilot = None;
         self.events.push(Event::Docked { body: i });
-        self.customs_check();
+        if self.bodies[i].kind == BodyKind::Station {
+            self.customs_check();
+        }
         Ok(i)
     }
 
@@ -789,7 +873,7 @@ impl Sim {
 
     /// Sell `kg` of resource `res` (None = everything) to the docked station. Returns credits earned.
     pub fn sell(&mut self, res: usize, kg: Option<f64>) -> Result<f64, &'static str> {
-        let st = self.docked.ok_or("non amarre")?;
+        let st = self.docked_station()?;
         let have = self.ship.cargo.kg[res];
         let kg = kg.unwrap_or(have).min(have);
         if kg <= 0.0 {
@@ -806,7 +890,7 @@ impl Sim {
 
     /// Buy up to `kg` of resource `res` into the hold.
     pub fn buy(&mut self, res: usize, kg: f64) -> Result<(f64, f64), &'static str> {
-        let st = self.docked.ok_or("non amarre")?;
+        let st = self.docked_station()?;
         let data = Arc::clone(&self.data);
         let edge = self.trade_edge();
         let ask = self.market(st).ask(&data, res) / edge;
@@ -834,7 +918,7 @@ impl Sim {
 
     /// Fill the propellant tank at the station's fuel price. Returns (kg, cost).
     pub fn refuel(&mut self) -> Result<(f64, f64), &'static str> {
-        let st = self.docked.ok_or("non amarre")?;
+        let st = self.docked_station()?;
         let data = Arc::clone(&self.data);
         let fuel = data
             .resource_index("fuel")

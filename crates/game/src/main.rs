@@ -171,6 +171,107 @@ fn snapshot(path: &str, scene: &str, data: Arc<GameData>) {
             g.advance(0.1);
         }
         "pause" => g.screen = Screen::Pause,
+        "empire" | "colony" | "fleet" => {
+            let data = Arc::clone(&g.data);
+            let planet = g
+                .sim
+                .system
+                .bodies
+                .iter()
+                .position(|b| matches!(b.kind, vector_world::BodyKind::Planet(k) if !k.is_giant()))
+                .expect("rocky planet");
+            g.sim.credits = 2_000_000.0;
+            g.sim.ship.cargo.cap_mass = 1.0e6;
+            g.sim.ship.cargo.cap_vol = 1.0e6;
+            for (id, kg) in [
+                ("construction_materials", 3000.0),
+                ("colonists", 400.0),
+                ("food", 300.0),
+                ("water", 600.0),
+            ] {
+                g.sim
+                    .ship
+                    .cargo
+                    .add(&data, data.resource_index(id).expect("res"), kg);
+            }
+            g.sim.ship.pos = g.sim.bodies[planet].pos
+                - vector_core::Vec3::new(0.0, 0.0, g.sim.bodies[planet].radius + 5000.0);
+            g.sim.ship.vel = g.sim.bodies[planet].vel;
+            g.sim.update_ref_pub();
+            let ci = g
+                .sim
+                .found_colony(planet, Some("Nouvel Eden".into()))
+                .expect("colony");
+            for id in [
+                "habitat_dome",
+                "habitat_dome",
+                "surface_mine",
+                "hydroponics",
+                "water_plant",
+                "medical_center",
+                "smelter",
+                "research_lab",
+            ] {
+                let d = data.building_index(id).expect("building");
+                g.sim.colonies[ci]
+                    .buildings
+                    .push(vector_sim::colony::BuildingInst {
+                        def: d,
+                        progress: 1.0,
+                        enabled: true,
+                        recipe: 0,
+                        health: 1.0,
+                    });
+            }
+            let d = data.building_index("fission_plant").expect("building");
+            g.sim.colonies[ci]
+                .buildings
+                .push(vector_sim::colony::BuildingInst {
+                    def: d,
+                    progress: 0.4,
+                    enabled: true,
+                    recipe: 0,
+                    health: 1.0,
+                });
+            for (id, kg) in [
+                ("food", 4000.0),
+                ("water", 2000.0),
+                ("iron", 2500.0),
+                ("steel", 800.0),
+                ("construction_materials", 1500.0),
+                ("electronics", 300.0),
+            ] {
+                g.sim.colonies[ci].storage[data.resource_index(id).expect("res")] += kg;
+            }
+            g.sim.colonies[ci].pop = 90.0;
+            g.sim.time += 20.0 * 86_400.0;
+            g.sim.update_colonies_pub();
+            g.col_idx = ci;
+            g.col_focus = 3;
+            g.build_sel = 3;
+            g.screen = Screen::Colony;
+            if scene == "empire" {
+                g.screen = Screen::Empire;
+            }
+            if scene == "fleet" {
+                let (st, _) = g.sim.nearest_station().expect("station");
+                g.sim.spawn_near(st, g.sim.bodies[st].radius + 200.0);
+                g.sim.try_dock().expect("dock");
+                let hauler = data.hull_index("hauler").expect("hull");
+                g.sim.buy_fleet_ship(hauler).expect("ship");
+                g.sim
+                    .buy_fleet_ship(data.hull_index("freighter").expect("hull"))
+                    .expect("ship");
+                g.endpoints = g.sim.known_endpoints();
+                let iron = data.resource_index("iron").expect("iron");
+                let from = g.endpoints[0].clone();
+                let to = g.endpoints.last().cloned().expect("endpoint");
+                g.sim.create_route(from, to, iron, 8000.0).expect("route");
+                g.sim.assign_route(0, 0).expect("assign");
+                g.sim.advance(3.0 * 86_400.0, &ShipInput::default());
+                g.screen = Screen::Fleet;
+            }
+        }
         "contracts" | "bank" | "market" => {
             let (st, _) = g.sim.nearest_station().expect("station");
             g.sim.spawn_near(st, g.sim.bodies[st].radius + 200.0);

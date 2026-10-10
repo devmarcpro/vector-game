@@ -6,7 +6,7 @@ use vector_data::GameData;
 use vector_world::generate_system;
 
 pub const MAGIC: [u8; 4] = *b"VECT";
-pub const VERSION: u32 = 6;
+pub const VERSION: u32 = 8;
 
 #[derive(Debug)]
 pub enum SaveError {
@@ -54,6 +54,13 @@ pub struct SaveGame {
     pub bank: crate::economy::Bank,
     pub npcs: Vec<crate::npc::Npc>,
     pub next_npc: u32,
+    pub colonies: Vec<crate::colony::Colony>,
+    pub next_colony: u32,
+    pub fleet: Vec<crate::fleet::FleetShip>,
+    pub routes: Vec<crate::fleet::Route>,
+    pub next_fleet: u32,
+    pub next_route: u32,
+    pub fleet_paid_day: i64,
 }
 
 impl Sim {
@@ -83,6 +90,13 @@ impl Sim {
             bank: self.bank.clone(),
             npcs: self.npcs.clone(),
             next_npc: self.next_npc,
+            colonies: self.colonies.clone(),
+            next_colony: self.next_colony,
+            fleet: self.fleet.clone(),
+            routes: self.routes.clone(),
+            next_fleet: self.next_fleet,
+            next_route: self.next_route,
+            fleet_paid_day: self.fleet_paid_day,
         };
         let mut out = MAGIC.to_vec();
         out.extend_from_slice(&VERSION.to_le_bytes());
@@ -128,6 +142,13 @@ impl Sim {
         sim.compute_faction();
         sim.npcs = save.npcs;
         sim.next_npc = save.next_npc;
+        sim.colonies = save.colonies;
+        sim.next_colony = save.next_colony;
+        sim.fleet = save.fleet;
+        sim.routes = save.routes;
+        sim.next_fleet = save.next_fleet;
+        sim.next_route = save.next_route;
+        sim.fleet_paid_day = save.fleet_paid_day;
         sim.place_npcs();
         sim.time = save.time;
         sim.ship = save.ship;

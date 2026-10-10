@@ -16,6 +16,8 @@
 | K | Equipage (Gauche/Droite poste, T quart, X débarquer à quai, J journal) |
 | J | Journal de bord |
 | L | Carte galactique (Haut/Bas étoile, +/- zoom, Entrée = saut FTL) ; Retour arrière annule une charge de saut |
+| F2 | Empire (colonies) ; Entrée = détail ; F3 = Flotte |
+| O | Fonder une colonie sur le corps ciblé (kit en soute) |
 | H | Ecran vaisseau (emplacements, santé, énergie ; amarré : Entrée installer, X retirer, Y chantier naval) |
 | F5 / F9 | Sauvegarde / chargement rapide (saves/slot1.sav) |
 | Echap | Menu pause |
@@ -35,3 +37,6 @@ Haut/Bas + Entree ; taper une graine (nombre ou texte) avant Nouvelle partie.
 
 Station : N = recruter (Entrée embauche au poste de sa meilleure compétence), K = équipage.
 Station : C = contrats (Entrée accepter/livrer, X abandonner), E = banque (Haut emprunter 1000, Bas rembourser 1000, Entrée tout rembourser).
+
+Ecran colonie : Tab zone (bâtiments / stocks / politiques / construction), Haut/Bas, Espace on/off, R recette, X démolir, D déposer / W retirer (stocks, amarré), Gauche/Droite politique, Entrée construire, T récupérer la caisse, U décoller.
+Ecran flotte : Tab liste, N nouvelle route (Gauche/Droite valeur, Tab champ, Entrée), A affecter, U retirer, X supprimer/vendre, B acheter (à quai).

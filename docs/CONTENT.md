@@ -1,14 +1,14 @@
 # CONTENT (inventaire reel)
 | Element | Actuel | Cible |
 |---|---|---|
-| Ressources | 40 | >= 40 OK |
+| Ressources | 74 | >= 40 OK |
 | Classes d'asteroides | 4 | - |
 | Classes stellaires | 7 (O..M) | >= 8 |
 | Types de planetes | 12 | >= 12 OK |
-| Recettes | 0 | >= 100 |
+| Recettes | 40 | >= 100 |
 | Modules de vaisseau | 74 | >= 60 OK |
 | Coques | 15 | >= 15 OK |
-| Batiments de colonie | 0 | >= 25 |
+| Batiments de colonie | 32 | >= 25 OK |
 | Armes/defenses | 0 | >= 20 |
 | Technologies | 0 | >= 60 |
 | Factions | 0 | >= 6 |

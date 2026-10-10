@@ -1,0 +1,8 @@
+// Colony policies: each offers levels with effects (tax: credits/person/day; productivity and happiness multipliers).
+[
+ (id:"tax", name:"Fiscalite", levels:[("Aucune",0.0,0.00,0.03),("Legere",2.0,0.0,0.0),("Normale",5.0,0.0,-0.04),("Lourde",9.0,0.0,-0.10)], default_level:2),
+ (id:"work", name:"Temps de travail", levels:[("Reduit",0.0,-0.10,0.05),("Normal",0.0,0.0,0.0),("Heures supp.",0.0,0.20,-0.08)], default_level:1),
+ (id:"rations", name:"Rationnement", levels:[("Genereux",0.0,0.0,0.05),("Normal",0.0,0.0,0.0),("Strict",0.0,0.0,-0.06)], default_level:1),
+ (id:"immigration", name:"Immigration", levels:[("Fermee",0.0,0.0,0.0),("Selective",0.0,0.0,0.0),("Ouverte",0.0,0.0,-0.02)], default_level:1),
+ (id:"security", name:"Maintien de l'ordre", levels:[("Libre",0.0,0.0,0.04),("Normal",0.0,0.0,0.0),("Loi martiale",0.0,0.05,-0.15)], default_level:1),
+]

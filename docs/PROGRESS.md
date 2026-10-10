@@ -9,7 +9,7 @@
 - [x] M5 Équipage (30 événements ; objectif final 150 -> M10)
 - [x] M6 Galaxie infinie
 - [x] M7 Économie vivante (reste : escortes/convois de la flotte joueur en M8, combat pirates en M9)
-- [ ] M8 Colonies et empire
+- [x] M8 Colonies et empire (reste : individus détaillés des colonies, convois armés en M9)
 - [ ] M9 Combat, menaces, science
 - [ ] M10 Contenu et finition
 
@@ -24,3 +24,4 @@
 - 2026-10-11 : M5 : crew.rs (génération, besoins, maladies, paie, postes, 30 événements data-driven, journal, recrutement), écrans équipage/recrutement/journal, sauvegarde v3. 37 tests sim verts.
 - 2026-10-11 : M6 : galaxie par secteurs (spirales, Poisson), peek_star, FTL (charge/transit/arrivée, incidents), deltas de systèmes, scan progressif 0-3, carte galactique avec brouillard. 42 tests sim + 14 world verts. Génération système < 1 ms.
 - 2026-10-11 : M7 : factions + territoires, industries et prix régionaux, réputation/douane/contrebande, contrats émergents, banque, trafic PNJ (traders/mineurs/patrouilles/pirates) agissant sur les marchés, stations multiples. 57 tests sim verts.
+- 2026-10-11 : M8 : 40 recettes + 32 bâtiments + 5 politiques (data générée, masse conservée), colonies (pop/moral/stocks/énergie/construction/émeutes), astroports, flotte déléguée avec routes inter-systèmes, écrans Empire/Colonie/Flotte, sauvegarde v8. 71 tests sim verts.

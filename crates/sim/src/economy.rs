@@ -120,7 +120,7 @@ impl Sim {
 
     /// Offers at the docked station: shortages here, and exports to nearby stations.
     pub fn offered_contracts(&mut self) -> Vec<Contract> {
-        let Some(st) = self.docked else {
+        let Ok(st) = self.docked_station() else {
             return Vec::new();
         };
         let epoch = (self.time / CONTRACT_EPOCH).floor() as i64;
@@ -224,7 +224,7 @@ impl Sim {
 
     /// Deliver active contract `idx` at the docked station if it is the destination.
     pub fn deliver_contract(&mut self, idx: usize) -> Result<f64, &'static str> {
-        let st = self.docked.ok_or("non amarre")?;
+        let st = self.docked_station()?;
         let c = self.contracts.get(idx).ok_or("contrat inconnu")?.clone();
         if c.dest_star != self.here || c.dest_body != st {
             return Err("ce n'est pas la station de destination");

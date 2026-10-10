@@ -187,6 +187,65 @@ pub struct Industry {
     pub consumes: Vec<String>,
 }
 
+/// A production recipe. `extract` recipes draw from the site's deposits (the single output names a
+/// pseudo-resource: "ore", "volatiles", "gas" or a real resource such as "regolith").
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct Recipe {
+    pub id: String,
+    pub name: String,
+    pub kind: String,
+    pub inputs: Vec<(String, f64)>,
+    pub outputs: Vec<(String, f64)>,
+    /// Duration of one batch.
+    pub hours: f64,
+    pub energy_kwh: f64,
+}
+
+/// Site tags a body can carry (see `Building::sites`).
+pub const SITE_TAGS: [&str; 6] = ["any", "rocky", "icy", "asteroid", "habitable", "gas_giant"];
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Building {
+    pub id: String,
+    pub name: String,
+    pub category: String,
+    /// Construction materials (resource id, kg).
+    pub cost: Vec<(String, f64)>,
+    pub days: f64,
+    /// kW: positive = produced, negative = consumed.
+    pub power: f64,
+    pub workers: f64,
+    pub housing: f64,
+    pub storage: f64,
+    /// Credits per day.
+    pub upkeep: f64,
+    pub recipes: Vec<String>,
+    /// Batches per day at full staffing.
+    pub throughput: f64,
+    pub sites: Vec<String>,
+    /// Fuel burnt per day by power plants (resource id, kg).
+    pub burns: Vec<(String, f64)>,
+    pub medical: f64,
+    pub education: f64,
+    pub recreation: f64,
+    pub security: f64,
+    pub recycling: f64,
+    pub research: f64,
+    pub port: f64,
+    pub terraform: f64,
+    pub defense: f64,
+}
+
+/// A colony policy with discrete levels: (label, credits per person per day, productivity delta, happiness delta).
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct Policy {
+    pub id: String,
+    pub name: String,
+    pub levels: Vec<(String, f64, f64, f64)>,
+    pub default_level: usize,
+}
+
 const PERSON_FIELDS: [&str; 14] = [
     "morale", "health", "loyalty", "stress", "fatigue", "hunger", "thirst", "social", "relation",
     "age", "credits", "death", "quit", "salary",
@@ -225,6 +284,9 @@ pub struct GameData {
     pub texts: Vec<(String, Vec<String>)>,
     pub factions: Vec<Faction>,
     pub industries: Vec<Industry>,
+    pub recipes: Vec<Recipe>,
+    pub buildings: Vec<Building>,
+    pub policies: Vec<Policy>,
 }
 
 fn read<T: for<'a> Deserialize<'a>>(path: &Path) -> Result<T, DataError> {
@@ -248,6 +310,9 @@ impl GameData {
             texts: read(&dir.join("text/crew.ron"))?,
             factions: read(&dir.join("factions.ron"))?,
             industries: read(&dir.join("industries.ron"))?,
+            recipes: read(&dir.join("recipes.ron"))?,
+            buildings: read(&dir.join("buildings.ron"))?,
+            policies: read(&dir.join("colony_policies.ron"))?,
         };
         d.validate()?;
         Ok(d)
@@ -289,6 +354,16 @@ impl GameData {
     }
     pub fn industry_index(&self, id: &str) -> Option<usize> {
         self.industries.iter().position(|f| f.id == id)
+    }
+
+    pub fn recipe_index(&self, id: &str) -> Option<usize> {
+        self.recipes.iter().position(|r| r.id == id)
+    }
+    pub fn building_index(&self, id: &str) -> Option<usize> {
+        self.buildings.iter().position(|r| r.id == id)
+    }
+    pub fn policy_index(&self, id: &str) -> Option<usize> {
+        self.policies.iter().position(|r| r.id == id)
     }
 
     pub fn module_index(&self, id: &str) -> Option<usize> {
@@ -466,6 +541,75 @@ impl GameData {
         if self.industries.is_empty() {
             return bad("aucune industrie".into());
         }
+        let mut rids = BTreeSet::new();
+        for r in &self.recipes {
+            if !rids.insert(r.id.as_str()) {
+                return bad(format!("recette en double: {}", r.id));
+            }
+            if !["extract", "process", "grow", "data"].contains(&r.kind.as_str())
+                || r.hours <= 0.0
+                || r.energy_kwh < 0.0
+            {
+                return bad(format!("recette invalide: {}", r.id));
+            }
+            if r.outputs.is_empty() {
+                return bad(format!("recette sans sortie: {}", r.id));
+            }
+            for (id, kg) in &r.inputs {
+                if self.resource_index(id).is_none() || *kg <= 0.0 {
+                    return bad(format!("recette {}: entree invalide {id}", r.id));
+                }
+            }
+            if r.kind != "extract" {
+                for (id, kg) in &r.outputs {
+                    if self.resource_index(id).is_none() || *kg <= 0.0 {
+                        return bad(format!("recette {}: sortie invalide {id}", r.id));
+                    }
+                }
+            }
+            if r.kind == "process" || r.kind == "grow" {
+                let (i, o): (f64, f64) = (
+                    r.inputs.iter().map(|x| x.1).sum(),
+                    r.outputs.iter().map(|x| x.1).sum(),
+                );
+                if o > i + 1e-9 {
+                    return bad(format!(
+                        "recette {}: la masse n'est pas conservee ({i} -> {o})",
+                        r.id
+                    ));
+                }
+            }
+        }
+        let mut bids = BTreeSet::new();
+        for b in &self.buildings {
+            if !bids.insert(b.id.as_str()) {
+                return bad(format!("batiment en double: {}", b.id));
+            }
+            if b.days <= 0.0
+                || b.sites.is_empty()
+                || b.sites.iter().any(|t| !SITE_TAGS.contains(&t.as_str()))
+            {
+                return bad(format!("batiment invalide: {}", b.id));
+            }
+            for (r, kg) in b.cost.iter().chain(&b.burns) {
+                if self.resource_index(r).is_none() || *kg <= 0.0 {
+                    return bad(format!("batiment {}: ressource invalide {r}", b.id));
+                }
+            }
+            for r in &b.recipes {
+                if !rids.contains(r.as_str()) {
+                    return bad(format!("batiment {}: recette inconnue {r}", b.id));
+                }
+            }
+            if !b.recipes.is_empty() && b.throughput <= 0.0 {
+                return bad(format!("batiment {}: debit nul", b.id));
+            }
+        }
+        for p in &self.policies {
+            if p.levels.is_empty() || p.default_level >= p.levels.len() {
+                return bad(format!("politique invalide: {}", p.id));
+            }
+        }
         Ok(())
     }
 }
@@ -506,8 +650,48 @@ mod tests {
         assert!(d.modules.len() >= 60, "{}", d.modules.len());
         assert!(d.hulls.len() >= 15);
         assert!(d.factions.len() >= 6 && d.industries.len() >= 8);
+        assert!(d.recipes.len() >= 35 && d.buildings.len() >= 25 && d.policies.len() >= 4);
         assert!(d.skills.len() >= 12 && d.traits.len() >= 30 && d.events.len() >= 25);
         assert!(d.resource_index("food").is_some() && !d.text("hire").is_empty());
+    }
+
+    #[test]
+    fn mass_conservation_is_enforced_for_recipes() {
+        let mut d = GameData::load(&dir()).expect("data loads");
+        let i = d.recipe_index("smelt_steel").expect("recipe");
+        d.recipes[i].outputs[0].1 = 5000.0;
+        assert!(
+            d.validate().is_err(),
+            "creating mass from nothing must be rejected"
+        );
+        let mut d = GameData::load(&dir()).expect("data loads");
+        d.buildings[0].recipes.push("nope".into());
+        assert!(d.validate().is_err());
+    }
+
+    #[test]
+    fn production_chains_reach_every_building_input() {
+        // Every construction material and burnt fuel must be producible somewhere or be a raw resource.
+        let d = GameData::load(&dir()).expect("data loads");
+        let produced: std::collections::BTreeSet<&str> = d
+            .recipes
+            .iter()
+            .flat_map(|r| r.outputs.iter().map(|o| o.0.as_str()))
+            .collect();
+        for b in &d.buildings {
+            for (r, _) in &b.cost {
+                let res = &d.resources[d.resource_index(r).expect("res")];
+                let raw = [
+                    "metal", "mineral", "volatile", "gas", "precious", "nuclear", "organic",
+                ]
+                .contains(&res.category.as_str());
+                assert!(
+                    raw || produced.contains(r.as_str()),
+                    "{} needs {r}, which nothing produces",
+                    b.id
+                );
+            }
+        }
     }
 
     #[test]

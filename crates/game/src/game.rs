@@ -3,6 +3,7 @@ use crate::{console, scene};
 use std::{collections::HashSet, path::PathBuf, sync::Arc};
 use vector_core::{mix64, Vec3};
 use vector_data::GameData;
+use vector_sim::fleet::Endpoint;
 use vector_sim::{autopilot::Autopilot, Event, ShipInput, Sim, SIM_DT};
 use vector_world::galaxy::StarEntry;
 use vector_world::BodyKind;
@@ -36,6 +37,20 @@ pub enum Screen {
     Galaxy,
     Contracts,
     Bank,
+    Empire,
+    Colony,
+    Fleet,
+}
+
+/// Route being composed in the fleet screen.
+#[derive(Clone, Debug)]
+pub struct RouteEditor {
+    pub from: usize,
+    pub to: usize,
+    pub res: usize,
+    pub kg: f64,
+    /// Field being edited: 0 from, 1 to, 2 resource, 3 lot.
+    pub field: u8,
 }
 
 pub struct Game {
@@ -68,6 +83,21 @@ pub struct Game {
     pub gal_zoom: f64,
     pub offers: Vec<vector_sim::economy::Contract>,
     pub contract_sel: usize,
+    pub emp_sel: usize,
+    pub col_idx: usize,
+    /// 0 buildings, 1 storage, 2 policies, 3 build menu.
+    pub col_focus: u8,
+    pub b_sel: usize,
+    pub s_sel: usize,
+    pub p_sel: usize,
+    pub build_sel: usize,
+    /// 0 ships, 1 routes.
+    pub fleet_focus: u8,
+    pub ship_sel2: usize,
+    pub route_sel: usize,
+    pub endpoints: Vec<Endpoint>,
+    pub editor: Option<RouteEditor>,
+    pub hull_pick: Option<usize>,
     pub save_path: PathBuf,
 }
 
@@ -113,6 +143,19 @@ impl Game {
             gal_zoom: 14.0,
             offers: Vec::new(),
             contract_sel: 0,
+            emp_sel: 0,
+            col_idx: 0,
+            col_focus: 0,
+            b_sel: 0,
+            s_sel: 0,
+            p_sel: 0,
+            build_sel: 0,
+            fleet_focus: 0,
+            ship_sel2: 0,
+            route_sel: 0,
+            endpoints: Vec::new(),
+            editor: None,
+            hull_pick: None,
             save_path: PathBuf::from("saves").join("slot1.sav"),
         };
         g.fit_map();
@@ -287,6 +330,19 @@ impl Game {
                     self.say(format!("LA BANQUE SAISIT {amount:.0} CR POUR PRET IMPAYE"))
                 }
                 Event::PatrolScan => self.say("PATROUILLE: SCAN DE VOTRE SOUTE"),
+                Event::ColonyFounded { index } => {
+                    let name = self.sim.colonies[index].name.clone();
+                    self.say(format!("COLONIE FONDEE : {name}"));
+                }
+                Event::ColonyNews(t) => self.say(t.to_uppercase()),
+                Event::FleetDelivery { ship, revenue } => {
+                    let n = self
+                        .sim
+                        .fleet
+                        .get(ship)
+                        .map_or(String::new(), |f| f.name.to_uppercase());
+                    self.say(format!("{n}: LIVRAISON +{revenue:.0} CR"));
+                }
                 Event::PirateAlert => self.say("ALERTE: PIRATES A PROXIMITE !"),
                 Event::Overheat => self.say("ALERTE: SURCHAUFFE !"),
                 Event::ModuleLost { slot } => {
@@ -294,10 +350,15 @@ impl Game {
                 }
                 Event::Docked { body } => {
                     let name = self.sim.bodies[body].name.clone();
-                    self.sim.market(body);
                     self.say(format!("AMARRE A {name}"));
-                    self.screen = Screen::Station;
                     self.timescale = 1.0;
+                    if let Some(ci) = self.sim.docked_colony() {
+                        self.col_idx = ci;
+                        self.screen = Screen::Colony;
+                    } else {
+                        self.sim.market(body);
+                        self.screen = Screen::Station;
+                    }
                 }
                 Event::Undocked => {
                     self.screen = Screen::Flight;
@@ -435,6 +496,9 @@ impl Game {
             Screen::Galaxy => self.galaxy_key(code),
             Screen::Contracts => self.contracts_key(code),
             Screen::Bank => self.bank_key(code),
+            Screen::Empire => self.empire_key(code),
+            Screen::Colony => self.colony_key(code),
+            Screen::Fleet => self.fleet_key(code),
             Screen::Flight => self.flight_key(code),
         }
     }
@@ -566,6 +630,14 @@ impl Game {
                 self.screen = Screen::Shipyard;
                 return;
             }
+            KeyCode::F2 => {
+                self.open_empire();
+                return;
+            }
+            KeyCode::F3 => {
+                self.open_fleet();
+                return;
+            }
             KeyCode::KeyN => {
                 self.screen = Screen::Recruit;
                 self.recruit_sel = 0;
@@ -631,6 +703,9 @@ impl Game {
             },
             KeyCode::KeyJ => self.screen = Screen::Journal,
             KeyCode::KeyL => self.open_galaxy(),
+            KeyCode::F2 => self.open_empire(),
+            KeyCode::F3 => self.open_fleet(),
+            KeyCode::KeyO => self.found_colony_at_target(),
             KeyCode::Backspace => {
                 if self.sim.is_charging_jump() {
                     self.sim.cancel_jump();
@@ -691,6 +766,283 @@ impl Game {
             KeyCode::Escape | KeyCode::KeyJ => {
                 self.screen = if self.sim.docked.is_some() {
                     Screen::Station
+                } else {
+                    Screen::Flight
+                }
+            }
+            _ => {}
+        }
+    }
+
+    fn open_empire(&mut self) {
+        self.emp_sel = 0;
+        self.screen = Screen::Empire;
+    }
+
+    fn open_fleet(&mut self) {
+        self.endpoints = self.sim.known_endpoints();
+        self.fleet_focus = 0;
+        self.editor = None;
+        self.hull_pick = None;
+        self.screen = Screen::Fleet;
+    }
+
+    /// Found a colony on the targeted body with the kit in the hold.
+    fn found_colony_at_target(&mut self) {
+        let Some(t) = self.sim.target else {
+            self.say("CIBLEZ D ABORD UN CORPS A COLONISER");
+            return;
+        };
+        match self.sim.found_colony(t, None) {
+            Ok(_) => self.handle_events(),
+            Err(e) => self.say(format!("COLONISATION IMPOSSIBLE: {}", e.to_uppercase())),
+        }
+    }
+
+    fn empire_key(&mut self, code: KeyCode) {
+        let n = self.sim.colonies.len();
+        match code {
+            KeyCode::ArrowUp if n > 0 => self.emp_sel = (self.emp_sel + n - 1) % n,
+            KeyCode::ArrowDown if n > 0 => self.emp_sel = (self.emp_sel + 1) % n,
+            KeyCode::Enter if n > 0 => {
+                self.col_idx = self.emp_sel.min(n - 1);
+                self.col_focus = 0;
+                self.screen = Screen::Colony;
+            }
+            KeyCode::F3 => self.open_fleet(),
+            KeyCode::Escape | KeyCode::F2 => {
+                self.screen = if self.sim.docked.is_some() {
+                    self.dock_screen()
+                } else {
+                    Screen::Flight
+                }
+            }
+            _ => {}
+        }
+    }
+
+    /// The screen to return to while docked.
+    fn dock_screen(&self) -> Screen {
+        if self.sim.docked_colony().is_some() {
+            Screen::Colony
+        } else {
+            Screen::Station
+        }
+    }
+
+    fn colony_key(&mut self, code: KeyCode) {
+        let ci = self.col_idx;
+        if ci >= self.sim.colonies.len() {
+            self.screen = Screen::Empire;
+            return;
+        }
+        let here = self.sim.docked_colony() == Some(ci);
+        let nb = self.sim.colonies[ci].buildings.len();
+        let nres = self.data.resources.len();
+        let np = self.data.policies.len();
+        match code {
+            KeyCode::Tab => self.col_focus = (self.col_focus + 1) % 4,
+            KeyCode::ArrowUp => match self.col_focus {
+                0 if nb > 0 => self.b_sel = (self.b_sel + nb - 1) % nb,
+                1 => self.s_sel = (self.s_sel + nres - 1) % nres,
+                2 => self.p_sel = (self.p_sel + np - 1) % np,
+                _ => {
+                    self.build_sel =
+                        (self.build_sel + self.data.buildings.len() - 1) % self.data.buildings.len()
+                }
+            },
+            KeyCode::ArrowDown => match self.col_focus {
+                0 if nb > 0 => self.b_sel = (self.b_sel + 1) % nb,
+                1 => self.s_sel = (self.s_sel + 1) % nres,
+                2 => self.p_sel = (self.p_sel + 1) % np,
+                _ => self.build_sel = (self.build_sel + 1) % self.data.buildings.len(),
+            },
+            KeyCode::ArrowLeft | KeyCode::ArrowRight if self.col_focus == 2 => {
+                let len = self.data.policies[self.p_sel].levels.len();
+                let cur = self.sim.colonies[ci].policies[self.p_sel];
+                let next = if code == KeyCode::ArrowRight {
+                    (cur + 1).min(len - 1)
+                } else {
+                    cur.saturating_sub(1)
+                };
+                let _ = self.sim.colony_set_policy(ci, self.p_sel, next);
+            }
+            KeyCode::Space if self.col_focus == 0 && nb > 0 => {
+                let b = &mut self.sim.colonies[ci].buildings[self.b_sel.min(nb - 1)];
+                b.enabled = !b.enabled;
+            }
+            KeyCode::KeyR if self.col_focus == 0 && nb > 0 => {
+                let b = &mut self.sim.colonies[ci].buildings[self.b_sel.min(nb - 1)];
+                b.recipe += 1;
+            }
+            KeyCode::KeyX if self.col_focus == 0 && nb > 0 => {
+                let k = self.b_sel.min(nb - 1);
+                match self.sim.colony_demolish(ci, k) {
+                    Ok(()) => self.say("BATIMENT DEMOLI"),
+                    Err(e) => self.say(e.to_uppercase()),
+                }
+                self.b_sel = 0;
+            }
+            KeyCode::KeyD if self.col_focus == 1 => {
+                match self.sim.colony_deposit(ci, self.s_sel, None) {
+                    Ok(kg) => self.say(format!("DEPOSE {kg:.0} KG")),
+                    Err(e) => self.say(e.to_uppercase()),
+                }
+            }
+            KeyCode::KeyW if self.col_focus == 1 => {
+                match self.sim.colony_withdraw(ci, self.s_sel, None) {
+                    Ok(kg) => self.say(format!("RETIRE {kg:.0} KG")),
+                    Err(e) => self.say(e.to_uppercase()),
+                }
+            }
+            KeyCode::Enter if self.col_focus == 3 => {
+                match self.sim.colony_build(ci, self.build_sel) {
+                    Ok(()) => self.say("CONSTRUCTION LANCEE"),
+                    Err(e) => self.say(e.to_uppercase()),
+                }
+            }
+            KeyCode::KeyT => match self.sim.colony_withdraw_treasury(ci) {
+                Ok(c) => self.say(format!("TRESORERIE RECUPEREE: {c:.0} CR")),
+                Err(e) => self.say(e.to_uppercase()),
+            },
+            KeyCode::KeyU if here => {
+                self.sim.undock();
+                self.handle_events();
+            }
+            KeyCode::F3 => self.open_fleet(),
+            KeyCode::Escape | KeyCode::F2 => self.screen = Screen::Empire,
+            _ => {}
+        }
+        let _ = here;
+    }
+
+    fn fleet_key(&mut self, code: KeyCode) {
+        // Hull picker (docked at a station).
+        if let Some(sel) = self.hull_pick {
+            let n = self.data.hulls.len();
+            match code {
+                KeyCode::ArrowUp => self.hull_pick = Some((sel + n - 1) % n),
+                KeyCode::ArrowDown => self.hull_pick = Some((sel + 1) % n),
+                KeyCode::Enter => {
+                    match self.sim.buy_fleet_ship(sel) {
+                        Ok(_) => self.say("VAISSEAU ACHETE"),
+                        Err(e) => self.say(e.to_uppercase()),
+                    }
+                    self.hull_pick = None;
+                }
+                KeyCode::Escape => self.hull_pick = None,
+                _ => {}
+            }
+            return;
+        }
+        // Route editor.
+        if let Some(mut ed) = self.editor.clone() {
+            let ne = self.endpoints.len().max(1);
+            let nr = self.data.resources.len();
+            let step =
+                |cur: usize, n: usize, up: bool| if up { (cur + 1) % n } else { (cur + n - 1) % n };
+            match code {
+                KeyCode::Tab | KeyCode::ArrowDown => ed.field = (ed.field + 1) % 4,
+                KeyCode::ArrowUp => ed.field = (ed.field + 3) % 4,
+                KeyCode::ArrowRight | KeyCode::ArrowLeft => {
+                    let up = code == KeyCode::ArrowRight;
+                    match ed.field {
+                        0 => ed.from = step(ed.from, ne, up),
+                        1 => ed.to = step(ed.to, ne, up),
+                        2 => ed.res = step(ed.res, nr, up),
+                        _ => {
+                            ed.kg =
+                                (ed.kg + if up { 1000.0 } else { -1000.0 }).clamp(500.0, 200_000.0)
+                        }
+                    }
+                }
+                KeyCode::Enter => {
+                    if let (Some(a), Some(b)) = (
+                        self.endpoints.get(ed.from).cloned(),
+                        self.endpoints.get(ed.to).cloned(),
+                    ) {
+                        match self.sim.create_route(a, b, ed.res, ed.kg) {
+                            Ok(_) => self.say("ROUTE CREEE"),
+                            Err(e) => self.say(e.to_uppercase()),
+                        }
+                    }
+                    self.editor = None;
+                    return;
+                }
+                KeyCode::Escape => {
+                    self.editor = None;
+                    return;
+                }
+                _ => {}
+            }
+            self.editor = Some(ed);
+            return;
+        }
+        let (ns, nr) = (self.sim.fleet.len(), self.sim.routes.len());
+        match code {
+            KeyCode::Tab => self.fleet_focus = 1 - self.fleet_focus,
+            KeyCode::ArrowUp => {
+                if self.fleet_focus == 0 && ns > 0 {
+                    self.ship_sel2 = (self.ship_sel2 + ns - 1) % ns;
+                } else if nr > 0 {
+                    self.route_sel = (self.route_sel + nr - 1) % nr;
+                }
+            }
+            KeyCode::ArrowDown => {
+                if self.fleet_focus == 0 && ns > 0 {
+                    self.ship_sel2 = (self.ship_sel2 + 1) % ns;
+                } else if nr > 0 {
+                    self.route_sel = (self.route_sel + 1) % nr;
+                }
+            }
+            KeyCode::KeyN => {
+                if self.endpoints.len() < 2 {
+                    self.say("IL FAUT AU MOINS DEUX POINTS (COLONIES / STATIONS)");
+                } else {
+                    self.editor = Some(RouteEditor {
+                        from: 0,
+                        to: 1,
+                        res: 0,
+                        kg: 5000.0,
+                        field: 0,
+                    });
+                }
+            }
+            KeyCode::KeyA if ns > 0 && nr > 0 => match self
+                .sim
+                .assign_route(self.ship_sel2.min(ns - 1), self.route_sel.min(nr - 1))
+            {
+                Ok(()) => self.say("VAISSEAU AFFECTE A LA ROUTE"),
+                Err(e) => self.say(e.to_uppercase()),
+            },
+            KeyCode::KeyU if ns > 0 => self.sim.unassign_ship(self.ship_sel2.min(ns - 1)),
+            KeyCode::KeyX => {
+                if self.fleet_focus == 1 && nr > 0 {
+                    match self.sim.delete_route(self.route_sel.min(nr - 1)) {
+                        Ok(()) => self.route_sel = 0,
+                        Err(e) => self.say(e.to_uppercase()),
+                    }
+                } else if ns > 0 {
+                    match self.sim.sell_fleet_ship(self.ship_sel2.min(ns - 1)) {
+                        Ok(v) => {
+                            self.say(format!("VAISSEAU REVENDU {v:.0} CR"));
+                            self.ship_sel2 = 0;
+                        }
+                        Err(e) => self.say(e.to_uppercase()),
+                    }
+                }
+            }
+            KeyCode::KeyB => {
+                if self.sim.docked_station().is_ok() {
+                    self.hull_pick = Some(0);
+                } else {
+                    self.say("ACHAT DE VAISSEAUX : A QUAI D UNE STATION");
+                }
+            }
+            KeyCode::F2 => self.open_empire(),
+            KeyCode::Escape | KeyCode::F3 => {
+                self.screen = if self.sim.docked.is_some() {
+                    self.dock_screen()
                 } else {
                     Screen::Flight
                 }
@@ -986,7 +1338,10 @@ impl Game {
             KeyCode::Minus | KeyCode::NumpadSubtract => self.map_scale *= 1.5,
             KeyCode::F1 => {
                 self.say("WASD/QE:ROT ESPACE/X:POUSSEE FLECHES:RCS F:ASSIST V:LASER");
-                self.say("TAB/T/Y:CIBLE G:AUTO D:AMARRER I:SOUTE M:CARTE F5/F9:SAUV/CHARG");
+                self.say("TAB/T/Y/R:CIBLE G:AUTO D:AMARRER I:SOUTE M:CARTE F5/F9:SAUV/CHARG");
+                self.say(
+                    "F2:EMPIRE F3:FLOTTE O:COLONISER LA CIBLE L:GALAXIE K:EQUIPAGE H:VAISSEAU",
+                );
             }
             _ => {}
         }

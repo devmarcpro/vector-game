@@ -1,0 +1,9 @@
+[package]
+name = "vector-game"
+version = "0.1.0"
+edition.workspace = true
+[dependencies]
+vector-core = { path = "../core" }
+vector-render = { path = "../render" }
+winit = "0.30"
+softbuffer = "0.4"

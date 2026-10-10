@@ -171,6 +171,26 @@ fn snapshot(path: &str, scene: &str, data: Arc<GameData>) {
             g.advance(0.1);
         }
         "pause" => g.screen = Screen::Pause,
+        "crew" | "recruit" | "journal" => {
+            let (st, _) = g.sim.nearest_station().expect("station");
+            g.sim.spawn_near(st, g.sim.bodies[st].radius + 200.0);
+            g.key(KeyCode::KeyD, None, true);
+            g.sim.credits = 100_000.0;
+            g.sim.hire(1, 4).expect("hire");
+            let data = Arc::clone(&g.data);
+            for (id, kg) in [("food", 80.0), ("water", 300.0)] {
+                g.sim
+                    .ship
+                    .cargo
+                    .add(&data, data.resource_index(id).expect("res"), kg);
+            }
+            g.sim.advance(40.0 * 86_400.0, &ShipInput::default());
+            g.screen = match scene {
+                "crew" => Screen::Crew,
+                "recruit" => Screen::Recruit,
+                _ => Screen::Journal,
+            };
+        }
         "ship" | "picker" | "yard" => {
             let (st, _) = g.sim.nearest_station().expect("station");
             g.sim.spawn_near(st, g.sim.bodies[st].radius + 200.0);

@@ -28,6 +28,24 @@ pub fn new_sim(seed: u64, data: Arc<GameData>) -> Sim {
     let station = sys.bodies.iter().position(|b| b.kind == BodyKind::Station);
     let mut sim = Sim::new(sys, data);
     sim.spawn_near(station.unwrap_or(0), 3000.0);
+    // Starting supplies and one engineer.
+    let data = Arc::clone(&sim.data);
+    for (id, kg) in [
+        ("food", 60.0),
+        ("water", 150.0),
+        ("spare_parts", 20.0),
+        ("medicine", 3.0),
+    ] {
+        if let Some(r) = data.resource_index(id) {
+            sim.ship.cargo.add(&data, r, kg);
+        }
+    }
+    if let Some(sk) = data.skill_index("ingenierie") {
+        let p =
+            vector_sim::crew::generate_person(&data, vector_core::mix64(seed ^ 0xC4E0), Some(sk));
+        let role = vector_sim::crew::Crew::role_index(&data, "engineer");
+        sim.crew.hire(&data, p, role, 0.0);
+    }
     sim
 }
 

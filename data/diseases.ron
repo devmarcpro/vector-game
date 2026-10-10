@@ -1,0 +1,12 @@
+// Diseases: severity = health loss per day while untreated; lethality = extra daily death chance at health<0.2;
+// contagion = chance per day per crewmate; cure = resource id consumed to treat (empty = rest only).
+[
+ (id:"grippe", name:"Grippe spatiale", severity:0.04, duration_days:6.0, contagion:0.10, lethality:0.0, cure:"medicine"),
+ (id:"intoxication", name:"Intoxication alimentaire", severity:0.08, duration_days:2.0, contagion:0.0, lethality:0.0, cure:"medicine"),
+ (id:"radiation", name:"Mal des rayons", severity:0.07, duration_days:12.0, contagion:0.0, lethality:0.02, cure:"medicine"),
+ (id:"atrophie", name:"Atrophie musculaire", severity:0.01, duration_days:40.0, contagion:0.0, lethality:0.0, cure:""),
+ (id:"fievre_bleue", name:"Fievre bleue", severity:0.10, duration_days:8.0, contagion:0.25, lethality:0.05, cure:"medicine"),
+ (id:"pneumonie", name:"Pneumonie", severity:0.09, duration_days:10.0, contagion:0.03, lethality:0.06, cure:"medicine"),
+ (id:"fracture", name:"Fracture", severity:0.02, duration_days:25.0, contagion:0.0, lethality:0.0, cure:""),
+ (id:"depression", name:"Depression", severity:0.01, duration_days:60.0, contagion:0.0, lethality:0.0, cure:""),
+]

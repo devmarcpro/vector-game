@@ -100,6 +100,74 @@ pub struct Hull {
     pub slots: Vec<(SlotType, u8)>,
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct Skill {
+    pub id: String,
+    pub name: String,
+}
+
+/// A crew post; `skill` is the skill id that drives efficiency (empty = none).
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct Role {
+    pub id: String,
+    pub name: String,
+    pub skill: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct Trait {
+    pub id: String,
+    pub name: String,
+    pub effects: Vec<(String, f64)>,
+}
+
+impl Trait {
+    pub fn effect(&self, key: &str) -> f64 {
+        self.effects
+            .iter()
+            .filter(|(k, _)| k == key)
+            .map(|(_, v)| v)
+            .sum()
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct Disease {
+    pub id: String,
+    pub name: String,
+    pub severity: f64,
+    pub duration_days: f64,
+    pub contagion: f64,
+    pub lethality: f64,
+    pub cure: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct Culture {
+    pub id: String,
+    pub name: String,
+    pub first_start: Vec<String>,
+    pub first_end: Vec<String>,
+    pub last_start: Vec<String>,
+    pub last_end: Vec<String>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct EventDef {
+    pub id: String,
+    pub kind: String,
+    pub weight: f64,
+    pub needs_other: bool,
+    pub cond: Vec<(String, String, f64)>,
+    pub effects: Vec<(String, f64)>,
+    pub text: String,
+}
+
+const PERSON_FIELDS: [&str; 14] = [
+    "morale", "health", "loyalty", "stress", "fatigue", "hunger", "thirst", "social", "relation",
+    "age", "credits", "death", "quit", "salary",
+];
+
 #[derive(Debug)]
 pub enum DataError {
     Io(PathBuf, std::io::Error),
@@ -124,6 +192,13 @@ pub struct GameData {
     pub asteroids: Vec<AsteroidClass>,
     pub modules: Vec<Module>,
     pub hulls: Vec<Hull>,
+    pub skills: Vec<Skill>,
+    pub roles: Vec<Role>,
+    pub traits: Vec<Trait>,
+    pub diseases: Vec<Disease>,
+    pub cultures: Vec<Culture>,
+    pub events: Vec<EventDef>,
+    pub texts: Vec<(String, Vec<String>)>,
 }
 
 fn read<T: for<'a> Deserialize<'a>>(path: &Path) -> Result<T, DataError> {
@@ -138,9 +213,47 @@ impl GameData {
             asteroids: read(&dir.join("worldgen/asteroids.ron"))?,
             modules: read(&dir.join("modules.ron"))?,
             hulls: read(&dir.join("hulls.ron"))?,
+            skills: read(&dir.join("skills.ron"))?,
+            roles: read(&dir.join("roles.ron"))?,
+            traits: read(&dir.join("traits.ron"))?,
+            diseases: read(&dir.join("diseases.ron"))?,
+            cultures: read(&dir.join("cultures_names.ron"))?,
+            events: read(&dir.join("events.ron"))?,
+            texts: read(&dir.join("text/crew.ron"))?,
         };
         d.validate()?;
         Ok(d)
+    }
+
+    pub fn skill_index(&self, id: &str) -> Option<usize> {
+        self.skills.iter().position(|s| s.id == id)
+    }
+    pub fn disease_index(&self, id: &str) -> Option<usize> {
+        self.diseases.iter().position(|s| s.id == id)
+    }
+    pub fn trait_index(&self, id: &str) -> Option<usize> {
+        self.traits.iter().position(|s| s.id == id)
+    }
+    /// Template variants for a text key (empty when unknown).
+    pub fn text(&self, key: &str) -> &[String] {
+        self.texts
+            .iter()
+            .find(|(k, _)| k == key)
+            .map_or(&[], |(_, v)| v.as_slice())
+    }
+
+    fn valid_field(&self, f: &str) -> bool {
+        let f = f.strip_prefix("other.").unwrap_or(f);
+        if let Some(sk) = f.strip_prefix("skill:") {
+            return sk == "*" || self.skill_index(sk).is_some();
+        }
+        if let Some(t) = f.strip_prefix("trait:") {
+            return self.trait_index(t).is_some();
+        }
+        if let Some(d) = f.strip_prefix("disease:") {
+            return self.disease_index(d).is_some();
+        }
+        PERSON_FIELDS.contains(&f)
     }
 
     pub fn module_index(&self, id: &str) -> Option<usize> {
@@ -214,6 +327,60 @@ impl GameData {
                 return bad(format!("coque invalide: {}", h.id));
             }
         }
+        let mut skill_ids = BTreeSet::new();
+        for k in &self.skills {
+            if !skill_ids.insert(k.id.as_str()) {
+                return bad(format!("competence en double: {}", k.id));
+            }
+        }
+        for r in &self.roles {
+            if !r.skill.is_empty() && !skill_ids.contains(r.skill.as_str()) {
+                return bad(format!("poste {} reference une competence inconnue", r.id));
+            }
+        }
+        if self.roles.is_empty() || self.cultures.is_empty() {
+            return bad("roles ou cultures vides".into());
+        }
+        let mut tids = BTreeSet::new();
+        for t in &self.traits {
+            if !tids.insert(t.id.as_str()) {
+                return bad(format!("trait en double: {}", t.id));
+            }
+        }
+        let mut dids = BTreeSet::new();
+        for d in &self.diseases {
+            if !dids.insert(d.id.as_str()) {
+                return bad(format!("maladie en double: {}", d.id));
+            }
+            if !d.cure.is_empty() && self.resource_index(&d.cure).is_none() {
+                return bad(format!("maladie {}: remede inconnu {}", d.id, d.cure));
+            }
+            if d.duration_days <= 0.0 {
+                return bad(format!("maladie {}: duree invalide", d.id));
+            }
+        }
+        let mut eids = BTreeSet::new();
+        for e in &self.events {
+            if !eids.insert(e.id.as_str()) {
+                return bad(format!("evenement en double: {}", e.id));
+            }
+            if e.weight <= 0.0 || !e.text.contains("{a}") {
+                return bad(format!("evenement invalide: {}", e.id));
+            }
+            if e.text.contains("{b}") && !e.needs_other {
+                return bad(format!("evenement {} utilise {{b}} sans needs_other", e.id));
+            }
+            for (f, op, _) in &e.cond {
+                if (op != "<" && op != ">") || !(self.valid_field(f) || f == "skill:*") {
+                    return bad(format!("evenement {}: condition invalide {f} {op}", e.id));
+                }
+            }
+            for (f, _) in &e.effects {
+                if !self.valid_field(f) {
+                    return bad(format!("evenement {}: effet invalide {f}", e.id));
+                }
+            }
+        }
         Ok(())
     }
 }
@@ -253,6 +420,8 @@ mod tests {
         assert!(d.asteroids.len() >= 4);
         assert!(d.modules.len() >= 60, "{}", d.modules.len());
         assert!(d.hulls.len() >= 15);
+        assert!(d.skills.len() >= 12 && d.traits.len() >= 30 && d.events.len() >= 25);
+        assert!(d.resource_index("food").is_some() && !d.text("hire").is_empty());
     }
 
     #[test]

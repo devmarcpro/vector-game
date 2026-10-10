@@ -2,12 +2,14 @@
 //! Units: SI (m, s, kg, N). See docs/SIM_MODEL.md.
 pub mod autopilot;
 pub mod cargo;
+pub mod crew;
 pub mod design;
 pub mod market;
 pub mod save;
 
 use autopilot::Autopilot;
 use cargo::Cargo;
+use crew::{Crew, CrewCtx};
 use design::{Activity, Effective, ShipDesign, ShipStats, Systems, RCS_ISP};
 use market::Market;
 use serde::{Deserialize, Serialize};
@@ -170,6 +172,7 @@ pub struct Sim {
     /// Spare modules owned by the player, by module index.
     pub module_stock: Vec<u32>,
     pub effective: Effective,
+    pub crew: Crew,
 }
 
 /// Propellant mass flow (kg/s) for a thrust force (N) at a given specific impulse.
@@ -223,6 +226,7 @@ impl Sim {
             docked: None,
             laser_on: false,
             effective: Effective::default(),
+            crew: Crew::new(),
         };
         s.refresh_bodies();
         s.update_ref();
@@ -367,6 +371,42 @@ impl Sim {
             }
         }
         self.ship.refresh_stats(&self.data);
+        self.update_crew();
+    }
+
+    /// Advance the crew layer to the current time and apply what the engineers repaired.
+    fn update_crew(&mut self) {
+        let data = Arc::clone(&self.data);
+        let eff = &self.effective;
+        let mut ctx = CrewCtx {
+            data: &data,
+            cargo: &mut self.ship.cargo,
+            credits: &mut self.credits,
+            life_ok: eff.life_ok,
+            life_capacity: eff.life_capacity,
+            crew_cap: self.ship.stats.crew_cap,
+            food_per_day: eff.food_per_day,
+            medbay: eff.medbay,
+            workshop: eff.workshop,
+            overheating: self.ship.sys.overheating,
+            seed: self.system.seed,
+        };
+        let out = self.crew.update(&mut ctx, self.time);
+        let mut left = out.repair;
+        if left > 0.0 {
+            let mut order: Vec<usize> = self.ship.design.modules(&data).map(|(i, _)| i).collect();
+            order.sort_by(|&a, &b| self.ship.sys.health[a].total_cmp(&self.ship.sys.health[b]));
+            for i in order {
+                let missing = 1.0 - self.ship.sys.health[i];
+                if missing <= 0.0 || left <= 0.0 {
+                    break;
+                }
+                let add = missing.min(left);
+                self.ship.sys.health[i] += add;
+                left -= add;
+            }
+            self.ship.refresh_stats(&data);
+        }
     }
 
     pub fn step_dt(&mut self, manual: &ShipInput, dt: f64) {
@@ -421,7 +461,11 @@ impl Sim {
             rcs_use,
         };
         self.run_systems(&act, dt);
-        let eff = self.effective.clone();
+        let mut eff = self.effective.clone();
+        let pilot = Crew::role_index(&self.data, "pilot");
+        eff.ang_accel *= (self.crew.role_efficiency(&self.data, pilot, self.time)
+            / crew::NO_CREW_EFF)
+            .clamp(0.8, 1.3);
 
         let assist = self.ship.assist;
         // Linear assist is for station-keeping: off under autopilot and at high relative speed.
@@ -514,7 +558,9 @@ impl Sim {
         self.update_ref();
         self.collide();
         if aimed && eff.mining_rate > 0.0 {
-            self.mine_tick(dt, eff.mining_rate, eff.mining_range);
+            let miner = Crew::role_index(&self.data, "miner");
+            let eff_mult = self.crew.role_efficiency(&self.data, miner, self.time);
+            self.mine_tick(dt, eff.mining_rate * eff_mult, eff.mining_range);
         }
     }
 
@@ -721,6 +767,59 @@ impl Sim {
         let data = Arc::clone(&self.data);
         let kg = self.ship.cargo.kg[res];
         self.ship.cargo.remove(&data, res, kg)
+    }
+
+    // ---- crew services ----------------------------------------------------
+
+    /// Recruits available at the docked station.
+    pub fn candidates(&self) -> Vec<crew::Person> {
+        match self.docked {
+            Some(st) => crew::candidates(&self.data, self.system.seed, st, self.time, 6),
+            None => Vec::new(),
+        }
+    }
+
+    /// Hire candidate `k` of the docked station's pool into `role`.
+    pub fn hire(&mut self, k: usize, role: usize) -> Result<f64, &'static str> {
+        self.docked.ok_or("non amarre")?;
+        let cand = self
+            .candidates()
+            .into_iter()
+            .nth(k)
+            .ok_or("candidat inconnu")?;
+        if self
+            .crew
+            .members
+            .iter()
+            .any(|m| m.alive && m.name == cand.name)
+        {
+            return Err("deja a bord");
+        }
+        if self.crew.count() as f64 >= self.ship.stats.crew_cap {
+            return Err("pas assez de couchettes (modules d'habitation)");
+        }
+        let cost = crew::hire_cost(&cand);
+        if cost > self.credits {
+            return Err("fonds insuffisants");
+        }
+        self.credits -= cost;
+        self.crew.hire(&self.data, cand, role, self.time);
+        Ok(cost)
+    }
+
+    pub fn dismiss(&mut self, idx: usize) -> Result<(), &'static str> {
+        self.docked.ok_or("non amarre")?;
+        if idx >= self.crew.members.len() {
+            return Err("membre inconnu");
+        }
+        self.crew.dismiss(&self.data, idx, self.time);
+        Ok(())
+    }
+
+    pub fn set_role(&mut self, idx: usize, role: usize) {
+        if let Some(p) = self.crew.members.get_mut(idx) {
+            p.role = role % self.data.roles.len();
+        }
     }
 
     // ---- shipyard ---------------------------------------------------------
@@ -1186,6 +1285,56 @@ mod tests {
         assert!(s.uninstall_module(cargo_slot).is_err());
         let sold = s.shop_sell_module(radiator).expect("sell back");
         assert!((sold - s.data.modules[radiator].cost * RESALE).abs() < 1e-9);
+    }
+
+    #[test]
+    fn hiring_respects_capacity_funds_and_survives_saves() {
+        let mut s = docked_sim();
+        assert_eq!(s.candidates().len(), 6);
+        let miner = Crew::role_index(&s.data, "miner");
+        let c0 = s.credits;
+        let cost = s.hire(0, miner).expect("hire");
+        assert!((c0 - s.credits - cost).abs() < 1e-9 && cost > 0.0);
+        assert!(
+            s.hire(0, miner).is_err(),
+            "same person cannot be hired twice"
+        );
+        assert!(s.ship.stats.crew_cap >= 2.0);
+        s.hire(1, miner).expect("second berth");
+        assert!(s.hire(2, miner).is_err(), "no third berth");
+        let n = s.crew.members.len();
+        let bytes = s.save_bytes().expect("save");
+        let loaded = Sim::load_bytes(&bytes, data()).expect("load");
+        assert_eq!(loaded.crew.members.len(), n);
+        assert_eq!(loaded.crew.members[0].name, s.crew.members[0].name);
+        s.credits = 0.0;
+        s.dismiss(0).expect("dismiss");
+        assert_eq!(s.crew.members.len(), n - 1);
+    }
+
+    #[test]
+    fn engineers_repair_damaged_modules_over_time() {
+        let mut s = docked_sim();
+        let eng = Crew::role_index(&s.data, "engineer");
+        s.hire(0, eng).expect("hire");
+        s.crew.members[0].shift = 0;
+        let sk = s.data.skill_index("ingenierie").expect("skill");
+        s.crew.members[0].skills[sk] = 8.0;
+        let data = Arc::clone(&s.data);
+        for (id, kg) in [("spare_parts", 40.0), ("food", 50.0), ("water", 100.0)] {
+            s.ship
+                .cargo
+                .add(&data, data.resource_index(id).expect("res"), kg);
+        }
+        s.ship.sys.health[3] = 0.3;
+        s.advance(6.0 * crew::DAY, &ShipInput::default());
+        assert!(
+            s.ship.sys.health[3] > 0.45,
+            "engineer should have mended the module: {}",
+            s.ship.sys.health[3]
+        );
+        let spare = data.resource_index("spare_parts").expect("spare");
+        assert!(s.ship.cargo.kg[spare] < 40.0, "repairs consume spare parts");
     }
 
     #[test]

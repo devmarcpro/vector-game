@@ -15,3 +15,11 @@
 | Evenements | 0 | >= 150 |
 | Gabarits de texte | 0 | >= 300 |
 | Anomalies | 0 | >= 10 |
+
+| Competences | 12 | |
+| Traits | 32 | |
+| Competences+traits | 44 | >= 40 OK |
+| Maladies | 8 | >= 30 |
+| Evenements | 30 | >= 150 |
+| Cultures de noms | 6 | |
+| Postes | 10 | |

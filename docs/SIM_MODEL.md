@@ -33,3 +33,13 @@ Unites SI. Pas fixe 30 Hz (SIM_DT).
 - Dégâts : un impact (> 5 m/s) retire des PV de coque et abîme un module (et un voisin à 20 %) ; la santé réduit les performances, 0 = module perdu.
 - Chantier naval (amarré) : acheter/vendre des modules (revente 50 %), installer/retirer (stock), changer de coque (reprise 50 %, soute vide requise). Réparation : 2 cr/PV de coque + 30 % du prix par point de santé de module.
 - Assistance linéaire désactivée sous pilote auto et au-dessus de 500 m/s relatifs ; le pilote auto compense la gravité (feed-forward) et arrive à < 100 m de l'altitude d'arrêt avec < 15 m/s.
+
+## Equipage (M5)
+- Chaque personne : identité générée (culture -> syllabes), âge, 12 compétences (0-10), 1-3 traits (32 traits en données, effets: morale_base, social_need, temper, stress_resist, work_speed, health_base, appetite, sleep_need, luck), besoins (fatigue, faim, soif, social, stress ; 0 = satisfait, 1 = critique), morale, loyauté, santé, maladie en cours, relations (-100..100), poste, quart (3 x 8 h), salaire.
+- Couche équipage au pas de 10 min (1 h si le retard dépasse 2 jours, 1 jour au-delà de 60 jours ; rattrapage borné).
+- Consommation : nourriture 0.6 kg/j et eau 3 kg/j par personne depuis la soute (l'eau est recyclée à 90 % si le support de vie est alimenté). Serres : kg de nourriture/jour ajoutés à la soute. Air : remonte si le support de vie alimenté couvre l'effectif, sinon chute de 20 %/h ; sous 40 % la santé baisse.
+- Santé : faim > 0.9, soif > 0.8, air bas et maladie la réduisent ; régénération lente si tout va bien (bonus médecin de garde et infirmerie). Maladies (data/diseases.ron) : sévérité/jour, durée, contagion, létalité ; traitement par médicament consommé si un médecin est de garde.
+- Moral : cible = 0.75 + traits - faim/soif - fatigue - social - stress - entassement (> couchettes) - impayés + travail. Loyauté dérive avec le moral ; salaires impayés = -8 % loyauté, -10 % moral par jour.
+- Postes (data/roles.ron) : efficacité = (0.6 + 0.1 x compétence) x vitesse de travail x santé x (1 - 0.4 fatigue) de la meilleure personne de garde ; personne = 0.7. Effets : mineur -> débit du laser, pilote -> accélération angulaire (x0.8..1.3), ingénieur/mécanicien -> réparation des modules (1 % de santé/h x (0.5 + compétence/5) x (1 + atelier), 1 kg de pièces détachées par 1 %).
+- Evénements émergents (data/events.ron, 30 aujourd'hui) : conditions et effets déclaratifs sur la personne (et un partenaire tiré au hasard), journal en français. Probabilité de base 1.4 %/h par personne (x température). Les morts affectent le moral des proches.
+- Recrutement : 6 candidats par station, renouvelés tous les 30 jours, coût = 5 jours de salaire, plafonné par les couchettes (modules d'habitation). Paie quotidienne.

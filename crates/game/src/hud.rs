@@ -361,6 +361,17 @@ fn draw_status(fb: &mut Framebuffer, v: &View) {
         &format!("SOUTE {:.0}/{:.0} KG", ship.cargo.mass, ship.cargo.cap_mass),
         if ship.cargo.is_full() { RED } else { GREEN },
     );
+    fb.text(
+        1,
+        8,
+        &format!(
+            "EQUIPAGE {}/{:.0}  AIR {:.0}%",
+            sim.crew.count(),
+            ship.stats.crew_cap,
+            sim.crew.air * 100.0
+        ),
+        if sim.crew.air < 0.5 { RED } else { GREEN },
+    );
     if let Some((_, range)) = sim.nearest_station() {
         if range < vector_sim::DOCK_RANGE * 4.0 {
             fb.text(

@@ -79,6 +79,7 @@ impl ShipDesign {
             "cargo_mk2",
             "lifesup_mk1",
             "battery_mk1",
+            "habitat_mk1",
             "radiator_mk2",
             "rcs_mk1",
             "laser_mk2",
@@ -179,6 +180,12 @@ pub struct Effective {
     pub mining_rate: f64,
     pub mining_range: f64,
     pub life_ok: bool,
+    /// Number of people the powered life support can sustain.
+    pub life_capacity: f64,
+    /// kg of food per day grown by powered greenhouses.
+    pub food_per_day: f64,
+    pub medbay: f64,
+    pub workshop: f64,
 }
 
 /// Per-ship dynamic systems state.
@@ -345,6 +352,9 @@ impl Systems {
             e.mining_rate += m.mining_rate * k;
             e.mining_range = f64::max(e.mining_range, m.mining_range);
             life += m.life_support * k;
+            e.food_per_day += m.food * k;
+            e.medbay += m.medical * k;
+            e.workshop += m.repair * k;
         }
         e.isp = if e.thrust > 0.0 {
             thrust_isp / e.thrust
@@ -354,6 +364,7 @@ impl Systems {
         e.max_rate *= 1.0 + agility;
         e.ang_accel *= 1.0 + agility;
         e.life_ok = life > 0.0;
+        e.life_capacity = life;
         e
     }
 

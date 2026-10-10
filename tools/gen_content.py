@@ -184,7 +184,7 @@ with open(os.path.join(OUT, "modules.ron"), "w", encoding="utf-8") as f:
 hulls = [
     ("shuttle", "Navette Colibri", "navette", 3500, 400, 25000, 6.0e4, 2.2, 3.0, [("Core", 1), ("Core", 1), ("Internal", 1), ("Internal", 1), ("External", 1)]),
     ("skiff", "Esquif Sparrow", "leger", 4800, 600, 48000, 1.0e5, 2.0, 2.6, [("Core", 2), ("Core", 1), ("Internal", 2), ("Internal", 1), ("External", 1), ("Hardpoint", 1)]),
-    ("prospector", "Prospecteur Atlas", "mineur", 6000, 1000, 90000, 2.8e5, 1.5, 2.0, [("Core", 2), ("Core", 2), ("Core", 1), ("Internal", 2), ("Internal", 2), ("Internal", 1), ("Internal", 1), ("External", 2), ("External", 1), ("Hardpoint", 2)]),
+    ("prospector", "Prospecteur Atlas", "mineur", 6000, 1000, 90000, 2.8e5, 1.5, 2.0, [("Core", 2), ("Core", 2), ("Core", 1), ("Internal", 2), ("Internal", 2), ("Internal", 1), ("Internal", 1), ("Internal", 1), ("External", 2), ("External", 1), ("Hardpoint", 2)]),
     ("driller", "Foreur Titan", "mineur", 11000, 1800, 210000, 4.5e5, 1.2, 1.5, [("Core", 3), ("Core", 2), ("Core", 2), ("Internal", 3), ("Internal", 3), ("Internal", 2), ("Internal", 1), ("External", 3), ("External", 2), ("Hardpoint", 3), ("Hardpoint", 2)]),
     ("courier", "Courrier Zephyr", "rapide", 5200, 700, 140000, 3.0e5, 2.4, 3.2, [("Core", 3), ("Core", 2), ("Internal", 2), ("Internal", 1), ("External", 2), ("Hardpoint", 1)]),
     ("hauler", "Cargo Mule", "cargo", 9500, 1500, 160000, 3.5e5, 1.1, 1.3, [("Core", 2), ("Core", 2), ("Internal", 3), ("Internal", 3), ("Internal", 3), ("Internal", 2), ("External", 2), ("External", 2), ("Hardpoint", 1)]),

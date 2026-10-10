@@ -29,6 +29,9 @@ pub fn draw(fb: &mut Framebuffer, g: &Game) {
         Screen::Inventory => draw_inventory(fb, g),
         Screen::Ship => draw_ship(fb, g),
         Screen::Shipyard => draw_shipyard(fb, g),
+        Screen::Crew => draw_crew(fb, g),
+        Screen::Recruit => draw_recruit(fb, g),
+        Screen::Journal => draw_journal(fb, g),
         Screen::Flight => {}
     }
 }
@@ -152,7 +155,7 @@ fn draw_station(fb: &mut Framebuffer, g: &Game) {
     fb.text(
         1,
         b + 1,
-        "F:CARBURANT R:REPARER H:VAISSEAU Y:CHANTIER U:DECOLLER HAUT/BAS:CHOISIR",
+        "F:CARBURANT R:REPARER H:VAISSEAU Y:CHANTIER K:EQUIPAGE N:RECRUTER U:DECOLLER",
         DIM,
     );
     for (i, msg) in g.messages.iter().rev().take(2).enumerate() {
@@ -388,4 +391,209 @@ fn draw_shipyard(fb: &mut Framebuffer, g: &Game) {
     for (i, msg) in g.messages.iter().rev().take(2).enumerate() {
         fb.text(1, b + 1 + i, msg, if i == 0 { AMBER } else { DIM });
     }
+}
+
+fn stamp(t: f64) -> String {
+    let day = (t / 86_400.0).floor();
+    let hour = ((t % 86_400.0) / 3600.0).floor();
+    format!("J{:<4}{:02}h", day as i64, hour as i64)
+}
+
+fn draw_crew(fb: &mut Framebuffer, g: &Game) {
+    let s = &g.sim;
+    header(fb, g, "EQUIPAGE");
+    let crew = &s.crew;
+    fb.text(
+        28,
+        2,
+        &format!(
+            "MEMBRES {}/{:.0}  AIR {:.0}%  PAIE {:.0} CR/JOUR",
+            crew.count(),
+            s.ship.stats.crew_cap,
+            crew.air * 100.0,
+            crew.daily_payroll()
+        ),
+        GREEN,
+    );
+    let top = 8;
+    fb.text(
+        1,
+        top,
+        "NOM                  POSTE          Q  SANTE    MORAL    FATIGUE  FAIM     ETAT",
+        DIM,
+    );
+    for (i, p) in crew.members.iter().enumerate() {
+        let sel = i == g.crew_sel;
+        let c = if !p.alive {
+            DIM
+        } else if sel {
+            AMBER
+        } else {
+            GREEN
+        };
+        let state = if !p.alive {
+            "MORT".to_string()
+        } else if let Some((d, left)) = p.disease {
+            format!("{} {:.0}J", g.data.diseases[d].name, left)
+        } else if p.on_duty(s.time) {
+            "AU TRAVAIL".to_string()
+        } else {
+            "REPOS".to_string()
+        };
+        fb.text(
+            1,
+            top + 1 + i,
+            &format!(
+                "{}{:<19.19} {:<14.14} {}  {} {} {} {} {}",
+                if sel { ">" } else { " " },
+                p.name,
+                g.data.roles[p.role].name,
+                p.shift + 1,
+                bar(f64::from(p.health), 6),
+                bar(f64::from(p.morale), 6),
+                bar(f64::from(p.fatigue), 6),
+                bar(f64::from(p.hunger), 6),
+                state
+            ),
+            c,
+        );
+    }
+    if let Some(p) = crew.members.get(g.crew_sel) {
+        let x = 100;
+        fb.text(
+            x,
+            top,
+            &format!("{} - {}", p.name, g.data.cultures[p.culture].name),
+            AMBER,
+        );
+        fb.text(
+            x,
+            top + 1,
+            &format!(
+                "AGE {:.0}  SALAIRE {:.0} CR/J  LOYAUTE {:.0}%",
+                p.age,
+                p.salary,
+                p.loyalty * 100.0
+            ),
+            GREEN,
+        );
+        let traits: Vec<&str> = p
+            .traits
+            .iter()
+            .map(|&t| g.data.traits[t].name.as_str())
+            .collect();
+        fb.text(x, top + 2, &format!("TRAITS: {}", traits.join(", ")), GREEN);
+        let mut sk: Vec<(usize, f32)> = p.skills.iter().copied().enumerate().collect();
+        sk.sort_by(|a, b| b.1.total_cmp(&a.1));
+        for (k, (si, v)) in sk.iter().take(6).enumerate() {
+            fb.text(
+                x,
+                top + 4 + k,
+                &format!(
+                    "{:<13} {} {:.1}",
+                    g.data.skills[*si].name,
+                    bar(f64::from(*v) / 10.0, 10),
+                    v
+                ),
+                GREEN,
+            );
+        }
+        let mut y = top + 11;
+        fb.text(x, y, "RELATIONS:", DIM);
+        for (oid, r) in p.relations.iter().take(6) {
+            if let Some(o) = crew.members.iter().find(|m| m.id == *oid) {
+                y += 1;
+                fb.text(
+                    x,
+                    y,
+                    &format!("{:<19.19} {:+}", o.name, r),
+                    if *r < 0 { RED } else { GREEN },
+                );
+            }
+        }
+    } else {
+        fb.text(
+            1,
+            top + 2,
+            "AUCUN MEMBRE D EQUIPAGE - RECRUTEZ A UNE STATION [N]",
+            DIM,
+        );
+    }
+    let b = fb.rows() - 4;
+    fb.text(1, b, "HAUT/BAS:CHOISIR  GAUCHE/DROITE:POSTE  T:QUART  X:DEBARQUER (A QUAI)  J:JOURNAL  N:RECRUTER  K/ECHAP:RETOUR", DIM);
+    for (i, msg) in g.messages.iter().rev().take(2).enumerate() {
+        fb.text(1, b + 1 + i, msg, if i == 0 { AMBER } else { DIM });
+    }
+}
+
+fn draw_recruit(fb: &mut Framebuffer, g: &Game) {
+    header(fb, g, "RECRUTEMENT");
+    let cands = g.sim.candidates();
+    let top = 8;
+    fb.text(1, top, "NOM                  CULTURE       AGE  MEILLEURE COMPETENCE     TRAITS                      EMBAUCHE", DIM);
+    for (i, p) in cands.iter().enumerate() {
+        let sel = i == g.recruit_sel;
+        let (bi, bv) = p.best_skill();
+        let traits: Vec<&str> = p
+            .traits
+            .iter()
+            .map(|&t| g.data.traits[t].name.as_str())
+            .collect();
+        fb.text(
+            1,
+            top + 1 + i,
+            &format!(
+                "{}{:<19.19} {:<13.13} {:>3.0}  {:<14.14} {:>4.1}   {:<27.27} {:>6.0} CR",
+                if sel { ">" } else { " " },
+                p.name,
+                g.data.cultures[p.culture].name,
+                p.age,
+                g.data.skills[bi].name,
+                bv,
+                traits.join(", "),
+                vector_sim::crew::hire_cost(p)
+            ),
+            if sel { AMBER } else { GREEN },
+        );
+    }
+    fb.text(
+        1,
+        top + 9,
+        &format!(
+            "COUCHETTES: {}/{:.0}   (LE NOUVEAU MEMBRE PREND LE POSTE DE SA MEILLEURE COMPETENCE)",
+            g.sim.crew.count(),
+            g.sim.ship.stats.crew_cap
+        ),
+        DIM,
+    );
+    let b = fb.rows() - 4;
+    fb.text(
+        1,
+        b,
+        "HAUT/BAS:CHOISIR  ENTREE:EMBAUCHER  K:EQUIPAGE  ECHAP:RETOUR",
+        DIM,
+    );
+    for (i, msg) in g.messages.iter().rev().take(2).enumerate() {
+        fb.text(1, b + 1 + i, msg, if i == 0 { AMBER } else { DIM });
+    }
+}
+
+fn draw_journal(fb: &mut Framebuffer, g: &Game) {
+    fb.text(1, 1, "JOURNAL DE BORD", AMBER);
+    let log = &g.sim.crew.log;
+    let rows = fb.rows().saturating_sub(6);
+    let end = log.len().saturating_sub(g.journal_scroll.min(log.len()));
+    let start = end.saturating_sub(rows);
+    for (i, e) in log[start..end].iter().enumerate() {
+        fb.text(1, 3 + i, &format!("{}  {}", stamp(e.time), e.text), GREEN);
+    }
+    if log.is_empty() {
+        fb.text(1, 3, "(RIEN A SIGNALER)", DIM);
+    }
+    fb.text(
+        1,
+        fb.rows() - 3,
+        "HAUT/BAS:DEFILER  K:EQUIPAGE  J/ECHAP:RETOUR",
+        DIM,
+    );
 }

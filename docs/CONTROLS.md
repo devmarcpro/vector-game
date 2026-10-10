@@ -12,6 +12,8 @@
 | V (maintenir) | Laser de minage (cible asteroide a < 2 km, visee dans le cone) |
 | D | Amarrer (station < 500 m, vitesse relative < 8 m/s) |
 | I | Soute / inventaire (J = jeter la ressource) |
+| K | Equipage (Gauche/Droite poste, T quart, X débarquer à quai, J journal) |
+| J | Journal de bord |
 | H | Ecran vaisseau (emplacements, santé, énergie ; amarré : Entrée installer, X retirer, Y chantier naval) |
 | F5 / F9 | Sauvegarde / chargement rapide (saves/slot1.sav) |
 | Echap | Menu pause |
@@ -28,3 +30,5 @@ Options de ligne de commande : `--snapshot fichier.png` (rendu headless), `--ben
 Haut/Bas : ressource ; Entree : vendre tout ; S : vendre 100 kg ; B : acheter 100 kg ; F : plein de carburant ; R : reparer ; U : decoller.
 ## Menu principal
 Haut/Bas + Entree ; taper une graine (nombre ou texte) avant Nouvelle partie.
+
+Station : N = recruter (Entrée embauche au poste de sa meilleure compétence), K = équipage.

@@ -29,6 +29,9 @@ pub enum Screen {
     Pause,
     Ship,
     Shipyard,
+    Crew,
+    Recruit,
+    Journal,
 }
 
 pub struct Game {
@@ -52,6 +55,10 @@ pub struct Game {
     pub picker: bool,
     pub pick_sel: usize,
     pub yard_sel: usize,
+    pub crew_sel: usize,
+    pub recruit_sel: usize,
+    pub journal_scroll: usize,
+    pub log_seen: usize,
     pub save_path: PathBuf,
 }
 
@@ -88,6 +95,10 @@ impl Game {
             picker: false,
             pick_sel: 0,
             yard_sel: 0,
+            crew_sel: 0,
+            recruit_sel: 0,
+            journal_scroll: 0,
+            log_seen: 0,
             save_path: PathBuf::from("saves").join("slot1.sav"),
         };
         g.fit_map();
@@ -103,6 +114,7 @@ impl Game {
         self.messages = vec![format!("NOUVELLE PARTIE - GRAINE {seed}")];
         self.screen = Screen::Flight;
         self.fit_map();
+        self.log_seen = self.sim.crew.log.len();
     }
 
     pub fn fit_map(&mut self) {
@@ -186,6 +198,25 @@ impl Game {
             self.sim.advance(seconds * self.timescale, &input);
         }
         self.handle_events();
+        self.forward_log();
+    }
+
+    /// Show the newest crew journal lines in the HUD message area.
+    fn forward_log(&mut self) {
+        let len = self.sim.crew.log.len();
+        if len < self.log_seen {
+            self.log_seen = len;
+        }
+        let fresh: Vec<String> = self.sim.crew.log[self.log_seen..]
+            .iter()
+            .rev()
+            .take(2)
+            .map(|l| l.text.to_uppercase())
+            .collect();
+        self.log_seen = len;
+        for t in fresh.into_iter().rev() {
+            self.say(t);
+        }
     }
 
     fn handle_events(&mut self) {
@@ -349,6 +380,9 @@ impl Game {
             Screen::Inventory => self.inventory_key(code),
             Screen::Ship => self.ship_key(code),
             Screen::Shipyard => self.shipyard_key(code),
+            Screen::Crew => self.crew_key(code),
+            Screen::Recruit => self.recruit_key(code),
+            Screen::Journal => self.journal_key(code),
             Screen::Flight => self.flight_key(code),
         }
     }
@@ -480,6 +514,15 @@ impl Game {
                 self.screen = Screen::Shipyard;
                 return;
             }
+            KeyCode::KeyN => {
+                self.screen = Screen::Recruit;
+                self.recruit_sel = 0;
+                return;
+            }
+            KeyCode::KeyK => {
+                self.screen = Screen::Crew;
+                return;
+            }
             KeyCode::KeyR => self.sim.repair().map(|c| format!("REPARATIONS: {c:.0} CR")),
             KeyCode::KeyU | KeyCode::Escape => {
                 self.sim.undock();
@@ -491,6 +534,99 @@ impl Game {
         match msg {
             Ok(m) => self.say(m),
             Err(e) => self.say(e.to_uppercase()),
+        }
+    }
+
+    fn crew_key(&mut self, code: KeyCode) {
+        let n = self.sim.crew.members.len();
+        let docked = self.sim.docked.is_some();
+        match code {
+            KeyCode::ArrowUp if n > 0 => self.crew_sel = (self.crew_sel + n - 1) % n,
+            KeyCode::ArrowDown if n > 0 => self.crew_sel = (self.crew_sel + 1) % n,
+            KeyCode::ArrowRight | KeyCode::ArrowLeft if n > 0 => {
+                let r = self.data.roles.len();
+                let cur = self.sim.crew.members[self.crew_sel.min(n - 1)].role;
+                let next = if code == KeyCode::ArrowRight {
+                    (cur + 1) % r
+                } else {
+                    (cur + r - 1) % r
+                };
+                self.sim.set_role(self.crew_sel.min(n - 1), next);
+            }
+            KeyCode::KeyT if n > 0 => {
+                let p = &mut self.sim.crew.members[self.crew_sel.min(n - 1)];
+                p.shift = (p.shift + 1) % 3;
+            }
+            KeyCode::KeyX if n > 0 => match self.sim.dismiss(self.crew_sel.min(n - 1)) {
+                Ok(()) => {
+                    self.crew_sel = 0;
+                    self.say("MEMBRE DEBARQUE");
+                }
+                Err(e) => self.say(format!(
+                    "{} (DEBARQUEMENT A QUAI SEULEMENT)",
+                    e.to_uppercase()
+                )),
+            },
+            KeyCode::KeyJ => self.screen = Screen::Journal,
+            KeyCode::KeyN if docked => {
+                self.screen = Screen::Recruit;
+                self.recruit_sel = 0;
+            }
+            KeyCode::Escape | KeyCode::KeyK => {
+                self.screen = if docked {
+                    Screen::Station
+                } else {
+                    Screen::Flight
+                }
+            }
+            _ => {}
+        }
+    }
+
+    fn recruit_key(&mut self, code: KeyCode) {
+        let cands = self.sim.candidates();
+        let n = cands.len().max(1);
+        match code {
+            KeyCode::ArrowUp => self.recruit_sel = (self.recruit_sel + n - 1) % n,
+            KeyCode::ArrowDown => self.recruit_sel = (self.recruit_sel + 1) % n,
+            KeyCode::Enter => {
+                if let Some(c) = cands.get(self.recruit_sel) {
+                    // Assign the post matching the candidate's strongest skill.
+                    let best = self.data.skills[c.best_skill().0].id.clone();
+                    let role = self
+                        .data
+                        .roles
+                        .iter()
+                        .position(|r| r.skill == best)
+                        .unwrap_or(0);
+                    let name = c.name.clone();
+                    match self.sim.hire(self.recruit_sel, role) {
+                        Ok(cost) => self.say(format!("{name} EMBAUCHE ({cost:.0} CR)")),
+                        Err(e) => self.say(e.to_uppercase()),
+                    }
+                }
+            }
+            KeyCode::KeyK => self.screen = Screen::Crew,
+            KeyCode::Escape => self.screen = Screen::Station,
+            _ => {}
+        }
+    }
+
+    fn journal_key(&mut self, code: KeyCode) {
+        match code {
+            KeyCode::ArrowUp | KeyCode::PageUp => self.journal_scroll += 5,
+            KeyCode::ArrowDown | KeyCode::PageDown => {
+                self.journal_scroll = self.journal_scroll.saturating_sub(5)
+            }
+            KeyCode::KeyK => self.screen = Screen::Crew,
+            KeyCode::Escape | KeyCode::KeyJ => {
+                self.screen = if self.sim.docked.is_some() {
+                    Screen::Station
+                } else {
+                    Screen::Flight
+                }
+            }
+            _ => {}
         }
     }
 
@@ -640,6 +776,8 @@ impl Game {
             KeyCode::KeyC => self.map_on_ship = !self.map_on_ship,
             KeyCode::KeyI => self.screen = Screen::Inventory,
             KeyCode::KeyH => self.open_ship(),
+            KeyCode::KeyK => self.screen = Screen::Crew,
+            KeyCode::KeyJ => self.screen = Screen::Journal,
             KeyCode::KeyD => match self.sim.try_dock() {
                 Ok(_) => self.handle_events(),
                 Err(e) => self.say(format!("AMARRAGE IMPOSSIBLE: {}", e.to_uppercase())),

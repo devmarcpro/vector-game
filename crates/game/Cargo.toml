@@ -6,5 +6,6 @@ edition.workspace = true
 vector-core = { path = "../core" }
 vector-render = { path = "../render" }
 vector-sim = { path = "../sim" }
+vector-world = { path = "../world" }
 winit = "0.30"
 softbuffer = "0.4"

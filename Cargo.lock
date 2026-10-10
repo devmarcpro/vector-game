@@ -1507,6 +1507,7 @@ dependencies = [
  "vector-core",
  "vector-render",
  "vector-sim",
+ "vector-world",
  "winit",
 ]
 
@@ -1519,6 +1520,14 @@ dependencies = [
 
 [[package]]
 name = "vector-sim"
+version = "0.1.0"
+dependencies = [
+ "vector-core",
+ "vector-world",
+]
+
+[[package]]
+name = "vector-world"
 version = "0.1.0"
 dependencies = [
  "vector-core",

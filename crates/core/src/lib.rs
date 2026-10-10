@@ -108,6 +108,16 @@ impl Mat3 {
     pub fn from_cols(a: Vec3, b: Vec3, c: Vec3) -> Mat3 {
         Mat3([[a.x, b.x, c.x], [a.y, b.y, c.y], [a.z, b.z, c.z]])
     }
+    /// Orientation with +Z along `forward`, keeping `up_hint` as close to up as possible.
+    pub fn look_at(forward: Vec3, up_hint: Vec3) -> Mat3 {
+        let f = forward.normalized();
+        let mut r = up_hint.cross(f);
+        if r.length() < 1e-9 {
+            r = Vec3::new(1.0, 0.0, 0.0).cross(f);
+        }
+        let r = r.normalized();
+        Mat3::from_cols(r, f.cross(r), f)
+    }
     /// Gram-Schmidt re-orthonormalisation (call each step to avoid drift).
     pub fn orthonormalized(&self) -> Mat3 {
         let f = self.col(2).normalized();

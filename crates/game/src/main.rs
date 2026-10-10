@@ -171,6 +171,31 @@ fn snapshot(path: &str, scene: &str, data: Arc<GameData>) {
             g.advance(0.1);
         }
         "pause" => g.screen = Screen::Pause,
+        "contracts" | "bank" | "market" => {
+            let (st, _) = g.sim.nearest_station().expect("station");
+            g.sim.spawn_near(st, g.sim.bodies[st].radius + 200.0);
+            g.key(KeyCode::KeyD, None, true);
+            g.sim.credits = 20_000.0;
+            g.sim.borrow(4000.0).expect("loan");
+            g.advance(3.0 * 86_400.0);
+            match scene {
+                "contracts" => {
+                    g.offers = g.sim.offered_contracts();
+                    if let Some(c) = g.offers.first().cloned() {
+                        let _ = g.sim.accept_contract(c);
+                    }
+                    g.screen = Screen::Contracts;
+                }
+                "bank" => g.screen = Screen::Bank,
+                _ => g.screen = Screen::Station,
+            }
+        }
+        "traffic" => {
+            let (st, _) = g.sim.nearest_station().expect("station");
+            g.sim.spawn_near(st, 12_000.0);
+            g.sim.target_npc = g.sim.visible_npcs().first().copied();
+            g.advance(0.2);
+        }
         "galaxy" => {
             g.sim.ship.pos = vector_core::Vec3::new(4.0e11, 0.0, 0.0);
             g.sim.update_ref_pub();

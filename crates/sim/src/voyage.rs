@@ -265,6 +265,8 @@ impl Sim {
         self.here = j.target;
         self.here_pos = j.target_pos;
         self.load_system(generate_system(j.target_seed));
+        self.compute_faction();
+        self.spawn_traffic();
         // Arrive at the outskirts, in a deterministic direction.
         let mut rng = Rng::new(hash_coord(j.target_seed, 5, 5, 5));
         let frost = self.system.frost_line();
@@ -452,7 +454,7 @@ mod tests {
         let (mut s, g) = home();
         deep_space(&mut s);
         s.mined[1] = 1234.0;
-        s.markets.insert(0, Market::new(1, 0, &s.data, 0.0));
+        s.markets.insert(0, Market::new(1, 0, &s.data, 0.0, 0));
         let home_id = s.here;
         let home_seed = s.system.seed;
         let target = g

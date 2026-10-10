@@ -333,6 +333,31 @@ impl Wireframe {
         }
         Self { verts, edges }
     }
+    /// A small angular spacecraft pointing along +Z, 1 unit long.
+    pub fn ship() -> Self {
+        let v = |x: f64, y: f64, z: f64| Vec3::new(x, y, z);
+        Self {
+            verts: vec![
+                v(0.0, 0.0, 1.0),
+                v(-0.5, 0.0, -0.6),
+                v(0.5, 0.0, -0.6),
+                v(0.0, 0.25, -0.5),
+                v(0.0, -0.25, -0.5),
+            ],
+            edges: vec![
+                (0, 1),
+                (0, 2),
+                (0, 3),
+                (0, 4),
+                (1, 3),
+                (2, 3),
+                (1, 4),
+                (2, 4),
+                (1, 2),
+            ],
+        }
+    }
+
     pub fn draw(&self, cam: &Camera, fb: &mut Framebuffer, rot: &Mat3, at: Vec3, c: u32) {
         for &(a, b) in &self.edges {
             let pa = rot.mul_vec(self.verts[a]) + at;

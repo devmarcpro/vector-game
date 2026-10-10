@@ -4,7 +4,9 @@ pub mod autopilot;
 pub mod cargo;
 pub mod crew;
 pub mod design;
+pub mod economy;
 pub mod market;
+pub mod npc;
 pub mod save;
 pub mod voyage;
 
@@ -12,6 +14,7 @@ use autopilot::Autopilot;
 use cargo::Cargo;
 use crew::{Crew, CrewCtx};
 use design::{Activity, Effective, ShipDesign, ShipStats, Systems, RCS_ISP};
+use economy::{Bank, Contract};
 use market::Market;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -160,6 +163,19 @@ pub enum Event {
     },
     JumpAborted(&'static str),
     JumpMishap,
+    Customs {
+        seized_kg: f64,
+        fine: f64,
+    },
+    ContractDone {
+        reward: f64,
+    },
+    ContractExpired,
+    BankSeizure {
+        amount: f64,
+    },
+    PatrolScan,
+    PirateAlert,
 }
 
 pub struct Sim {
@@ -195,6 +211,15 @@ pub struct Sim {
     pub scan: Vec<u8>,
     pub scan_progress: Vec<f32>,
     pub jump: Option<JumpState>,
+    /// Territory owner of the current system (None = unclaimed) and standing with every faction.
+    pub faction: Option<usize>,
+    pub reputation: Vec<f32>,
+    pub contracts: Vec<Contract>,
+    pub done_contracts: Vec<u64>,
+    pub bank: Bank,
+    pub npcs: Vec<npc::Npc>,
+    pub next_npc: u32,
+    pub target_npc: Option<usize>,
 }
 
 /// Propellant mass flow (kg/s) for a thrust force (N) at a given specific impulse.
@@ -260,7 +285,16 @@ impl Sim {
             scan: Vec::new(),
             scan_progress: Vec::new(),
             jump: None,
+            faction: None,
+            reputation: Vec::new(),
+            contracts: Vec::new(),
+            done_contracts: Vec::new(),
+            bank: Bank::default(),
+            npcs: Vec::new(),
+            next_npc: 1,
+            target_npc: None,
         };
+        s.reputation = vec![0.0; s.data.factions.len()];
         s.scan = Self::initial_scan(&s.system);
         s.scan_progress = vec![0.0; n];
         s.visited.insert(s.here, s.here_pos);
@@ -277,6 +311,8 @@ impl Sim {
         s.here = entry.id;
         s.here_pos = entry.pos;
         s.visited.insert(s.here, s.here_pos);
+        s.compute_faction();
+        s.spawn_traffic();
         s
     }
 
@@ -469,6 +505,8 @@ impl Sim {
         if let Some(st) = self.docked {
             self.time += dt;
             self.run_systems(&Activity::default(), dt);
+            self.expire_contracts();
+            self.bank_tick();
             self.refresh_bodies();
             let b = &self.bodies[st];
             self.ship.pos = b.pos - Vec3::new(0.0, 0.0, b.radius + 60.0);
@@ -619,6 +657,9 @@ impl Sim {
         self.collide();
         self.charge_tick(dt);
         self.scan_tick(dt);
+        self.expire_contracts();
+        self.bank_tick();
+        self.update_npcs();
         if aimed && eff.mining_rate > 0.0 {
             let miner = Crew::role_index(&self.data, "miner");
             let eff_mult = self.crew.role_efficiency(&self.data, miner, self.time);
@@ -700,10 +741,10 @@ impl Sim {
     pub fn market(&mut self, i: usize) -> &mut Market {
         let (seed, time) = (self.system.seed, self.time);
         let data = Arc::clone(&self.data);
-        let m = self
-            .markets
-            .entry(i)
-            .or_insert_with(|| Market::new(hash_coord(seed, i as i64, 0, 0), i, &data, time));
+        let industry = self.station_industry(i);
+        let m = self.markets.entry(i).or_insert_with(|| {
+            Market::new(hash_coord(seed, i as i64, 0, 0), i, &data, time, industry)
+        });
         m.relax_to(time);
         m
     }
@@ -725,9 +766,13 @@ impl Sim {
         if (self.ship.vel - self.bodies[i].vel).length() > DOCK_MAX_SPEED {
             return Err("vitesse relative trop elevee");
         }
+        if self.reputation_with(self.faction) <= economy::HOSTILE_REP {
+            return Err("acces refuse: reputation hostile");
+        }
         self.docked = Some(i);
         self.autopilot = None;
         self.events.push(Event::Docked { body: i });
+        self.customs_check();
         Ok(i)
     }
 
@@ -751,9 +796,11 @@ impl Sim {
             return Err("rien a vendre");
         }
         let data = Arc::clone(&self.data);
-        let earned = self.market(st).sell(&data, res, kg);
+        let (edge, tax) = (self.trade_edge(), self.tax_rate());
+        let earned = self.market(st).sell(&data, res, kg, edge) * (1.0 - tax);
         self.ship.cargo.remove(&data, res, kg);
         self.credits += earned;
+        self.change_reputation(self.faction, (earned / 20_000.0) as f32);
         Ok(earned)
     }
 
@@ -761,14 +808,15 @@ impl Sim {
     pub fn buy(&mut self, res: usize, kg: f64) -> Result<(f64, f64), &'static str> {
         let st = self.docked.ok_or("non amarre")?;
         let data = Arc::clone(&self.data);
-        let ask = self.market(st).ask(&data, res);
+        let edge = self.trade_edge();
+        let ask = self.market(st).ask(&data, res) / edge;
         let room = self.ship.cargo.cap_mass - self.ship.cargo.mass;
         let afford = self.credits / ask;
         let kg = kg.min(afford).min(room).max(0.0);
         if kg <= 0.0 {
             return Err("achat impossible (credits ou soute)");
         }
-        let (got, cost) = self.market(st).buy(&data, res, kg);
+        let (got, cost) = self.market(st).buy(&data, res, kg, edge);
         let accepted = self.ship.cargo.add(&data, res, got);
         // Refund anything the hold could not take (volume limit).
         let refund = if got > 0.0 {
@@ -780,6 +828,7 @@ impl Sim {
             self.market(st).stock[res] += got - accepted;
         }
         self.credits -= cost - refund;
+        self.change_reputation(self.faction, ((cost - refund) / 20_000.0) as f32);
         Ok((accepted, cost - refund))
     }
 
@@ -790,13 +839,14 @@ impl Sim {
         let fuel = data
             .resource_index("fuel")
             .ok_or("pas de carburant dans les donnees")?;
-        let ask = self.market(st).ask(&data, fuel);
+        let edge = self.trade_edge();
+        let ask = self.market(st).ask(&data, fuel) / edge;
         let need = self.ship.stats.fuel_cap - self.ship.fuel;
         let kg = need.min(self.credits / ask);
         if kg < 1e-6 {
             return Err("deja plein ou fonds insuffisants");
         }
-        let (got, cost) = self.market(st).buy(&data, fuel, kg);
+        let (got, cost) = self.market(st).buy(&data, fuel, kg, edge);
         self.ship.fuel += got;
         self.credits -= cost;
         Ok((got, cost))

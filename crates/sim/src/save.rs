@@ -6,7 +6,7 @@ use vector_data::GameData;
 use vector_world::generate_system;
 
 pub const MAGIC: [u8; 4] = *b"VECT";
-pub const VERSION: u32 = 4;
+pub const VERSION: u32 = 6;
 
 #[derive(Debug)]
 pub enum SaveError {
@@ -48,6 +48,12 @@ pub struct SaveGame {
     pub scan: Vec<u8>,
     pub scan_progress: Vec<f32>,
     pub jump: Option<crate::voyage::JumpState>,
+    pub reputation: Vec<f32>,
+    pub contracts: Vec<crate::economy::Contract>,
+    pub done_contracts: Vec<u64>,
+    pub bank: crate::economy::Bank,
+    pub npcs: Vec<crate::npc::Npc>,
+    pub next_npc: u32,
 }
 
 impl Sim {
@@ -71,6 +77,12 @@ impl Sim {
             scan: self.scan.clone(),
             scan_progress: self.scan_progress.clone(),
             jump: self.jump.clone(),
+            reputation: self.reputation.clone(),
+            contracts: self.contracts.clone(),
+            done_contracts: self.done_contracts.clone(),
+            bank: self.bank.clone(),
+            npcs: self.npcs.clone(),
+            next_npc: self.next_npc,
         };
         let mut out = MAGIC.to_vec();
         out.extend_from_slice(&VERSION.to_le_bytes());
@@ -107,6 +119,16 @@ impl Sim {
             sim.scan_progress = save.scan_progress;
         }
         sim.jump = save.jump;
+        if save.reputation.len() == sim.reputation.len() {
+            sim.reputation = save.reputation;
+        }
+        sim.contracts = save.contracts;
+        sim.done_contracts = save.done_contracts;
+        sim.bank = save.bank;
+        sim.compute_faction();
+        sim.npcs = save.npcs;
+        sim.next_npc = save.next_npc;
+        sim.place_npcs();
         sim.time = save.time;
         sim.ship = save.ship;
         sim.credits = save.credits;

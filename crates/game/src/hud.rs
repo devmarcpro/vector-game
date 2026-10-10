@@ -3,6 +3,7 @@ use crate::console::Console;
 use vector_core::{Mat3, Vec3};
 use vector_render::{Camera, Framebuffer, Wireframe};
 use vector_sim::design::{T_DAMAGE, T_SCRAM};
+use vector_sim::npc::NpcRole;
 use vector_sim::voyage::{SCAN_FULL, SCAN_SURVEYED};
 use vector_sim::Sim;
 use vector_world::BodyKind;
@@ -13,6 +14,17 @@ pub const AMBER: u32 = 0x00E0_A020;
 pub const RED: u32 = 0x00FF_3030;
 pub const STAR: u32 = 0x0040_5060;
 pub const SUN: u32 = 0x00E0_D060;
+pub const MINER: u32 = 0x00C0_C040;
+pub const PATROL: u32 = 0x0040_80FF;
+
+pub fn npc_color(r: NpcRole) -> u32 {
+    match r {
+        NpcRole::Trader => GREEN,
+        NpcRole::Miner => MINER,
+        NpcRole::Pirate => RED,
+        NpcRole::Patrol => PATROL,
+    }
+}
 
 pub struct View<'a> {
     pub sim: &'a Sim,
@@ -116,6 +128,63 @@ fn draw_cockpit(fb: &mut Framebuffer, v: &View) {
                 || (matches!(b.kind, BodyKind::Planet(_) | BodyKind::Station) && px < 40.0)
             {
                 fb.text_at(x as i32 + 8, y as i32 - 12, body_label(v, i), col);
+            }
+        }
+    }
+
+    let see = 1.0e6 + 0.01 * v.sim.effective.scan_range;
+    let ship_wire = Wireframe::ship();
+    for (k, n) in v.sim.npcs.iter().enumerate() {
+        if !n.visible() {
+            continue;
+        }
+        let d = (n.pos - ship.pos).length();
+        if d > see {
+            continue;
+        }
+        let col = if Some(k) == v.sim.target_npc {
+            AMBER
+        } else {
+            npc_color(n.role)
+        };
+        if d < 6.0e4 {
+            let fwd = if n.vel.length() > 1.0 {
+                n.vel
+            } else {
+                Vec3::new(0.0, 0.0, 1.0)
+            };
+            let rot = Mat3::look_at(fwd, Vec3::new(0.0, 1.0, 0.0));
+            let scaled = Wireframe {
+                verts: ship_wire.verts.iter().map(|p| *p * 80.0).collect(),
+                edges: ship_wire.edges.clone(),
+            };
+            scaled.draw(&cam, fb, &rot, n.pos, col);
+        }
+        if let Some((x, y)) = cam.project_world(n.pos, fb) {
+            fb.line(x - 3.0, y, x, y - 3.0, col);
+            fb.line(x, y - 3.0, x + 3.0, y, col);
+            fb.line(x + 3.0, y, x, y + 3.0, col);
+            fb.line(x, y + 3.0, x - 3.0, y, col);
+            if Some(k) == v.sim.target_npc || d < 3.0e5 {
+                fb.text_at(x as i32 + 6, y as i32 + 6, &n.name, col);
+            }
+            if Some(k) == v.sim.target_npc {
+                for (sx, sy) in [(-1.0, -1.0), (1.0, -1.0), (-1.0, 1.0), (1.0, 1.0)] {
+                    fb.line(
+                        x + sx * 14.0,
+                        y + sy * 14.0,
+                        x + sx * 9.0,
+                        y + sy * 14.0,
+                        AMBER,
+                    );
+                    fb.line(
+                        x + sx * 14.0,
+                        y + sy * 14.0,
+                        x + sx * 14.0,
+                        y + sy * 9.0,
+                        AMBER,
+                    );
+                }
             }
         }
     }
@@ -386,6 +455,20 @@ fn draw_status(fb: &mut Framebuffer, v: &View) {
             );
         }
     }
+    let terr = match sim.faction {
+        Some(f) => format!(
+            "TERRITOIRE {}  REP {:+.0}",
+            sim.data.factions[f].name.to_uppercase(),
+            sim.reputation_with(Some(f))
+        ),
+        None => "ESPACE NON REVENDIQUE".to_string(),
+    };
+    fb.text(
+        1,
+        10,
+        &terr,
+        sim.faction.map_or(DIM, |f| sim.data.factions[f].color),
+    );
     draw_target_panel(fb, v, rows, cols);
     if let Some(j) = &sim.jump {
         let line = if j.in_transit {
@@ -420,6 +503,49 @@ fn draw_target_panel(fb: &mut Framebuffer, v: &View, rows: usize, cols: usize) {
     let sim = v.sim;
     let ship = &sim.ship;
     let x = cols.saturating_sub(40);
+    if let Some(n) = sim.target_npc.and_then(|k| sim.npcs.get(k)) {
+        let r = n.pos - ship.pos;
+        let closing = (ship.vel - n.vel).dot(r.normalized());
+        let faction = n.faction.map_or("INDEPENDANT".to_string(), |f| {
+            sim.data.factions[f].name.to_uppercase()
+        });
+        let status = match &n.state {
+            vector_sim::npc::NpcState::Docked { .. } => "AMARRE / EN ATTENTE",
+            vector_sim::npc::NpcState::Travel { .. } => "EN TRANSIT",
+            vector_sim::npc::NpcState::Working { .. } => "AU TRAVAIL",
+            vector_sim::npc::NpcState::Lurk { .. } => "EN EMBUSCADE",
+            vector_sim::npc::NpcState::Orbit { .. } => "EN PATROUILLE",
+            vector_sim::npc::NpcState::Away { .. } => "ABSENT",
+        };
+        fb.text(x, rows - 8, &format!("CIBLE {}", n.name), AMBER);
+        fb.text(
+            x,
+            rows - 7,
+            &format!("TYPE  {}  {}", n.role.label(), faction),
+            AMBER,
+        );
+        fb.text(
+            x,
+            rows - 6,
+            &format!("DIST  {}", fmt_dist(r.length())),
+            AMBER,
+        );
+        fb.text(x, rows - 5, &format!("APPR  {closing:+.1} M/S"), AMBER);
+        fb.text(x, rows - 4, status, DIM);
+        if let Some((res, kg)) = n.cargo {
+            fb.text(
+                x,
+                rows - 3,
+                &format!(
+                    "SOUTE {:.0} KG {}",
+                    kg,
+                    sim.data.resources[res].name.to_uppercase()
+                ),
+                DIM,
+            );
+        }
+        return;
+    }
     let Some(i) = sim.target else {
         fb.text(x, rows - 2, "AUCUNE CIBLE [TAB]", DIM);
         return;
@@ -530,6 +656,7 @@ fn draw_radar(fb: &mut Framebuffer, v: &View) {
     }
     fb.line(cx - rx, cy, cx + rx, cy, DIM);
     fb.line(cx, cy - ry, cx, cy + ry, DIM);
+    radar_npcs(fb, v, cx, cy, rx, ry, range);
     let inv = ship.rot.transpose();
     for (i, b) in v.sim.bodies.iter().enumerate() {
         if matches!(b.kind, BodyKind::Star(_)) || v.sim.scan[i] == 0 {
@@ -545,6 +672,32 @@ fn draw_radar(fb: &mut Framebuffer, v: &View) {
         fb.line(px, py, px, top, col);
         fb.plot(px as i32, top as i32, col);
         fb.plot(px as i32 + 1, top as i32, col);
+    }
+}
+
+fn radar_npcs(fb: &mut Framebuffer, v: &View, cx: f32, cy: f32, rx: f32, ry: f32, range: f64) {
+    let ship = &v.sim.ship;
+    let inv = ship.rot.transpose();
+    for (k, n) in v.sim.npcs.iter().enumerate() {
+        if !n.visible() {
+            continue;
+        }
+        let l = inv.mul_vec(n.pos - ship.pos);
+        let flat = (l.x * l.x + l.z * l.z).sqrt();
+        if flat > range * 3.0 {
+            continue;
+        }
+        let scale = if flat > range { range / flat } else { 1.0 };
+        let px = cx + (l.x * scale / range) as f32 * rx;
+        let py = cy - (l.z * scale / range) as f32 * ry;
+        let col = if Some(k) == v.sim.target_npc {
+            AMBER
+        } else {
+            npc_color(n.role)
+        };
+        fb.plot(px as i32, py as i32, col);
+        fb.plot(px as i32 + 1, py as i32, col);
+        fb.plot(px as i32, py as i32 + 1, col);
     }
 }
 

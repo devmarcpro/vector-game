@@ -531,17 +531,31 @@ pub fn generate_system(seed: u64) -> System {
         }
     }
 
-    // Stations around a random planet.
-    if !planet_idx.is_empty() && rng.f64() < 0.6 {
+    // Stations around random planets: none (40 %), one (35 %), two (18 %) or three (7 %).
+    let n_stations = if planet_idx.is_empty() {
+        0
+    } else {
+        match rng.f64() {
+            x if x < 0.40 => 0,
+            x if x < 0.75 => 1,
+            x if x < 0.93 => 2,
+            _ => 3,
+        }
+    };
+    for k in 0..n_stations {
         let host = *pick(&mut rng, &planet_idx);
         let h = &bodies[host];
         let r = h.radius;
-        let orb_a = r + (r * 0.3).max(4.0e5);
+        let orb_a = (r + (r * 0.3).max(4.0e5)) * (1.0 + 0.6 * k as f64);
         let mu_h = h.gm();
         let hname = h.name.clone();
         let t = h.temp;
         let orbit = random_orbit(&mut rng, host, orb_a, 0.0, 0.5, mu_h);
-        let sname = format!("Station {}", hname);
+        let sname = if k == 0 {
+            format!("Station {hname}")
+        } else {
+            format!("Station {hname}-{}", k + 1)
+        };
         bodies.push(CelBody {
             name: sname,
             kind: BodyKind::Station,

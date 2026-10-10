@@ -8,7 +8,7 @@
 - [x] M4 Vaisseau modulaire et énergie (reste : support de vie lié à l'équipage en M5)
 - [x] M5 Équipage (30 événements ; objectif final 150 -> M10)
 - [x] M6 Galaxie infinie
-- [ ] M7 Économie vivante
+- [x] M7 Économie vivante (reste : escortes/convois de la flotte joueur en M8, combat pirates en M9)
 - [ ] M8 Colonies et empire
 - [ ] M9 Combat, menaces, science
 - [ ] M10 Contenu et finition
@@ -23,3 +23,4 @@
 - 2026-10-11 : M4 : 70 modules + 15 coques (données générées), ShipStats, bus d'énergie avec délestage, chaleur/radiateurs/SCRAM, dégâts par module, chantier naval et écran vaisseau, pilote auto avec gravité. 27 tests sim verts.
 - 2026-10-11 : M5 : crew.rs (génération, besoins, maladies, paie, postes, 30 événements data-driven, journal, recrutement), écrans équipage/recrutement/journal, sauvegarde v3. 37 tests sim verts.
 - 2026-10-11 : M6 : galaxie par secteurs (spirales, Poisson), peek_star, FTL (charge/transit/arrivée, incidents), deltas de systèmes, scan progressif 0-3, carte galactique avec brouillard. 42 tests sim + 14 world verts. Génération système < 1 ms.
+- 2026-10-11 : M7 : factions + territoires, industries et prix régionaux, réputation/douane/contrebande, contrats émergents, banque, trafic PNJ (traders/mineurs/patrouilles/pirates) agissant sur les marchés, stations multiples. 57 tests sim verts.

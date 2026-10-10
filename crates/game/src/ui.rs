@@ -33,6 +33,8 @@ pub fn draw(fb: &mut Framebuffer, g: &Game) {
         Screen::Recruit => draw_recruit(fb, g),
         Screen::Journal => draw_journal(fb, g),
         Screen::Galaxy => draw_galaxy(fb, g),
+        Screen::Contracts => draw_contracts(fb, g),
+        Screen::Bank => draw_bank(fb, g),
         Screen::Flight => {}
     }
 }
@@ -120,6 +122,25 @@ fn draw_station(fb: &mut Framebuffer, g: &Game) {
     let Some(st) = s.docked else { return };
     header(fb, g, &format!("STATION {}", s.bodies[st].name));
     let Some(m) = s.markets.get(&st) else { return };
+    let owner = match s.faction {
+        Some(f) => format!(
+            "{}  REP {:+.0}  TAXE {:.0}%",
+            s.data.factions[f].name.to_uppercase(),
+            s.reputation_with(Some(f)),
+            s.tax_rate() * 100.0
+        ),
+        None => "STATION INDEPENDANTE".to_string(),
+    };
+    fb.text(
+        1,
+        7,
+        &format!(
+            "{}  |  {}",
+            owner,
+            s.data.industries[m.industry].name.to_uppercase()
+        ),
+        GREEN,
+    );
     let (x, top) = (40, 3);
     fb.text(
         x,
@@ -150,7 +171,7 @@ fn draw_station(fb: &mut Framebuffer, g: &Game) {
     fb.text(
         1,
         b,
-        "ENTREE:VENDRE TOUT  S:VENDRE 100KG  B:ACHETER 100KG",
+        "ENTREE:VENDRE TOUT  S:VENDRE 100KG  B:ACHETER 100KG  C:CONTRATS  E:BANQUE",
         DIM,
     );
     fb.text(
@@ -712,6 +733,14 @@ fn draw_galaxy(fb: &mut Framebuffer, g: &Game) {
             GREEN,
         );
         fb.text(x, 9, &format!("DISTANCE {d:.1} AL"), GREEN);
+        let owner = s.galaxy.territory(e.pos, s.data.factions.len());
+        let (oname, ocol) = owner.map_or(("NON REVENDIQUE".to_string(), DIM), |f| {
+            (
+                s.data.factions[f].name.to_uppercase(),
+                s.data.factions[f].color,
+            )
+        });
+        fb.text(x, 10, &oname, ocol);
         fb.text(
             x,
             11,
@@ -741,6 +770,146 @@ fn draw_galaxy(fb: &mut Framebuffer, g: &Game) {
         1,
         b,
         "HAUT/BAS:ETOILE  +/-:ZOOM  ENTREE:SAUTER (HORS DE TOUT CHAMP DE GRAVITE)  L/ECHAP:FERMER",
+        DIM,
+    );
+    for (i, msg) in g.messages.iter().rev().take(2).enumerate() {
+        fb.text(1, b + 1 + i, msg, if i == 0 { AMBER } else { DIM });
+    }
+}
+
+fn draw_contracts(fb: &mut Framebuffer, g: &Game) {
+    header(fb, g, "CONTRATS");
+    let s = &g.sim;
+    let top = 8;
+    fb.text(
+        1,
+        top,
+        "OFFRES DE CETTE STATION (BESOINS EMERGENTS ET EXPORTS)",
+        AMBER,
+    );
+    for (i, c) in g.offers.iter().enumerate() {
+        let sel = i == g.contract_sel;
+        let name = &g.data.resources[c.resource].name;
+        let dest = if c.dist_ly == 0.0 {
+            "ICI".to_string()
+        } else {
+            format!("{} ({:.1} AL)", c.dest_system, c.dist_ly)
+        };
+        fb.text(
+            1,
+            top + 1 + i,
+            &format!(
+                "{}LIVRER {:>5.0} KG {:<18.18} -> {:<24.24} {:>8.0} CR  {:.0} J",
+                if sel { ">" } else { " " },
+                c.kg,
+                name,
+                dest,
+                c.reward,
+                (c.expires - s.time) / 86_400.0
+            ),
+            if sel { AMBER } else { GREEN },
+        );
+    }
+    if g.offers.is_empty() {
+        fb.text(1, top + 1, "(AUCUNE OFFRE POUR LE MOMENT)", DIM);
+    }
+    let y0 = top + 3 + g.offers.len().max(1);
+    fb.text(
+        1,
+        y0,
+        &format!(
+            "CONTRATS ACTIFS ({}/{})",
+            s.contracts.len(),
+            vector_sim::economy::MAX_ACTIVE_CONTRACTS
+        ),
+        AMBER,
+    );
+    for (i, c) in s.contracts.iter().enumerate() {
+        let sel = g.offers.len() + i == g.contract_sel;
+        let have = s.ship.cargo.kg[c.resource];
+        let here = c.dest_star == s.here && Some(c.dest_body) == s.docked;
+        fb.text(
+            1,
+            y0 + 1 + i,
+            &format!(
+                "{}{:>5.0} KG {:<16.16} -> {:<22.22} {:>8.0} CR  {:.0} J  SOUTE {:.0}{}",
+                if sel { ">" } else { " " },
+                c.kg,
+                g.data.resources[c.resource].name,
+                c.dest_name,
+                c.reward,
+                (c.expires - s.time) / 86_400.0,
+                have,
+                if here { "  [ENTREE: LIVRER]" } else { "" }
+            ),
+            if sel { AMBER } else { GREEN },
+        );
+    }
+    let b = fb.rows() - 4;
+    fb.text(
+        1,
+        b,
+        "HAUT/BAS:CHOISIR  ENTREE:ACCEPTER / LIVRER  X:ABANDONNER (-1 REP)  ECHAP:RETOUR",
+        DIM,
+    );
+    for (i, msg) in g.messages.iter().rev().take(2).enumerate() {
+        fb.text(1, b + 1 + i, msg, if i == 0 { AMBER } else { DIM });
+    }
+}
+
+fn draw_bank(fb: &mut Framebuffer, g: &Game) {
+    header(fb, g, "BANQUE");
+    let s = &g.sim;
+    let top = 8;
+    fb.text(
+        1,
+        top,
+        &format!("PRET EN COURS     {:>12.0} CR", s.bank.loan),
+        GREEN,
+    );
+    fb.text(
+        1,
+        top + 1,
+        &format!("PLAFOND DE CREDIT  {:>12.0} CR", s.credit_limit()),
+        GREEN,
+    );
+    fb.text(
+        1,
+        top + 2,
+        &format!(
+            "TAUX JOURNALIER    {:>11.2} %",
+            vector_sim::economy::BANK_RATE_PER_DAY * 100.0
+        ),
+        GREEN,
+    );
+    fb.text(
+        1,
+        top + 3,
+        &format!("INTERETS PAYES     {:>12.0} CR", s.bank.total_interest),
+        GREEN,
+    );
+    if s.bank.overdue_days > 0 {
+        fb.text(
+            1,
+            top + 5,
+            &format!(
+                "PRET EN SOUFFRANCE DEPUIS {} J - SAISIE A 30 J !",
+                s.bank.overdue_days
+            ),
+            RED,
+        );
+    }
+    fb.text(
+        1,
+        top + 7,
+        "LE PLAFOND AUGMENTE AVEC VOTRE REPUTATION AUPRES DES FACTIONS.",
+        DIM,
+    );
+    let b = fb.rows() - 4;
+    fb.text(
+        1,
+        b,
+        "HAUT:EMPRUNTER 1000  BAS:REMBOURSER 1000  ENTREE:TOUT REMBOURSER  ECHAP:RETOUR",
         DIM,
     );
     for (i, msg) in g.messages.iter().rev().take(2).enumerate() {

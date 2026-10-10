@@ -34,6 +34,8 @@ pub enum Screen {
     Recruit,
     Journal,
     Galaxy,
+    Contracts,
+    Bank,
 }
 
 pub struct Game {
@@ -64,6 +66,8 @@ pub struct Game {
     pub gal_cache: Vec<StarEntry>,
     pub gal_sel: usize,
     pub gal_zoom: f64,
+    pub offers: Vec<vector_sim::economy::Contract>,
+    pub contract_sel: usize,
     pub save_path: PathBuf,
 }
 
@@ -107,6 +111,8 @@ impl Game {
             gal_cache: Vec::new(),
             gal_sel: 0,
             gal_zoom: 14.0,
+            offers: Vec::new(),
+            contract_sel: 0,
             save_path: PathBuf::from("saves").join("slot1.sav"),
         };
         g.fit_map();
@@ -182,11 +188,11 @@ impl Game {
 
     /// Whether the simulation should currently run.
     pub fn running(&self) -> bool {
+        // Overlays (ship, crew, map...) freeze time in flight; at a station time keeps flowing.
         !self.paused
-            && matches!(
-                self.screen,
-                Screen::Flight | Screen::Station | Screen::Inventory
-            )
+            && (self.screen == Screen::Flight
+                || (self.sim.docked.is_some()
+                    && !matches!(self.screen, Screen::MainMenu | Screen::Pause)))
     }
 
     /// Advance the simulation by `seconds` of real time at the current time scale.
@@ -268,6 +274,20 @@ impl Game {
                     self.timescale = 1.0;
                 }
                 Event::JumpMishap => self.say("INCIDENT DE SAUT: DEGATS SUR LE PROPULSEUR"),
+                Event::Customs { seized_kg, fine } => {
+                    self.say(format!(
+                        "DOUANES: {seized_kg:.0} KG DE CONTREBANDE SAISIS, AMENDE {fine:.0} CR"
+                    ));
+                }
+                Event::ContractDone { reward } => {
+                    self.say(format!("CONTRAT REMPLI: +{reward:.0} CR"))
+                }
+                Event::ContractExpired => self.say("UN CONTRAT A EXPIRE (-REPUTATION)"),
+                Event::BankSeizure { amount } => {
+                    self.say(format!("LA BANQUE SAISIT {amount:.0} CR POUR PRET IMPAYE"))
+                }
+                Event::PatrolScan => self.say("PATROUILLE: SCAN DE VOTRE SOUTE"),
+                Event::PirateAlert => self.say("ALERTE: PIRATES A PROXIMITE !"),
                 Event::Overheat => self.say("ALERTE: SURCHAUFFE !"),
                 Event::ModuleLost { slot } => {
                     self.say(format!("MODULE PERDU (EMPLACEMENT {})", slot + 1))
@@ -413,6 +433,8 @@ impl Game {
             Screen::Recruit => self.recruit_key(code),
             Screen::Journal => self.journal_key(code),
             Screen::Galaxy => self.galaxy_key(code),
+            Screen::Contracts => self.contracts_key(code),
+            Screen::Bank => self.bank_key(code),
             Screen::Flight => self.flight_key(code),
         }
     }
@@ -553,6 +575,16 @@ impl Game {
                 self.screen = Screen::Crew;
                 return;
             }
+            KeyCode::KeyC => {
+                self.offers = self.sim.offered_contracts();
+                self.contract_sel = 0;
+                self.screen = Screen::Contracts;
+                return;
+            }
+            KeyCode::KeyE => {
+                self.screen = Screen::Bank;
+                return;
+            }
             KeyCode::KeyR => self.sim.repair().map(|c| format!("REPARATIONS: {c:.0} CR")),
             KeyCode::KeyU | KeyCode::Escape => {
                 self.sim.undock();
@@ -664,6 +696,75 @@ impl Game {
                 }
             }
             _ => {}
+        }
+    }
+
+    fn contracts_key(&mut self, code: KeyCode) {
+        let total = self.offers.len() + self.sim.contracts.len();
+        match code {
+            KeyCode::ArrowUp if total > 0 => {
+                self.contract_sel = (self.contract_sel + total - 1) % total
+            }
+            KeyCode::ArrowDown if total > 0 => self.contract_sel = (self.contract_sel + 1) % total,
+            KeyCode::Enter if total > 0 => {
+                let sel = self.contract_sel.min(total - 1);
+                if sel < self.offers.len() {
+                    let c = self.offers[sel].clone();
+                    match self.sim.accept_contract(c) {
+                        Ok(()) => {
+                            self.say("CONTRAT ACCEPTE");
+                            self.offers = self.sim.offered_contracts();
+                            self.contract_sel = 0;
+                        }
+                        Err(e) => self.say(e.to_uppercase()),
+                    }
+                } else {
+                    match self.sim.deliver_contract(sel - self.offers.len()) {
+                        Ok(_) => {
+                            self.handle_events();
+                            self.contract_sel = 0;
+                        }
+                        Err(e) => self.say(e.to_uppercase()),
+                    }
+                }
+            }
+            KeyCode::KeyX if total > 0 => {
+                let sel = self.contract_sel.min(total - 1);
+                if sel >= self.offers.len() {
+                    let c = self.sim.contracts.remove(sel - self.offers.len());
+                    self.sim.change_reputation(c.faction, -1.0);
+                    self.say("CONTRAT ABANDONNE");
+                    self.contract_sel = 0;
+                }
+            }
+            KeyCode::Escape => self.screen = Screen::Station,
+            _ => {}
+        }
+    }
+
+    fn bank_key(&mut self, code: KeyCode) {
+        let r = match code {
+            KeyCode::ArrowUp | KeyCode::Equal | KeyCode::NumpadAdd => self
+                .sim
+                .borrow(1000.0)
+                .map(|()| "EMPRUNT DE 1000 CR".to_string()),
+            KeyCode::ArrowDown | KeyCode::Minus | KeyCode::NumpadSubtract => self
+                .sim
+                .repay(1000.0)
+                .map(|p| format!("REMBOURSE {p:.0} CR")),
+            KeyCode::Enter => self
+                .sim
+                .repay(f64::MAX)
+                .map(|p| format!("PRET REMBOURSE ({p:.0} CR)")),
+            KeyCode::Escape | KeyCode::KeyE => {
+                self.screen = Screen::Station;
+                return;
+            }
+            _ => return,
+        };
+        match r {
+            Ok(m) => self.say(m),
+            Err(e) => self.say(e.to_uppercase()),
         }
     }
 
@@ -841,7 +942,26 @@ impl Game {
                     "ASSISTANCE DE VOL COUPEE"
                 });
             }
-            KeyCode::Tab => self.cycle_target(|_| true),
+            KeyCode::Tab => {
+                self.sim.target_npc = None;
+                self.cycle_target(|_| true);
+            }
+            KeyCode::KeyR => {
+                let list = self.sim.visible_npcs();
+                if list.is_empty() {
+                    self.say("AUCUN VAISSEAU A PORTEE");
+                } else {
+                    let next = match self
+                        .sim
+                        .target_npc
+                        .and_then(|t| list.iter().position(|&i| i == t))
+                    {
+                        Some(k) => list[(k + 1) % list.len()],
+                        None => list[0],
+                    };
+                    self.sim.target_npc = Some(next);
+                }
+            }
             KeyCode::KeyT => self.cycle_target(|k| matches!(k, BodyKind::Asteroid(_))),
             KeyCode::KeyY => self.cycle_target(|k| matches!(k, BodyKind::Station)),
             KeyCode::KeyP => self.paused = !self.paused,

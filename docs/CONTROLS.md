@@ -8,6 +8,7 @@
 | Fleches | RCS lateral (gauche/droite) et vertical (haut/bas) |
 | F | Assistance de vol ON/OFF (amortit rotation et derive) |
 | Tab | Cible suivante (la plus proche d'abord) |
+| R | Cibler le vaisseau PNJ le plus proche (cycle) |
 | T / Y | Cible : asteroide / station le(la) plus proche |
 | V (maintenir) | Laser de minage (cible asteroide a < 2 km, visee dans le cone) |
 | D | Amarrer (station < 500 m, vitesse relative < 8 m/s) |
@@ -33,3 +34,4 @@ Haut/Bas : ressource ; Entree : vendre tout ; S : vendre 100 kg ; B : acheter 10
 Haut/Bas + Entree ; taper une graine (nombre ou texte) avant Nouvelle partie.
 
 Station : N = recruter (Entrée embauche au poste de sa meilleure compétence), K = équipage.
+Station : C = contrats (Entrée accepter/livrer, X abandonner), E = banque (Haut emprunter 1000, Bas rembourser 1000, Entrée tout rembourser).

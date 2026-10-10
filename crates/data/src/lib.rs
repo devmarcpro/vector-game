@@ -165,6 +165,28 @@ pub struct EventDef {
     pub text: String,
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct Faction {
+    pub id: String,
+    pub name: String,
+    pub culture: String,
+    pub ideology: String,
+    pub color: u32,
+    pub tax: f64,
+    pub contraband: Vec<String>,
+    pub aggression: f64,
+    pub allies: Vec<String>,
+    pub enemies: Vec<String>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct Industry {
+    pub id: String,
+    pub name: String,
+    pub produces: Vec<String>,
+    pub consumes: Vec<String>,
+}
+
 const PERSON_FIELDS: [&str; 14] = [
     "morale", "health", "loyalty", "stress", "fatigue", "hunger", "thirst", "social", "relation",
     "age", "credits", "death", "quit", "salary",
@@ -201,6 +223,8 @@ pub struct GameData {
     pub cultures: Vec<Culture>,
     pub events: Vec<EventDef>,
     pub texts: Vec<(String, Vec<String>)>,
+    pub factions: Vec<Faction>,
+    pub industries: Vec<Industry>,
 }
 
 fn read<T: for<'a> Deserialize<'a>>(path: &Path) -> Result<T, DataError> {
@@ -222,6 +246,8 @@ impl GameData {
             cultures: read(&dir.join("cultures_names.ron"))?,
             events: read(&dir.join("events.ron"))?,
             texts: read(&dir.join("text/crew.ron"))?,
+            factions: read(&dir.join("factions.ron"))?,
+            industries: read(&dir.join("industries.ron"))?,
         };
         d.validate()?;
         Ok(d)
@@ -256,6 +282,13 @@ impl GameData {
             return self.disease_index(d).is_some();
         }
         PERSON_FIELDS.contains(&f)
+    }
+
+    pub fn faction_index(&self, id: &str) -> Option<usize> {
+        self.factions.iter().position(|f| f.id == id)
+    }
+    pub fn industry_index(&self, id: &str) -> Option<usize> {
+        self.industries.iter().position(|f| f.id == id)
     }
 
     pub fn module_index(&self, id: &str) -> Option<usize> {
@@ -383,6 +416,56 @@ impl GameData {
                 }
             }
         }
+        let mut fids = BTreeSet::new();
+        for fc in &self.factions {
+            if !fids.insert(fc.id.as_str()) {
+                return bad(format!("faction en double: {}", fc.id));
+            }
+            if !self.cultures.iter().any(|c| c.id == fc.culture) {
+                return bad(format!(
+                    "faction {}: culture inconnue {}",
+                    fc.id, fc.culture
+                ));
+            }
+            for r in &fc.contraband {
+                if self.resource_index(r).is_none() {
+                    return bad(format!("faction {}: contrebande inconnue {r}", fc.id));
+                }
+            }
+            if !(0.0..=1.0).contains(&fc.tax) || !(0.0..=1.0).contains(&fc.aggression) {
+                return bad(format!("faction {}: valeurs hors bornes", fc.id));
+            }
+        }
+        for fc in &self.factions {
+            for o in fc.allies.iter().chain(&fc.enemies) {
+                if !fids.contains(o.as_str()) {
+                    return bad(format!("faction {}: relation avec {o} inconnue", fc.id));
+                }
+            }
+            if fc.allies.iter().any(|a| fc.enemies.contains(a)) {
+                return bad(format!("faction {}: allie et ennemi a la fois", fc.id));
+            }
+        }
+        let mut iids = BTreeSet::new();
+        for ind in &self.industries {
+            if !iids.insert(ind.id.as_str()) {
+                return bad(format!("industrie en double: {}", ind.id));
+            }
+            for r in ind.produces.iter().chain(&ind.consumes) {
+                if self.resource_index(r).is_none() {
+                    return bad(format!("industrie {}: ressource inconnue {r}", ind.id));
+                }
+            }
+            if ind.produces.iter().any(|p| ind.consumes.contains(p)) {
+                return bad(format!(
+                    "industrie {}: produit et consomme la meme chose",
+                    ind.id
+                ));
+            }
+        }
+        if self.industries.is_empty() {
+            return bad("aucune industrie".into());
+        }
         Ok(())
     }
 }
@@ -422,6 +505,7 @@ mod tests {
         assert!(d.asteroids.len() >= 4);
         assert!(d.modules.len() >= 60, "{}", d.modules.len());
         assert!(d.hulls.len() >= 15);
+        assert!(d.factions.len() >= 6 && d.industries.len() >= 8);
         assert!(d.skills.len() >= 12 && d.traits.len() >= 30 && d.events.len() >= 25);
         assert!(d.resource_index("food").is_some() && !d.text("hire").is_empty());
     }

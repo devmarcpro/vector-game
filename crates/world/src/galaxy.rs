@@ -10,6 +10,8 @@ const R_SUN_LY: f64 = 26_000.0;
 const SCALE_LEN: f64 = 9_000.0;
 const SCALE_HEIGHT: f64 = 300.0;
 const MAX_PER_SECTOR: usize = 40;
+/// Edge of the cells holding one faction seed point.
+pub const TERRITORY_CELL_LY: f64 = 60.0;
 /// Beyond this radius from the centre the galaxy is empty.
 const EDGE_LY: f64 = 60_000.0;
 
@@ -134,6 +136,36 @@ impl Galaxy {
             .nth(usize::from(id.index))
     }
 
+    /// Which faction (0..n) claims the point `p`, or None for unclaimed frontier space.
+    /// Territories are the Voronoi cells of one jittered seed point per 60 ly cell.
+    pub fn territory(&self, p: [f64; 3], n_factions: usize) -> Option<usize> {
+        let cell = |v: f64| (v / TERRITORY_CELL_LY).floor() as i64;
+        let c = (cell(p[0]), cell(p[1]), cell(p[2]));
+        let mut best: Option<(f64, Option<usize>)> = None;
+        for dx in -1..=1 {
+            for dy in -1..=1 {
+                for dz in -1..=1 {
+                    let (cx, cy, cz) = (c.0 + dx, c.1 + dy, c.2 + dz);
+                    let h = hash_coord(self.seed ^ 0x7E44, cx, cy, cz);
+                    let mut r = Rng::new(h);
+                    let sp = [
+                        (cx as f64 + r.f64()) * TERRITORY_CELL_LY,
+                        (cy as f64 + r.f64()) * TERRITORY_CELL_LY,
+                        (cz as f64 + r.f64()) * TERRITORY_CELL_LY,
+                    ];
+                    let d =
+                        (sp[0] - p[0]).powi(2) + (sp[1] - p[1]).powi(2) + (sp[2] - p[2]).powi(2);
+                    let slot = (r.next_u64() % (n_factions as u64 + 2)) as usize;
+                    let owner = (slot < n_factions).then_some(slot);
+                    if best.is_none_or(|(bd, _)| d < bd) {
+                        best = Some((d, owner));
+                    }
+                }
+            }
+        }
+        best.and_then(|(_, o)| o)
+    }
+
     pub fn sector_of(p: [f64; 3]) -> SectorCoord {
         (
             (p[0] / SECTOR_LY).floor() as i64,
@@ -212,6 +244,38 @@ mod tests {
             core > 10.0 * mid,
             "the bulge is much denser: {core} vs {mid}"
         );
+    }
+
+    #[test]
+    fn territories_are_stable_contiguous_and_varied() {
+        let g = Galaxy::new(9);
+        let mut owners = std::collections::BTreeSet::new();
+        let mut unclaimed = 0;
+        for i in 0..400 {
+            let p = [f64::from(i) * 7.0 - 1400.0, 0.0, f64::from(i % 20) * 31.0];
+            let o = g.territory(p, 8);
+            assert_eq!(o, g.territory(p, 8));
+            match o {
+                Some(f) => {
+                    assert!(f < 8);
+                    owners.insert(f);
+                }
+                None => unclaimed += 1,
+            }
+        }
+        assert!(
+            owners.len() >= 5,
+            "several factions should be met: {owners:?}"
+        );
+        assert!(unclaimed > 0, "some frontier space remains");
+        // Two points 1 ly apart almost always share an owner (territories are tens of ly wide).
+        let same = (0..200)
+            .filter(|&i| {
+                let p = [f64::from(i) * 13.0, 0.0, 0.0];
+                g.territory(p, 8) == g.territory([p[0] + 1.0, 0.0, 0.0], 8)
+            })
+            .count();
+        assert!(same > 180, "territories must be contiguous: {same}/200");
     }
 
     #[test]

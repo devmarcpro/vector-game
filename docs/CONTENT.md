@@ -23,3 +23,5 @@
 | Evenements | 30 | >= 150 |
 | Cultures de noms | 6 | |
 | Postes | 10 | |
+| Factions | 8 | >= 6 OK |
+| Industries de station | 8 | |

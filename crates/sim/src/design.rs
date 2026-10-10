@@ -80,6 +80,7 @@ impl ShipDesign {
             "lifesup_mk1",
             "battery_mk1",
             "habitat_mk1",
+            "ftl_mk1",
             "radiator_mk2",
             "rcs_mk1",
             "laser_mk2",
@@ -118,6 +119,7 @@ pub struct ShipStats {
     pub power_peak: f64,
     pub mining_rate: f64,
     pub scan_range: f64,
+    pub jump_range: f64,
     pub crew_cap: f64,
     pub shield: f64,
 }
@@ -149,6 +151,7 @@ impl ShipStats {
             }
             s.mining_rate += m.mining_rate * k;
             s.scan_range = f64::max(s.scan_range, m.scan_range * k);
+            s.jump_range = f64::max(s.jump_range, m.jump_range * if k > 0.0 { 1.0 } else { 0.0 });
             s.crew_cap += m.crew_cap;
             s.shield += m.shield * k;
         }
@@ -167,6 +170,7 @@ pub struct Activity {
     pub throttle: f64,
     pub mining: bool,
     pub rcs_use: f64,
+    pub jumping: bool,
 }
 
 /// Capabilities actually available this step after power allocation.
@@ -180,6 +184,10 @@ pub struct Effective {
     pub mining_rate: f64,
     pub mining_range: f64,
     pub life_ok: bool,
+    /// Powered scanner reach (m), 0 without a scanner.
+    pub scan_range: f64,
+    /// Light years per jump available right now (needs a powered FTL drive).
+    pub jump_range: f64,
     /// Number of people the powered life support can sustain.
     pub life_capacity: f64,
     /// kg of food per day grown by powered greenhouses.
@@ -254,6 +262,7 @@ impl Systems {
                 let load = match m.category.as_str() {
                     "engine" => act.throttle.clamp(0.0, 1.0),
                     "mining" => f64::from(u8::from(act.mining)),
+                    "ftl" => f64::from(u8::from(act.jumping)),
                     "gyro" | "rcs" => 0.2 + 0.8 * act.rcs_use.clamp(0.0, 1.0),
                     _ => 1.0,
                 };
@@ -355,6 +364,10 @@ impl Systems {
             e.food_per_day += m.food * k;
             e.medbay += m.medical * k;
             e.workshop += m.repair * k;
+            e.scan_range = f64::max(e.scan_range, m.scan_range * k);
+            if k > 0.5 {
+                e.jump_range = f64::max(e.jump_range, m.jump_range);
+            }
         }
         e.isp = if e.thrust > 0.0 {
             thrust_isp / e.thrust
@@ -439,6 +452,7 @@ mod tests {
             throttle: 1.0,
             mining: true,
             rcs_use: 0.0,
+            jumping: false,
         };
         for _ in 0..20_000 {
             sys.step(&d, &design, &stats, 30_000.0, &act, 1.0, 0.5);
@@ -486,6 +500,7 @@ mod tests {
             throttle: 1.0,
             mining: true,
             rcs_use: 0.0,
+            jumping: false,
         };
         let eff = sys.step(&d, &design, &stats, 30_000.0, &act, 1.0, 0.1);
         let cat = |c: &str| {

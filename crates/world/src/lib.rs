@@ -1,4 +1,5 @@
 //! Procedural universe: stellar systems generated deterministically from a seed.
+pub mod galaxy;
 pub mod names;
 pub mod orbit;
 
@@ -322,16 +323,56 @@ fn random_orbit(rng: &mut Rng, parent: usize, a: f64, e_max: f64, i_max: f64, mu
 }
 
 /// Generate a complete stellar system deterministically from `seed`.
-pub fn generate_system(seed: u64) -> System {
-    let mut rng = Rng::new(seed);
-    let class = pick_class(&mut rng);
+/// Cheap summary of a star, computed from its seed with the same draws `generate_system` uses first.
+#[derive(Clone, Debug)]
+pub struct StarHeader {
+    pub class: StarClass,
+    pub mass_sun: f64,
+    pub luminosity: f64,
+    pub radius_sun: f64,
+    pub teff: f64,
+    pub name: String,
+    pub designation: String,
+}
+
+/// Draw the star header; `rng` is left positioned exactly where the rest of generation continues.
+fn star_header(rng: &mut Rng) -> StarHeader {
+    let class = pick_class(rng);
     let (m0, m1) = mass_range(class);
     let m = rng.range(m0, m1);
     let lum = luminosity(m);
     let rad = if m < 1.0 { m.powf(0.8) } else { m.powf(0.57) };
     let teff = 5772.0 * (lum / (rad * rad)).powf(0.25);
-    let name = star_name(&mut rng);
+    let name = star_name(rng);
     let designation = format!("HD {}", 1000 + rng.next_u64() % 900_000);
+    StarHeader {
+        class,
+        mass_sun: m,
+        luminosity: lum,
+        radius_sun: rad,
+        teff,
+        name,
+        designation,
+    }
+}
+
+/// Summary of the star a seed would produce, without generating the planets.
+pub fn peek_star(seed: u64) -> StarHeader {
+    star_header(&mut Rng::new(seed))
+}
+
+/// Generate a complete stellar system deterministically from `seed`.
+pub fn generate_system(seed: u64) -> System {
+    let mut rng = Rng::new(seed);
+    let StarHeader {
+        class,
+        mass_sun: m,
+        luminosity: lum,
+        radius_sun: rad,
+        teff,
+        name,
+        designation,
+    } = star_header(&mut rng);
     let star_mass = m * M_SUN;
     let mu_star = G * star_mass;
     let star = CelBody {

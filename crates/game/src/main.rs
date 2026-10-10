@@ -171,6 +171,11 @@ fn snapshot(path: &str, scene: &str, data: Arc<GameData>) {
             g.advance(0.1);
         }
         "pause" => g.screen = Screen::Pause,
+        "galaxy" => {
+            g.sim.ship.pos = vector_core::Vec3::new(4.0e11, 0.0, 0.0);
+            g.sim.update_ref_pub();
+            g.open_galaxy();
+        }
         "crew" | "recruit" | "journal" => {
             let (st, _) = g.sim.nearest_station().expect("station");
             g.sim.spawn_near(st, g.sim.bodies[st].radius + 200.0);

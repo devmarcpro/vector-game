@@ -6,7 +6,7 @@ use vector_data::GameData;
 use vector_world::generate_system;
 
 pub const MAGIC: [u8; 4] = *b"VECT";
-pub const VERSION: u32 = 3;
+pub const VERSION: u32 = 4;
 
 #[derive(Debug)]
 pub enum SaveError {
@@ -40,6 +40,14 @@ pub struct SaveGame {
     pub target: Option<usize>,
     pub module_stock: Vec<u32>,
     pub crew: crate::crew::Crew,
+    pub galaxy_seed: u64,
+    pub here: vector_world::galaxy::StarRef,
+    pub here_pos: [f64; 3],
+    pub visited: Vec<(vector_world::galaxy::StarRef, [f64; 3])>,
+    pub deltas: Vec<(vector_world::galaxy::StarRef, crate::voyage::SystemDelta)>,
+    pub scan: Vec<u8>,
+    pub scan_progress: Vec<f32>,
+    pub jump: Option<crate::voyage::JumpState>,
 }
 
 impl Sim {
@@ -55,6 +63,14 @@ impl Sim {
             target: self.target,
             module_stock: self.module_stock.clone(),
             crew: self.crew.clone(),
+            galaxy_seed: self.galaxy.seed,
+            here: self.here,
+            here_pos: self.here_pos,
+            visited: self.visited.iter().map(|(k, v)| (*k, *v)).collect(),
+            deltas: self.deltas.iter().map(|(k, v)| (*k, v.clone())).collect(),
+            scan: self.scan.clone(),
+            scan_progress: self.scan_progress.clone(),
+            jump: self.jump.clone(),
         };
         let mut out = MAGIC.to_vec();
         out.extend_from_slice(&VERSION.to_le_bytes());
@@ -81,6 +97,16 @@ impl Sim {
                 "incompatible avec les donnees actuelles".into(),
             ));
         }
+        sim.galaxy = vector_world::galaxy::Galaxy::new(save.galaxy_seed);
+        sim.here = save.here;
+        sim.here_pos = save.here_pos;
+        sim.visited = save.visited.into_iter().collect();
+        sim.deltas = save.deltas.into_iter().collect();
+        if save.scan.len() == sim.scan.len() {
+            sim.scan = save.scan;
+            sim.scan_progress = save.scan_progress;
+        }
+        sim.jump = save.jump;
         sim.time = save.time;
         sim.ship = save.ship;
         sim.credits = save.credits;

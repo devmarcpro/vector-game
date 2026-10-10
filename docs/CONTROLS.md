@@ -14,6 +14,7 @@
 | I | Soute / inventaire (J = jeter la ressource) |
 | K | Equipage (Gauche/Droite poste, T quart, X débarquer à quai, J journal) |
 | J | Journal de bord |
+| L | Carte galactique (Haut/Bas étoile, +/- zoom, Entrée = saut FTL) ; Retour arrière annule une charge de saut |
 | H | Ecran vaisseau (emplacements, santé, énergie ; amarré : Entrée installer, X retirer, Y chantier naval) |
 | F5 / F9 | Sauvegarde / chargement rapide (saves/slot1.sav) |
 | Echap | Menu pause |

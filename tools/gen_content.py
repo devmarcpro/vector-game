@@ -108,9 +108,15 @@ family("greenhouse", "Serre", "greenhouse", "Internal", [
     dict(mass=2200, hp=110, cost=34000, food=6, power=-450, priority=2),
 ], {})
 family("scanner", "Scanner", "scanner", "External", [
-    dict(mass=200, hp=50, cost=9000, scan_range=2.0e5, power=-100, priority=2),
-    dict(mass=450, hp=80, cost=26000, scan_range=2.0e7, power=-300, priority=2),
-    dict(mass=900, hp=120, cost=80000, scan_range=2.0e9, power=-900, priority=2),
+    dict(mass=200, hp=50, cost=9000, scan_range=3.0e8, power=-100, priority=2),
+    dict(mass=450, hp=80, cost=26000, scan_range=3.0e10, power=-300, priority=2),
+    dict(mass=900, hp=120, cost=80000, scan_range=3.0e12, power=-900, priority=2),
+], {})
+family("ftl", "Propulseur FTL", "ftl", "Core", [
+    dict(mass=3000, hp=250, cost=120000, jump_range=4.0, power=-12000, priority=1),
+    dict(mass=5500, hp=350, cost=300000, jump_range=8.0, power=-20000, priority=1),
+    dict(mass=10000, hp=550, cost=800000, jump_range=15.0, power=-35000, priority=1),
+    dict(mass=20000, hp=900, cost=2200000, jump_range=30.0, power=-60000, priority=1),
 ], {})
 family("armor", "Blindage", "armor", "External", [
     dict(mass=900, hp=500, cost=7000, armor=1),
@@ -157,7 +163,7 @@ def ron_value(v):
 
 FLOAT_FIELDS = {"mass", "hp", "cost", "power", "thrust", "isp", "fuel", "cargo_kg", "cargo_m3", "battery", "radiate",
                 "mining_rate", "mining_range", "life_support", "crew_cap", "medical", "science", "repair", "food",
-                "scan_range", "armor", "agility", "rcs", "shield", "dock", "hangar", "armory"}
+                "scan_range", "jump_range", "armor", "agility", "rcs", "shield", "dock", "hangar", "armory"}
 
 
 def emit_module(m):
@@ -184,7 +190,7 @@ with open(os.path.join(OUT, "modules.ron"), "w", encoding="utf-8") as f:
 hulls = [
     ("shuttle", "Navette Colibri", "navette", 3500, 400, 25000, 6.0e4, 2.2, 3.0, [("Core", 1), ("Core", 1), ("Internal", 1), ("Internal", 1), ("External", 1)]),
     ("skiff", "Esquif Sparrow", "leger", 4800, 600, 48000, 1.0e5, 2.0, 2.6, [("Core", 2), ("Core", 1), ("Internal", 2), ("Internal", 1), ("External", 1), ("Hardpoint", 1)]),
-    ("prospector", "Prospecteur Atlas", "mineur", 6000, 1000, 90000, 2.8e5, 1.5, 2.0, [("Core", 2), ("Core", 2), ("Core", 1), ("Internal", 2), ("Internal", 2), ("Internal", 1), ("Internal", 1), ("Internal", 1), ("External", 2), ("External", 1), ("Hardpoint", 2)]),
+    ("prospector", "Prospecteur Atlas", "mineur", 6000, 1000, 90000, 2.8e5, 1.5, 2.0, [("Core", 2), ("Core", 2), ("Core", 2), ("Core", 1), ("Internal", 2), ("Internal", 2), ("Internal", 1), ("Internal", 1), ("Internal", 1), ("External", 2), ("External", 1), ("Hardpoint", 2)]),
     ("driller", "Foreur Titan", "mineur", 11000, 1800, 210000, 4.5e5, 1.2, 1.5, [("Core", 3), ("Core", 2), ("Core", 2), ("Internal", 3), ("Internal", 3), ("Internal", 2), ("Internal", 1), ("External", 3), ("External", 2), ("Hardpoint", 3), ("Hardpoint", 2)]),
     ("courier", "Courrier Zephyr", "rapide", 5200, 700, 140000, 3.0e5, 2.4, 3.2, [("Core", 3), ("Core", 2), ("Internal", 2), ("Internal", 1), ("External", 2), ("Hardpoint", 1)]),
     ("hauler", "Cargo Mule", "cargo", 9500, 1500, 160000, 3.5e5, 1.1, 1.3, [("Core", 2), ("Core", 2), ("Internal", 3), ("Internal", 3), ("Internal", 3), ("Internal", 2), ("External", 2), ("External", 2), ("Hardpoint", 1)]),

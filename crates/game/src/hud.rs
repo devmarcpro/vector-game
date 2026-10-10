@@ -3,6 +3,7 @@ use crate::console::Console;
 use vector_core::{Mat3, Vec3};
 use vector_render::{Camera, Framebuffer, Wireframe};
 use vector_sim::design::{T_DAMAGE, T_SCRAM};
+use vector_sim::voyage::{SCAN_FULL, SCAN_SURVEYED};
 use vector_sim::Sim;
 use vector_world::BodyKind;
 
@@ -83,6 +84,9 @@ fn draw_cockpit(fb: &mut Framebuffer, v: &View) {
         }
     }
     for (i, b) in v.sim.bodies.iter().enumerate() {
+        if v.sim.scan[i] == 0 {
+            continue;
+        }
         let col = body_color(v, i);
         let dist = (b.pos - ship.pos).length();
         let px = b.radius / dist.max(1.0) * focal;
@@ -111,7 +115,7 @@ fn draw_cockpit(fb: &mut Framebuffer, v: &View) {
             if Some(i) == v.sim.target
                 || (matches!(b.kind, BodyKind::Planet(_) | BodyKind::Station) && px < 40.0)
             {
-                fb.text_at(x as i32 + 8, y as i32 - 12, &b.name, col);
+                fb.text_at(x as i32 + 8, y as i32 - 12, body_label(v, i), col);
             }
         }
     }
@@ -382,62 +386,22 @@ fn draw_status(fb: &mut Framebuffer, v: &View) {
             );
         }
     }
-    if let Some(i) = v.sim.target {
-        let t = &sim.bodies[i];
-        let cb = &sim.system.bodies[i];
-        let r = t.pos - ship.pos;
-        let range = r.length() - t.radius;
-        let closing = (ship.vel - t.vel).dot(r.normalized());
-        let x = cols.saturating_sub(40);
-        fb.text(x, rows - 8, &format!("CIBLE {}", t.name), AMBER);
-        fb.text(
-            x,
-            rows - 7,
-            &format!("TYPE  {}", kind_label(cb.kind)),
-            AMBER,
-        );
-        fb.text(x, rows - 6, &format!("DIST  {}", fmt_dist(range)), AMBER);
-        fb.text(x, rows - 5, &format!("APPR  {:+.1} M/S", closing), AMBER);
-        fb.text(
-            x,
-            rows - 4,
-            &format!("RAYON {}  G {:.1}", fmt_dist(t.radius), cb.gravity),
-            DIM,
-        );
-        fb.text(
-            x,
-            rows - 3,
-            &format!("TEMP  {:.0} K  PRES {:.2} BAR", cb.temp, cb.pressure),
-            DIM,
-        );
-        if let BodyKind::Asteroid(c) = cb.kind {
-            fb.text(
-                x,
-                rows - 2,
-                &format!(
-                    "MASSE {:.0} T  [V] LASER <{}",
-                    sim.remaining_mass(i) / 1e3,
-                    fmt_dist(
-                        sim.ship
-                            .design
-                            .modules(&sim.data)
-                            .map(|(_, m)| m.mining_range)
-                            .fold(0.0, f64::max)
-                    )
-                ),
-                DIM,
-            );
-            let _ = c;
-        } else if !cb.atmosphere.is_empty() {
-            let a: Vec<String> = cb
-                .atmosphere
-                .iter()
-                .map(|(g, f)| format!("{g} {:.0}%", f * 100.0))
-                .collect();
-            fb.text(x, rows - 2, &a.join(" "), DIM);
-        }
-    } else {
-        fb.text(cols.saturating_sub(40), rows - 2, "AUCUNE CIBLE [TAB]", DIM);
+    draw_target_panel(fb, v, rows, cols);
+    if let Some(j) = &sim.jump {
+        let line = if j.in_transit {
+            let done = 1.0 - j.transit_left / j.total_transit.max(1.0);
+            format!(
+                "TRANSIT FTL {:.0}%  RESTE {}",
+                done * 100.0,
+                fmt_time(j.transit_left)
+            )
+        } else {
+            format!(
+                "CHARGE FTL {:.0}S  [RETOUR ARR.] ANNULER",
+                j.charge_left.max(0.0)
+            )
+        };
+        fb.text(1, 9, &line, AMBER);
     }
     for (i, m) in v.messages.iter().rev().take(4).enumerate() {
         fb.text(
@@ -449,6 +413,100 @@ fn draw_status(fb: &mut Framebuffer, v: &View) {
     }
     if ship.hull <= 0.0 {
         fb.text(cols / 2 - 10, rows / 2 + 4, "*** COQUE DETRUITE ***", RED);
+    }
+}
+
+fn draw_target_panel(fb: &mut Framebuffer, v: &View, rows: usize, cols: usize) {
+    let sim = v.sim;
+    let ship = &sim.ship;
+    let x = cols.saturating_sub(40);
+    let Some(i) = sim.target else {
+        fb.text(x, rows - 2, "AUCUNE CIBLE [TAB]", DIM);
+        return;
+    };
+    let t = &sim.bodies[i];
+    let cb = &sim.system.bodies[i];
+    let level = sim.scan[i];
+    let r = t.pos - ship.pos;
+    let range = r.length() - t.radius;
+    let closing = (ship.vel - t.vel).dot(r.normalized());
+    fb.text(x, rows - 8, &format!("CIBLE {}", body_label(v, i)), AMBER);
+    fb.text(x, rows - 6, &format!("DIST  {}", fmt_dist(range)), AMBER);
+    fb.text(x, rows - 5, &format!("APPR  {:+.1} M/S", closing), AMBER);
+    if level < SCAN_SURVEYED {
+        fb.text(x, rows - 7, "TYPE  NON IDENTIFIE", AMBER);
+        fb.text(x, rows - 3, "APPROCHEZ POUR SCANNER", DIM);
+        return;
+    }
+    fb.text(
+        x,
+        rows - 7,
+        &format!("TYPE  {}", kind_label(cb.kind)),
+        AMBER,
+    );
+    fb.text(
+        x,
+        rows - 4,
+        &format!("RAYON {}  G {:.1}", fmt_dist(t.radius), cb.gravity),
+        DIM,
+    );
+    fb.text(
+        x,
+        rows - 3,
+        &format!("TEMP  {:.0} K  PRES {:.2} BAR", cb.temp, cb.pressure),
+        DIM,
+    );
+    if level < SCAN_FULL {
+        fb.text(x, rows - 2, "SCAN COMPLET: PLUS PRES", DIM);
+        return;
+    }
+    if let BodyKind::Asteroid(class) = cb.kind {
+        let range_laser = ship
+            .design
+            .modules(&sim.data)
+            .map(|(_, m)| m.mining_range)
+            .fold(0.0, f64::max);
+        let comp: Vec<String> = sim
+            .data
+            .asteroids
+            .iter()
+            .find(|a| a.id == class.id())
+            .map(|a| {
+                let mut c = a.composition.clone();
+                c.sort_by(|x, y| y.1.total_cmp(&x.1));
+                c.iter()
+                    .take(3)
+                    .map(|(r, f)| format!("{r} {:.0}%", f * 100.0))
+                    .collect()
+            })
+            .unwrap_or_default();
+        fb.text(
+            x,
+            rows - 2,
+            &format!(
+                "MASSE {:.0} T  {}  LASER<{}",
+                sim.remaining_mass(i) / 1e3,
+                comp.join(" "),
+                fmt_dist(range_laser)
+            ),
+            DIM,
+        );
+    } else if !cb.atmosphere.is_empty() {
+        let a: Vec<String> = cb
+            .atmosphere
+            .iter()
+            .map(|(g, f)| format!("{g} {:.0}%", f * 100.0))
+            .collect();
+        fb.text(x, rows - 2, &a.join(" "), DIM);
+    }
+}
+
+/// Name shown for a body, depending on how well it is known.
+pub fn body_label<'a>(v: &'a View, i: usize) -> &'a str {
+    if v.sim.scan[i] >= SCAN_SURVEYED {
+        &v.sim.bodies[i].name
+    } else {
+        "OBJET INCONNU"
     }
 }
 
@@ -474,7 +532,7 @@ fn draw_radar(fb: &mut Framebuffer, v: &View) {
     fb.line(cx, cy - ry, cx, cy + ry, DIM);
     let inv = ship.rot.transpose();
     for (i, b) in v.sim.bodies.iter().enumerate() {
-        if matches!(b.kind, BodyKind::Star(_)) {
+        if matches!(b.kind, BodyKind::Star(_)) || v.sim.scan[i] == 0 {
             continue;
         }
         let l = inv.mul_vec(b.pos - ship.pos);

@@ -77,6 +77,8 @@ pub struct Module {
     pub repair: f64,
     pub food: f64,
     pub scan_range: f64,
+    /// Light years per jump (FTL drives).
+    pub jump_range: f64,
     pub armor: f64,
     pub agility: f64,
     pub rcs: f64,

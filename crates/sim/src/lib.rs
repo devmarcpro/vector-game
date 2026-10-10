@@ -6,6 +6,7 @@ pub mod crew;
 pub mod design;
 pub mod market;
 pub mod save;
+pub mod voyage;
 
 use autopilot::Autopilot;
 use cargo::Cargo;
@@ -17,7 +18,9 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 use vector_core::{hash_coord, Mat3, Vec3};
 use vector_data::GameData;
+use vector_world::galaxy::{Galaxy, StarEntry, StarRef};
 use vector_world::{BodyKind, System};
+use voyage::{JumpState, SystemDelta};
 
 pub const G0: f64 = 9.806_65;
 /// Base fixed step (30 Hz).
@@ -148,6 +151,15 @@ pub enum Event {
     ModuleLost {
         slot: usize,
     },
+    JumpCharging,
+    JumpStarted {
+        dist_ly: f64,
+    },
+    JumpArrived {
+        dist_ly: f64,
+    },
+    JumpAborted(&'static str),
+    JumpMishap,
 }
 
 pub struct Sim {
@@ -173,6 +185,16 @@ pub struct Sim {
     pub module_stock: Vec<u32>,
     pub effective: Effective,
     pub crew: Crew,
+    pub galaxy: Galaxy,
+    /// The star whose system is currently loaded, and its position (ly).
+    pub here: StarRef,
+    pub here_pos: [f64; 3],
+    pub visited: BTreeMap<StarRef, [f64; 3]>,
+    pub deltas: BTreeMap<StarRef, SystemDelta>,
+    /// Knowledge level per body (0 unknown .. 3 fully scanned) and survey progress.
+    pub scan: Vec<u8>,
+    pub scan_progress: Vec<f32>,
+    pub jump: Option<JumpState>,
 }
 
 /// Propellant mass flow (kg/s) for a thrust force (N) at a given specific impulse.
@@ -227,9 +249,34 @@ impl Sim {
             laser_on: false,
             effective: Effective::default(),
             crew: Crew::new(),
+            galaxy: Galaxy::new(0),
+            here: StarRef {
+                sector: (0, 0, 0),
+                index: 0,
+            },
+            here_pos: [0.0; 3],
+            visited: BTreeMap::new(),
+            deltas: BTreeMap::new(),
+            scan: Vec::new(),
+            scan_progress: Vec::new(),
+            jump: None,
         };
+        s.scan = Self::initial_scan(&s.system);
+        s.scan_progress = vec![0.0; n];
+        s.visited.insert(s.here, s.here_pos);
         s.refresh_bodies();
         s.update_ref();
+        s
+    }
+
+    /// Start in the galaxy `galaxy`, in the system of star `entry`.
+    pub fn new_in_galaxy(galaxy: Galaxy, entry: &StarEntry, data: Arc<GameData>) -> Self {
+        let mut s = Sim::new(vector_world::generate_system(entry.seed), data);
+        s.galaxy = galaxy;
+        s.visited.clear();
+        s.here = entry.id;
+        s.here_pos = entry.pos;
+        s.visited.insert(s.here, s.here_pos);
         s
     }
 
@@ -264,6 +311,11 @@ impl Sim {
         self.ref_body = best.map(|(i, _)| i);
     }
 
+    /// Recompute the reference body after teleporting the ship (tools, console, tests).
+    pub fn update_ref_pub(&mut self) {
+        self.update_ref();
+    }
+
     /// Ship velocity relative to the reference body (or the star frame when none).
     pub fn rel_velocity(&self) -> Vec3 {
         match self.ref_body {
@@ -294,6 +346,9 @@ impl Sim {
 
     /// Largest step that keeps integration accurate near attractors and surfaces.
     pub fn safe_dt(&self) -> f64 {
+        if self.in_transit() {
+            return 600.0;
+        }
         let mut dt = f64::MAX;
         for b in &self.bodies {
             let d = (self.ship.pos - b.pos).length();
@@ -348,7 +403,7 @@ impl Sim {
         (self.ship.forward().dot(r * (1.0 / d)) >= tolerance.cos()).then_some((t, class))
     }
 
-    fn run_systems(&mut self, act: &Activity, dt: f64) {
+    pub(crate) fn run_systems(&mut self, act: &Activity, dt: f64) {
         let flux = self.solar_flux();
         let mass = self.ship.mass();
         let was_hot = self.ship.sys.overheating;
@@ -422,6 +477,10 @@ impl Sim {
             self.update_ref();
             return;
         }
+        if self.in_transit() {
+            self.transit_step(dt);
+            return;
+        }
         let input = match self.autopilot.take() {
             Some(mut ap) => {
                 let (mut inp, face, state) = ap.control(self, dt);
@@ -459,6 +518,7 @@ impl Sim {
             throttle: clamp(input.fwd).max(0.0),
             mining: aimed,
             rcs_use,
+            jumping: self.is_charging_jump(),
         };
         self.run_systems(&act, dt);
         let mut eff = self.effective.clone();
@@ -557,6 +617,8 @@ impl Sim {
         self.refresh_bodies();
         self.update_ref();
         self.collide();
+        self.charge_tick(dt);
+        self.scan_tick(dt);
         if aimed && eff.mining_rate > 0.0 {
             let miner = Crew::role_index(&self.data, "miner");
             let eff_mult = self.crew.role_efficiency(&self.data, miner, self.time);

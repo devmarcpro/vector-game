@@ -4,6 +4,7 @@ use std::{collections::HashSet, path::PathBuf, sync::Arc};
 use vector_core::{mix64, Vec3};
 use vector_data::GameData;
 use vector_sim::{autopilot::Autopilot, Event, ShipInput, Sim, SIM_DT};
+use vector_world::galaxy::StarEntry;
 use vector_world::BodyKind;
 use winit::keyboard::KeyCode;
 
@@ -32,6 +33,7 @@ pub enum Screen {
     Crew,
     Recruit,
     Journal,
+    Galaxy,
 }
 
 pub struct Game {
@@ -59,6 +61,9 @@ pub struct Game {
     pub recruit_sel: usize,
     pub journal_scroll: usize,
     pub log_seen: usize,
+    pub gal_cache: Vec<StarEntry>,
+    pub gal_sel: usize,
+    pub gal_zoom: f64,
     pub save_path: PathBuf,
 }
 
@@ -99,6 +104,9 @@ impl Game {
             recruit_sel: 0,
             journal_scroll: 0,
             log_seen: 0,
+            gal_cache: Vec::new(),
+            gal_sel: 0,
+            gal_zoom: 14.0,
             save_path: PathBuf::from("saves").join("slot1.sav"),
         };
         g.fit_map();
@@ -183,6 +191,9 @@ impl Game {
 
     /// Advance the simulation by `seconds` of real time at the current time scale.
     pub fn advance(&mut self, seconds: f64) {
+        if self.sim.in_transit() {
+            self.timescale = self.timescale.max(10_000.0);
+        }
         let input = if self.timescale > 2.0 {
             ShipInput::default()
         } else {
@@ -239,6 +250,24 @@ impl Game {
                     self.timescale = 1.0;
                 }
                 Event::CargoFull => self.say("SOUTE PLEINE"),
+                Event::JumpCharging => self.say("PROPULSEUR FTL EN CHARGE..."),
+                Event::JumpStarted { dist_ly } => {
+                    self.say(format!("SAUT FTL ENGAGE: {dist_ly:.1} AL"));
+                    self.timescale = 10_000.0;
+                }
+                Event::JumpArrived { .. } => {
+                    self.timescale = 1.0;
+                    self.stars = scene::star_field(self.sim.system.seed, 900);
+                    self.fit_map();
+                    self.map = false;
+                    let name = self.sim.system.name.clone();
+                    self.say(format!("ARRIVEE DANS LE SYSTEME {name}"));
+                }
+                Event::JumpAborted(why) => {
+                    self.say(format!("SAUT ANNULE: {}", why.to_uppercase()));
+                    self.timescale = 1.0;
+                }
+                Event::JumpMishap => self.say("INCIDENT DE SAUT: DEGATS SUR LE PROPULSEUR"),
                 Event::Overheat => self.say("ALERTE: SURCHAUFFE !"),
                 Event::ModuleLost { slot } => {
                     self.say(format!("MODULE PERDU (EMPLACEMENT {})", slot + 1))
@@ -383,6 +412,7 @@ impl Game {
             Screen::Crew => self.crew_key(code),
             Screen::Recruit => self.recruit_key(code),
             Screen::Journal => self.journal_key(code),
+            Screen::Galaxy => self.galaxy_key(code),
             Screen::Flight => self.flight_key(code),
         }
     }
@@ -568,6 +598,13 @@ impl Game {
                 )),
             },
             KeyCode::KeyJ => self.screen = Screen::Journal,
+            KeyCode::KeyL => self.open_galaxy(),
+            KeyCode::Backspace => {
+                if self.sim.is_charging_jump() {
+                    self.sim.cancel_jump();
+                    self.handle_events();
+                }
+            }
             KeyCode::KeyN if docked => {
                 self.screen = Screen::Recruit;
                 self.recruit_sel = 0;
@@ -626,6 +663,45 @@ impl Game {
                     Screen::Flight
                 }
             }
+            _ => {}
+        }
+    }
+
+    /// Refresh the cached list of stars shown on the galactic map.
+    pub fn open_galaxy(&mut self) {
+        let here = self.sim.here;
+        self.gal_cache = self
+            .sim
+            .galaxy
+            .nearby(self.sim.here_pos, 45.0)
+            .into_iter()
+            .filter(|e| e.id != here && self.sim.is_seen(e.pos))
+            .collect();
+        self.gal_sel = 0;
+        self.screen = Screen::Galaxy;
+    }
+
+    fn galaxy_key(&mut self, code: KeyCode) {
+        let n = self.gal_cache.len().max(1);
+        match code {
+            KeyCode::ArrowUp => self.gal_sel = (self.gal_sel + n - 1) % n,
+            KeyCode::ArrowDown | KeyCode::Tab => self.gal_sel = (self.gal_sel + 1) % n,
+            KeyCode::Equal | KeyCode::NumpadAdd => self.gal_zoom = (self.gal_zoom * 1.4).min(80.0),
+            KeyCode::Minus | KeyCode::NumpadSubtract => {
+                self.gal_zoom = (self.gal_zoom / 1.4).max(2.0)
+            }
+            KeyCode::Enter => {
+                if let Some(target) = self.gal_cache.get(self.gal_sel).cloned() {
+                    match self.sim.start_jump(&target) {
+                        Ok(()) => {
+                            self.screen = Screen::Flight;
+                            self.handle_events();
+                        }
+                        Err(e) => self.say(format!("SAUT IMPOSSIBLE: {}", e.to_uppercase())),
+                    }
+                }
+            }
+            KeyCode::Escape | KeyCode::KeyL => self.screen = Screen::Flight,
             _ => {}
         }
     }

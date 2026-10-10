@@ -1675,6 +1675,7 @@ dependencies = [
 name = "vector-world"
 version = "0.1.0"
 dependencies = [
+ "serde",
  "vector-core",
 ]
 

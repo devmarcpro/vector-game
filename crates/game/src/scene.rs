@@ -1,33 +1,53 @@
-//! Start scene: a generated system with a station, ship parked next to it.
+//! Start scene: a generated home system with a station, ship parked next to it.
 use std::sync::Arc;
 use vector_core::{Rng, Vec3};
 use vector_data::GameData;
+use vector_sim::voyage::SCAN_FULL;
 use vector_sim::Sim;
+use vector_world::galaxy::{Galaxy, StarEntry};
 use vector_world::{generate_system, BodyKind};
 
-/// Pick the first generated system (from `seed`) that has a station, a belt and a few planets.
+/// Is this system a good place to start (station, belt, a few planets)?
+fn good_home(seed: u64) -> bool {
+    let sys = generate_system(seed);
+    sys.bodies.iter().any(|b| b.kind == BodyKind::Station)
+        && sys
+            .bodies
+            .iter()
+            .any(|b| matches!(b.kind, BodyKind::Asteroid(_)))
+        && sys
+            .bodies
+            .iter()
+            .filter(|b| matches!(b.kind, BodyKind::Planet(_)))
+            .count()
+            >= 3
+}
+
+/// The nearest star to the origin with a good system and neighbours inside basic jump range.
+pub fn pick_home(galaxy: &Galaxy) -> StarEntry {
+    let near = galaxy.nearby([0.0; 3], 60.0);
+    let fits = |e: &&StarEntry| good_home(e.seed) && galaxy.nearby(e.pos, 4.0).len() >= 3;
+    near.iter()
+        .find(fits)
+        .or_else(|| near.iter().find(|e| good_home(e.seed)))
+        .or_else(|| near.first())
+        .cloned()
+        .unwrap_or_else(|| galaxy.sector((0, 0, 0)).remove(0))
+}
+
 pub fn new_sim(seed: u64, data: Arc<GameData>) -> Sim {
-    let mut sys = generate_system(seed);
-    for k in 1..3000u64 {
-        let ok = sys.bodies.iter().any(|b| b.kind == BodyKind::Station)
-            && sys
-                .bodies
-                .iter()
-                .any(|b| matches!(b.kind, BodyKind::Asteroid(_)))
-            && sys
-                .bodies
-                .iter()
-                .filter(|b| matches!(b.kind, BodyKind::Planet(_)))
-                .count()
-                >= 3;
-        if ok {
-            break;
-        }
-        sys = generate_system(vector_core::mix64(seed.wrapping_add(k)));
-    }
-    let station = sys.bodies.iter().position(|b| b.kind == BodyKind::Station);
-    let mut sim = Sim::new(sys, data);
+    let galaxy = Galaxy::new(seed);
+    let home = pick_home(&galaxy);
+    let mut sim = Sim::new_in_galaxy(galaxy, &home, data);
+    let station = sim
+        .system
+        .bodies
+        .iter()
+        .position(|b| b.kind == BodyKind::Station);
     sim.spawn_near(station.unwrap_or(0), 3000.0);
+    if let Some(st) = station {
+        sim.scan[st] = SCAN_FULL;
+    }
     // Starting supplies and one engineer.
     let data = Arc::clone(&sim.data);
     for (id, kg) in [

@@ -32,6 +32,7 @@ pub fn draw(fb: &mut Framebuffer, g: &Game) {
         Screen::Crew => draw_crew(fb, g),
         Screen::Recruit => draw_recruit(fb, g),
         Screen::Journal => draw_journal(fb, g),
+        Screen::Galaxy => draw_galaxy(fb, g),
         Screen::Flight => {}
     }
 }
@@ -596,4 +597,153 @@ fn draw_journal(fb: &mut Framebuffer, g: &Game) {
         "HAUT/BAS:DEFILER  K:EQUIPAGE  J/ECHAP:RETOUR",
         DIM,
     );
+}
+
+fn class_color(c: vector_world::StarClass) -> u32 {
+    use vector_world::StarClass::*;
+    match c {
+        O | B => 0x0070_90FF,
+        A => 0x00D0_D8FF,
+        F => 0x00E8_E8A0,
+        G => 0x00F0_D860,
+        K => 0x00F0_9040,
+        M => 0x00FF_5040,
+    }
+}
+
+fn draw_galaxy(fb: &mut Framebuffer, g: &Game) {
+    let s = &g.sim;
+    fb.text(
+        1,
+        1,
+        &format!(
+            "CARTE GALACTIQUE - {} ({})",
+            s.system.name, s.system.designation
+        ),
+        AMBER,
+    );
+    let range = s.jump_range();
+    fb.text(
+        1,
+        2,
+        &format!(
+            "PORTEE DE SAUT {range:.1} AL   CARBURANT {:.0} KG   ETOILES CONNUES {}",
+            s.ship.fuel,
+            g.gal_cache.len()
+        ),
+        GREEN,
+    );
+    let (cx, cy) = (fb.w as f32 * 0.42, fb.h as f32 * 0.52);
+    let zoom = g.gal_zoom as f32;
+    let proj = |p: [f64; 3]| -> (f32, f32) {
+        (
+            cx + (p[0] - s.here_pos[0]) as f32 * zoom,
+            cy + (p[2] - s.here_pos[2]) as f32 * zoom,
+        )
+    };
+    // Jump range ring and axes.
+    if range > 0.0 {
+        fb.circle(cx, cy, range as f32 * zoom, DIM);
+    }
+    fb.line(cx - 6.0, cy, cx + 6.0, cy, RED);
+    fb.line(cx, cy - 6.0, cx, cy + 6.0, RED);
+    fb.text_at(cx as i32 + 8, cy as i32 + 6, "ICI", RED);
+    for (k, e) in g.gal_cache.iter().enumerate() {
+        let (x, y) = proj(e.pos);
+        let h = (e.pos[1] - s.here_pos[1]) as f32 * zoom * 0.5;
+        let col = class_color(e.class());
+        fb.line(x, y, x, y - h, DIM);
+        fb.circle(x, y - h, 2.0, col);
+        let visited = s.visited.contains_key(&e.id);
+        if visited {
+            fb.circle(x, y - h, 5.0, GREEN);
+        }
+        if k == g.gal_sel {
+            for (sx, sy) in [(-1.0, -1.0), (1.0, -1.0), (-1.0, 1.0), (1.0, 1.0)] {
+                fb.line(
+                    x + sx * 9.0,
+                    y - h + sy * 9.0,
+                    x + sx * 5.0,
+                    y - h + sy * 9.0,
+                    AMBER,
+                );
+                fb.line(
+                    x + sx * 9.0,
+                    y - h + sy * 9.0,
+                    x + sx * 9.0,
+                    y - h + sy * 5.0,
+                    AMBER,
+                );
+            }
+            fb.text_at(
+                x as i32 + 12,
+                y as i32 - h as i32 - 4,
+                &e.header.name,
+                AMBER,
+            );
+        } else if zoom > 10.0 {
+            fb.text_at(x as i32 + 6, y as i32 - h as i32 - 4, &e.header.name, DIM);
+        }
+    }
+    // Info panel.
+    let x = (fb.w as f32 * 0.78) as usize / 8;
+    if let Some(e) = g.gal_cache.get(g.gal_sel) {
+        let d = e.distance_to(s.here_pos);
+        let ok = d <= range;
+        fb.text(x, 4, &e.header.name, AMBER);
+        fb.text(x, 5, &e.header.designation, DIM);
+        fb.text(
+            x,
+            7,
+            &format!(
+                "CLASSE {}  MASSE {:.2} MSOL",
+                e.header.class.letter(),
+                e.header.mass_sun
+            ),
+            GREEN,
+        );
+        fb.text(
+            x,
+            8,
+            &format!(
+                "LUMINOSITE {:.3} LSOL  TEMP {:.0} K",
+                e.header.luminosity, e.header.teff
+            ),
+            GREEN,
+        );
+        fb.text(x, 9, &format!("DISTANCE {d:.1} AL"), GREEN);
+        fb.text(
+            x,
+            11,
+            if ok { "A PORTEE" } else { "HORS DE PORTEE" },
+            if ok { GREEN } else { RED },
+        );
+        fb.text(
+            x,
+            12,
+            &format!("CARBURANT {:.0} KG", s.jump_fuel_cost(d)),
+            GREEN,
+        );
+        fb.text(
+            x,
+            13,
+            &format!("TRAJET {:.0} H", d * vector_sim::voyage::HOURS_PER_LY),
+            GREEN,
+        );
+        if s.visited.contains_key(&e.id) {
+            fb.text(x, 15, "SYSTEME DEJA VISITE", DIM);
+        }
+    } else {
+        fb.text(x, 4, "AUCUNE ETOILE CONNUE", DIM);
+    }
+    let b = fb.rows() - 4;
+    fb.text(
+        1,
+        b,
+        "HAUT/BAS:ETOILE  +/-:ZOOM  ENTREE:SAUTER (HORS DE TOUT CHAMP DE GRAVITE)  L/ECHAP:FERMER",
+        DIM,
+    );
+    for (i, msg) in g.messages.iter().rev().take(2).enumerate() {
+        fb.text(1, b + 1 + i, msg, if i == 0 { AMBER } else { DIM });
+    }
 }

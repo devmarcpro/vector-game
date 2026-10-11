@@ -39,7 +39,8 @@ fn main() {
     }
     for (ratio, id) in &recycling {
         println!("  recycling (loss by design) {id:<24} ratio {ratio:.2}");
-    }    ratios.sort_by(|a, b| a.0.total_cmp(&b.0));
+    }
+    ratios.sort_by(|a, b| a.0.total_cmp(&b.0));
     if let (Some(lo), Some(hi)) = (ratios.first(), ratios.last()) {
         println!("  range {:.2} ({}) .. {:.2} ({})", lo.0, lo.1, hi.0, hi.1);
     }

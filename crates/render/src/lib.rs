@@ -81,6 +81,11 @@ impl Framebuffer {
                     }
                 }
             }
+            if let Some((_, mark)) = font::decompose(ch) {
+                for &(mx, my) in mark.pixels() {
+                    self.plot(ox as i32 + mx, oy as i32 + my, c);
+                }
+            }
         }
     }
     /// Scaled text (each font pixel becomes a `scale` x `scale` block), for titles.
@@ -111,6 +116,11 @@ impl Framebuffer {
                     if bits >> cy & 1 == 1 {
                         self.plot(ox + cx as i32, y + cy, c);
                     }
+                }
+            }
+            if let Some((_, mark)) = font::decompose(ch) {
+                for &(mx, my) in mark.pixels() {
+                    self.plot(ox + mx, y + my, c);
                 }
             }
         }

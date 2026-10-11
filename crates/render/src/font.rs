@@ -69,8 +69,61 @@ const GLYPHS: [[u8; 5]; 64] = [
 pub const CELL_W: usize = 8;
 pub const CELL_H: usize = 10;
 
+/// Diacritical marks, drawn in the free rows around the 5x7 glyph: acute, grave and circumflex
+/// two rows above it, the diaeresis one row above, the cedilla below. Rows -2/-1 land in the blank
+/// bottom of the text line above (cells are 10 rows tall, glyphs use 7).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Mark {
+    Acute,
+    Grave,
+    Circumflex,
+    Diaeresis,
+    Cedilla,
+}
+
+impl Mark {
+    /// (column 0..5, row relative to the glyph top) of each lit pixel.
+    pub fn pixels(self) -> &'static [(i32, i32)] {
+        match self {
+            Mark::Acute => &[(3, -2), (2, -1)],
+            Mark::Grave => &[(1, -2), (2, -1)],
+            Mark::Circumflex => &[(2, -2), (1, -1), (3, -1)],
+            Mark::Diaeresis => &[(1, -1), (3, -1)],
+            Mark::Cedilla => &[(2, 7), (1, 8)],
+        }
+    }
+}
+
+/// Splits an accented French letter into its plain capital and its mark ("é" -> ('E', Acute)).
+pub fn decompose(c: char) -> Option<(char, Mark)> {
+    use Mark::*;
+    Some(match c {
+        'é' | 'É' => ('E', Acute),
+        'è' | 'È' => ('E', Grave),
+        'ê' | 'Ê' => ('E', Circumflex),
+        'ë' | 'Ë' => ('E', Diaeresis),
+        'à' | 'À' => ('A', Grave),
+        'â' | 'Â' => ('A', Circumflex),
+        'ä' | 'Ä' => ('A', Diaeresis),
+        'î' | 'Î' => ('I', Circumflex),
+        'ï' | 'Ï' => ('I', Diaeresis),
+        'ô' | 'Ô' => ('O', Circumflex),
+        'ö' | 'Ö' => ('O', Diaeresis),
+        'ù' | 'Ù' => ('U', Grave),
+        'û' | 'Û' => ('U', Circumflex),
+        'ü' | 'Ü' => ('U', Diaeresis),
+        'ç' | 'Ç' => ('C', Cedilla),
+        _ => return None,
+    })
+}
+
 /// Returns the 5 columns of a glyph (bit0 = top row).
 pub fn glyph(c: char) -> [u8; 5] {
+    let c = match c {
+        '’' | '‘' => '\'',
+        '«' | '»' => '"',
+        _ => decompose(c).map_or(c, |(base, _)| base),
+    };
     let code = c.to_ascii_uppercase() as u32;
     if code == 0x7C {
         return [0x00, 0x00, 0x7F, 0x00, 0x00];
@@ -79,5 +132,62 @@ pub fn glyph(c: char) -> [u8; 5] {
         GLYPHS[(code - 0x20) as usize]
     } else {
         [0x7F, 0x41, 0x41, 0x41, 0x7F]
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn accented_letters_share_the_plain_glyph_and_add_a_mark() {
+        for (acc, plain, mark) in [
+            ('é', 'E', Mark::Acute),
+            ('È', 'E', Mark::Grave),
+            ('ô', 'O', Mark::Circumflex),
+            ('ï', 'I', Mark::Diaeresis),
+            ('ç', 'C', Mark::Cedilla),
+        ] {
+            assert_eq!(glyph(acc), glyph(plain), "{acc}");
+            assert_eq!(decompose(acc), Some((plain, mark)), "{acc}");
+        }
+        assert_eq!(decompose('e'), None);
+        assert_ne!(
+            glyph('é'),
+            [0x7F, 0x41, 0x41, 0x41, 0x7F],
+            "not the unknown-char box"
+        );
+    }
+
+    #[test]
+    fn marks_stay_inside_the_cell_margins() {
+        for m in [
+            Mark::Acute,
+            Mark::Grave,
+            Mark::Circumflex,
+            Mark::Diaeresis,
+            Mark::Cedilla,
+        ] {
+            for &(x, y) in m.pixels() {
+                assert!((0..5).contains(&x), "{m:?} column {x}");
+                // Above: the two blank rows of the previous line; below: rows 7..CELL_H.
+                assert!(
+                    (-2..0).contains(&y) || (7..CELL_H as i32).contains(&y),
+                    "{m:?} row {y}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn an_accent_is_drawn_above_the_letter() {
+        let mut fb = crate::Framebuffer::new(32, 40);
+        fb.text(0, 2, "É", 0x00FF_FFFF);
+        let lit = |x: usize, y: usize| fb.px[y * fb.w + x] != 0;
+        // Row 2 starts at y = 20: the acute accent sits at y = 18 (column 3) and 19 (column 2).
+        assert!(lit(3, 18) && lit(2, 19));
+        let mut plain = crate::Framebuffer::new(32, 40);
+        plain.text(0, 2, "E", 0x00FF_FFFF);
+        assert!(plain.px[18 * plain.w + 3] == 0);
     }
 }

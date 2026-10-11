@@ -23,3 +23,5 @@ Autres : 4 classes d'astéroïdes, 6 cultures de noms, 10 postes, 8 industries d
 Chaque ressource, module, arme, coque, bâtiment, recette, technologie, faction, anomalie, maladie et industrie a une entrée de codex (F6) générée depuis les données ; le test `every_entry_of_every_category_has_real_data` en vérifie plus de 350.
 
 Régénération : `python tools/gen_content.py && python tools/gen_colony.py && python tools/gen_science.py && python tools/gen_scale.py` (dans cet ordre).
+
+Régénération complète : python tools/gen_content.py ; python tools/gen_colony.py ; python tools/gen_science.py ; python tools/gen_scale.py ; python tools/accents.py (le résultat est identique octet pour octet à data/).

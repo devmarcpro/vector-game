@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """Content scale-up: writes data/events_extra.ron, data/recipes_extra.ron, data/text/extra.ron and
 patches the recipe lists of data/buildings.ron (idempotent).  Run: python tools/gen_scale.py"""
 import os
@@ -8,8 +8,6 @@ D = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "data")
 
 
 def q(s):
-    import unicodedata
-    s = unicodedata.normalize("NFKD", s).encode("ascii", "ignore").decode()
     return '"' + s.replace('"', "'") + '"'
 
 

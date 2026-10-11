@@ -72,6 +72,12 @@ fn main() {
         let secs = t.elapsed().as_secs_f64();
         let verdict = worst.and_then(|()| check(&s));
         println!(
+            "  {} steps, mean dt {:.2} s, {:.1} us per step",
+            s.steps,
+            f64::from(y) * 365.0 * 86400.0 / s.steps.max(1) as f64,
+            secs * 1e6 / s.steps.max(1) as f64
+        );
+        println!(
             "{y:>3} year(s): {secs:7.2} s wall ({:.0}x real time)  crew {} npcs {} colonies {} -> {}",
             f64::from(y) * 365.0 * 86400.0 / secs.max(1e-9),
             s.crew.members.len(),

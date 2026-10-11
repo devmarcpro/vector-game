@@ -52,7 +52,7 @@
  ("tip_ship", ["Astuce : les radiateurs evacuent la chaleur des reacteurs et des armes.", "Astuce : un module detruit peut etre repare a quai.", "Astuce : equilibrez production et consommation d'energie."]),
  ("tip_crew", ["Astuce : un equipage heureux travaille mieux.", "Astuce : un medecin a bord evite bien des drames.", "Astuce : la cuisine et la botanique allongent les provisions."]),
  ("tip_empire", ["Astuce : une colonie a besoin de nourriture, d'eau et d'energie.", "Astuce : les routes de flotte automatisent votre commerce.", "Astuce : recherchez des technologies pour debloquer de nouveaux modules."]),
- ("flavor_barren", ["Un monde de roche nue, creuse de crateres.", "Aucune atmosphere : la surface garde la memoire de chaque impact.", "Le regolithe gris s'etend sans fin sous les projecteurs."]),
+ ("flavor_barren", ["Un monde de roche nue, creuse de cratères.", "Aucune atmosphere : la surface garde la memoire de chaque impact.", "Le regolithe gris s'etend sans fin sous les projecteurs."]),
  ("flavor_dwarf", ["Une petite boule glacee, gravite derisoire.", "Le monde nain est a peine plus qu'un gros caillou rond."]),
  ("flavor_desert", ["Des dunes ocre defilent sous les capteurs.", "Un ciel poussiereux et un sol craquele : le desert regne.", "Les vents de sable dessinent des spirales a l'horizon."]),
  ("flavor_terran", ["Mers, nuages et continents : un monde vivant.", "Les lumieres d'une atmosphere respirable font oublier le vide.", "Le vert des forets contraste avec le noir de l'espace."]),

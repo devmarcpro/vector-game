@@ -281,6 +281,8 @@ pub struct Sim {
     pub routes: Vec<fleet::Route>,
     pub next_fleet: u32,
     pub next_route: u32,
+    /// Integration steps executed since creation (diagnostic only, never saved).
+    pub steps: u64,
     pub fleet_paid_day: i64,
     pub projectiles: Vec<combat::Projectile>,
     pub wrecks: Vec<combat::Wreck>,
@@ -388,6 +390,7 @@ impl Sim {
             routes: Vec::new(),
             next_fleet: 1,
             next_route: 1,
+            steps: 0,
             fleet_paid_day: 0,
             projectiles: Vec::new(),
             wrecks: Vec::new(),
@@ -669,6 +672,7 @@ impl Sim {
     }
 
     pub fn step_dt(&mut self, manual: &ShipInput, dt: f64) {
+        self.steps += 1;
         self.laser_on = false;
         if let Some(st) = self.docked {
             self.time += dt;

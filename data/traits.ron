@@ -2,7 +2,7 @@
 [
  (id:"optimiste", name:"Optimiste", effects:[("morale_base",0.10),("stress_resist",0.10)]),
  (id:"pessimiste", name:"Pessimiste", effects:[("morale_base",-0.10),("temper",0.05)]),
- (id:"colerique", name:"Colerique", effects:[("temper",0.30),("stress_resist",-0.10)]),
+ (id:"colerique", name:"Colérique", effects:[("temper",0.30),("stress_resist",-0.10)]),
  (id:"calme", name:"Calme", effects:[("temper",-0.20),("stress_resist",0.15)]),
  (id:"sociable", name:"Sociable", effects:[("social_need",0.5),("morale_base",0.03)]),
  (id:"solitaire", name:"Solitaire", effects:[("social_need",-0.5),("temper",0.05)]),
@@ -26,10 +26,10 @@
  (id:"religieux", name:"Religieux", effects:[("stress_resist",0.15),("morale_base",0.02)]),
  (id:"rationnel", name:"Rationnel", effects:[("temper",-0.10),("work_speed",0.05)]),
  (id:"rancunier", name:"Rancunier", effects:[("temper",0.15)]),
- (id:"genereux", name:"Genereux", effects:[("social_need",0.2),("morale_base",0.02)]),
+ (id:"genereux", name:"Généreux", effects:[("social_need",0.2),("morale_base",0.02)]),
  (id:"ambitieux", name:"Ambitieux", effects:[("work_speed",0.10),("temper",0.05)]),
  (id:"nostalgique", name:"Nostalgique", effects:[("morale_base",-0.05),("social_need",0.2)]),
  (id:"aventureux", name:"Aventureux", effects:[("stress_resist",0.10),("morale_base",0.03)]),
- (id:"meticuleux", name:"Meticuleux", effects:[("work_speed",-0.05),("luck",0.05)]),
+ (id:"meticuleux", name:"Méticuleux", effects:[("work_speed",-0.05),("luck",0.05)]),
  (id:"bavard", name:"Bavard", effects:[("social_need",0.4),("temper",0.03)]),
 ]

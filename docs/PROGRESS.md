@@ -103,3 +103,5 @@
 - 2026-10-11 (lot) : Clonage : touche K de la liste des organes fait pousser un clone à l'hôpital (1,2 x la valeur de l'organe, marchandise `clone_<id>`), greffe sans rejet ; Moeurs locales : chez un peuple qui tient le corps pour sacré (axe corps < -0.4), opérer, cloner ou prélever coûte 800 CR d'amende et 0,2 de réputation ; Culture des colonies : chaque colonie a des mœurs (celles de ses fondateurs) qui dérivent sous ses politiques (loi martiale, frontières, quarantaine), les politiques qui heurtent la culture baissent le moral ; ligne MOEURS de l'écran colonie. Sauvegarde v23.
 
 - 2026-10-11 (lot) : Dialogues : les mineurs savent où est le meilleur rocher du système (effet `ore`). README réécrit (l'ancien était en mojibake) avec le contenu et les touches à jour.
+
+- 2026-10-11 (lot) : Expéditions : l'air et le climat comptent. Sans combinaison, un air trop mince (< 0,05 bar) coûte 0,03 de santé par tour, le froid (< 250 K) et la chaleur (> 330 K) jusqu'à 0,04 ; toute armure réduit ces dégâts de 1,5 x sa défense (l'exosquelette les arrête presque). L'écran de préparation affiche l'air, la température et un conseil.

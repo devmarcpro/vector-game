@@ -138,3 +138,6 @@ Prix de référence = valeur de la ressource x facteur mondial de la région à 
 
 ## Culture des colonies
 `culture_target` = mœurs des fondateurs + (niveau de sécurité - 1) x 0.5 sur violence et autorité, (niveau d'immigration - 1) x 0.6 et -(quarantaine - 1) x 0.2 sur l'ouverture ; la culture rejoint sa cible avec une constante de 600 jours. Friction : loi martiale chez des pacifistes (violence < -0.3) -0.08, sécurité libre chez des autoritaires -0.05, frontières ouvertes chez des xénophobes -0.08, fermées chez des ouverts -0.05, soustrait de la cible de moral.
+
+## Environnement des expéditions
+`environment_damage(pression, température, défense)` : 0.03 si pression < 0.05 bar ; + 0.004 x min(écart/10, 10) si T < 250 K ou T > 330 K ; multiplié par 1 - min(1.5 x défense, 0.95). Appliqué chaque tour à chaque membre debout (pas d'armure de plus : les dégâts sont déjà nets).

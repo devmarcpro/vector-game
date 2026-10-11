@@ -39,6 +39,27 @@ pub fn draw_prep(fb: &mut Framebuffer, g: &Game) {
         ),
         GREEN,
     );
+    // The air and the climate of the place: a suit is advised when they hurt.
+    let temp = g.sim.temp_now(map, g.surf_cx, g.surf_cy);
+    let (hurt, why) = vector_sim::walk::environment_damage(map.pressure, temp, 0.0);
+    fb.text(
+        1,
+        4,
+        &format!(
+            "AIR {:.2} BAR   TEMPERATURE {:.0} K   {}",
+            map.pressure,
+            temp,
+            if hurt > 0.0 {
+                format!(
+                    "{} : COMBINAISON CONSEILLEE (ARMURE EN EQUIPEMENT)",
+                    why.to_uppercase()
+                )
+            } else {
+                "CLIMAT SUPPORTABLE A MAINS NUES".to_string()
+            }
+        ),
+        if hurt > 0.0 { AMBER } else { GREEN },
+    );
     fb.text(1, 5, "QUI DESCEND (clic ou Espace pour cocher) :", DIM);
     let n = g.sim.crew.members.len();
     for (i, p) in g.sim.crew.members.iter().enumerate() {

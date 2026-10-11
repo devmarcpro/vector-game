@@ -64,6 +64,9 @@ pub struct Walk {
     pub plants: Vec<Plant>,
     pub creatures: Vec<Creature>,
     pub sites: Vec<SiteInst>,
+    /// Air pressure (bar) and temperature (K) of the place: without a suit they hurt.
+    pub pressure: f64,
+    pub temp: f64,
     /// Indices into the crew, and where each one stands.
     pub party: Vec<usize>,
     pub pos: Vec<(i32, i32)>,
@@ -86,6 +89,34 @@ fn vnoise(seed: u64, x: f64, y: f64) -> f64 {
     let a = c(0, 0) + (c(1, 0) - c(0, 0)) * fx;
     let b = c(0, 1) + (c(1, 1) - c(0, 1)) * fx;
     a + (b - a) * fy
+}
+
+/// Damage per turn of a place without a suit's protection: (damage after armour, reason). A
+/// thin atmosphere (below 0.05 bar) and extreme temperatures hurt; armour cuts it by 1.5 x its
+/// defence (a full exosuit stops almost everything).
+pub fn environment_damage(pressure: f64, temp: f64, defense: f64) -> (f64, &'static str) {
+    let mut dmg: f64 = 0.0;
+    let mut why = "";
+    if pressure < 0.05 {
+        dmg += 0.03;
+        why = "L'air manque";
+    }
+    let excess = if temp < 250.0 {
+        250.0 - temp
+    } else if temp > 330.0 {
+        temp - 330.0
+    } else {
+        0.0
+    };
+    if excess > 0.0 {
+        dmg += 0.004 * (excess / 10.0).min(10.0);
+        why = if temp < 250.0 {
+            "Le froid mord"
+        } else {
+            "La chaleur brule"
+        };
+    }
+    (dmg * (1.0 - (1.5 * defense).min(0.95)), why)
 }
 
 impl Walk {
@@ -223,6 +254,8 @@ impl Sim {
             plants: Vec::new(),
             creatures: Vec::new(),
             sites: Vec::new(),
+            pressure: map.pressure,
+            temp: self.temp_now(&map, cx, cy),
             pos: vec![(lx, ly); party.len()],
             party,
             active: 0,
@@ -559,12 +592,32 @@ impl Sim {
                 w.creatures[c].y = target.1;
             }
         }
+        // The air and the weather: a suit (any armour) protects, in proportion to its defence.
+        for i in 0..w.party.len() {
+            if !w.up(self, i) {
+                continue;
+            }
+            let who = w.party[i];
+            let defense = self.crew.members[who].gear_stat(&self.data, "defense");
+            let (dmg, why) = environment_damage(w.pressure, w.temp, defense);
+            if dmg > 0.0 {
+                self.walk_hurt_raw(w, who, dmg, why);
+            }
+        }
         if (0..w.party.len()).all(|i| !w.up(self, i)) {
             w.say("Toute l'equipe est hors de combat.");
             w.over = true;
         } else if !w.up(self, w.active) {
             self.walk_switch(w);
         }
+    }
+
+    /// Damage that no armour stops (thin air, cold): applied as it is.
+    fn walk_hurt_raw(&mut self, w: &mut Walk, who: usize, dmg: f64, by: &str) {
+        let defense = self.crew.members[who].gear_stat(&self.data, "defense");
+        // `walk_hurt` takes the armour off again: put it back so the net result is `dmg`.
+        let gross = dmg / (1.0 - defense.min(0.9));
+        self.walk_hurt(w, who, gross, by);
     }
 
     /// Hurt crew member `who`: health and one organ (a vital one at 0 kills).
@@ -903,5 +956,45 @@ mod tests {
         s.crew.members[1].health = 0.0;
         s.walk_end_turn(&mut w);
         assert!(w.over, "everybody down ends the expedition");
+    }
+
+    #[test]
+    fn thin_air_and_extreme_temperatures_hurt_unless_a_suit_is_worn() {
+        // The formula: nothing in a mild place, damage in vacuum, armour cuts it.
+        assert_eq!(environment_damage(1.0, 290.0, 0.0).0, 0.0);
+        let bare = environment_damage(0.0, 290.0, 0.0).0;
+        let suited = environment_damage(0.0, 290.0, 0.35).0;
+        assert!(bare > 0.0 && suited < bare * 0.6);
+        assert!(
+            environment_damage(0.0, 290.0, 0.6).0 < bare * 0.15,
+            "an exosuit nearly stops it"
+        );
+        assert!(environment_damage(1.0, 150.0, 0.0).0 > 0.0, "cold hurts");
+        assert!(environment_damage(1.0, 420.0, 0.0).0 > 0.0, "heat hurts");
+        // In a walk on a vacuum world the member loses health turn after turn.
+        let (mut s, body, cx, cy) = setup();
+        let mut w = s.walk_start(body, cx, cy, vec![0], false).unwrap();
+        w.pressure = 0.0;
+        s.crew.members[0].gear = vec![None; 3];
+        s.crew.members[0].health = 1.0;
+        for _ in 0..5 {
+            s.walk_end_turn(&mut w);
+        }
+        let bare_health = s.crew.members[0].health;
+        assert!(bare_health < 0.95, "{bare_health}");
+        // With a suit the same turns cost much less.
+        let suit = s.data.gear_index("exosquelette").unwrap();
+        let mut w2 = s.walk_start(body, cx, cy, vec![0], false).unwrap();
+        w2.pressure = 0.0;
+        s.crew.members[0].gear[1] = Some(suit);
+        s.crew.members[0].health = 1.0;
+        for _ in 0..5 {
+            s.walk_end_turn(&mut w2);
+        }
+        assert!(
+            s.crew.members[0].health > bare_health + 0.05,
+            "{}",
+            s.crew.members[0].health
+        );
     }
 }

@@ -2,7 +2,7 @@
 //! weapon, faction, anomaly and condition, generated from the real data (no hand-written numbers).
 use vector_data::GameData;
 
-pub const CATEGORIES: [&str; 30] = [
+pub const CATEGORIES: [&str; 38] = [
     "RESSOURCES",
     "MODULES",
     "ARMES",
@@ -85,7 +85,7 @@ fn entries(data: &GameData, cat: usize) -> Vec<usize> {
         26 => (0..data.rogue_themes.len()).collect(),
         27 => (0..data.rogue_monsters.len()).collect(),
         28 => (0..data.materials.len()).collect(),
-        29 => (0..data.surprises.len()).collect(),
+        37 => (0..data.surprises.len()).collect(),
         _ => Vec::new(),
     }
 }
@@ -120,7 +120,7 @@ pub fn names(data: &GameData, cat: usize) -> Vec<String> {
             26 => data.rogue_themes[i].name.clone(),
             27 => data.rogue_monsters[i].name.clone(),
             28 => data.materials[i].name.clone(),
-            29 => data.surprises[i].name.clone(),
+            37 => data.surprises[i].name.clone(),
             18 => format!(
                 "Appeler : {}",
                 vector_data::dialogue::ROLES[i].to_lowercase()
@@ -773,7 +773,7 @@ pub fn entry(data: &GameData, cat: usize, k: usize) -> Vec<String> {
                     .to_string(),
             );
         }
-        29 => {
+        37 => {
             let s = &data.surprises[i];
             out.push(s.name.clone());
             out.push(s.text.clone());

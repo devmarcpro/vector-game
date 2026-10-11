@@ -22,6 +22,10 @@ impl Console {
 pub fn run(cmd: &str, sim: &mut Sim, timescale: &mut f64) -> Vec<String> {
     let parts: Vec<&str> = cmd.split_whitespace().collect();
     let num = |i: usize| parts.get(i).and_then(|s| s.parse::<f64>().ok());
+    let cheat = !matches!(parts.first().copied(), None | Some("help" | "list"));
+    if cheat && !sim.rules.creative {
+        return vec!["MODE CREATIF REQUIS (REGLES DE PARTIE)".into()];
+    }
     match parts.first().copied() {
         None => vec![],
         Some("help") => vec![
@@ -151,6 +155,14 @@ mod tests {
         );
         let mut sim = new_sim(1, data);
         let mut ts = 1.0;
+        let p0 = sim.ship.pos;
+        assert!(run("tp 1 2 3", &mut sim, &mut ts)[0].contains("CREATIF"));
+        assert_eq!(sim.ship.pos, p0, "cheats are refused outside creative mode");
+        assert!(run("help", &mut sim, &mut ts)[0].contains("help"));
+        sim.set_rules(vector_sim::rules::Rules {
+            creative: true,
+            ..Default::default()
+        });
         run("tp 1 2 3", &mut sim, &mut ts);
         assert_eq!(sim.ship.pos, Vec3::new(1.0, 2.0, 3.0));
         run("time 10", &mut sim, &mut ts);

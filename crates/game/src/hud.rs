@@ -391,6 +391,9 @@ fn draw_status(fb: &mut Framebuffer, v: &View) {
         ),
         if ship.assist { GREEN } else { AMBER },
     );
+    if sim.rules.is_modified() {
+        fb.text(cols.saturating_sub(18), 1, "PARTIE MODIFIEE", AMBER);
+    }
     if let Some(ap) = &sim.autopilot {
         fb.text(
             1,

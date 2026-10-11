@@ -479,7 +479,10 @@ impl Sim {
 
     /// Pirates notice rich-looking ships passing close by.
     fn pirate_watch(&mut self, k: usize) {
-        if self.docked.is_some() || self.time - self.npcs[k].last_scan < DAY {
+        if self.rules.ai_aggression <= 0.0
+            || self.docked.is_some()
+            || self.time - self.npcs[k].last_scan < DAY
+        {
             return;
         }
         if (self.npcs[k].pos - self.ship.pos).length() > PIRATE_ALERT_RANGE {
@@ -488,7 +491,7 @@ impl Sim {
         let value: f64 = (0..self.ship.cargo.kg.len())
             .map(|r| self.ship.cargo.kg[r] * self.data.resources[r].value)
             .sum();
-        if value > 2000.0 {
+        if value > 2000.0 / self.rules.ai_aggression.max(0.1) {
             self.npcs[k].last_scan = self.time;
             self.events.push(Event::PirateAlert);
             self.npcs[k].state = NpcState::Combat {

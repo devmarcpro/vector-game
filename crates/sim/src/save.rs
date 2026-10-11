@@ -6,7 +6,7 @@ use vector_data::GameData;
 use vector_world::generate_system;
 
 pub const MAGIC: [u8; 4] = *b"VECT";
-pub const VERSION: u32 = 10;
+pub const VERSION: u32 = 11;
 
 #[derive(Debug)]
 pub enum SaveError {
@@ -69,6 +69,7 @@ pub struct SaveGame {
     pub current_research: Option<usize>,
     pub research_progress: f64,
     pub explored: Vec<bool>,
+    pub rules: crate::rules::Rules,
 }
 
 impl Sim {
@@ -113,6 +114,7 @@ impl Sim {
             current_research: self.current_research,
             research_progress: self.research_progress,
             explored: self.explored.clone(),
+            rules: self.rules.clone(),
         };
         let mut out = MAGIC.to_vec();
         out.extend_from_slice(&VERSION.to_le_bytes());
@@ -171,6 +173,7 @@ impl Sim {
         if save.researched.len() == sim.researched.len() {
             sim.researched = save.researched;
         }
+        sim.rules = save.rules;
         sim.research_pool = save.research_pool;
         sim.current_research = save.current_research;
         sim.research_progress = save.research_progress;

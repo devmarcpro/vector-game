@@ -108,6 +108,45 @@ impl Framebuffer {
             }
         }
     }
+    /// Screen post-processing: palette tint, glow bleed and CRT scanlines.
+    /// `tint` is an optional (r,g,b) multiplier in 0..=255.
+    pub fn postfx(&mut self, scanlines: bool, glow: bool, tint: Option<(u32, u32, u32)>) {
+        let w = self.w;
+        if glow {
+            let src = self.px.clone();
+            for y in 1..self.h.saturating_sub(1) {
+                for x in 1..w.saturating_sub(1) {
+                    let c = src[y * w + x];
+                    if c & 0xFF_FFFF == 0 {
+                        continue;
+                    }
+                    for (dx, dy) in [(1usize, 0usize), (0, 1)] {
+                        for (nx, ny) in [(x + dx, y + dy), (x - dx, y - dy)] {
+                            let i = ny * w + nx;
+                            let d = self.px[i];
+                            let add = |sh: u32| {
+                                (((d >> sh) & 0xFF) + (((c >> sh) & 0xFF) >> 2)).min(255) << sh
+                            };
+                            self.px[i] = add(16) | add(8) | add(0);
+                        }
+                    }
+                }
+            }
+        }
+        for (i, p) in self.px.iter_mut().enumerate() {
+            let mut c = *p;
+            if let Some((r, g, b)) = tint {
+                let lum =
+                    (((c >> 16) & 0xFF) * 77 + ((c >> 8) & 0xFF) * 150 + (c & 0xFF) * 29) >> 8;
+                c = ((lum * r / 255) << 16) | ((lum * g / 255) << 8) | (lum * b / 255);
+            }
+            if scanlines && (i / w) % 2 == 1 {
+                c = (c >> 1) & 0x7F_7F7F;
+            }
+            *p = c;
+        }
+    }
+
     pub fn cols(&self) -> usize {
         self.w / font::CELL_W
     }

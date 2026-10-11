@@ -119,6 +119,9 @@ pub struct CrewCtx<'a> {
     pub workshop: f64,
     pub overheating: bool,
     pub seed: u64,
+    /// Hunger, thirst and air matter.
+    pub needs: bool,
+    pub event_freq: f64,
 }
 
 /// What the crew did for the ship during an update.
@@ -365,7 +368,7 @@ impl Crew {
         }
 
         // Air.
-        let air_ok = ctx.life_ok && ctx.life_capacity >= n_alive as f64;
+        let air_ok = !ctx.needs || (ctx.life_ok && ctx.life_capacity >= n_alive as f64);
         let air_before = self.air;
         self.air = if air_ok {
             (self.air + hours * 1.0).min(1.0)
@@ -383,12 +386,15 @@ impl Crew {
             .map(|p| 1.0 + p.trait_sum(data, "appetite"))
             .sum();
         let (mut food_frac, mut water_frac) = (1.0, 1.0);
-        if let Some(food) = data.resource_index("food") {
+        if !ctx.needs {
+            // Needs disabled: nobody eats, drinks or suffocates.
+        } else if let Some(food) = data.resource_index("food") {
             let need = appetite * FOOD_KG_PER_DAY * days;
             let got = ctx.cargo.remove(data, food, need);
             food_frac = if need > 0.0 { (got / need) as f32 } else { 1.0 };
         }
-        if let Some(water) = data.resource_index("water") {
+        if !ctx.needs {
+        } else if let Some(water) = data.resource_index("water") {
             let loss = if ctx.life_ok {
                 WATER_LOSS_RECYCLED
             } else {
@@ -594,7 +600,7 @@ impl Crew {
                 continue;
             }
             let temper = self.members[ai].trait_sum(data, "temper");
-            let p_event = f64::from(hours) * 0.014 * (1.0 + temper.max(0.0));
+            let p_event = f64::from(hours) * 0.014 * (1.0 + temper.max(0.0)) * ctx.event_freq;
             if rng.f64() >= p_event {
                 continue;
             }
@@ -876,6 +882,8 @@ mod tests {
             workshop: 0.0,
             overheating: false,
             seed: 7,
+            needs: true,
+            event_freq: 1.0,
         }
     }
 

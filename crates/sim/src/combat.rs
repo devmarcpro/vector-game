@@ -171,7 +171,8 @@ impl Sim {
 
     /// Hit the player's ship: shield, then armour, then structure and modules.
     pub fn damage_player(&mut self, dmg: f64) {
-        if dmg <= 0.0 || self.destroyed {
+        let dmg = dmg * self.rules.damage;
+        if dmg <= 0.0 || self.destroyed || self.rules.invulnerable {
             return;
         }
         let now = self.time;
@@ -402,7 +403,9 @@ impl Sim {
             return;
         }
         let data = std::sync::Arc::clone(&self.data);
-        self.ship.cargo.remove(&data, ammo, m.ammo_use);
+        if !self.rules.infinite_resources {
+            self.ship.cargo.remove(&data, ammo, m.ammo_use);
+        }
         if let Some(cd) = self.weapon_cd.get_mut(slot) {
             *cd = 1.0 / m.rate.max(0.01);
         }
@@ -627,6 +630,7 @@ impl Sim {
         let now = self.time;
         let ship_pos = self.ship.pos;
         let ship_vel = self.ship.vel;
+        let ai_mult = self.rules.ai_aggression;
         let mut damage_to_player = 0.0;
         let mut demands: Vec<(usize, f64)> = Vec::new();
         let mut ended: Vec<usize> = Vec::new();
@@ -701,7 +705,7 @@ impl Sim {
                     - 0.6 * d / stats.range
                     - 0.0004 * (n.vel - ship_vel).length().min(1500.0))
                 .clamp(0.12, 0.9);
-                damage_to_player += stats.dps * dt * accuracy;
+                damage_to_player += stats.dps * dt * accuracy * ai_mult;
                 self.enemy_beams.push((n.pos, ship_pos));
             }
         }
@@ -878,6 +882,11 @@ impl Sim {
     }
 
     /// The insurer rebuilds the ship at the nearest station after a loss.
+    /// With permadeath on, losing the ship ends the game.
+    pub fn can_respawn(&self) -> bool {
+        !self.rules.permadeath
+    }
+
     pub fn insurance_respawn(&mut self) {
         self.destroyed = false;
         self.ship.cargo = crate::cargo::Cargo::new(self.data.resources.len());

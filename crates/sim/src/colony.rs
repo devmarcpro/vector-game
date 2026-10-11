@@ -796,22 +796,25 @@ impl Sim {
         if !self.is_unlocked("building", &d.id) {
             return Err("technologie non recherchee");
         }
+        let (mult, free) = (self.rules.build_cost, self.rules.infinite_resources);
         let c = self.colonies.get_mut(ci).ok_or("colonie inconnue")?;
         if !d.sites.iter().any(|s| c.tags.contains(s)) {
             return Err("site inadapte a ce batiment");
         }
         for (r, kg) in &d.cost {
             let i = data.resource_index(r).ok_or("donnees incompletes")?;
-            if c.storage[i] + 1e-6 < *kg {
+            if !free && c.storage[i] + 1e-6 < *kg * mult {
                 return Err("materiaux insuffisants dans les entrepots");
             }
         }
         if c.buildings.len() >= 80 {
             return Err("trop de batiments");
         }
-        for (r, kg) in &d.cost {
-            let i = data.resource_index(r).ok_or("donnees incompletes")?;
-            c.storage[i] -= kg;
+        if !free {
+            for (r, kg) in &d.cost {
+                let i = data.resource_index(r).ok_or("donnees incompletes")?;
+                c.storage[i] -= kg * mult;
+            }
         }
         c.buildings.push(BuildingInst {
             def,

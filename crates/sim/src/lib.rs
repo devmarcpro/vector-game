@@ -10,6 +10,9 @@ pub mod economy;
 pub mod fleet;
 pub mod market;
 pub mod npc;
+pub mod rules;
+#[cfg(test)]
+mod rules_effects;
 pub mod save;
 pub mod science;
 pub mod voyage;
@@ -296,6 +299,7 @@ pub struct Sim {
     pub env_sensor: f64,
     pub env_agility: f64,
     pub env_gravity: Vec3,
+    pub rules: rules::Rules,
 }
 
 /// Propellant mass flow (kg/s) for a thrust force (N) at a given specific impulse.
@@ -396,6 +400,7 @@ impl Sim {
             env_sensor: 1.0,
             env_agility: 1.0,
             env_gravity: Vec3::ZERO,
+            rules: rules::Rules::default(),
         };
         s.researched = s.data.techs.iter().map(|t| t.start).collect();
         s.weapon_cd = vec![0.0; s.ship.design.slots.len()];
@@ -450,6 +455,16 @@ impl Sim {
             }
         }
         self.ref_body = best.map(|(i, _)| i);
+    }
+
+    /// Apply a new rule set (also from the pause menu); reveals the map when asked.
+    pub fn set_rules(&mut self, rules: rules::Rules) {
+        self.rules = rules;
+        if self.rules.reveal_map {
+            for l in &mut self.scan {
+                *l = (*l).max(voyage::SCAN_SURVEYED);
+            }
+        }
     }
 
     /// Replace the ship's design outright (creative mode, tests): `hull` id and module ids in fit order.
@@ -623,6 +638,8 @@ impl Sim {
             workshop: eff.workshop,
             overheating: self.ship.sys.overheating,
             seed: self.system.seed,
+            needs: self.rules.crew_needs,
+            event_freq: self.rules.event_freq,
         };
         let out = self.crew.update(&mut ctx, self.time);
         let mut left = out.repair;
@@ -786,7 +803,9 @@ impl Sim {
             } else {
                 0.0
             };
-        let burn = (mass_flow(main_force, eff.isp) + mass_flow(rcs_force, RCS_ISP)) * dt;
+        let burn = (mass_flow(main_force, eff.isp) + mass_flow(rcs_force, RCS_ISP))
+            * dt
+            * self.rules.fuel_mult();
         if burn > s.fuel {
             if s.fuel > 0.0 {
                 self.events.push(Event::OutOfFuel);
@@ -846,7 +865,8 @@ impl Sim {
             }
         }
         for (i, speed, damage) in hits {
-            if speed > 5.0 {
+            if speed > 5.0 && !self.rules.invulnerable {
+                let damage = damage * self.rules.damage;
                 self.ship.hull = (self.ship.hull - damage).max(0.0);
                 let pick = hash_coord(self.system.seed, i as i64, (self.time * 1000.0) as i64, 99);
                 self.ship
@@ -1035,7 +1055,9 @@ impl Sim {
         if got > accepted {
             self.market(st).stock[res] += got - accepted;
         }
-        self.credits -= cost - refund;
+        if !self.rules.infinite_resources {
+            self.credits -= cost - refund;
+        }
         self.change_reputation(self.faction, ((cost - refund) / 20_000.0) as f32);
         Ok((accepted, cost - refund))
     }
@@ -1056,7 +1078,9 @@ impl Sim {
         }
         let (got, cost) = self.market(st).buy(&data, fuel, kg, edge);
         self.ship.fuel += got;
-        self.credits -= cost;
+        if !self.rules.infinite_resources {
+            self.credits -= cost;
+        }
         Ok((got, cost))
     }
 
@@ -1151,7 +1175,11 @@ impl Sim {
         if !self.is_unlocked("module", &module.id) {
             return Err("technologie non recherchee");
         }
-        let cost = module.cost;
+        let cost = if self.rules.infinite_resources {
+            0.0
+        } else {
+            module.cost * self.rules.build_cost
+        };
         if cost > self.credits {
             return Err("fonds insuffisants");
         }
@@ -1220,7 +1248,11 @@ impl Sim {
             return Err("videz la soute d'abord");
         }
         let trade_in = self.data.hulls[self.ship.design.hull].cost * RESALE;
-        let price = new.cost - trade_in;
+        let price = if self.rules.infinite_resources {
+            0.0
+        } else {
+            new.cost * self.rules.build_cost - trade_in
+        };
         if price > self.credits {
             return Err("fonds insuffisants");
         }

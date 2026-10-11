@@ -1,7 +1,9 @@
+mod codex;
 mod console;
 mod game;
 mod hud;
 mod scene;
+mod settings;
 mod ui;
 
 use game::{Game, Screen, DEFAULT_SEED};
@@ -116,6 +118,17 @@ impl ApplicationHandler for App {
                     self.fb = Framebuffer::new(w.get() as usize, h.get() as usize);
                 }
                 draw_frame(&mut self.fb, &self.game);
+                let st = &self.game.settings;
+                if st.scanlines || st.glow || st.scheme > 0 {
+                    let tint = match st.scheme {
+                        1 => Some((60, 255, 90)),
+                        2 => Some((255, 180, 40)),
+                        3 => Some((255, 255, 255)),
+                        4 => Some((90, 160, 255)),
+                        _ => None,
+                    };
+                    self.fb.postfx(st.scanlines, st.glow, tint);
+                }
                 surf.resize(w, h).ok();
                 if let Ok(mut buf) = surf.buffer_mut() {
                     buf.copy_from_slice(&self.fb.px);

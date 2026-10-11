@@ -125,6 +125,9 @@ impl Sim {
 
     /// Stars the galactic map lets the player see: those near any visited system.
     pub fn is_seen(&self, pos: [f64; 3]) -> bool {
+        if self.rules.reveal_map {
+            return true;
+        }
         self.visited.values().any(|v| {
             let d = [v[0] - pos[0], v[1] - pos[1], v[2] - pos[2]];
             (d[0] * d[0] + d[1] * d[1] + d[2] * d[2]).sqrt() <= SEEN_RADIUS_LY
@@ -328,6 +331,11 @@ impl Sim {
                 self.scan = Self::initial_scan(&self.system);
                 self.scan_progress = vec![0.0; n];
                 self.explored = vec![false; n];
+            }
+        }
+        if self.rules.reveal_map {
+            for l in &mut self.scan {
+                *l = (*l).max(SCAN_SURVEYED);
             }
         }
         self.refresh_bodies();

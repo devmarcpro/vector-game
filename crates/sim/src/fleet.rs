@@ -151,7 +151,11 @@ impl Sim {
         if !self.is_unlocked("hull", &h.id) {
             return Err("technologie non recherchee");
         }
-        let price = h.cost * PURCHASE_FACTOR;
+        let price = if self.rules.infinite_resources {
+            0.0
+        } else {
+            h.cost * PURCHASE_FACTOR * self.rules.build_cost
+        };
         if price > self.credits {
             return Err("fonds insuffisants");
         }

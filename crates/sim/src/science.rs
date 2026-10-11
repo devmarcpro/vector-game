@@ -86,10 +86,11 @@ impl Sim {
 
     /// Collect lab output and colony research into the pool, then spend it on the current project.
     pub fn tick_research(&mut self, dt: f64) {
-        self.research_pool += self.ship_research_rate() * dt / DAY;
+        let speed = self.rules.research_speed;
+        self.research_pool += self.ship_research_rate() * dt / DAY * speed;
         for c in &mut self.colonies {
             if c.research > 0.0 {
-                self.research_pool += c.research;
+                self.research_pool += c.research * speed;
                 c.research = 0.0;
             }
         }
@@ -155,7 +156,7 @@ impl Sim {
 
     /// Apply a radiation dose (Gy) to the crew and, when severe, to electronics.
     pub fn irradiate(&mut self, dose: f64) {
-        if dose <= 0.0 {
+        if dose <= 0.0 || self.rules.invulnerable {
             return;
         }
         let mut rng = Rng::new(hash_coord(
@@ -272,13 +273,14 @@ impl Sim {
                 return;
             };
             let mut rng = Rng::new(hash_coord(self.system.seed, day, 77, 5));
-            self.pending_flare = (rng.f64() < flare_probability_per_day(class)).then(|| {
-                (
-                    day as f64 * DAY + rng.f64() * DAY,
-                    rng.range(0.2, 1.0),
-                    false,
-                )
-            });
+            self.pending_flare =
+                (rng.f64() < flare_probability_per_day(class) * self.rules.event_freq).then(|| {
+                    (
+                        day as f64 * DAY + rng.f64() * DAY,
+                        rng.range(0.2, 1.0),
+                        false,
+                    )
+                });
         }
         let Some((t, severity, warned)) = self.pending_flare else {
             return;
@@ -330,7 +332,7 @@ impl Sim {
             11,
             71,
         ));
-        if rng.f64() < dt / METEOR_MEAN_INTERVAL {
+        if rng.f64() < dt / METEOR_MEAN_INTERVAL * self.rules.event_freq {
             let dmg = rng.range(20.0, 120.0);
             self.events.push(Event::MeteorImpact { damage: dmg });
             self.damage_player(dmg);

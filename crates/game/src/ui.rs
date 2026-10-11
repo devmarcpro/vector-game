@@ -39,6 +39,9 @@ pub fn draw(fb: &mut Framebuffer, g: &Game) {
         Screen::Colony => draw_colony(fb, g),
         Screen::Fleet => draw_fleet(fb, g),
         Screen::Tech => draw_tech(fb, g),
+        Screen::Rules => draw_rules(fb, g),
+        Screen::Options => draw_options(fb, g),
+        Screen::Codex => draw_codex(fb, g),
         Screen::Destroyed => {
             let cols = fb.cols();
             fb.text_big((fb.w as i32 - 15 * 8 * 4) / 2, 140, "DETRUIT", 8, RED);
@@ -58,6 +61,100 @@ pub fn draw(fb: &mut Framebuffer, g: &Game) {
         }
         Screen::Flight => {}
     }
+}
+
+fn draw_rules(fb: &mut Framebuffer, g: &Game) {
+    fb.text(2, 2, "== REGLES DE PARTIE ==", AMBER);
+    let r = g.pending_rules.describe();
+    for (i, (label, val)) in r.iter().enumerate() {
+        let c = if i == g.rules_sel { AMBER } else { GREEN };
+        let mark = if i == g.rules_sel { ">" } else { " " };
+        fb.text(4, 5 + i * 2, &format!("{mark} {label}"), c);
+        fb.text(40, 5 + i * 2, val, c);
+    }
+    if g.pending_rules.is_modified() {
+        fb.text(
+            4,
+            5 + r.len() * 2 + 1,
+            "PARTIE MODIFIEE : pas de classement, a titre de bac a sable.",
+            RED,
+        );
+    }
+    fb.text(
+        4,
+        fb.rows() - 3,
+        "HAUT/BAS CHOISIR  GAUCHE/DROITE MODIFIER  R DEFAUT  ECHAP RETOUR",
+        DIM,
+    );
+}
+
+fn draw_options(fb: &mut Framebuffer, g: &Game) {
+    fb.text(2, 2, "== OPTIONS ==", AMBER);
+    for (i, (label, val)) in g.settings.describe().iter().enumerate() {
+        let c = if i == g.opt_sel { AMBER } else { GREEN };
+        let mark = if i == g.opt_sel { ">" } else { " " };
+        fb.text(4, 5 + i * 2, &format!("{mark} {label}"), c);
+        fb.text(40, 5 + i * 2, val, c);
+    }
+    fb.text(
+        4,
+        fb.rows() - 3,
+        "HAUT/BAS CHOISIR  GAUCHE/DROITE MODIFIER  ECHAP RETOUR",
+        DIM,
+    );
+}
+
+fn draw_codex(fb: &mut Framebuffer, g: &Game) {
+    use crate::codex;
+    fb.text(2, 1, "== CODEX ==", AMBER);
+    let mut x = 2;
+    for (i, c) in codex::CATEGORIES.iter().enumerate() {
+        let col = if i == g.codex_cat { AMBER } else { DIM };
+        fb.text(x, 3, c, col);
+        x += c.len() + 2;
+    }
+    let names = codex::names(&g.data, g.codex_cat);
+    let rows = fb.rows().saturating_sub(10);
+    let sel = g.codex_sel.min(names.len().saturating_sub(1));
+    let start = sel
+        .saturating_sub(rows / 2)
+        .min(names.len().saturating_sub(rows));
+    for (k, n) in names.iter().enumerate().skip(start).take(rows) {
+        let c = if k == sel { AMBER } else { GREEN };
+        let mark = if k == sel { ">" } else { " " };
+        let mut s = format!("{mark} {n}");
+        s.truncate(34);
+        fb.text(2, 5 + k - start, &s, c);
+    }
+    let w = fb.cols().saturating_sub(40).max(20);
+    let mut row = 5;
+    let max_row = fb.rows().saturating_sub(4);
+    for (i, l) in codex::entry(&g.data, g.codex_cat, sel).iter().enumerate() {
+        let mut cur = String::new();
+        for word in l.split_whitespace() {
+            if !cur.is_empty() && cur.chars().count() + 1 + word.chars().count() > w {
+                if row < max_row {
+                    fb.text(38, row, &cur, if i == 0 { AMBER } else { GREEN });
+                }
+                row += 1;
+                cur.clear();
+            }
+            if !cur.is_empty() {
+                cur.push(' ');
+            }
+            cur.push_str(word);
+        }
+        if row < max_row {
+            fb.text(38, row, &cur, if i == 0 { AMBER } else { GREEN });
+        }
+        row += 1;
+    }
+    fb.text(
+        2,
+        fb.rows() - 3,
+        "GAUCHE/DROITE CATEGORIE  HAUT/BAS ENTREE  ECHAP RETOUR",
+        DIM,
+    );
 }
 
 fn draw_main(fb: &mut Framebuffer, g: &Game) {

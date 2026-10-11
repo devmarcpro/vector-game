@@ -10,11 +10,21 @@ use vector_world::BodyKind;
 use winit::keyboard::KeyCode;
 
 pub const DEFAULT_SEED: u64 = 0x5EC7;
-pub const MAIN_MENU: [&str; 3] = ["NOUVELLE PARTIE", "CONTINUER", "QUITTER"];
-pub const PAUSE_MENU: [&str; 5] = [
+pub const MAIN_MENU: [&str; 6] = [
+    "NOUVELLE PARTIE",
+    "CONTINUER",
+    "REGLES DE PARTIE",
+    "OPTIONS",
+    "CODEX / AIDE",
+    "QUITTER",
+];
+pub const PAUSE_MENU: [&str; 8] = [
     "REPRENDRE",
     "SAUVEGARDER",
     "CHARGER",
+    "REGLES DE PARTIE",
+    "OPTIONS",
+    "CODEX / AIDE",
     "MENU PRINCIPAL",
     "QUITTER",
 ];
@@ -42,6 +52,9 @@ pub enum Screen {
     Fleet,
     Destroyed,
     Tech,
+    Rules,
+    Options,
+    Codex,
 }
 
 /// Route being composed in the fleet screen.
@@ -101,6 +114,15 @@ pub struct Game {
     pub editor: Option<RouteEditor>,
     pub hull_pick: Option<usize>,
     pub tech_sel: usize,
+    pub rules_sel: usize,
+    /// Rules for the next new game (edited live when opened from the pause menu).
+    pub pending_rules: vector_sim::rules::Rules,
+    /// Where the rules / options / codex screens return to.
+    pub back_to: Screen,
+    pub settings: crate::settings::Settings,
+    pub opt_sel: usize,
+    pub codex_cat: usize,
+    pub codex_sel: usize,
     pub save_path: PathBuf,
 }
 
@@ -160,6 +182,13 @@ impl Game {
             editor: None,
             hull_pick: None,
             tech_sel: 0,
+            rules_sel: 0,
+            pending_rules: vector_sim::rules::Rules::default(),
+            back_to: Screen::MainMenu,
+            settings: crate::settings::Settings::load(&PathBuf::from("saves").join("settings.cfg")),
+            opt_sel: 0,
+            codex_cat: 0,
+            codex_sel: 0,
             save_path: PathBuf::from("saves").join("slot1.sav"),
         };
         g.fit_map();
@@ -169,6 +198,7 @@ impl Game {
     /// Start a fresh game from a seed and go to the cockpit.
     pub fn new_game(&mut self, seed: u64) {
         self.sim = scene::new_sim(seed, Arc::clone(&self.data));
+        self.sim.set_rules(self.pending_rules.clone());
         self.stars = scene::star_field(seed, 900);
         self.timescale = 1.0;
         self.keys.clear();
@@ -438,16 +468,20 @@ impl Game {
     }
 
     fn step_time(&mut self, up: bool) {
+        let top = TIME_LADDER
+            .iter()
+            .rposition(|&t| t <= self.sim.rules.max_timescale)
+            .unwrap_or(2);
         let i = TIME_LADDER
             .iter()
             .position(|&t| t >= self.timescale)
             .unwrap_or(2);
         let j = if up {
-            (i + 1).min(TIME_LADDER.len() - 1)
+            (i + 1).min(top)
         } else {
             i.saturating_sub(1)
         };
-        self.timescale = TIME_LADDER[j];
+        self.timescale = TIME_LADDER[j.min(top)];
     }
 
     /// Cycle targets nearest-first, optionally restricted by a filter.
@@ -551,11 +585,19 @@ impl Game {
             Screen::Colony => self.colony_key(code),
             Screen::Fleet => self.fleet_key(code),
             Screen::Tech => self.tech_key(code),
+            Screen::Rules => self.rules_key(code),
+            Screen::Options => self.options_key(code),
+            Screen::Codex => self.codex_key(code),
             Screen::Destroyed => {
                 if code == KeyCode::Enter {
-                    self.sim.insurance_respawn();
-                    self.handle_events();
-                    self.screen = Screen::Flight;
+                    if self.sim.can_respawn() {
+                        self.sim.insurance_respawn();
+                        self.handle_events();
+                        self.screen = Screen::Flight;
+                    } else {
+                        self.screen = Screen::MainMenu;
+                        self.menu_sel = 0;
+                    }
                 }
             }
             Screen::Flight => self.flight_key(code),
@@ -605,6 +647,9 @@ impl Game {
                 1 => {
                     self.load_game();
                 }
+                2 => self.open_rules(Screen::MainMenu),
+                3 => self.open_options(Screen::MainMenu),
+                4 => self.open_codex(Screen::MainMenu),
                 _ => self.quit = true,
             }
             return;
@@ -644,12 +689,92 @@ impl Game {
                 2 => {
                     self.load_game();
                 }
-                3 => {
+                3 => self.open_rules(Screen::Pause),
+                4 => self.open_options(Screen::Pause),
+                5 => self.open_codex(Screen::Pause),
+                6 => {
                     self.screen = Screen::MainMenu;
                     self.menu_sel = 0;
                 }
                 _ => self.quit = true,
             }
+        }
+    }
+
+    fn open_rules(&mut self, back: Screen) {
+        self.rules_sel = 0;
+        self.back_to = back;
+        if back == Screen::Pause {
+            self.pending_rules = self.sim.rules.clone();
+        }
+        self.screen = Screen::Rules;
+    }
+
+    fn rules_key(&mut self, code: KeyCode) {
+        let n = vector_sim::rules::Rules::OPTION_COUNT;
+        let live = self.back_to == Screen::Pause;
+        match code {
+            KeyCode::ArrowUp => self.rules_sel = (self.rules_sel + n - 1) % n,
+            KeyCode::ArrowDown => self.rules_sel = (self.rules_sel + 1) % n,
+            KeyCode::ArrowLeft | KeyCode::ArrowRight => {
+                self.pending_rules
+                    .adjust(self.rules_sel, code == KeyCode::ArrowRight);
+            }
+            KeyCode::KeyR => self.pending_rules = vector_sim::rules::Rules::default(),
+            KeyCode::Escape | KeyCode::Enter => self.screen = self.back_to,
+            _ => {}
+        }
+        if live {
+            self.sim.set_rules(self.pending_rules.clone());
+            self.timescale = self.timescale.min(self.pending_rules.max_timescale);
+        }
+    }
+
+    fn open_options(&mut self, back: Screen) {
+        self.opt_sel = 0;
+        self.back_to = back;
+        self.screen = Screen::Options;
+    }
+
+    fn options_key(&mut self, code: KeyCode) {
+        let n = crate::settings::Settings::COUNT;
+        match code {
+            KeyCode::ArrowUp => self.opt_sel = (self.opt_sel + n - 1) % n,
+            KeyCode::ArrowDown => self.opt_sel = (self.opt_sel + 1) % n,
+            KeyCode::ArrowLeft | KeyCode::ArrowRight => {
+                self.settings
+                    .adjust(self.opt_sel, code == KeyCode::ArrowRight);
+                self.settings
+                    .save(&PathBuf::from("saves").join("settings.cfg"));
+            }
+            KeyCode::Escape | KeyCode::Enter => self.screen = self.back_to,
+            _ => {}
+        }
+    }
+
+    pub fn open_codex(&mut self, back: Screen) {
+        self.back_to = back;
+        self.screen = Screen::Codex;
+    }
+
+    fn codex_key(&mut self, code: KeyCode) {
+        let nc = crate::codex::CATEGORIES.len();
+        let n = crate::codex::count(&self.data, self.codex_cat).max(1);
+        match code {
+            KeyCode::ArrowLeft => {
+                self.codex_cat = (self.codex_cat + nc - 1) % nc;
+                self.codex_sel = 0;
+            }
+            KeyCode::ArrowRight | KeyCode::Tab => {
+                self.codex_cat = (self.codex_cat + 1) % nc;
+                self.codex_sel = 0;
+            }
+            KeyCode::ArrowUp => self.codex_sel = (self.codex_sel + n - 1) % n,
+            KeyCode::ArrowDown => self.codex_sel = (self.codex_sel + 1) % n,
+            KeyCode::PageUp => self.codex_sel = self.codex_sel.saturating_sub(10),
+            KeyCode::PageDown => self.codex_sel = (self.codex_sel + 10).min(n - 1),
+            KeyCode::Escape | KeyCode::F6 => self.screen = self.back_to,
+            _ => {}
         }
     }
 
@@ -1465,6 +1590,7 @@ impl Game {
             },
             KeyCode::KeyO => self.found_colony_at_target(),
             KeyCode::F4 => self.open_tech(),
+            KeyCode::F6 => self.open_codex(Screen::Flight),
             KeyCode::Backspace if self.sim.is_charging_jump() => {
                 self.sim.cancel_jump();
                 self.handle_events();
@@ -1544,6 +1670,63 @@ mod tests {
         );
         g.key(KeyCode::PageUp, None, true);
         assert!(g.timescale > 1.0, "PageUp speeds time up");
+    }
+
+    #[test]
+    fn menus_reach_rules_options_and_codex() {
+        let mut g = Game::new(data(), 1);
+        // Main menu: REGLES (index 2) -> raise damage x -> back -> new game uses it.
+        g.key(KeyCode::ArrowDown, None, true);
+        g.key(KeyCode::ArrowDown, None, true);
+        g.key(KeyCode::Enter, None, true);
+        assert_eq!(g.screen, Screen::Rules);
+        g.key(KeyCode::ArrowDown, None, true);
+        g.key(KeyCode::ArrowDown, None, true);
+        g.key(KeyCode::ArrowDown, None, true);
+        g.key(KeyCode::ArrowRight, None, true);
+        assert!(g.pending_rules.damage > 1.0);
+        g.key(KeyCode::Escape, None, true);
+        assert_eq!(g.screen, Screen::MainMenu);
+        g.menu_sel = 0;
+        g.key(KeyCode::Enter, None, true);
+        assert_eq!(g.screen, Screen::Flight);
+        assert!(g.sim.rules.is_modified() && g.sim.rules.damage > 1.0);
+        // Pause: options and codex open and come back.
+        g.key(KeyCode::Escape, None, true);
+        assert_eq!(g.screen, Screen::Pause);
+        g.menu_sel = 4;
+        g.key(KeyCode::Enter, None, true);
+        assert_eq!(g.screen, Screen::Options);
+        g.key(KeyCode::Escape, None, true);
+        assert_eq!(g.screen, Screen::Pause);
+        g.key(KeyCode::Escape, None, true);
+        g.key(KeyCode::F6, None, true);
+        assert_eq!(g.screen, Screen::Codex);
+        g.key(KeyCode::ArrowRight, None, true);
+        assert_eq!(g.codex_cat, 1);
+        g.key(KeyCode::F6, None, true);
+        assert_eq!(g.screen, Screen::Flight);
+    }
+
+    #[test]
+    fn max_timescale_rule_caps_acceleration() {
+        let mut g = Game::new(data(), 1);
+        g.pending_rules.max_timescale = 10.0;
+        g.key(KeyCode::Enter, None, true);
+        for _ in 0..12 {
+            g.key(KeyCode::PageUp, None, true);
+        }
+        assert_eq!(g.timescale, 10.0);
+    }
+
+    #[test]
+    fn permadeath_returns_to_the_main_menu() {
+        let mut g = Game::new(data(), 1);
+        g.pending_rules.permadeath = true;
+        g.key(KeyCode::Enter, None, true);
+        g.screen = Screen::Destroyed;
+        g.key(KeyCode::Enter, None, true);
+        assert_eq!(g.screen, Screen::MainMenu);
     }
 
     #[test]

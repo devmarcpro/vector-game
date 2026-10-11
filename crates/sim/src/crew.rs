@@ -52,9 +52,39 @@ pub struct Person {
     /// The couple and number of children of this person's family when it is not the default
     /// one (a recruited cousin, a birth aboard); registered with the crew at hiring.
     pub family_def: Option<(Kin, Kin, u8)>,
+    /// Integrity 0..1 of each organ of `GameData::organs`.
+    pub organs: Vec<f32>,
 }
 
 impl Person {
+    /// Overall condition 0..1 from the organs (weighted mean).
+    pub fn condition(&self, data: &GameData) -> f32 {
+        let (mut sum, mut w) = (0.0f64, 0.0f64);
+        for (o, def) in self.organs.iter().zip(&data.organs) {
+            sum += f64::from(*o) * def.weight;
+            w += def.weight;
+        }
+        if w > 0.0 {
+            (sum / w) as f32
+        } else {
+            1.0
+        }
+    }
+
+    /// What the failing organs take off a trait key (negative or positive as in the data).
+    fn organ_effect(&self, data: &GameData, key: &str) -> f64 {
+        self.organs
+            .iter()
+            .zip(&data.organs)
+            .flat_map(|(o, def)| {
+                def.effects
+                    .iter()
+                    .filter(move |(k, _)| k == key)
+                    .map(move |(_, w)| w * (1.0 - f64::from(*o)))
+            })
+            .sum()
+    }
+
     pub fn relation(&self, other: u32) -> i16 {
         self.relations
             .iter()
@@ -84,7 +114,7 @@ impl Person {
             .iter()
             .map(|&t| data.traits[t].effect(key))
             .sum();
-        traits + genealogy::gene_effect(data, &self.genome, key)
+        traits + genealogy::gene_effect(data, &self.genome, key) + self.organ_effect(data, key)
     }
 
     /// Chance multiplier of a disease from the genes (predispositions).
@@ -247,6 +277,7 @@ pub fn person_from_kin(
         kin,
         genome,
         family_def,
+        organs: vec![1.0; data.organs.len()],
     }
 }
 
@@ -501,6 +532,8 @@ impl Crew {
             let t_resist = p.trait_sum(data, "stress_resist") as f32;
             let t_morale = p.trait_sum(data, "morale_base") as f32;
             let t_health = p.trait_sum(data, "health_base") as f32;
+            p.organs.resize(data.organs.len(), 1.0);
+            let mut organ_hit: Option<(usize, f32)> = None;
             // Needs.
             p.fatigue = sat(p.fatigue
                 + hours
@@ -558,6 +591,7 @@ impl Crew {
                     medicine_used += 0.002 * f64::from(hours);
                 }
                 dh -= sev;
+                organ_hit = Some((*d, sev));
                 *left -= (days as f32) * speed;
                 if *left <= 0.0 {
                     let name = def.name.clone();
@@ -579,8 +613,26 @@ impl Crew {
                 dh += (0.004 + if medic_on_duty { 0.004 } else { 0.0 } + 0.003 * ctx.medbay as f32)
                     * (1.0 + t_health);
             }
-            p.health = sat(p.health + dh * hours);
-            if p.health <= 0.0 {
+            // Organs: the disease wears down the ones it targets, the others mend.
+            for (oi, o) in data.organs.iter().enumerate() {
+                let hit = organ_hit.filter(|(d, _)| o.afflicted_by.contains(&data.diseases[*d].id));
+                if let Some((_, sev)) = hit {
+                    p.organs[oi] = sat(p.organs[oi] - 0.5 * sev * hours);
+                } else if p.organs[oi] > 0.0 {
+                    // A dead organ does not mend by itself.
+                    let boost =
+                        1.0 + if medic_on_duty { 0.5 } else { 0.0 } + 0.5 * ctx.medbay as f32;
+                    p.organs[oi] = sat(p.organs[oi] + o.heal as f32 * days as f32 * boost);
+                }
+            }
+            let cond = p.condition(data);
+            p.health = sat(p.health + dh * hours).min(0.35 + 0.65 * cond);
+            let organ_failed = data
+                .organs
+                .iter()
+                .zip(&p.organs)
+                .any(|(o, v)| o.vital && *v <= 0.0);
+            if p.health <= 0.0 || organ_failed {
                 deaths.push(idx);
             } else if let Some((d, _)) = p.disease {
                 let leth = data.diseases[d].lethality as f32;
@@ -1028,6 +1080,53 @@ mod tests {
             pool[0].name,
             candidates(&d, 1, 3, 40.0 * DAY, 6, &none)[0].name,
             "pool refreshes"
+        );
+    }
+
+    #[test]
+    fn a_disease_wears_down_its_organs_and_they_mend_afterwards() {
+        let d = data();
+        let lungs = d.organ_index("poumons").expect("lungs");
+        let liver = d.organ_index("foie").expect("liver");
+        let mut crew = crew_of(&d, 2);
+        crew.members[0].disease = Some((d.disease_index("pneumonie").expect("d"), 6.0));
+        let mut cargo = cargo_with(&d, &[("food", 500.0), ("water", 500.0)]);
+        let mut credits = 1.0e6;
+        crew.update(&mut ctx(&d, &mut cargo, &mut credits, true), 4.0 * DAY);
+        let worn = crew.members[0].organs[lungs];
+        assert!(worn < 0.9, "pneumonia wears the lungs down: {worn}");
+        assert!(
+            crew.members[0].organs[liver] > 0.999,
+            "other organs are spared"
+        );
+        assert!(
+            crew.members[1].organs[lungs] > 0.999,
+            "the healthy colleague is fine"
+        );
+        crew.members[0].disease = None;
+        crew.update(&mut ctx(&d, &mut cargo, &mut credits, true), 30.0 * DAY);
+        assert!(crew.members[0].organs[lungs] > worn, "the lungs mend");
+    }
+
+    #[test]
+    fn a_vital_organ_at_zero_kills_and_a_failing_organ_costs_skills() {
+        let d = data();
+        let lungs = d.organ_index("poumons").expect("lungs");
+        let brain = d.organ_index("cerveau").expect("brain");
+        let mut crew = crew_of(&d, 2);
+        crew.members[0].organs[lungs] = 0.0;
+        let mut cargo = cargo_with(&d, &[("food", 500.0), ("water", 500.0)]);
+        let mut credits = 1.0e6;
+        crew.update(&mut ctx(&d, &mut cargo, &mut credits, true), DAY);
+        assert!(!crew.members[0].alive, "no lungs, no life");
+        assert!(crew.members[1].alive);
+        let mut p = generate_person(&d, 7, None);
+        let before = p.trait_sum(&d, "work_speed");
+        p.organs[brain] = 0.5;
+        let after = p.trait_sum(&d, "work_speed");
+        assert!(
+            after < before - 0.25,
+            "brain damage slows work: {before} -> {after}"
         );
     }
 

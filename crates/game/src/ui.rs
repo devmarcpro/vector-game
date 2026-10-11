@@ -934,6 +934,28 @@ fn draw_crew(fb: &mut Framebuffer, g: &Game) {
                 GREEN,
             );
         }
+        // Organs: integrity of each, red when failing.
+        fb.text(x, top + 19, "ORGANES", AMBER);
+        for (k, (def, v)) in g.data.organs.iter().zip(&p.organs).enumerate() {
+            let col = if *v <= 0.0 {
+                RED
+            } else if *v < 0.5 {
+                AMBER
+            } else {
+                GREEN
+            };
+            fb.text(
+                x,
+                top + 20 + k,
+                &format!(
+                    "{:<8.8}{} {:>3.0}%",
+                    def.name.to_uppercase(),
+                    bar(f64::from(*v), 8),
+                    v * 100.0
+                ),
+                col,
+            );
+        }
         let mut y = top + 11;
         fb.text(x, y, "RELATIONS:", DIM);
         for (oid, r) in p.relations.iter().take(6) {

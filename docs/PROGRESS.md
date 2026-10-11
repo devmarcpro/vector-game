@@ -63,3 +63,5 @@
 - 2026-10-11 : Passe visuelle : schéma des flux d'énergie et de chaleur (écran vaisseau H) : producteurs -> bus/batterie -> consommateurs (rouge si éteint), chaleur -> radiateurs avec jauge.
 
 - 2026-10-11 : Passe visuelle (fin) : liens croisés du codex (« VOIR AUSSI » : clic ou chiffres 1-9, Retour arrière pour revenir). La passe visuelle est terminée.
+
+- 2026-10-11 : E3.2 Organes : 10 organes (`data/organs.ron`, validés) avec intégrité par personne ; les maladies usent les organes qu'elles ciblent, les autres guérissent (plus vite avec médecin/infirmerie), un organe vital à zéro tue, un organe défaillant coûte des effets (vitesse de travail, stress...), santé globale plafonnée par l'état des organes ; panneau ORGANES dans l'écran équipage, catégorie ORGANES du codex. Sauvegarde v15.

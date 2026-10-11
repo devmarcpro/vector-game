@@ -2,7 +2,7 @@
 //! weapon, faction, anomaly and condition, generated from the real data (no hand-written numbers).
 use vector_data::GameData;
 
-pub const CATEGORIES: [&str; 16] = [
+pub const CATEGORIES: [&str; 17] = [
     "RESSOURCES",
     "MODULES",
     "ARMES",
@@ -19,6 +19,7 @@ pub const CATEGORIES: [&str; 16] = [
     "FAUNE",
     "EVENEMENTS",
     "GENES",
+    "ORGANES",
 ];
 
 /// Number of entries in a category.
@@ -53,6 +54,7 @@ fn entries(data: &GameData, cat: usize) -> Vec<usize> {
             .collect(),
         14 => (0..data.world_events.len()).collect(),
         15 => (0..data.genes.len()).collect(),
+        16 => (0..data.organs.len()).collect(),
         _ => Vec::new(),
     }
 }
@@ -75,6 +77,7 @@ pub fn names(data: &GameData, cat: usize) -> Vec<String> {
             11 => data.biomes[i].name.clone(),
             14 => data.world_events[i].name.clone(),
             15 => data.genes[i].name.clone(),
+            16 => data.organs[i].name.clone(),
             _ => data.species[i].name.clone(),
         })
         .collect()
@@ -479,6 +482,40 @@ pub fn entry(data: &GameData, cat: usize, k: usize) -> Vec<String> {
                     res_name(data, &d.cure).unwrap_or_else(|| d.cure.clone())
                 }
             ));
+        }
+        16 => {
+            let o = &data.organs[i];
+            out.push(format!(
+                "{}  ({})",
+                o.name,
+                if o.vital {
+                    "organe vital"
+                } else {
+                    "organe non vital"
+                }
+            ));
+            out.push(format!(
+                "Part dans l'etat general : {:.1}   guerison naturelle : {:.1} % par jour   valeur : {:.0} cr",
+                o.weight,
+                o.heal * 100.0,
+                o.value
+            ));
+            if o.vital {
+                out.push(
+                    "A zero, la personne meurt. Un organe a zero ne guerit plus seul.".to_string(),
+                );
+            }
+            for (k, w) in &o.effects {
+                out.push(format!("Quand il est detruit : {k} {w:+.2}"));
+            }
+            let sick: Vec<String> = o
+                .afflicted_by
+                .iter()
+                .filter_map(|d| data.disease_index(d).map(|k| data.diseases[k].name.clone()))
+                .collect();
+            if !sick.is_empty() {
+                out.push(format!("Attaque par : {}", sick.join(", ")));
+            }
         }
         15 => {
             let g = &data.genes[i];

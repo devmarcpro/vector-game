@@ -469,6 +469,19 @@ impl Ethos {
     }
 }
 
+/// An organ (see `data/organs.ron`): integrity 0..1 per person, worn down by diseases.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct Organ {
+    pub id: String,
+    pub name: String,
+    pub vital: bool,
+    pub weight: f64,
+    pub heal: f64,
+    pub value: f64,
+    pub effects: Vec<(String, f64)>,
+    pub afflicted_by: Vec<String>,
+}
+
 /// A gene (see `data/genes.ron`): two alleles of 0..3 per person.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Gene {
@@ -550,6 +563,7 @@ pub struct GameData {
     pub world_events: Vec<WorldEvent>,
     pub ethos: Ethos,
     pub genes: Vec<Gene>,
+    pub organs: Vec<Organ>,
 }
 
 fn read<T: for<'a> Deserialize<'a>>(path: &Path) -> Result<T, DataError> {
@@ -583,6 +597,7 @@ impl GameData {
             world_events: read(&dir.join("world_events.ron"))?,
             ethos: read(&dir.join("ethos.ron"))?,
             genes: read(&dir.join("genes.ron"))?,
+            organs: read(&dir.join("organs.ron"))?,
         };
         // Generated extension files (tools/gen_scale.py) extend the hand-written tables.
         let mut extra_events: Vec<EventDef> = read(&dir.join("events_extra.ron"))?;
@@ -999,7 +1014,51 @@ impl GameData {
         self.validate_species()?;
         self.validate_world_events()?;
         self.validate_ethos()?;
-        self.validate_genes()
+        self.validate_genes()?;
+        self.validate_organs()
+    }
+
+    pub fn organ_index(&self, id: &str) -> Option<usize> {
+        self.organs.iter().position(|o| o.id == id)
+    }
+
+    /// Organs: unique ids, sane numbers, known diseases and effect keys, at least one vital one.
+    fn validate_organs(&self) -> Result<(), DataError> {
+        let bad = |s: String| Err(DataError::Invalid(s));
+        const KEYS: [&str; 9] = [
+            "health_base",
+            "work_speed",
+            "stress_resist",
+            "social_need",
+            "morale_base",
+            "luck",
+            "sleep_need",
+            "appetite",
+            "temper",
+        ];
+        let mut seen = std::collections::HashSet::new();
+        for o in &self.organs {
+            if !seen.insert(o.id.as_str()) {
+                return bad(format!("organe {} en double", o.id));
+            }
+            if !(o.weight > 0.0 && o.heal >= 0.0 && o.heal < 1.0 && o.value > 0.0) {
+                return bad(format!("organe {}: valeurs invalides", o.id));
+            }
+            for d in &o.afflicted_by {
+                if self.disease_index(d).is_none() {
+                    return bad(format!("organe {}: maladie {d} inconnue", o.id));
+                }
+            }
+            for (k, w) in &o.effects {
+                if !KEYS.contains(&k.as_str()) || !w.is_finite() || *w == 0.0 {
+                    return bad(format!("organe {}: effet {k} invalide", o.id));
+                }
+            }
+        }
+        if !self.organs.iter().any(|o| o.vital) {
+            return bad("aucun organe vital".into());
+        }
+        Ok(())
     }
 
     /// Genes: known effect keys, skills and diseases.
@@ -1513,6 +1572,25 @@ mod tests {
             d.unlocking_tech("module", "fusion_mk1").is_none(),
             "tier 1 is free"
         );
+    }
+
+    #[test]
+    fn organs_are_validated() {
+        let ok = GameData::load(&dir()).expect("data loads");
+        assert!(ok.organs.len() >= 8 && ok.organs.iter().any(|o| o.vital));
+        let mut d = ok.clone();
+        d.organs[0].afflicted_by.push("maladie_fantome".into());
+        assert!(d.validate().is_err(), "unknown disease");
+        let mut d = ok.clone();
+        d.organs[0].effects.push(("inconnu".into(), 0.1));
+        assert!(d.validate().is_err(), "unknown effect key");
+        let mut d = ok.clone();
+        let dup = d.organs[0].clone();
+        d.organs.push(dup);
+        assert!(d.validate().is_err(), "duplicate organ");
+        let mut d = ok;
+        d.organs.iter_mut().for_each(|o| o.vital = false);
+        assert!(d.validate().is_err(), "at least one vital organ");
     }
 
     #[test]

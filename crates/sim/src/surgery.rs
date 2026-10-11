@@ -7,9 +7,6 @@ use vector_core::{hash_coord, Rng};
 pub const SURGERY_FEE: f64 = 1500.0;
 /// Base chance that a graft is rejected (lowered by the surgeon's medicine skill).
 pub const REJECTION: f64 = 0.2;
-/// Below this value of the "corps" axis a people holds the body sacred.
-pub const SACRED_BODY: f64 = -0.4;
-pub const SACRILEGE_FINE: f64 = 800.0;
 /// A clone costs this much of the value of the organ to grow.
 pub const CLONE_COST_FACTOR: f64 = 1.2;
 /// Integrity of a fresh prosthesis: never worn by disease, never mends.
@@ -27,33 +24,10 @@ pub enum Implant {
 }
 
 impl Sim {
-    /// Local mores: where the body is sacred (the "corps" axis very low) operating, cloning or
-    /// harvesting is a sacrilege: a fine and the loss of reputation of the territory's people.
-    fn moral_offense(&mut self, what: &str) {
-        let Some(f) = self.faction else {
-            return;
-        };
-        let profile = self
-            .data
-            .ethos
-            .profile(Some(self.data.factions[f].id.as_str()));
-        let corps = self
-            .data
-            .ethos
-            .axis("corps")
-            .and_then(|i| profile.get(i))
-            .copied()
-            .unwrap_or(0.0);
-        if corps >= SACRED_BODY {
-            return;
-        }
-        let fine = self.credits.clamp(0.0, SACRILEGE_FINE);
-        self.credits -= fine;
-        self.change_reputation(Some(f), -0.2);
-        let people = self.data.factions[f].name.clone();
-        self.events.push(crate::Event::MarketNews(format!(
-            "Moeurs locales ({people}) : {what} est un sacrilege ici, amende de {fine:.0} CR."
-        )));
+    /// Local law: where the mores forbid it (`data/laws.ron`) the act is an offence, with a fine
+    /// and a notoriety in the jurisdiction (see `law`).
+    fn moral_offense(&mut self, act: &str) {
+        self.offend(self.faction, act);
     }
 
     /// Who may operate: the hospital of a docked station, or a living medic aboard with a
@@ -162,7 +136,7 @@ impl Sim {
         };
         let now = self.time;
         self.crew.log_event(now, report.clone());
-        self.moral_offense("operer un corps");
+        self.moral_offense("chirurgie");
         Ok(report)
     }
 
@@ -183,7 +157,7 @@ impl Sim {
             return Err("soute pleine");
         }
         self.credits -= cost;
-        self.moral_offense("cloner un organe");
+        self.moral_offense("clonage");
         Ok(cost)
     }
 
@@ -234,7 +208,7 @@ impl Sim {
         let report = format!("{name} : {organ_name} preleve");
         let now = self.time;
         self.crew.log_event(now, report.clone());
-        self.moral_offense("prelever un organe");
+        self.moral_offense("prelevement");
         Ok(report)
     }
 }
@@ -339,6 +313,7 @@ impl Sim {
             self.time as i64,
             19,
         ));
+        self.moral_offense("mutation");
         let p = &mut self.crew.members[member];
         let (gi, dir) = crate::genealogy::mutate(&data, &mut p.genome, &mut rng);
         p.instability = (p.instability + 0.4).min(1.0);
@@ -671,11 +646,14 @@ mod tests {
         s.faction = Some(verdant);
         let (credits, rep) = (s.credits, s.reputation_with(Some(verdant)));
         s.grow_clone(liver).unwrap();
-        assert_eq!(s.credits, credits - cost - SACRILEGE_FINE);
+        let fine = d.laws[d.law_index("clonage").unwrap()].fine;
+        assert!(fine > 0.0);
+        assert_eq!(s.credits, credits - cost);
+        assert_eq!(s.fines_owed(verdant), fine);
         assert!(s.reputation_with(Some(verdant)) < rep - 0.15);
         assert!(s
             .events
             .iter()
-            .any(|e| matches!(e, crate::Event::MarketNews(t) if t.contains("sacrilege"))));
+            .any(|e| matches!(e, crate::Event::MarketNews(t) if t.contains("clonage"))));
     }
 }

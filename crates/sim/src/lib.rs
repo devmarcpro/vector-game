@@ -22,6 +22,7 @@ pub mod gear;
 pub mod genealogy;
 pub mod incidents;
 pub mod intrusion;
+pub mod law;
 pub mod livestock;
 pub mod market;
 pub mod multiverse;
@@ -1227,11 +1228,15 @@ impl Sim {
         if self.reputation_with(self.faction) <= economy::HOSTILE_REP {
             return Err("acces refuse: reputation hostile");
         }
+        if self.faction.is_some_and(|f| self.has_warrant(f)) {
+            return Err("acces refuse: mandat d'arret");
+        }
         self.docked = Some(i);
         self.autopilot = None;
         self.events.push(Event::Docked { body: i });
         if self.bodies[i].kind == BodyKind::Station {
             self.customs_check();
+            self.law_patrol();
         }
         Ok(i)
     }

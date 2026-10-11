@@ -59,6 +59,7 @@ impl Sim {
         let fine = self.credits.clamp(0.0, RAID_FINE);
         self.credits -= fine;
         self.change_reputation(self.faction, -0.25);
+        self.offend(self.faction, "contrebande");
         self.set_trust(-TRUST_RAID);
         let name = self.data.resources[res].name.to_lowercase();
         self.events.push(Event::MarketNews(format!(

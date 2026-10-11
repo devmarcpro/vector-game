@@ -121,6 +121,7 @@ impl Sim {
         let fine = (2.0 * value).min(self.credits);
         self.credits -= fine;
         self.change_reputation(Some(f), -8.0);
+        self.offend(Some(f), "contrebande");
         self.events.push(Event::Customs {
             seized_kg: kg,
             fine,

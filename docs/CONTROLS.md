@@ -75,7 +75,7 @@ Tout se fait aussi à la souris (hors visée F7, où la souris pilote le vaissea
 - **Barre des commandes** : chaque commande (« TOUCHE ce qu'elle fait ») est un bouton, sauf les touches maintenues en vol (poussée, boost, frein, lasers).
 - Un arbre généalogique : un parent à bord est un bouton qui ouvre son propre arbre.
 
-- **X** (en vol) : écran des factions et de leurs moeurs ; Gauche/Droite ou clic pour choisir, X ou Echap pour revenir.
+- **X** (en vol) : écran des factions, de leurs moeurs et de leurs lois ; Gauche/Droite ou clic pour choisir, X ou Echap pour revenir. Situation juridique du joueur dans le territoire choisi : **P** payer les amendes (de partout), **B** pot-de-vin (coût et chance affichés ; peut échouer), **L** avocat (amendes et notoriété divisées par deux) ; ces actions sont aussi des boutons cliquables.
 
 - **Codex** : sous chaque entrée, « VOIR AUSSI » liste les entrées citées ; clic ou touches 1 à 9 pour les suivre, Retour arrière pour revenir.
 

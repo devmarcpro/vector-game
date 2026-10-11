@@ -136,7 +136,7 @@ pub fn hint_line(g: &Game) -> String {
         Screen::Expedition => "HAUT/BAS CHOISIR  ESPACE COCHER  ENTREE PARTIR  ECHAP RETOUR",
         Screen::Dialogue => "1-6 OU CLIC REPONDRE  HAUT/BAS + ENTREE  ECHAP COUPER LA COMMUNICATION",
         Screen::Proto => "CLIC SUR LES ELEMENTS  GAUCHE/DROITE OU 1-2 PROTOTYPE  F12/ECHAP RETOUR",
-        Screen::Factions => "GAUCHE/DROITE FACTION  CLIC : CHOISIR  X/ECHAP RETOUR",
+        Screen::Factions => "GAUCHE/DROITE FACTION  P AMENDES  B POT-DE-VIN  L AVOCAT  X/ECHAP RETOUR",
         Screen::Galaxy => {
             "HAUT/BAS ETOILE  +/- ZOOM  ENTREE SAUT FTL  L/ECHAP RETOUR  (RETOUR ARRIERE ANNULE UNE CHARGE)"
         }
@@ -243,6 +243,8 @@ pub fn help_lines(screen: Screen) -> &'static [&'static str] {
             "Gauche/Droite ou clic : choisir une faction",
             "Lignes vertes : allies   lignes rouges : ennemis",
             "A droite : moeurs (8 axes), interdits moraux, contrebande, reputation",
+            "Lois en vigueur chez eux seulement ; ma situation juridique (casier, amendes)",
+            "P payer les amendes   B pot-de-vin (peut echouer)   L avocat (moitie)",
             "X ou Echap : retour",
         ],
         Screen::Galaxy => &[

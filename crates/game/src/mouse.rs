@@ -243,6 +243,32 @@ impl Game {
         self.fac_sel = i;
     }
 
+    /// Justice of the factions screen: 0 pay the fines, 1 bribe, 2 hire a lawyer (selected people).
+    pub fn click_justice(&mut self, k: usize) {
+        let f = self.fac_sel;
+        let said = match k {
+            0 => self
+                .sim
+                .pay_fines(f)
+                .map(|x| format!("AMENDES PAYEES: {x:.0} CR")),
+            1 => self.sim.bribe_officials(f).map(|ok| {
+                if ok {
+                    "POT-DE-VIN ACCEPTE: CASIER EFFACE".to_string()
+                } else {
+                    "POT-DE-VIN REFUSE: VOUS ETES FICHE".to_string()
+                }
+            }),
+            _ => self
+                .sim
+                .hire_lawyer(f)
+                .map(|()| "AVOCAT ENGAGE: AMENDES ET CASIER REDUITS DE MOITIE".to_string()),
+        };
+        match said {
+            Ok(t) => self.say(t),
+            Err(e) => self.say(e.to_uppercase()),
+        }
+    }
+
     /// Row of the policies of the colony screen: code = row x 3 + 0 "<", 1 name, 2 ">".
     pub fn click_policy(&mut self, code: usize) {
         self.col_focus = 2;

@@ -2,7 +2,7 @@
 //! weapon, faction, anomaly and condition, generated from the real data (no hand-written numbers).
 use vector_data::GameData;
 
-pub const CATEGORIES: [&str; 32] = [
+pub const CATEGORIES: [&str; 35] = [
     "RESSOURCES",
     "MODULES",
     "ARMES",
@@ -38,7 +38,7 @@ pub const CATEGORIES: [&str; 32] = [
 ];
 
 /// The category of the reactions: the laboratory.
-pub const LAB_CATEGORY: usize = 31;
+pub const LAB_CATEGORY: usize = 34;
 
 /// Index in the source table of entry `k` of a category (modules and weapons share a table).
 pub fn source_index(data: &GameData, cat: usize, k: usize) -> Option<usize> {
@@ -89,9 +89,9 @@ fn entries(data: &GameData, cat: usize) -> Vec<usize> {
         25 => (0..data.dimensions.len()).collect(),
         26 => (0..data.rogue_themes.len()).collect(),
         27 => (0..data.rogue_monsters.len()).collect(),
-        29 => (0..data.chemistry.elements.len()).collect(),
-        30 => (0..data.chemistry.compounds.len()).collect(),
-        31 => (0..data.reactions.len()).collect(),
+        32 => (0..data.chemistry.elements.len()).collect(),
+        33 => (0..data.chemistry.compounds.len()).collect(),
+        34 => (0..data.reactions.len()).collect(),
         28 => (0..data.materials.len()).collect(),
         _ => Vec::new(),
     }
@@ -126,9 +126,9 @@ pub fn names(data: &GameData, cat: usize) -> Vec<String> {
             25 => data.dimensions[i].name.clone(),
             26 => data.rogue_themes[i].name.clone(),
             27 => data.rogue_monsters[i].name.clone(),
-            29 => data.chemistry.elements[i].name.clone(),
-            30 => data.chemistry.compounds[i].name.clone(),
-            31 => data.reactions[i].name.clone(),
+            32 => data.chemistry.elements[i].name.clone(),
+            33 => data.chemistry.compounds[i].name.clone(),
+            34 => data.reactions[i].name.clone(),
             28 => data.materials[i].name.clone(),
             18 => format!(
                 "Appeler : {}",
@@ -554,7 +554,7 @@ pub fn entry(data: &GameData, cat: usize, k: usize) -> Vec<String> {
                 }
             ));
         }
-        29 => {
+        32 => {
             let e = &data.chemistry.elements[i];
             out.push(format!(
                 "{} ({})  numero atomique {}",
@@ -585,7 +585,7 @@ pub fn entry(data: &GameData, cat: usize, k: usize) -> Vec<String> {
                 out.push(format!("Entre dans : {}", found.join(", ")));
             }
         }
-        30 => {
+        33 => {
             let c = &data.chemistry.compounds[i];
             out.push(format!("{}  [{}]", c.name, c.class));
             out.push(c.text.clone());
@@ -651,7 +651,7 @@ pub fn entry(data: &GameData, cat: usize, k: usize) -> Vec<String> {
                 out.push(format!("Reactions : {}", ins.join(", ")));
             }
         }
-        31 => {
+        34 => {
             let r = &data.reactions[i];
             let side = |l: &[(String, u32)]| -> String {
                 l.iter()

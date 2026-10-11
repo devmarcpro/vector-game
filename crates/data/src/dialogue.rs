@@ -126,6 +126,8 @@ pub enum Effect {
     Bluff,
     Bribe,
     Tip,
+    /// Where the richest rock of the system is.
+    Ore,
     /// Learn the mores of the people you talk to.
     Mores,
     /// A civilisation gives you something it makes.
@@ -142,6 +144,7 @@ pub fn parse_effect(s: &str) -> Result<Effect, String> {
         "bluff" => Effect::Bluff,
         "bribe" => Effect::Bribe,
         "tip" => Effect::Tip,
+        "ore" => Effect::Ore,
         "mores" => Effect::Mores,
         "civgift" => Effect::CivGift,
         _ => {

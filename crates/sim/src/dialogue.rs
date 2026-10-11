@@ -232,6 +232,7 @@ impl Sim {
             Effect::News => Some(self.radio_news()),
             Effect::Region => Some(self.radio_region()),
             Effect::Tip => Some(self.radio_tip()),
+            Effect::Ore => Some(self.radio_ore()),
             Effect::Peace => Some(match self.pay_tribute() {
                 Ok(a) => format!("Tribut de {a:.0} CR payé. Les pirates s'éloignent."),
                 Err(e) => format!("Rien à payer : {e}."),
@@ -347,6 +348,41 @@ impl Sim {
                 )
             }
             None => "Aucun mouvement notable ; les prix tiennent.".to_string(),
+        }
+    }
+
+    /// The richest asteroid of the system by the value of what it holds.
+    fn radio_ore(&self) -> String {
+        let mut best: Option<(f64, usize)> = None;
+        for (i, b) in self.system.bodies.iter().enumerate() {
+            let vector_world::BodyKind::Asteroid(class) = b.kind else {
+                continue;
+            };
+            let Some(cls) = self.data.asteroids.iter().find(|a| a.id == class.id()) else {
+                continue;
+            };
+            let value: f64 = cls
+                .composition
+                .iter()
+                .filter_map(|(r, f)| {
+                    self.data
+                        .resource_index(r)
+                        .map(|ri| f * self.data.resources[ri].value)
+                })
+                .sum();
+            if best.is_none_or(|(v, _)| value > v) {
+                best = Some((value, i));
+            }
+        }
+        match best {
+            Some((v, i)) => {
+                let b = &self.system.bodies[i];
+                format!(
+                    "Le rocher {} est le plus riche d'ici : environ {v:.1} CR le kilo de minerai.",
+                    b.name
+                )
+            }
+            None => "Il n'y a pas d'astéroïde digne de ce nom par ici.".to_string(),
         }
     }
 
@@ -670,5 +706,27 @@ mod tests {
         s.ship.pos =
             s.bodies[empty].pos - vector_core::Vec3::new(0.0, 0.0, s.bodies[empty].radius * 3.0);
         assert!(s.can_hail_world(empty).is_err());
+    }
+
+    #[test]
+    fn miners_know_where_the_best_rock_is() {
+        let mut s = sim();
+        let k = npc_of(&s, NpcRole::Miner);
+        let start = s.dialogue_start(k).expect("start");
+        let ore = s
+            .data
+            .dialogues
+            .node(&start)
+            .unwrap()
+            .options
+            .iter()
+            .position(|o| o.effects.iter().any(|e| e == "ore"))
+            .expect("a question about ore");
+        let (next, text) = s.dialogue_choose(k, &start, ore).expect("ask");
+        assert_eq!(next, "tip_reply");
+        assert!(
+            text.contains("le plus riche") || text.contains("astéroïde"),
+            "{text}"
+        );
     }
 }

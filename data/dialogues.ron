@@ -30,6 +30,7 @@
    ],
    options:[
     (label:"Demander les nouvelles", cond:"", effects:["news"], next:"news_reply"),
+    (label:"Où est le meilleur rocher ?", cond:"", effects:["ore"], next:"tip_reply"),
     (label:"Que se dit-il dans la région ?", cond:"", effects:["region"], next:"region_reply"),
     (label:"Un bon tuyau sur les prix ?", cond:"", effects:["tip"], next:"tip_reply"),
     (label:"Offrir 20 kg d'eau", cond:"cargo:water>20", effects:["give:water:20","rep:+0.08"], next:"gift_reply"),

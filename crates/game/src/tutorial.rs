@@ -132,9 +132,7 @@ pub fn hint_line(g: &Game) -> String {
             "HAUT/BAS PERSONNE  </> POSTE  T QUART  X DEBARQUER  N RECRUTER  J JOURNAL  G ARBRE  V RESEAU  O ORGANES  E EQUIP.  K RETOUR"
         }
         Screen::Recruit => "HAUT/BAS CANDIDAT  ENTREE EMBAUCHER  K EQUIPAGE  ECHAP RETOUR",
-        Screen::Journal => {
-            "HAUT/BAS DEFILER  1-3 REPONDRE A UNE SURPRISE  K EQUIPAGE  J/ECHAP RETOUR  TAB NOUVELLES"
-        }
+        Screen::Journal => "HAUT/BAS DEFILER  1-3 SURPRISE  K EQUIPAGE  J/ECHAP RETOUR  TAB NOUVELLES/ARCHIVES (D C M R T)",
         Screen::Expedition => "HAUT/BAS CHOISIR  ESPACE COCHER  ENTREE PARTIR  ECHAP RETOUR",
         Screen::Dialogue => "1-6 OU CLIC REPONDRE  HAUT/BAS + ENTREE  ECHAP COUPER LA COMMUNICATION",
         Screen::Proto => "CLIC SUR LES ELEMENTS  GAUCHE/DROITE OU 1-2 PROTOTYPE  F12/ECHAP RETOUR",
@@ -169,7 +167,7 @@ pub fn hint_line(g: &Game) -> String {
             "TAB LISTE  N ROUTE  A AFFECTER  U RETIRER  X SUPPRIMER  B ACHETER  M CARTE  ECHAP RETOUR"
         }
         Screen::Destroyed => "ENTREE CONTINUER",
-        Screen::Tech => "FLECHES GRAPHE (GAUCHE PREREQUIS, DROITE SUITE)  TAB RECHERCHE OU SUIVANTE  ENTREE RECHERCHER  ECHAP RETOUR",
+        Screen::Tech => "FLECHES GRAPHE (GAUCHE PREREQUIS, DROITE SUITE)  TAB RECHERCHE OU SUIVANTE  ENTREE RECHERCHER  E ESPRIT (CALCUL)  ECHAP RETOUR",
         Screen::Rules => "HAUT/BAS REGLE  GAUCHE/DROITE MODIFIER  R DEFAUTS  ECHAP RETOUR",
         Screen::Options => "HAUT/BAS REGLAGE  GAUCHE/DROITE CHANGER  ENTREE/ECHAP RETOUR",
         Screen::Codex => "GAUCHE/DROITE CATEGORIE  HAUT/BAS ENTREE  ECHAP RETOUR",
@@ -237,6 +235,8 @@ pub fn help_lines(screen: Screen) -> &'static [&'static str] {
             "Haut/Bas ou PgUp/PgDn : defiler   Echap : retour",
             "Une surprise qui attend un choix s'affiche en bas : touches 1 a 3 pour repondre",
             "Elles naissent du croisement des systemes (guerre, cartels, relations, anomalies...)",
+            "Tab : journal, nouvelles du monde, ARCHIVES (histoire du secteur + trouvailles de fouille)",
+            "Archives : D dater (carbone), C collectionneur, M musee, R restituer aux heritiers, T fouille prudente/pillage",
         ],
         Screen::Expedition => &["Cochez qui descend et le rover, Entree pour partir", "Il faut une case de terre et d'etre pres de la planete"],
         Screen::Dialogue => &[
@@ -306,6 +306,8 @@ pub fn help_lines(screen: Screen) -> &'static [&'static str] {
             "Tab : recherche en cours ou technologie suivante a portee",
             "Entree : lancer la recherche   Echap ou F4 : retour",
             "Vert : a portee  Ambre : en cours  Sombre : acquise  Rouge : verrouillee",
+            "E : panneau ESPRIT (vous etes l'IA) : budget de calcul, logiciels, autres IA, ancres",
+            "ESPRIT : Gauche/Droite regle le budget, Entree installe/met a jour, C/A/L contacter/allier/liberer une IA, S ancre",
         ],
         Screen::Rules => &[
             "Gauche/Droite : modifier   R : valeurs par defaut",

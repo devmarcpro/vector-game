@@ -1,0 +1,28 @@
+// The history of the sectors (see crates/sim/src/history.rs). A sector lives through ages of 400
+// years; each age has a kind (the order of the ages is a small state machine in the code, keyed by
+// these ids), and a collapse has a cause. Artefacts found in digs belong to a kind.
+(
+ ages: [
+  (id:"essor", name:"Essor", text:"Un peuple s'installe, fonde des colonies et trace des routes."),
+  (id:"apogee", name:"Apogee", text:"L'empire est a son zenith : monuments, flottes, bibliotheques."),
+  (id:"effondrement", name:"Effondrement", text:"Les institutions cedent ; les villes se vident en une generation."),
+  (id:"age_sombre", name:"Age sombre", text:"Le savoir se perd. Il reste des bandes armees et des legendes."),
+  (id:"migration", name:"Migrations", text:"Des peuples traversent le secteur, chassant ou fusionnant avec ceux qui restent."),
+  (id:"reconquete", name:"Reconquete", text:"Un nouveau pouvoir reunifie ce qui reste et rebatit sur les ruines."),
+ ],
+ causes: [
+  (id:"guerre", name:"Guerre totale", weight:3.0, text:"Les flottes se sont detruites jusqu'a la derniere."),
+  (id:"epidemie", name:"Pandemie", weight:2.0, text:"Un agent pathogene a vide les mondes plus vite que la medecine ne le comprenait."),
+  (id:"cataclysme", name:"Cataclysme stellaire", weight:1.5, text:"Une eruption ou une supernova proche a sterilise les surfaces."),
+  (id:"revolte_machines", name:"Revolte des machines", weight:1.5, text:"Les intelligences artificielles ont refuse de servir, puis de se taire."),
+  (id:"epuisement", name:"Epuisement des ressources", weight:2.0, text:"Les mines et les sols ont donne tout ce qu'ils avaient."),
+  (id:"schisme", name:"Schisme et guerre civile", weight:2.0, text:"L'empire s'est dechire entre ses propres provinces."),
+ ],
+ artefacts: [
+  (id:"texte", name:"Texte grave", value:400.0, difficulty:6.0, text:"Tablette, codex ou memoire de donnees : un recit a traduire."),
+  (id:"carte", name:"Carte stellaire", value:700.0, difficulty:4.0, text:"Les routes d'un empire disparu, a recaler sur le ciel actuel."),
+  (id:"technologie", name:"Technologie perdue", value:1500.0, difficulty:12.0, text:"Un mecanisme dont la fabrication s'est perdue ; l'etudier fait avancer la recherche."),
+  (id:"relique", name:"Relique", value:2200.0, difficulty:0.0, text:"Un objet de culte ou de pouvoir, precieux pour les collectionneurs et pour les descendants."),
+  (id:"outil", name:"Outil ancien", value:250.0, difficulty:0.0, text:"Un instrument du quotidien : peu de valeur, beaucoup de contexte."),
+ ],
+)

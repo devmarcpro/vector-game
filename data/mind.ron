@@ -1,0 +1,24 @@
+// The mind of the ship: the player is the ship's AI. Its computing power is split between five
+// tasks (the order is fixed: pilotage, analyse, traduction, simulation, defense); software adds a
+// bonus to the task it serves and takes memory. See crates/sim/src/mind.rs.
+(
+ tasks: [
+  (id:"pilotage", name:"Pilotage", text:"Optimisation des trajectoires : un pilote automatique mieux calcule gaspille moins de poussee et arrive plus vite."),
+  (id:"analyse", name:"Analyse", text:"Capteurs et laboratoires : vitesse de la recherche, precision des datations des artefacts."),
+  (id:"traduction", name:"Traduction", text:"Langues mortes et protocoles inconnus : dechiffrage des textes, cartes et technologies perdues trouves en fouille."),
+  (id:"simulation", name:"Simulation", text:"Calcul brut : cassage des donnees chiffrees, modeles et previsions."),
+  (id:"defense", name:"Defense", text:"Pare-feu et antivirus : repousse les intrusions et nettoie les programmes malveillants."),
+ ],
+ software: [
+  (id:"optim_orbites", name:"Optimiseur d'orbites", task:"pilotage", bonus:0.15, memory:2, price:1500.0, tech:"", text:"Bibliotheque de transferts de Hohmann et de trajectoires a poussee faible."),
+  (id:"navigation_stellaire", name:"Navigation stellaire", task:"pilotage", bonus:0.25, memory:3, price:4200.0, tech:"", text:"Recalage sur les pulsars : le pilote automatique ne derive plus."),
+  (id:"analyseur_spectral", name:"Analyseur spectral", task:"analyse", bonus:0.15, memory:2, price:1800.0, tech:"", text:"Decompose la lumiere des echantillons et des strates pour en tirer composition et age."),
+  (id:"datation_isotopique", name:"Datation isotopique", task:"analyse", bonus:0.25, memory:3, price:3600.0, tech:"", text:"Modeles de decroissance du carbone et des chaines de l'uranium : l'erreur de datation fond."),
+  (id:"philologue", name:"Philologue artificiel", task:"traduction", bonus:0.20, memory:3, price:2400.0, tech:"", text:"Apprend les langues mortes par comparaison de corpus."),
+  (id:"pierre_de_rosette", name:"Pierre de Rosette", task:"traduction", bonus:0.30, memory:4, price:6000.0, tech:"", text:"Un modele de langue universel : traduit meme ce que personne n'a jamais parle."),
+  (id:"cassage_force", name:"Cassage par force brute", task:"simulation", bonus:0.20, memory:2, price:2000.0, tech:"", text:"Parcourt l'espace des cles en parallele."),
+  (id:"reseau_neuronal", name:"Reseau neuronal profond", task:"simulation", bonus:0.30, memory:4, price:5500.0, tech:"", text:"Approxime les fonctions de hachage faibles : les chiffres s'effondrent plus vite."),
+  (id:"pare_feu", name:"Pare-feu adaptatif", task:"defense", bonus:0.20, memory:2, price:1600.0, tech:"", text:"Apprend la signature des attaques et filtre les paquets hostiles."),
+  (id:"antivirus", name:"Antivirus heuristique", task:"defense", bonus:0.30, memory:3, price:3000.0, tech:"", text:"Isole et efface les programmes malveillants sans attendre les mises a jour."),
+ ],
+)

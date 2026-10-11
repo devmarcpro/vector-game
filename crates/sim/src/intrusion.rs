@@ -28,16 +28,20 @@ impl Sim {
                 .map(|p| f64::from(p.skills[s]))
                 .fold(0.0, f64::max)
         });
-        1.0 / (1.0 + 0.15 * skill)
+        1.0 / (1.0 + 0.15 * skill) / self.mind_factor(crate::mind::T_DEFENSE).max(0.2)
     }
 
     /// Chance of an attempt on a given day.
     pub fn intrusion_chance(&self) -> f64 {
-        INTRUSION_RATE * self.rules.event_freq * self.firewall()
+        INTRUSION_RATE
+            * self.rules.event_freq
+            * self.firewall()
+            * (1.0 + 0.5 * self.mind_rivals() as f64)
     }
 
     /// Carry out an intrusion; returns what the AI reports.
     pub fn apply_intrusion(&mut self, kind: Intrusion) -> String {
+        self.mind_infect();
         match kind {
             Intrusion::Siphon => {
                 let taken = (self.credits * 0.03).clamp(0.0, 2_000.0);

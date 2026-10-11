@@ -1948,6 +1948,17 @@ impl Sim {
                 self.rogue_gain(r, i, *kg * bonus);
             }
         }
+        // Ruins and wrecks hold the things of the sector's history; terminals hold ciphers.
+        let dig_key = hash_coord(
+            r.seed,
+            r.floor().sites[k].x as i64,
+            r.floor().sites[k].y as i64,
+            71,
+        );
+        for a in self.dig_site(&site.id, dig_key) {
+            let line = crate::archive::artefact_line(self, a);
+            r.say(format!("Trouvaille : {line}"));
+        }
         if site.heal {
             for m in self.party_up(r) {
                 let p = &mut self.crew.members[m];
@@ -1987,6 +1998,11 @@ impl Sim {
                 r.say(format!(
                     "Un terminal vous livre {gain:.0} points de recherche."
                 ));
+                if rng.f64() < 0.35 {
+                    let strength = (2.0 + 6.0 * rng.f64()).round() * depth_mult.round().max(1.0);
+                    self.add_cipher(strength, "ARCHIVE CHIFFREE");
+                    r.say("Le terminal garde aussi une archive chiffree : elle ira dans votre memoire.");
+                }
             }
             "medbay" => {
                 for &w in &up {

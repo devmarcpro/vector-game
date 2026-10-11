@@ -274,7 +274,7 @@ pub fn fill_world(
                     }
                     if hc > 0.0 {
                         shade += (toward * 9.0).clamp(-0.6, 0.6);
-                        shade += (hc as f32 / terr.relief as f32).clamp(0.0, 1.0) * 0.3;
+                        shade += (hc / terr.relief as f32).clamp(0.0, 1.0) * 0.3;
                         // Variation of the ground from place to place.
                         shade *=
                             1.0 + 0.12 * noise2(lon * radius / 30_000.0, lat * radius / 30_000.0);

@@ -336,13 +336,15 @@ mod tests {
         let (b, _) = t.sample(lat + 1.0 / t.radius, lon, 1.0);
         assert!((a - b).abs() < 5.0, "{a} vs {b}");
         // ...and fine detail exists only when it is asked for: far away the ground is smooth.
+        // Roughness as the second difference (the large slope of the ground drops out).
         let rough = |lod: f64| -> f64 {
             let mut sum = 0.0;
             for k in 0..200 {
                 let la = lat + f64::from(k) * 3.0 / t.radius;
                 let (p, _) = t.sample(la, lon, lod);
                 let (q, _) = t.sample(la + 3.0 / t.radius, lon, lod);
-                sum += f64::from((p - q).abs());
+                let (r, _) = t.sample(la + 6.0 / t.radius, lon, lod);
+                sum += f64::from((p - 2.0 * q + r).abs());
             }
             sum
         };

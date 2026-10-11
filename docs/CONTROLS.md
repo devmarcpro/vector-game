@@ -15,7 +15,7 @@
 | T / Y | Cible : asteroide / station le(la) plus proche |
 | V (maintenir) | Laser de minage (cible asteroide a < 2 km, visee dans le cone) |
 | D | Amarrer (station < 500 m, vitesse relative < 8 m/s) |
-| I | Soute / inventaire (J = jeter la ressource) |
+| I | Soute / inventaire (J = jeter la ressource, F = verser le carburant de la soute dans le reservoir) |
 | K | Equipage (Gauche/Droite poste, T quart, X débarquer à quai, J journal) |
 | J | Journal de bord |
 | L | Carte galactique (Haut/Bas étoile, +/- zoom, Entrée = saut FTL) ; Retour arrière annule une charge de saut |
@@ -38,7 +38,8 @@
 | ~ (Backquote) | Console de debug : help, list, tp, tpbody, stop, speed, fuel, repair, assist, time |
 | F1 | Aide contextuelle de l'ecran courant (re-appuyer pour fermer) |
 | F6 | Codex (Gauche/Droite categorie, Haut/Bas entree) |
-| F10 | Ignorer le tutoriel |
+| F10 | Menu principal : les huit espaces qui regroupent tous les ecrans (voir « Le menu principal ») ; re-appuyer ferme |
+| Suppr | Ignorer le tutoriel |
 
 Options de ligne de commande : `--snapshot fichier.png [scene]` (rendu headless), `--bench`, `--script fichier.txt` (jeu scripte sans fenetre, voir `crates/game/src/script.rs`).
 
@@ -55,7 +56,34 @@ Ecran colonie : Tab zone (bâtiments / stocks / politiques / construction), Haut
 Ecran flotte : Tab liste, N nouvelle route (Gauche/Droite valeur, Tab champ, Entrée), A affecter, U retirer, X supprimer/vendre, B acheter (à quai).
 
 ## Menus
-Menu principal : Nouvelle partie / Continuer / Regles de partie / Options / Codex-Aide / Quitter. Menu pause : Reprendre / Sauvegarder / Charger / Regles / Options / Codex-Aide / Menu principal / Quitter.
+Menu de demarrage : Partie rapide (voyageur standard, graine tapee ou par defaut) / Nouvelle partie (le flux en sept etapes ci-dessous) / Continuer / Regles de partie / Options / Codex-Aide / Quitter. Menu pause : Reprendre / Sauvegarder / Charger / Regles / Options / Codex-Aide / Menu principal / Quitter.
+
+## Nouvelle partie (sept etapes)
+Menu de demarrage > Nouvelle partie. Entree passe a l'etape suivante, Echap revient a la precedente (la premiere revient au menu de demarrage), un clic sur le nom d'une etape (en haut) y va directement, clic droit = Echap, les boutons « < PRECEDENT » et « SUIVANT > » sont du texte cliquable.
+1. **Explications** : ce qu'est le jeu (bac a sable sans objectif impose, vous etes l'IA du vaisseau, l'equipage vit sa vie) et les touches a connaitre.
+2. **Scenario** (Haut/Bas) : Voyageur, Marchand, Explorateur, Hors-la-loi, Colon, Naufrage. Chacun fixe vraiment les credits, la soute, le vaisseau, l'equipage a depenser, les technologies connues, les relations avec les factions (et une prime pour le hors-la-loi). Naufrage : on commence a pied sur un monde nu, vaisseau hors d'etat de voler (voir « Naufrage »).
+3. **Vaisseau** (Haut/Bas) : les coques proposees par le scenario, modules montes, apercu fil de fer qui tourne, poussee, energie, reservoir, soute, logements, saut FTL, scanners.
+4. **Equipage** : douze candidats tires de la graine ; Haut/Bas choisit, Espace (ou clic) prend ou laisse, Gauche/Droite change le poste de la personne prise ; budget de points du scenario (1 point par personne, 2 pour un specialiste, 3 pour un expert), au moins une personne.
+5. **Galaxie** : taper une graine (nombre ou mot), Tab en tire une au hasard, Suppr revient a celle par defaut ; l'ecran donne le systeme de depart (classe de l'etoile, planetes, lunes, asteroides, stations, territoire).
+6. **Options** (Haut/Bas, Gauche/Droite) : langue (FRANCAIS), clavier (AZERTY par defaut / QWERTY), tutoriel guide, difficulte (DOUX / STANDARD / RUDE = degats, agressivite des IA, evenements, carburant) et, sur la derniere ligne, les regles avancees. La difficulte indicative du depart (1 a 5) suit le scenario et les regles.
+7. **Recapitulatif** : Entree lance la partie.
+
+## Le menu principal (F10, huit espaces)
+F10 ou un clic sur « MENU (F10) » (en haut a droite de tous les ecrans) ouvre le menu ; il gele le vol. En haut, l'**orientation** : ou vous etes (en vol pres de..., amarre a..., pose sur..., a pied : lieu) et ce que vous pouvez faire maintenant (consignes selon l'etat : quai, vol, vaisseau au sol, a pied). Dessous, huit espaces (1 a 8, Haut/Bas, clic) :
+- 1 PILOTAGE : cockpit / decoller, radio (Entree), portail et temps (Accueil), pause et sauvegarde.
+- 2 NAVIGATION : carte du systeme (M), galaxie et saut FTL (L), surface d'un monde (F8).
+- 3 VAISSEAU : modules et energie (H), soute (I), chantier naval (Y a quai).
+- 4 EQUIPAGE : equipage (K), arbre familial, recrutement (N a quai).
+- 5 COMMERCE / STATION : marche, bourse (T), courtage (D), contrats (C), banque (E), elevage (L), casino (A) ; a quai seulement.
+- 6 EXPLORATION A PIED : explorer a pied (Fin), expedition sur un monde (F8 puis E).
+- 7 COLONIES : empire (F2), colonie, flotte (F3), factions (X), fonder une colonie (O).
+- 8 CODEX / JOURNAL : journal (J), codex (F6), technologies (F4), prototypes d'interface (F12).
+Un espace ouvre l'ecran existant par la meme fonction que sa touche : aucun ecran n'est duplique. Une ligne grisee dit pourquoi elle est indisponible (amarrage requis, decollage requis, a pied).
+**Echap remonte d'un niveau, partout** : un ecran ouvert depuis le menu revient a la page de son espace ; la page revient a la liste des espaces ; la liste ferme le menu, qui rend l'ecran d'ou il a ete ouvert (cockpit, quai ou marche a pied). Le clic droit fait de meme.
+A pied (equipe sur le terrain), seuls les ecrans d'information s'ouvrent (vaisseau, soute, equipage, journal, codex, technologies) et Echap revient a la marche.
+
+## Naufrage (scenario)
+Le vaisseau est un epave : moteur a 0 %, reservoirs vides, aucun credit, un ingenieur seul, a pied sur un monde choisi pour son air. Les epaves, campements, ruines et grottes de la surface (touche Fin / carte de surface) donnent des pieces detachees et du carburant ; le butin va en soute au retour (Entree sur < ou R) ; l'ingenieur de quart repare avec les pieces detachees (ses reparations ordinaires, le module le plus abime d'abord) ; **I puis F** verse le carburant de la soute dans le reservoir ; le menu (F10) dit moteur, energie, pieces et carburant. Le vaisseau peut decoller (Espace) quand la poussee depasse son poids sur ce monde. Rien n'est impose : on peut aussi rester vivre sur place.
 Regles : Haut/Bas, Gauche/Droite modifier, R valeurs par defaut ; depuis la pause elles s'appliquent immediatement.
 Options : lignes de balayage, halo, palette (couleur, vert, ambre, blanc, bleu), volume, tutoriel, barre des commandes ; sauvegardees dans saves/settings.cfg.
 

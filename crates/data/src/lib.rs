@@ -638,6 +638,34 @@ pub struct Cartel {
     pub text: String,
 }
 
+/// A way to begin a game (see `data/scenarios.ron`): the ship, the money, the hold, the crew
+/// budget and the standing the player starts with. `wreck` scenarios begin on the ground with a
+/// ship that cannot fly yet.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct Scenario {
+    pub id: String,
+    pub name: String,
+    /// 1 (gentle) to 5 (harsh): indicative only.
+    pub difficulty: u8,
+    /// The ships the player may start with: (hull id, modules in fit order). The first one is
+    /// the default.
+    pub ships: Vec<(String, Vec<String>)>,
+    pub credits: f64,
+    pub cargo: Vec<(String, f64)>,
+    /// Roles of the default crew, and the points the player may spend on a crew of their own.
+    pub crew: Vec<String>,
+    pub crew_points: u32,
+    /// Technologies known at the start, on top of the base ones.
+    pub techs: Vec<String>,
+    /// Standing with a faction at the start ("home" = the faction of the starting system).
+    pub reputation: Vec<(String, f64)>,
+    /// Days the home faction hunts the player at the start (0 = not wanted).
+    pub wanted_days: f64,
+    /// The ship starts as a wreck on the ground of a world, the crew alone with the planet.
+    pub wreck: bool,
+    pub text: String,
+}
+
 /// A belief of the colonies (see `data/religions.ron`).
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Religion {
@@ -794,6 +822,7 @@ pub struct GameData {
     pub gear: Vec<Gear>,
     pub religions: Vec<Religion>,
     pub cartels: Vec<Cartel>,
+    pub scenarios: Vec<Scenario>,
     pub dimensions: Vec<Dimension>,
     pub rogue_monsters: Vec<RogueMonster>,
     pub rogue_themes: Vec<RogueTheme>,
@@ -840,6 +869,7 @@ impl GameData {
             gear: read(&dir.join("gear.ron"))?,
             religions: read(&dir.join("religions.ron"))?,
             cartels: read(&dir.join("cartels.ron"))?,
+            scenarios: read(&dir.join("scenarios.ron"))?,
             dimensions: read(&dir.join("dimensions.ron"))?,
             rogue_monsters: read(&dir.join("rogue_monsters.ron"))?,
             rogue_themes: read(&dir.join("rogue_themes.ron"))?,
@@ -1272,6 +1302,7 @@ impl GameData {
         self.validate_gear()?;
         self.validate_religions()?;
         self.validate_cartels()?;
+        self.validate_scenarios()?;
         self.validate_dimensions()?;
         self.validate_materials()?;
         self.validate_rogue()?;
@@ -1528,6 +1559,73 @@ impl GameData {
             return bad("moins de 4 cartels".into());
         }
         Ok(())
+    }
+
+    /// Scenarios: unique ids, known hull, modules, resources, roles, technologies and factions,
+    /// a sane budget, at least one way to begin that is not a wreck.
+    fn validate_scenarios(&self) -> Result<(), DataError> {
+        let bad = |s: String| Err(DataError::Invalid(s));
+        let mut seen = std::collections::HashSet::new();
+        for s in &self.scenarios {
+            if !seen.insert(s.id.as_str()) {
+                return bad(format!("scenario {} en double", s.id));
+            }
+            if !(1..=5).contains(&s.difficulty) {
+                return bad(format!("scenario {}: difficulte hors de 1..5", s.id));
+            }
+            if s.ships.is_empty() {
+                return bad(format!("scenario {}: aucun vaisseau", s.id));
+            }
+            for (hull, fit) in &s.ships {
+                if self.hull_index(hull).is_none() {
+                    return bad(format!("scenario {}: coque {hull} inconnue", s.id));
+                }
+                if let Some(m) = fit.iter().find(|m| self.module_index(m).is_none()) {
+                    return bad(format!("scenario {}: module {m} inconnu", s.id));
+                }
+            }
+            if s.credits < 0.0 || s.wanted_days < 0.0 {
+                return bad(format!("scenario {}: valeurs negatives", s.id));
+            }
+            if let Some((r, _)) = s
+                .cargo
+                .iter()
+                .find(|(r, kg)| self.resource_index(r).is_none() || *kg <= 0.0)
+            {
+                return bad(format!("scenario {}: soute invalide ({r})", s.id));
+            }
+            if let Some(r) = s
+                .crew
+                .iter()
+                .find(|r| !self.roles.iter().any(|ro| ro.id == **r))
+            {
+                return bad(format!("scenario {}: poste {r} inconnu", s.id));
+            }
+            if s.crew.is_empty() || (s.crew_points as usize) < s.crew.len() {
+                return bad(format!("scenario {}: equipage vide", s.id));
+            }
+            if let Some(t) = s.techs.iter().find(|t| self.tech_index(t).is_none()) {
+                return bad(format!("scenario {}: technologie {t} inconnue", s.id));
+            }
+            if let Some((f, _)) = s
+                .reputation
+                .iter()
+                .find(|(f, _)| f != "home" && self.faction_index(f).is_none())
+            {
+                return bad(format!("scenario {}: faction {f} inconnue", s.id));
+            }
+        }
+        if !self.scenarios.iter().any(|s| !s.wreck) {
+            return bad("aucun scenario de depart en vol".into());
+        }
+        if self.scenarios.len() < 6 {
+            return bad("moins de 6 scenarios".into());
+        }
+        Ok(())
+    }
+
+    pub fn scenario_index(&self, id: &str) -> Option<usize> {
+        self.scenarios.iter().position(|s| s.id == id)
     }
 
     fn validate_religions(&self) -> Result<(), DataError> {
@@ -2376,6 +2474,33 @@ mod tests {
         let mut d = ok;
         d.anomalies_def.retain(|a| a.id != "portal");
         assert!(d.validate().is_err(), "portal needs a definition");
+    }
+
+    #[test]
+    fn scenarios_are_validated() {
+        let ok = GameData::load(&dir()).expect("data loads");
+        assert!(ok.scenarios.len() >= 6);
+        assert!(ok.scenario_index("naufrage").is_some());
+        let mut d = ok.clone();
+        d.scenarios[0].ships[0].0 = "nulle_part".into();
+        assert!(d.validate().is_err(), "unknown hull");
+        let mut d = ok.clone();
+        d.scenarios[0].ships[0].1.push("unobtainium".into());
+        assert!(d.validate().is_err(), "unknown module");
+        let mut d = ok.clone();
+        d.scenarios[1].reputation.push(("nulle_part".into(), 5.0));
+        assert!(d.validate().is_err(), "unknown faction");
+        let mut d = ok.clone();
+        d.scenarios[0].crew.push("bouffon".into());
+        assert!(d.validate().is_err(), "unknown role");
+        let mut d = ok.clone();
+        d.scenarios[0].ships.clear();
+        assert!(d.validate().is_err(), "a scenario needs a ship");
+        let mut d = ok;
+        for s in &mut d.scenarios {
+            s.wreck = true;
+        }
+        assert!(d.validate().is_err(), "at least one start in flight");
     }
 
     #[test]

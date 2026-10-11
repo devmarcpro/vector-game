@@ -49,3 +49,6 @@ Mœurs : data/ethos.ron (8 axes, 8 étiquettes morales, 8 profils de faction), g
 
 ## Entreprises
 `data/companies.ron` : id, nom, siège (faction), cours de base, rendement annuel, volatilité, biens (id, poids, total 1), texte.
+
+## Scénarios de départ
+`data/scenarios.ron` : id, nom, difficulté indicative (1 à 5), vaisseaux au choix (coque, modules dans l'ordre de montage ; le premier est celui par défaut), crédits, soute (ressource, kg), équipage par défaut (postes) et points à dépenser, technologies connues, réputations de départ (« home » = le territoire du système de départ), jours de prime, `wreck` (départ au sol sur un vaisseau cassé), texte. Validé au chargement (références connues, au moins un départ en vol, au moins 6 scénarios) ; chaque vaisseau proposé est vérifié viable par `every_ship_option_fits_its_hull_and_can_live_and_fly`. Catégorie SCENARIOS du codex.

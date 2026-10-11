@@ -15,8 +15,10 @@ mod flow_view;
 mod fpv_view;
 mod game;
 mod globe;
+mod hub;
 mod hud;
 mod mouse;
+mod newgame;
 mod power_view;
 mod proto_view;
 mod rogue_view;
@@ -393,6 +395,54 @@ fn snapshot(path: &str, scene: &str, data: Arc<GameData>) {
                 let _ = g.sim.rogue_travel(target.0, target.1, 30);
             }
             g.screen = Screen::Rogue;
+        }
+        // The new-game flow, one scene per step: newgame0 .. newgame6 (newgame1_naufrage, ...).
+        s if s.starts_with("newgame") => {
+            let step: usize = s[7..8].parse().unwrap_or(0);
+            g.open_new_game();
+            if s.ends_with("naufrage") {
+                g.click_ng_scenario(g.data.scenario_index("naufrage").expect("scenario"));
+            } else if s.ends_with("marchand") {
+                g.click_ng_scenario(g.data.scenario_index("marchand").expect("scenario"));
+            }
+            g.tut_step = None;
+            g.ng.seed_text = if step >= 4 {
+                "ANDROMEDE".into()
+            } else {
+                String::new()
+            };
+            if step >= 4 {
+                g.ng.cursor = 2;
+            }
+            g.ng_goto(step);
+        }
+        // The one menu: hub (the eight spaces), hub_vaisseau (a page), hub_dock (docked),
+        // hub_castaway (the castaway's orientation).
+        "hub" | "hub_vaisseau" | "hub_dock" | "hub_castaway" => {
+            if scene == "hub_dock" {
+                let (st, _) = g.sim.nearest_station().expect("station");
+                g.sim.spawn_near(st, g.sim.bodies[st].radius + 200.0);
+                g.key(KeyCode::KeyD, None, true);
+            }
+            if scene == "hub_castaway" {
+                let mut cfg = vector_sim::start::StartConfig::new(DEFAULT_SEED);
+                cfg.scenario = g.data.scenario_index("naufrage").expect("scenario");
+                g.start_game(&cfg);
+            }
+            g.tut_step = None;
+            g.open_hub();
+            if scene == "hub_vaisseau" {
+                g.hub_select(2);
+            }
+            if scene == "hub_dock" {
+                g.hub_select(4);
+            }
+        }
+        // A castaway on foot, right after the start.
+        "castaway" => {
+            let mut cfg = vector_sim::start::StartConfig::new(DEFAULT_SEED);
+            cfg.scenario = g.data.scenario_index("naufrage").expect("scenario");
+            g.start_game(&cfg);
         }
         "rogue0" => {
             let (st, _) = g.sim.nearest_station().expect("station");

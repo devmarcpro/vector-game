@@ -25,6 +25,11 @@ pub const CATEGORIES: [&str; 20] = [
     "SITES",
 ];
 
+/// Index in the source table of entry `k` of a category (modules and weapons share a table).
+pub fn source_index(data: &GameData, cat: usize, k: usize) -> Option<usize> {
+    entries(data, cat).get(k).copied()
+}
+
 /// Number of entries in a category.
 pub fn count(data: &GameData, cat: usize) -> usize {
     entries(data, cat).len()

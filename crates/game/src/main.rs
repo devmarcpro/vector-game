@@ -22,6 +22,7 @@ mod tech_view;
 mod tutorial;
 mod ui;
 mod walk_view;
+mod wire_shape;
 
 use game::{Game, Screen, DEFAULT_SEED};
 use std::{num::NonZeroU32, rc::Rc, sync::Arc, time::Instant};

@@ -276,15 +276,27 @@ fn draw_options(fb: &mut Framebuffer, g: &Game) {
 fn draw_codex(fb: &mut Framebuffer, g: &Game) {
     use crate::codex;
     fb.text(2, 1, "== CODEX ==", AMBER);
-    let mut x = 2;
+    // The tabs wrap on a second row when they do not fit.
+    let (mut x, mut tab_row) = (2usize, 2usize);
     for (i, c) in codex::CATEGORIES.iter().enumerate() {
-        let hover = g.hit_cells(x, 3, c.len(), 1, Act::Call(Game::click_codex_cat, i), None);
+        if x + c.len() > fb.cols().saturating_sub(2) {
+            x = 2;
+            tab_row += 1;
+        }
+        let hover = g.hit_cells(
+            x,
+            tab_row,
+            c.len(),
+            1,
+            Act::Call(Game::click_codex_cat, i),
+            None,
+        );
         let col = if i == g.codex_cat || hover {
             AMBER
         } else {
             DIM
         };
-        fb.text(x, 3, c, col);
+        fb.text(x, tab_row, c, col);
         x += c.len() + 2;
     }
     let names = codex::names(&g.data, g.codex_cat);
@@ -314,7 +326,10 @@ fn draw_codex(fb: &mut Framebuffer, g: &Game) {
         s.truncate(34);
         fb.text(2, 5 + k - start, &s, c);
     }
+    // The text keeps to the left of the turning wireframe of the entry.
+    let shape = crate::wire_shape::shape_for(&g.data, g.codex_cat, sel);
     let w = fb.cols().saturating_sub(40).max(20);
+    let w = if shape.is_some() { w.min(82) } else { w };
     let mut row = 5;
     let max_row = fb.rows().saturating_sub(4);
     for (i, l) in codex::entry(&g.data, g.codex_cat, sel).iter().enumerate() {
@@ -336,6 +351,10 @@ fn draw_codex(fb: &mut Framebuffer, g: &Game) {
             fb.text(38, row, &cur, if i == 0 { AMBER } else { GREEN });
         }
         row += 1;
+    }
+    if let Some(segs) = &shape {
+        let t = crate::proto_view::anim_time();
+        crate::wire_shape::draw(fb, segs, 1140.0, 150.0, 190.0, t * 0.8, GREEN);
     }
     // Cross-links: entries named in this one.
     let links = codex::links(&g.data, g.codex_cat, sel);

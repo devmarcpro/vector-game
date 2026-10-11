@@ -958,6 +958,7 @@ fn draw_status(fb: &mut Framebuffer, v: &View) {
             DIM,
         );
     }
+    draw_physics_panel(fb, v, rows);
     draw_target_panel(fb, v, rows, cols);
     if let Some(j) = &sim.jump {
         let line = if j.in_transit {
@@ -985,6 +986,97 @@ fn draw_status(fb: &mut Framebuffer, v: &View) {
     }
     if ship.hull <= 0.0 {
         fb.text(cols / 2 - 10, rows / 2 + 4, "*** COQUE DETRUITE ***", RED);
+    }
+}
+
+/// Orbit, heat, dose and load of the ship: the numbers a pilot flies by.
+fn draw_physics_panel(fb: &mut Framebuffer, v: &View, rows: usize) {
+    use vector_sim::navigation as nav;
+    let sim = v.sim;
+    if rows < 36 {
+        return;
+    }
+    let mut y = 16;
+    if let Some(ro) = sim.orbit_readout() {
+        let e = &ro.elements;
+        let alt = |d: f64| fmt_dist((d - ro.radius).max(0.0));
+        let apo = e.apoapsis.map_or("OUVERTE".to_string(), alt);
+        fb.text(
+            1,
+            y,
+            &format!(
+                "ORBITE {}  PERI {}  APO {}",
+                sim.bodies[ro.body].name.to_uppercase(),
+                alt(e.periapsis),
+                apo
+            ),
+            if e.periapsis < ro.radius { RED } else { GREEN },
+        );
+        y += 1;
+        let period = e.period.map_or("--".to_string(), fmt_time);
+        fb.text(
+            1,
+            y,
+            &format!(
+                "V {:.0} M/S  CIRC {:.0}  LIBER. {:.0}  E {:.3}  P {}",
+                e.speed, e.v_circ, e.v_esc, e.e, period
+            ),
+            DIM,
+        );
+        y += 1;
+    }
+    if let Some(t) = sim.target.and_then(|t| sim.transfer_to(t)) {
+        fb.text(
+            1,
+            y,
+            &format!(
+                "HOHMANN DV {:.0} M/S  VOL {}  FENETRE DANS {}",
+                t.hohmann.total,
+                fmt_time(t.hohmann.time),
+                fmt_time(t.wait)
+            ),
+            AMBER,
+        );
+        y += 1;
+    }
+    let ship = &sim.ship;
+    let sun = (sim.bodies[0].pos - ship.pos).length();
+    fb.text(
+        1,
+        y,
+        &format!(
+            "FLUX SOLAIRE {:.2} KW/M2  LUMIERE ETOILE {}  G {:.1}",
+            nav::SOLAR_CONSTANT_KW * sim.solar_flux(),
+            fmt_time(nav::light_delay(sun)),
+            sim.structural_load_g()
+        ),
+        DIM,
+    );
+    y += 1;
+    let rate = sim.dose_rate_aboard();
+    fb.text(
+        1,
+        y,
+        &format!(
+            "DOSE {:.2} MGY/H  CUMULEE {:.1} MGY  SIGNATURE IR {:.0} KW",
+            rate * 1e3,
+            ship.sys.dose_gy * 1e3,
+            sim.ir_signature_kw()
+        ),
+        if rate > 0.05 { RED } else { DIM },
+    );
+    let beta = sim.rel_velocity().length() / nav::C;
+    if beta > 0.001 {
+        fb.text(
+            1,
+            y + 1,
+            &format!(
+                "RELATIVISTE  V {:.3} C  GAMMA {:.4}",
+                beta,
+                nav::gamma(beta * nav::C)
+            ),
+            AMBER,
+        );
     }
 }
 

@@ -217,19 +217,15 @@ impl Sim {
         if self.in_transit() {
             return;
         }
+        self.radiation_tick(dt);
+        self.structural_tick(dt);
         let env = self.environment_at(self.ship.pos);
         self.env_sensor = env.sensor_mult;
         self.env_agility = env.agility_mult;
         self.env_gravity = env.gravity;
         let shielded = self.ship.sys.shield_pts > 0.0;
         if env.radiation > 0.0 {
-            let protection = if self.docked.is_some() {
-                0.05
-            } else if shielded {
-                0.12
-            } else {
-                1.0
-            };
+            let protection = self.dose_protection();
             self.irradiate(env.radiation * dt / 3600.0 * protection);
             if shielded {
                 self.ship.sys.shield_pts =

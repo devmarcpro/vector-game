@@ -33,6 +33,7 @@ impl Sim {
     /// its height (pressure, in bar), the harder.
     pub(crate) fn atmosphere_drag(&mut self, dt: f64) {
         let mut decel = Vec3::ZERO;
+        self.aero_heat_kw = 0.0;
         for i in 0..self.bodies.len() {
             let Some(air) = self.air_of(i) else { continue };
             let b = &self.bodies[i];
@@ -46,6 +47,13 @@ impl Sim {
                 continue;
             }
             let density = air.pressure(alt).min(10.0);
+            // Heat of the entry: kinetic power of the air on the hull (rho from the ideal gas law).
+            let rho = air.pressure(alt) * 1.0e5 * air.mass / 1000.0 / (8.314 * air.temp.max(30.0));
+            self.aero_heat_kw += crate::navigation::aero_heat_kw(
+                rho,
+                v,
+                crate::navigation::cross_section(self.ship.mass()),
+            );
             let a = (0.0015 * density * v * v)
                 .min(MAX_DRAG)
                 .min(v / dt.max(1e-6));

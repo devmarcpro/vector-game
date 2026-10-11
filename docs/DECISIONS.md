@@ -110,3 +110,5 @@ les etages d'une mine sont plus riches (+25 % par etage). La durete donne le tem
 Les animaux evitent les sols glissants ou brulants ; les plantes ne s'installent que sur sol fertile.
 Le froid : le gear a un champ `warmth` qui s'ajoute a la defense sous 250 K. Sauvegardes : `Floor.owned`
 ajoute (le coordinateur bumpe la version).
+## Physique de vol : un seul bilan, pas de systeme parallele (2026-10-11)
+La chaleur exterieure (soleil, air) entre dans `Systems::step` par `Activity.ext_heat_kw`, la dose passe par `hazard_tick`/`irradiate` existants, la sphere d'influence remplace `60 rayons` dans `update_ref`. Le flux solaire des panneaux tient compte des eclipses. La dose cumulee est dans `Systems` (sauvegardee). Non fait : J2 appliquee a la trajectoire (seule la precession est calculee), co-rotation du vaisseau pose, brouillage des communications, effet de la dose sur la detection NPC.

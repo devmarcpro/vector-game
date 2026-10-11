@@ -174,6 +174,8 @@ pub struct Activity {
     pub rcs_use: f64,
     pub jumping: bool,
     pub firing: bool,
+    /// Heat (kW) arriving from outside: sunlight on the hull, the air of an entry.
+    pub ext_heat_kw: f64,
 }
 
 /// Capabilities actually available this step after power allocation.
@@ -213,6 +215,8 @@ pub struct Systems {
     pub supply_kw: f64,
     pub demand_kw: f64,
     pub overheating: bool,
+    /// Radiation the crew has received in all (Gy), after plating and shields.
+    pub dose_gy: f64,
     /// Current shield charge (damage points) and the time of the last hit.
     pub shield_pts: f64,
     pub last_hit: f64,
@@ -229,6 +233,7 @@ impl Systems {
             supply_kw: 0.0,
             demand_kw: 0.0,
             overheating: false,
+            dose_gy: 0.0,
             shield_pts: 0.0,
             last_hit: -1.0e9,
         }
@@ -335,7 +340,7 @@ impl Systems {
 
         // Heat: reactors dump a fraction of what they produce; every consumed kW ends up as heat.
         let reactor_out = produced_for_demand.min(supply);
-        let heat_in = reactor_out * REACTOR_WASTE + demand;
+        let heat_in = reactor_out * REACTOR_WASTE + demand + act.ext_heat_kw;
         let base_rad = 30.0 + 0.004 * stats.mass_dry;
         let rated = base_rad + stats.radiate_kw;
         let c_kj_per_k = (mass_total * 0.5).max(1.0);
@@ -469,6 +474,7 @@ mod tests {
             rcs_use: 0.0,
             jumping: false,
             firing: false,
+            ext_heat_kw: 0.0,
         };
         for _ in 0..20_000 {
             sys.step(&d, &design, &stats, 30_000.0, &act, 1.0, 0.5);
@@ -518,6 +524,7 @@ mod tests {
             rcs_use: 0.0,
             jumping: false,
             firing: false,
+            ext_heat_kw: 0.0,
         };
         let eff = sys.step(&d, &design, &stats, 30_000.0, &act, 1.0, 0.1);
         let cat = |c: &str| {

@@ -254,6 +254,8 @@ impl Game {
                 || self.keys.contains(&KeyCode::ControlRight)
                 || self.keys.contains(&KeyCode::Enter),
             fire_missile: self.keys.contains(&KeyCode::KeyB),
+            boost: self.keys.contains(&KeyCode::ShiftLeft),
+            brake: !self.map && self.keys.contains(&KeyCode::KeyC),
         }
     }
 
@@ -1581,6 +1583,8 @@ impl Game {
             KeyCode::KeyJ => self.screen = Screen::Journal,
             KeyCode::KeyD => match self.sim.try_dock() {
                 Ok(_) => self.handle_events(),
+                // D also steers (yaw): stay quiet when no station is anywhere near.
+                Err(e) if e.starts_with("aucune") || e.starts_with("trop loin") => {}
                 Err(e) => self.say(format!("AMARRAGE IMPOSSIBLE: {}", e.to_uppercase())),
             },
             KeyCode::F5 => self.save_game(),
@@ -1591,6 +1595,7 @@ impl Game {
             KeyCode::Minus | KeyCode::NumpadSubtract => self.map_scale *= 1.5,
             KeyCode::F1 => {
                 self.say("WASD/QE:ROT ESPACE/X:POUSSEE FLECHES:RCS F:ASSIST V:LASER");
+                self.say("MAJ:BOOST C(MAINTENIR):FREIN SUR LA CIBLE");
                 self.say("TAB/T/Y/R:CIBLE G:AUTO D:AMARRER I:SOUTE M:CARTE F5/F9:SAUV/CHARG");
                 self.say(
                     "F2:EMPIRE F3:FLOTTE O:COLONISER LA CIBLE L:GALAXIE K:EQUIPAGE H:VAISSEAU",

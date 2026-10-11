@@ -7,6 +7,8 @@
 | Espace / X | Poussee avant (moteur principal) / recul (RCS) |
 | Fleches | RCS lateral (gauche/droite) et vertical (haut/bas) |
 | F | Assistance de vol ON/OFF (amortit rotation et derive) |
+| Maj gauche (maintenir) | Boost : poussee x2.5, rotation x1.4, carburant x3 sur la poussee principale |
+| C (maintenir, carte fermee) | Frein : annule la vitesse relative a la cible (sinon au corps de reference, sinon au repere de l'etoile), partout et a toute vitesse, par RCS |
 | Tab | Cible suivante (la plus proche d'abord) |
 | R | Cibler le vaisseau PNJ le plus proche (cycle) |
 | T / Y | Cible : asteroide / station le(la) plus proche |

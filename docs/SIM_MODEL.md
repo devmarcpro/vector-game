@@ -7,6 +7,7 @@ Unites SI. Pas fixe 30 Hz (SIM_DT).
 - Consommation : debit = F / (Isp * g0), Isp = 200 000 s (moteur a fusion avance ; delta-v ~660 km/s). Delta-v = Isp*g0*ln(m0/m1) (test unitaire).
 - Rotation : vitesse angulaire max 1.5 rad/s, acceleration 2 rad/s2, integration par Rodrigues + re-orthonormalisation.
 - Assistance : sans commande sur un axe, contre-poussee (limitee a la poussee dispo) vers vitesse nulle ; rotation amortie. OFF = newtonien pur.
+- Boost (maintenir) : poussee principale x2.5, vitesse et acceleration angulaires x1.4, debit de carburant x3 tant que le moteur brule (constantes `BOOST_*`, sans etat persistant). Frein (maintenir) : assistance lineaire et angulaire forcee, sans limite de vitesse ni corps de reference ; cible = vitesse de la cible, sinon du corps de reference, sinon repere de l'etoile ; coupe sous pilote auto ; l'arret passe par le RCS (14 m/s2 a vide) donc long a haute vitesse. Vitesses de rotation des coques x1.3 depuis la session 2.
 - Collisions : spheres ; si vitesse normale > 5 m/s, degats = 0.5*m*v2 / 5e6 sur une coque de 1000 ; rebond 20 %.
 
 ## Monde (M2)

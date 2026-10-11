@@ -43,6 +43,10 @@ pub const MIN_DT: f64 = 1.0 / 240.0;
 pub const SHIP_RADIUS: f64 = 15.0;
 /// Linear flight assist only acts below this speed relative to the reference body (m/s).
 pub const ASSIST_MAX_SPEED: f64 = 500.0;
+/// Overdrive multipliers: main thrust, turn rate and acceleration, fuel burn.
+pub const BOOST_THRUST: f64 = 2.5;
+pub const BOOST_TURN: f64 = 1.4;
+pub const BOOST_FUEL: f64 = 3.0;
 pub const DOCK_RANGE: f64 = 500.0;
 pub const DOCK_MAX_SPEED: f64 = 8.0;
 pub const START_CREDITS: f64 = 500.0;
@@ -65,6 +69,10 @@ pub struct ShipInput {
     /// Primary weapons (beams, cannons) and secondary weapons (missiles, mines).
     pub fire: bool,
     pub fire_missile: bool,
+    /// Overdrive: stronger main engine and turning, at a fuel premium.
+    pub boost: bool,
+    /// Cancel velocity relative to the target (else the reference body, else the star frame).
+    pub brake: bool,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -730,13 +738,25 @@ impl Sim {
             / crew::NO_CREW_EFF)
             .clamp(0.8, 1.3);
 
-        let assist = self.ship.assist;
+        let brake = input.brake && self.autopilot.is_none();
+        let boost = input.boost && self.autopilot.is_none();
+        if boost {
+            eff.thrust *= BOOST_THRUST;
+            eff.max_rate *= BOOST_TURN;
+            eff.ang_accel *= BOOST_TURN;
+        }
+        let assist = self.ship.assist || brake;
         // Linear assist is for station-keeping: off under autopilot and at high relative speed.
-        let lin_assist = assist
-            && self.autopilot.is_none()
-            && self.ref_body.is_some()
-            && self.rel_velocity().length() < ASSIST_MAX_SPEED;
-        let ref_vel = self.ref_body.map_or(Vec3::ZERO, |i| self.bodies[i].vel);
+        // The brake works anywhere and at any speed, against the target if there is one.
+        let lin_assist = brake
+            || (assist
+                && self.autopilot.is_none()
+                && self.ref_body.is_some()
+                && self.rel_velocity().length() < ASSIST_MAX_SPEED);
+        let ref_vel = match (brake, self.target.filter(|&t| t < self.bodies.len())) {
+            (true, Some(t)) => self.bodies[t].vel,
+            _ => self.ref_body.map_or(Vec3::ZERO, |i| self.bodies[i].vel),
+        };
         let grav = self.gravity_at(self.ship.pos);
         let s = &mut self.ship;
 
@@ -766,7 +786,11 @@ impl Sim {
 
         // Linear control in body frame.
         let mass = s.mass();
-        let cmd = Vec3::new(clamp(input.lat), clamp(input.vert), clamp(input.fwd));
+        let cmd = if brake {
+            Vec3::ZERO
+        } else {
+            Vec3::new(clamp(input.lat), clamp(input.vert), clamp(input.fwd))
+        };
         let rcs_a = eff.rcs_n / mass;
         let main_a = eff.thrust / mass;
         let vel_body = s.rot.transpose().mul_vec(s.vel - ref_vel);
@@ -806,7 +830,12 @@ impl Sim {
             };
         let burn = (mass_flow(main_force, eff.isp) + mass_flow(rcs_force, RCS_ISP))
             * dt
-            * self.rules.fuel_mult();
+            * self.rules.fuel_mult()
+            * if boost && main_force > 0.0 {
+                BOOST_FUEL
+            } else {
+                1.0
+            };
         if burn > s.fuel {
             if s.fuel > 0.0 {
                 self.events.push(Event::OutOfFuel);
@@ -1369,6 +1398,73 @@ mod tests {
         }
         assert!((s.ship.vel.length() - 100.0).abs() < 1e-6);
         assert!((s.ship.ang.y - 1.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn boost_thrusts_harder_and_burns_more_fuel_per_delta_v() {
+        let run = |boost: bool| {
+            let mut s = void_sim();
+            let f0 = s.ship.fuel;
+            let input = ShipInput {
+                fwd: 1.0,
+                boost,
+                ..Default::default()
+            };
+            for _ in 0..60 {
+                s.step(&input);
+            }
+            (s.ship.vel.length(), f0 - s.ship.fuel)
+        };
+        let (v0, f0) = run(false);
+        let (v1, f1) = run(true);
+        assert!(v1 > 2.2 * v0, "boost dv {v1} vs {v0}");
+        assert!(
+            f1 / v1 > 2.5 * (f0 / v0),
+            "fuel per dv {} vs {}",
+            f1 / v1,
+            f0 / v0
+        );
+    }
+
+    #[test]
+    fn boost_turns_faster() {
+        let run = |boost: bool| {
+            let mut s = void_sim();
+            let input = ShipInput {
+                yaw: 1.0,
+                boost,
+                ..Default::default()
+            };
+            for _ in 0..120 {
+                s.step(&input);
+            }
+            s.ship.ang.y
+        };
+        assert!(run(true) > 1.2 * run(false));
+    }
+
+    #[test]
+    fn brake_kills_drift_in_deep_space_without_a_reference_body() {
+        let mut s = void_sim();
+        s.ship.assist = false;
+        s.ship.vel = Vec3::new(40.0, -25.0, 60.0);
+        assert!(s.ref_body.is_none());
+        let input = ShipInput {
+            brake: true,
+            ..Default::default()
+        };
+        for _ in 0..600 {
+            s.step(&input);
+        }
+        assert!(s.ship.vel.length() < 1e-3, "{:?}", s.ship.vel);
+        // Without the brake the same drift persists.
+        let mut t = void_sim();
+        t.ship.assist = false;
+        t.ship.vel = Vec3::new(40.0, -25.0, 60.0);
+        for _ in 0..600 {
+            t.step(&ShipInput::default());
+        }
+        assert!(t.ship.vel.length() > 70.0);
     }
 
     #[test]

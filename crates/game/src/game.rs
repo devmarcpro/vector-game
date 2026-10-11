@@ -2353,6 +2353,33 @@ mod tests {
     }
 
     #[test]
+    fn the_mouse_selects_contract_rows() {
+        let mut g = Game::new(data(), 1);
+        g.key(KeyCode::Enter, None, true);
+        let offer = vector_sim::economy::Contract {
+            id: 1,
+            dest_star: g.sim.here,
+            dest_seed: 0,
+            dest_body: 0,
+            dest_name: "X".into(),
+            dest_system: "X".into(),
+            dist_ly: 0.0,
+            resource: 0,
+            kg: 10.0,
+            reward: 100.0,
+            expires: g.sim.time + 86_400.0,
+            faction: None,
+        };
+        g.offers = vec![offer.clone(), offer.clone(), offer];
+        g.screen = Screen::Contracts;
+        g.contract_sel = 0;
+        frame(&g);
+        // The third offer is drawn at text row 8 + 1 + 2.
+        g.pointer_click(40, 11 * 10 + 3, 1_000);
+        assert_eq!(g.contract_sel, 2);
+    }
+
+    #[test]
     fn menus_reach_rules_options_and_codex() {
         let mut g = Game::new(data(), 1);
         // Main menu: REGLES (index 2) -> raise damage x -> back -> new game uses it.

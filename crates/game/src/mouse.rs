@@ -199,6 +199,19 @@ impl Game {
         self.sel_res = i;
     }
 
+    pub fn click_contract(&mut self, i: usize) {
+        self.contract_sel = i;
+    }
+
+    pub fn click_empire(&mut self, i: usize) {
+        self.emp_sel = i;
+    }
+
+    pub fn click_fleet_ship(&mut self, i: usize) {
+        self.fleet_focus = 0;
+        self.ship_sel2 = i;
+    }
+
     pub fn click_ship_slot(&mut self, i: usize) {
         self.ship_sel = i;
     }

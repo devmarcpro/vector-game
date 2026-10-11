@@ -1174,6 +1174,14 @@ fn draw_contracts(fb: &mut Framebuffer, g: &Game) {
     );
     for (i, c) in g.offers.iter().enumerate() {
         let sel = i == g.contract_sel;
+        g.hit_cells(
+            0,
+            top + 1 + i,
+            100,
+            1,
+            Act::Call(Game::click_contract, i),
+            Some(Act::Key(KeyCode::Enter)),
+        );
         let name = &g.data.resources[c.resource].name;
         let dest = if c.dist_ly == 0.0 {
             "ICI".to_string()
@@ -1340,6 +1348,14 @@ fn draw_empire(fb: &mut Framebuffer, g: &Game) {
     fb.text(1, top, "NOM                    SYSTEME / CORPS                 POP    MORAL     CAISSE    ENERGIE  ETAT", DIM);
     for (i, c) in s.colonies.iter().enumerate() {
         let sel = i == g.emp_sel;
+        g.hit_cells(
+            0,
+            top + 1 + i,
+            100,
+            1,
+            Act::Call(Game::click_empire, i),
+            Some(Act::Key(KeyCode::Enter)),
+        );
         let sys = if c.star == s.here {
             s.system.name.clone()
         } else {
@@ -1608,6 +1624,14 @@ fn draw_fleet(fb: &mut Framebuffer, g: &Game) {
     fb.text(1, top, "VAISSEAUX", focus(0));
     for (i, f) in s.fleet.iter().enumerate() {
         let sel = g.fleet_focus == 0 && i == g.ship_sel2;
+        g.hit_cells(
+            0,
+            top + 1 + i,
+            100,
+            1,
+            Act::Call(Game::click_fleet_ship, i),
+            Some(Act::Key(KeyCode::Enter)),
+        );
         let state = match &f.state {
             vector_sim::fleet::FleetState::Idle => "EN ATTENTE".to_string(),
             vector_sim::fleet::FleetState::Loading { .. } => "CHARGEMENT".to_string(),

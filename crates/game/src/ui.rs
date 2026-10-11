@@ -1463,6 +1463,10 @@ fn draw_colony(fb: &mut Framebuffer, g: &Game) {
         ),
         GREEN,
     );
+    if g.col_flow {
+        crate::flow_view::draw(fb, g);
+        return;
+    }
     // Buildings.
     let top = 5;
     fb.text(1, top, "BATIMENTS", focus(0));

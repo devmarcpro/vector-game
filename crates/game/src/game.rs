@@ -110,6 +110,8 @@ pub struct Game {
     pub col_idx: usize,
     /// 0 buildings, 1 storage, 2 policies, 3 build menu.
     pub col_focus: u8,
+    /// Colony screen: production-chain diagram instead of the lists.
+    pub col_flow: bool,
     pub b_sel: usize,
     pub s_sel: usize,
     pub p_sel: usize,
@@ -214,6 +216,7 @@ impl Game {
             emp_sel: 0,
             col_idx: 0,
             col_focus: 0,
+            col_flow: false,
             b_sel: 0,
             s_sel: 0,
             p_sel: 0,
@@ -1272,6 +1275,7 @@ impl Game {
         let nres = self.data.resources.len();
         let np = self.data.policies.len();
         match code {
+            KeyCode::KeyF => self.col_flow = !self.col_flow,
             KeyCode::Tab => self.col_focus = (self.col_focus + 1) % 4,
             KeyCode::ArrowUp => match self.col_focus {
                 0 if nb > 0 => self.b_sel = (self.b_sel + nb - 1) % nb,

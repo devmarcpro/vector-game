@@ -199,6 +199,11 @@ impl Game {
         self.sel_res = i;
     }
 
+    pub fn click_building(&mut self, k: usize) {
+        self.col_focus = 0;
+        self.b_sel = k;
+    }
+
     pub fn click_contract(&mut self, i: usize) {
         self.contract_sel = i;
     }

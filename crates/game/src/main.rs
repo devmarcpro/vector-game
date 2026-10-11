@@ -3,6 +3,7 @@ mod bourse_view;
 mod codex;
 mod console;
 mod family_view;
+mod flow_view;
 mod game;
 mod hud;
 mod mouse;
@@ -455,7 +456,7 @@ fn snapshot(path: &str, scene: &str, data: Arc<GameData>) {
                 g.advance(1.0 / 30.0);
             }
         }
-        "empire" | "colony" | "fleet" => {
+        "empire" | "colony" | "fleet" | "flow" => {
             let data = Arc::clone(&g.data);
             let planet = g
                 .sim
@@ -534,6 +535,9 @@ fn snapshot(path: &str, scene: &str, data: Arc<GameData>) {
             g.col_focus = 3;
             g.build_sel = 3;
             g.screen = Screen::Colony;
+            if scene == "flow" {
+                g.col_flow = true;
+            }
             if scene == "empire" {
                 g.screen = Screen::Empire;
             }

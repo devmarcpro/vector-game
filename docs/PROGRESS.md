@@ -47,3 +47,5 @@
 - 2026-10-11 : Souris partout : zones cliquables déclarées au dessin (clic, double clic, survol), molette, clic droit = retour, barre des commandes cliquable sur tous les écrans, menus, listes (station, soute, vaisseau, chantier, équipage, recrutement, codex, options, règles), arbre des technologies, bourse (périodes, lignes), carte de surface, carte galactique, objets du cockpit et de la carte système, arbre généalogique. Tests de bout en bout.
 
 - 2026-10-11 : Passe visuelle : schéma du vaisseau (écran H), chaque emplacement est une boîte reliée au bus d'énergie, colorée par santé/alimentation, cliquable.
+
+- 2026-10-11 : Passe visuelle : diagramme des chaînes de production d'une colonie (touche F dans l'écran colonie) : stocks consommés -> bâtiments/recettes -> stocks produits, fils rouges si un intrant manque.

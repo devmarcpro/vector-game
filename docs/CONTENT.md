@@ -59,3 +59,5 @@ Mœurs : data/ethos.ron (8 axes, 8 étiquettes morales, 8 profils de faction), g
 valeurs 0..1, un mur qui donne peut etre creuse). Nouveau : `soufre` (sol caustique des plaines de
 lave). Le gear a `warmth` (protection contre le froid). Le codex des matieres liste ce qu'elles donnent,
 laissent a nu, leurs dangers et leur cout de construction.
+## Phenomenes exotiques
+`data/exotic.ron` : id, nom, genre (matter, propulsion, field, entity, precursor, fermi), danger 0..1, recherche (min,max), credits (min,max), butin (ressource, min kg, max kg), texte. Les entrees `fermi` sont les reponses possibles au paradoxe de Fermi (une seule vraie par galaxie). Valide au chargement.

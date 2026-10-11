@@ -78,4 +78,8 @@
  (id:"missiles", name:"Missiles", category:"ammo", density:1500.0, value:120.0),
  (id:"mines", name:"Mines", category:"ammo", density:2500.0, value:90.0),
  (id:"artifacts", name:"Artefacts anciens", category:"artifact", density:3000.0, value:900.0),
+ (id:"antimatter", name:"Antimatiere", category:"exotic", density:1000.0, value:5000000.0),
+ (id:"dark_matter", name:"Matiere noire condensee", category:"exotic", density:12000.0, value:90000.0),
+ (id:"exotic_matter", name:"Matiere exotique", category:"exotic", density:4000.0, value:400000.0),
+ (id:"nanites", name:"Nanites", category:"exotic", density:2200.0, value:30000.0),
 ]

@@ -2,7 +2,7 @@
 //! weapon, faction, anomaly and condition, generated from the real data (no hand-written numbers).
 use vector_data::GameData;
 
-pub const CATEGORIES: [&str; 30] = [
+pub const CATEGORIES: [&str; 31] = [
     "RESSOURCES",
     "MODULES",
     "ARMES",
@@ -33,6 +33,7 @@ pub const CATEGORIES: [&str; 30] = [
     "CREATURES",
     "MATERIAUX",
     "LOIS",
+    "PHENOMENES EXOTIQUES",
 ];
 
 /// Index in the source table of entry `k` of a category (modules and weapons share a table).
@@ -86,6 +87,7 @@ fn entries(data: &GameData, cat: usize) -> Vec<usize> {
         27 => (0..data.rogue_monsters.len()).collect(),
         28 => (0..data.materials.len()).collect(),
         29 => (0..data.laws.len()).collect(),
+        30 => (0..data.exotics.len()).collect(),
         _ => Vec::new(),
     }
 }
@@ -121,6 +123,7 @@ pub fn names(data: &GameData, cat: usize) -> Vec<String> {
             27 => data.rogue_monsters[i].name.clone(),
             28 => data.materials[i].name.clone(),
             29 => data.laws[i].name.clone(),
+            30 => data.exotics[i].name.clone(),
             18 => format!(
                 "Appeler : {}",
                 vector_data::dialogue::ROLES[i].to_lowercase()
@@ -724,6 +727,37 @@ pub fn entry(data: &GameData, cat: usize, k: usize) -> Vec<String> {
                 "On y entre par un portail (anomalie rare) ; un portail y ramene toujours."
                     .to_string(),
             );
+        }
+        30 => {
+            let e = &data.exotics[i];
+            out.push(e.name.clone());
+            out.push(e.text.clone());
+            if e.kind == "fermi" {
+                out.push(format!(
+                    "Une seule reponse est vraie par galaxie (graine) ; {} indices des anciens la revelent.",
+                    vector_sim::exotic::CLUES_NEEDED
+                ));
+            } else {
+                out.push(format!(
+                    "Genre : {}   danger {:.0} %   etude {:.0} a {:.0} points de recherche",
+                    e.kind,
+                    e.danger * 100.0,
+                    e.research.0,
+                    e.research.1
+                ));
+                if !e.loot.is_empty() {
+                    let l: Vec<(String, f64)> = e
+                        .loot
+                        .iter()
+                        .map(|(r, lo, hi)| (r.clone(), (lo + hi) / 2.0))
+                        .collect();
+                    out.push(format!("Butin moyen : {}", fmt_list(data, &l)));
+                }
+                out.push(
+                    "On les trouve en explorant des anomalies ; les paradoxes de temps augmentent gains et dangers."
+                        .to_string(),
+                );
+            }
         }
         24 => {
             let c = &data.cartels[i];

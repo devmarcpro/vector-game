@@ -358,7 +358,7 @@ impl Sim {
         if self.multiverse.dimension > 0 {
             self.exotic_find(i);
         }
-        let cargo: Vec<(usize, f64)> = def
+        let mut cargo: Vec<(usize, f64)> = def
             .loot
             .iter()
             .filter_map(|(r, lo, hi)| {
@@ -367,6 +367,7 @@ impl Sim {
                     .map(|ri| (ri, rng.range(*lo, *hi).round()))
             })
             .collect();
+        cargo.extend(self.study_exotic(i));
         if !cargo.is_empty() {
             let id = self.next_wreck;
             self.next_wreck += 1;

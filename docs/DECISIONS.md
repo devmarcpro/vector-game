@@ -90,3 +90,21 @@ ponderees par `ground_of`), la neige et la glace apparaissent quand il fait froi
 lave remplace l'eau selon la temperature. Les lieux construits nomment leur matiere (`floor_mat`,
 `wall_mat`). La matiere agit : `slow` multiplie le temps de marche (boue x2, neige x1,5, glace x0,8) et
 un rover la ressent 2,5 fois moins. Sauvegardes : version 35.
+
+## La matiere donne, protege et blesse (suite de « Une case = une matiere »)
+
+La composition d'une case pilote le reste, par donnees de `materials.ron` et non par code special :
+`yields` (ressource, kg, rarete) ce que creuser la case donne, `under` le sol mis a nu, `harm` la
+sante perdue par tour (sol caustique ; un liquide brule a cote, au tiers), `slick` la chance de deraper
+d'une case (glace), `fertility` ce que les plantes y trouvent, `cost` ce que coute de la batir. Une
+seule representation : un mur creuse devient un sol (la matiere de dessous), une case batie est une
+matiere comme les autres (tole, pierre taillee), vue pareille en carte et en premiere personne ; seule
+la marque de propriete (`Floor.owned`) est en plus (teinte ambre sur la carte, compteur dans le panneau).
+La physique du monde module le rendement (`DigMods`, rogue.rs) : metaux, precieux, nucleaires suivent la
+densite (rapport a la Terre, 0,4 a 2), soufre/phosphore/terres rares/diamant l'activite interne (inerte
+x0,3 ... volcanique x2,5), glace et eau le froid de la surface (x0,3 en temperature douce, jusqu'a x3), et
+les etages d'une mine sont plus riches (+25 % par etage). La durete donne le temps (1 + 6 x durete /
+(1 + 2 x outil) tours) ; au-dessus de 0,75 il faut un outil de fouille (pioche, scanner : champ `gather`).
+Les animaux evitent les sols glissants ou brulants ; les plantes ne s'installent que sur sol fertile.
+Le froid : le gear a un champ `warmth` qui s'ajoute a la defense sous 250 K. Sauvegardes : `Floor.owned`
+ajoute (le coordinateur bumpe la version).

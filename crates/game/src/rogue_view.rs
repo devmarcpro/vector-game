@@ -59,6 +59,8 @@ fn feature_glyph(k: usize) -> (&'static str, u32) {
 #[derive(Default)]
 pub struct RogueUi {
     pub sel: usize,
+    /// Where the squad last turned to (map view): what X digs and B / N build.
+    pub face: (i32, i32),
 }
 
 impl Game {
@@ -176,6 +178,9 @@ impl Game {
                 _ => None,
             };
             if let Some((dx, dy)) = fp {
+                if (dx, dy) != (0, 0) {
+                    self.rogue_ui.face = (fx, fy);
+                }
                 if let Err(e) = self.sim.rogue_step(dx, dy) {
                     self.say(e.to_uppercase());
                 }
@@ -195,6 +200,9 @@ impl Game {
             _ => None,
         };
         if let Some((dx, dy)) = dir {
+            if (dx, dy) != (0, 0) {
+                self.rogue_ui.face = (dx, dy);
+            }
             if let Err(e) = self.sim.rogue_step(dx, dy) {
                 self.say(e.to_uppercase());
             }
@@ -216,6 +224,20 @@ impl Game {
                 .sim
                 .rogue_deploy_drone()
                 .map(|()| "DRONE LANCE".to_string()),
+            KeyCode::KeyX | KeyCode::KeyB | KeyCode::KeyN => {
+                let (dx, dy) = if self.fpv {
+                    crate::fpv_view::step_of(self.fpv_dir)
+                } else if self.rogue_ui.face == (0, 0) {
+                    (0, 1)
+                } else {
+                    self.rogue_ui.face
+                };
+                match code {
+                    KeyCode::KeyX => self.sim.rogue_dig(dx, dy),
+                    KeyCode::KeyB => self.sim.rogue_build(dx, dy, true),
+                    _ => self.sim.rogue_build(dx, dy, false),
+                }
+            }
             KeyCode::Tab => {
                 self.sim.rogue_switch();
                 return;
@@ -352,6 +374,12 @@ fn draw_choose(fb: &mut Framebuffer, g: &Game) {
 }
 
 /// A colour as it looks in the dark (remembered, out of sight).
+/// A material's colour pulled towards amber: the mark of what the squad built.
+fn amber_mix(c: u32) -> u32 {
+    let ch = |s: u32| ((((c >> s) & 0xFF) + 2 * ((AMBER >> s) & 0xFF)) / 3) << s;
+    ch(16) | ch(8) | ch(0)
+}
+
 fn dim(c: u32) -> u32 {
     let ch = |s: u32| (((c >> s) & 0xFF) * 38 / 100) << s;
     ch(16) | ch(8) | ch(0)
@@ -387,7 +415,13 @@ fn draw_map(fb: &mut Framebuffer, g: &Game, r: &Rogue) {
                             let n =
                                 vector_core::hash_coord(7, i64::from(x), i64::from(y), 3) as usize;
                             glyph = chars[n % chars.len()].to_string();
-                            (glyph.as_str(), if lit { m.color } else { dim(m.color) })
+                            let col = if r.owned(x, y) {
+                                // What the squad built shows in the colour of ownership.
+                                amber_mix(m.color)
+                            } else {
+                                m.color
+                            };
+                            (glyph.as_str(), if lit { col } else { dim(col) })
                         }
                         None if t == T_WALL => ("#", if lit { WALL } else { FAR }),
                         None if t == T_WATER => ("~", if lit { WATER } else { FAR }),
@@ -580,6 +614,8 @@ fn draw_run(fb: &mut Framebuffer, g: &Game, r: &Rogue) {
         ("[V] LANCER UN DRONE", KeyCode::KeyV),
         ("[F] VUE A LA PREMIERE PERSONNE", KeyCode::KeyF),
         ("[C] CAPTURER UNE BETE", KeyCode::KeyC),
+        ("[X] CREUSER / CASSER DEVANT", KeyCode::KeyX),
+        ("[B] BATIR UN MUR  [N] UN SOL", KeyCode::KeyB),
     ];
     if r.on_surface() && r.parent.is_none() {
         cmds.push(("[R] RAPPELER L'EQUIPE", KeyCode::KeyR));
@@ -604,6 +640,14 @@ fn draw_run(fb: &mut Framebuffer, g: &Game, r: &Rogue) {
     fb.text(sx, y + 2, "CLIC : MARCHER JUSQU'A LA CASE", DIM);
     fb.text(sx, y + 3, "FONCER SUR UN MONSTRE = ATTAQUER", DIM);
     fb.text(sx, y + 4, &format!("VUE : {VIEW_RADIUS} CASES"), DIM);
+    if r.built_count() > 0 {
+        fb.text(
+            sx,
+            y + 5,
+            &format!("BATI : {} CASES A VOUS", r.built_count()),
+            AMBER,
+        );
+    }
     // The terminals seen on this floor, and the one under the squad.
     if r.social {
         let mut seen: Vec<(usize, bool)> = Vec::new();

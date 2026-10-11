@@ -49,3 +49,10 @@ Mœurs : data/ethos.ron (8 axes, 8 étiquettes morales, 8 profils de faction), g
 
 ## Entreprises
 `data/companies.ron` : id, nom, siège (faction), cours de base, rendement annuel, volatilité, biens (id, poids, total 1), texte.
+
+## Materiaux : champs de matiere (materials.ron)
+`yields` [(ressource, kg, rarete)], `under` (sol mis a nu), `harm`, `slick`, `fertility`, `cost`
+[(ressource, kg)] : tous optionnels, valides au chargement (ressources connues, `under` est un sol,
+valeurs 0..1, un mur qui donne peut etre creuse). Nouveau : `soufre` (sol caustique des plaines de
+lave). Le gear a `warmth` (protection contre le froid). Le codex des matieres liste ce qu'elles donnent,
+laissent a nu, leurs dangers et leur cout de construction.

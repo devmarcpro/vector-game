@@ -109,6 +109,9 @@ pub struct Floor {
     /// What each cell is made of (index in `data.materials`).
     #[serde(default)]
     pub mats: Vec<u8>,
+    /// Cells the squad built (its property): the same material as any other, plus this mark.
+    #[serde(default)]
+    pub owned: Vec<bool>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -177,6 +180,22 @@ impl Rogue {
             .mats
             .get(self.idx(x, y))
             .map(|&m| usize::from(m))
+    }
+
+    /// Whether the squad built this cell (its property, in the map and in first person alike).
+    pub fn owned(&self, x: i32, y: i32) -> bool {
+        self.inside(x, y)
+            && self
+                .floor()
+                .owned
+                .get(self.idx(x, y))
+                .copied()
+                .unwrap_or(false)
+    }
+
+    /// Cells of this floor the squad built.
+    pub fn built_count(&self) -> usize {
+        self.floor().owned.iter().filter(|b| **b).count()
     }
 
     pub fn tile(&self, x: i32, y: i32) -> u8 {
@@ -424,6 +443,46 @@ pub fn environment_damage(pressure: f64, temp: f64, defense: f64) -> (f64, &'sta
     (dmg * (1.0 - (1.5 * defense).min(0.95)), why)
 }
 
+/// What the physics of a world does to what the ground holds (see `Sim::dig_mods`): metals follow
+/// the density, volcanic minerals the activity of the inside, volatiles the cold.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct DigMods {
+    pub metal: f64,
+    pub volcanic: f64,
+    pub cold: f64,
+    pub depth: f64,
+}
+
+impl DigMods {
+    pub const NEUTRAL: DigMods = DigMods {
+        metal: 1.0,
+        volcanic: 1.0,
+        cold: 1.0,
+        depth: 1.0,
+    };
+
+    /// Multiplier of the yield of a resource (its category and id) here.
+    pub fn factor(&self, category: &str, id: &str) -> f64 {
+        let by_kind = match category {
+            "metal" | "precious" | "nuclear" => self.metal,
+            "volatile" => self.cold,
+            _ => 1.0,
+        };
+        let by_id = match id {
+            "sulfur" | "phosphorus" | "rare_earths" | "diamond" => self.volcanic,
+            "water" => self.cold,
+            _ => 1.0,
+        };
+        by_kind * by_id * self.depth
+    }
+}
+
+/// Animals keep off slippery and burning ground.
+fn animal_avoids(data: &GameData, m: usize) -> bool {
+    let m = &data.materials[m];
+    m.slick >= 0.3 || m.harm > 0.0
+}
+
 /// The theme a site of a surface leads down into.
 pub fn site_theme(site_id: &str) -> &'static str {
     match site_id {
@@ -613,6 +672,7 @@ pub fn generate_social(
         sites: Vec::new(),
         start,
         mats,
+        owned: Vec::new(),
     }
 }
 
@@ -841,6 +901,7 @@ pub fn generate_floor(data: &GameData, theme: usize, seed: u64, depth: u32) -> F
         sites: Vec::new(),
         start,
         mats,
+        owned: Vec::new(),
     }
 }
 
@@ -1241,6 +1302,20 @@ impl Sim {
             }
         }
         tiles[at(lx, ly)] = T_UP;
+        // What each cell is made of comes first: plants root where the matter lets them, animals
+        // keep off ice and fire.
+        let surface = self.data.rogue_theme_index("surface").unwrap_or(0);
+        let temp_here = self.temp_now(&map, cx, cy);
+        let mats = paint(
+            &self.data,
+            &tiles,
+            MAP_W,
+            &self.data.rogue_themes[surface],
+            seed,
+            Some((&b.id, temp_here)),
+        );
+        let fertile = |x: i32, y: i32| self.data.materials[usize::from(mats[at(x, y)])].fertility;
+        let avoided = |x: i32, y: i32| animal_avoids(&self.data, usize::from(mats[at(x, y)]));
         let mut monsters: Vec<Mon> = Vec::new();
         let mut items: Vec<Item> = Vec::new();
         let mut sites: Vec<SiteInst> = Vec::new();
@@ -1273,7 +1348,7 @@ impl Sim {
                 (rng.next_u64() % MAP_W as u64) as i32,
                 (rng.next_u64() % MAP_H as u64) as i32,
             );
-            if !busy(&tiles, &monsters, &items, x, y) {
+            if !busy(&tiles, &monsters, &items, x, y) && rng.f64() < fertile(x, y) {
                 let sp = flora[(rng.next_u64() % flora.len() as u64) as usize];
                 for (res, kg) in &self.data.species[sp].yields {
                     if let Some(r) = self.data.resource_index(res) {
@@ -1299,7 +1374,10 @@ impl Sim {
                 (rng.next_u64() % MAP_H as u64) as i32,
             );
             // Not on top of the landing party.
-            if !busy(&tiles, &monsters, &items, x, y) && (x - lx).abs() + (y - ly).abs() > 8 {
+            if !busy(&tiles, &monsters, &items, x, y)
+                && !avoided(x, y)
+                && (x - lx).abs() + (y - ly).abs() > 8
+            {
                 let sp = fauna[(rng.next_u64() % fauna.len() as u64) as usize];
                 monsters.push(mon_from_species(&self.data, sp, x, y));
             }
@@ -1334,16 +1412,6 @@ impl Sim {
                 used: false,
             });
         }
-        let surface = self.data.rogue_theme_index("surface").unwrap_or(0);
-        let temp_here = self.temp_now(&map, cx, cy);
-        let mats = paint(
-            &self.data,
-            &tiles,
-            MAP_W,
-            &self.data.rogue_themes[surface],
-            seed,
-            Some((&b.id, temp_here)),
-        );
         let floor = Floor {
             seen: vec![false; MAP_W * MAP_H],
             tiles,
@@ -1352,6 +1420,7 @@ impl Sim {
             sites,
             start: (lx, ly),
             mats,
+            owned: Vec::new(),
         };
         let names: Vec<String> = party
             .iter()
@@ -1518,6 +1587,7 @@ impl Sim {
         } else {
             1
         };
+        let mut moved = false;
         for _ in 0..steps {
             let (nx, ny) = (r.x + dx, r.y + dy);
             if let Some(k) = r.monster_at(nx, ny) {
@@ -1533,10 +1603,47 @@ impl Sim {
             }
             r.x = nx;
             r.y = ny;
+            moved = true;
             self.rogue_arrive(r);
+        }
+        if moved {
+            self.rogue_slide(r, dx, dy);
         }
         self.rogue_end_turn(r);
         Ok(())
+    }
+
+    /// Slippery ground (ice) carries the squad one cell further, sometimes two or three, until
+    /// something stops it; a rover grips better.
+    fn rogue_slide(&mut self, r: &mut Rogue, dx: i32, dy: i32) {
+        let grip = if r.vehicle && r.on_surface() {
+            0.4
+        } else {
+            1.0
+        };
+        for n in 0..3 {
+            let slick = r
+                .mat(r.x, r.y)
+                .map_or(0.0, |m| self.data.materials[m].slick)
+                * grip;
+            if slick <= 0.0 || r.over {
+                return;
+            }
+            let mut rng = Rng::new(hash_coord(
+                r.seed,
+                i64::from(r.turn),
+                i64::from(r.x) * 131 + i64::from(r.y),
+                83 + n,
+            ));
+            let (nx, ny) = (r.x + dx, r.y + dy);
+            if rng.f64() >= slick || !r.walkable(nx, ny) || r.monster_at(nx, ny).is_some() {
+                return;
+            }
+            r.x = nx;
+            r.y = ny;
+            r.say("Vous derapez sur la glace.");
+            self.rogue_arrive(r);
+        }
     }
 
     /// Talk to a person: a member of the crew tells how they feel, a passer-by a line of the
@@ -1804,6 +1911,221 @@ impl Sim {
         }
     }
 
+    // ---- matter: digging and building ----------------------------------------------------------
+
+    /// Health lost this turn to the matter the squad stands on or next to.
+    fn cell_harm(&self, r: &Rogue) -> f64 {
+        let mats = &self.data.materials;
+        let here = r.mat(r.x, r.y).map_or(0.0, |m| mats[m].harm);
+        let near = (-1..=1)
+            .flat_map(|dy| (-1..=1).map(move |dx| (dx, dy)))
+            .filter_map(|(dx, dy)| r.mat(r.x + dx, r.y + dy))
+            .filter(|&m| mats[m].kind == "liquid")
+            .map(|m| mats[m].harm / 3.0)
+            .fold(0.0, f64::max);
+        here.max(near)
+    }
+
+    /// What the physics of the world the squad is on does to the matter it digs: dense worlds are
+    /// rich in metals, active insides in volcanic minerals, cold surfaces in ice and volatiles, and
+    /// deeper floors of a mine are richer.
+    pub fn dig_mods(&self, r: &Rogue) -> DigMods {
+        let mut root = r;
+        while let Some(p) = root.parent.as_deref() {
+            root = p;
+        }
+        let mut m = DigMods::NEUTRAL;
+        if let Some(body) = root.body {
+            if let Some(map) = self.planet_map(body) {
+                let ph = self.system.physics(body, f64::from(map.surface.tilt));
+                m.metal = (ph.density / 5514.0).clamp(0.4, 2.0);
+                m.volcanic = match ph.activity {
+                    vector_world::physics::Activity::Dead => 0.3,
+                    vector_world::physics::Activity::Stagnant => 0.7,
+                    vector_world::physics::Activity::Plates
+                    | vector_world::physics::Activity::Fluid => 1.0,
+                    vector_world::physics::Activity::Volcanic => 2.5,
+                };
+            }
+            if r.on_surface() {
+                let t = root.env.map_or(288.0, |e| e.1);
+                m.cold = if t < 273.0 {
+                    (1.0 + (273.0 - t) / 100.0).min(3.0)
+                } else if t > 330.0 {
+                    0.1
+                } else {
+                    0.3
+                };
+            }
+        }
+        m.depth = 1.0 + 0.25 * r.cur as f64;
+        m
+    }
+
+    /// The lead's tool: the extra share a pick or a scanner gives to a harvest.
+    fn lead_tool(&self, r: &Rogue) -> f64 {
+        self.gather_bonus(r) - 1.0
+    }
+
+    /// Break a wall or dig the ground of the cell next to the squad: it takes turns (more in hard
+    /// matter, fewer with a pick), gives what the matter holds as the world's physics allow, and
+    /// lays bare the floor under it. Returns what was found.
+    pub fn rogue_dig(&mut self, dx: i32, dy: i32) -> Result<String, &'static str> {
+        let mut r = self.rogue.take().ok_or("pas d'exploration en cours")?;
+        let res = self.rogue_dig_inner(&mut r, dx.signum(), dy.signum());
+        self.rogue = Some(r);
+        res
+    }
+
+    fn rogue_dig_inner(&mut self, r: &mut Rogue, dx: i32, dy: i32) -> Result<String, &'static str> {
+        if r.over {
+            return Err("l'exploration est terminee");
+        }
+        if (dx, dy) == (0, 0) {
+            return Err("choisissez une direction");
+        }
+        let (tx, ty) = (r.x + dx, r.y + dy);
+        if !r.inside(tx, ty) || !matches!(r.tile(tx, ty), T_WALL | T_FLOOR) {
+            return Err("rien a creuser ici");
+        }
+        if r.monster_at(tx, ty).is_some() {
+            return Err("la place est occupee");
+        }
+        let mi = r.mat(tx, ty).ok_or("rien a creuser ici")?;
+        let data = std::sync::Arc::clone(&self.data);
+        let m = &data.materials[mi];
+        if m.kind == "liquid" || m.under.is_empty() {
+            return Err("rien a creuser ici");
+        }
+        let tool = self.lead_tool(r);
+        if m.hardness >= 0.75 && tool < 0.25 {
+            return Err("trop dur : il faut un outil de fouille");
+        }
+        let under = data.material_index(&m.under).ok_or("rien a creuser ici")?;
+        let i = r.idx(tx, ty);
+        let mods = self.dig_mods(r);
+        let mut rng = Rng::new(hash_coord(
+            r.seed,
+            i64::from(tx),
+            i64::from(ty),
+            91 + r.cur as i64,
+        ));
+        let bonus = 1.0 + tool;
+        let turns = 1 + (m.hardness * 6.0 / (1.0 + 2.0 * tool)).round() as u32;
+        let mut found: Vec<String> = Vec::new();
+        for (res, kg, rarity) in &m.yields {
+            let Some(ri) = data.resource_index(res) else {
+                continue;
+            };
+            let f = mods.factor(&data.resources[ri].category, res);
+            if rng.f64() >= (rarity * f).min(1.0) {
+                continue;
+            }
+            let amount = kg * f * (0.6 + 0.8 * rng.f64()) * bonus;
+            let taken = self.rogue_gain(r, ri, amount);
+            if taken > 0.0 {
+                found.push(format!(
+                    "{taken:.1} kg de {}",
+                    data.resources[ri].name.to_lowercase()
+                ));
+            }
+        }
+        let f = r.floor_mut();
+        f.tiles[i] = T_FLOOR;
+        f.mats[i] = under as u8;
+        let what = if found.is_empty() {
+            "rien d'utile".to_string()
+        } else {
+            found.join(", ")
+        };
+        let msg = format!("{} creuse ({turns} tours) : {what}", m.name);
+        r.say(format!("{msg}."));
+        for _ in 0..turns {
+            if r.over {
+                break;
+            }
+            self.rogue_end_turn(r);
+        }
+        Ok(msg)
+    }
+
+    /// Build a wall (`wall`) or a floor of the squad's own at the cell next to it, out of what it
+    /// carries: the first material of that kind that has a cost in `materials.ron`. A floor can
+    /// also be laid over water (a bridge). The cell becomes the squad's property.
+    pub fn rogue_build(&mut self, dx: i32, dy: i32, wall: bool) -> Result<String, &'static str> {
+        let mut r = self.rogue.take().ok_or("pas d'exploration en cours")?;
+        let res = self.rogue_build_inner(&mut r, dx.signum(), dy.signum(), wall);
+        self.rogue = Some(r);
+        res
+    }
+
+    fn rogue_build_inner(
+        &mut self,
+        r: &mut Rogue,
+        dx: i32,
+        dy: i32,
+        wall: bool,
+    ) -> Result<String, &'static str> {
+        if r.over {
+            return Err("l'exploration est terminee");
+        }
+        if (dx, dy) == (0, 0) {
+            return Err("choisissez une direction");
+        }
+        let (tx, ty) = (r.x + dx, r.y + dy);
+        let t = r.tile(tx, ty);
+        if !r.inside(tx, ty) || !(t == T_FLOOR || (!wall && t == T_WATER)) {
+            return Err("on ne peut pas batir ici");
+        }
+        if r.monster_at(tx, ty).is_some() || r.floor().items.iter().any(|i| (i.x, i.y) == (tx, ty))
+        {
+            return Err("la place est occupee");
+        }
+        let kind = if wall { "wall" } else { "floor" };
+        let data = std::sync::Arc::clone(&self.data);
+        let mi = data
+            .materials
+            .iter()
+            .position(|m| m.kind == kind && !m.cost.is_empty())
+            .ok_or("rien a batir")?;
+        let m = &data.materials[mi];
+        if r.mat(tx, ty) == Some(mi) {
+            return Err("c'est deja bati");
+        }
+        for (res, kg) in &m.cost {
+            let ri = data.resource_index(res).ok_or("matiere inconnue")?;
+            if r.loot.iter().find(|l| l.0 == ri).map_or(0.0, |l| l.1) < *kg - 1e-9 {
+                return Err("il manque des materiaux dans le sac");
+            }
+        }
+        for (res, kg) in &m.cost {
+            let ri = data.resource_index(res).ok_or("matiere inconnue")?;
+            if let Some(l) = r.loot.iter_mut().find(|l| l.0 == ri) {
+                l.1 -= kg;
+            }
+        }
+        r.loot.retain(|l| l.1 > 1e-9);
+        let i = r.idx(tx, ty);
+        let (w, h) = (r.w, r.h);
+        let f = r.floor_mut();
+        f.tiles[i] = if wall { T_WALL } else { T_FLOOR };
+        f.mats[i] = mi as u8;
+        f.owned.resize(w * h, false);
+        f.owned[i] = true;
+        let cost: Vec<String> = m
+            .cost
+            .iter()
+            .filter_map(|(res, kg)| {
+                data.resource_index(res)
+                    .map(|ri| format!("{kg:.0} kg de {}", data.resources[ri].name.to_lowercase()))
+            })
+            .collect();
+        let msg = format!("{} bati ({})", m.name, cost.join(", "));
+        r.say(format!("{msg}."));
+        self.rogue_end_turn(r);
+        Ok(msg)
+    }
+
     /// The AI sends a drone (one unit of robotics): for DRONE_TURNS turns it picks up, on its own
     /// and at half yield, what lies within DRONE_REACH cells of the squad.
     pub fn rogue_deploy_drone(&mut self) -> Result<(), &'static str> {
@@ -1888,10 +2210,31 @@ impl Sim {
                 r.say(format!("{} vous ronge.", theme.hazard_name));
             }
         }
-        // The air and the climate of a surface: a suit protects in proportion to its defence.
+        // The matter underfoot burns (sulphur fumes), and a liquid like lava scorches what is next to it.
+        let harm = self.cell_harm(r);
+        if harm > 0.0 {
+            for who in self.party_up(r) {
+                let defense = self.crew.members[who]
+                    .gear_stat(&self.data, "defense")
+                    .min(0.9);
+                let p = &mut self.crew.members[who];
+                p.health = (p.health - (harm * (1.0 - defense)) as f32).max(0.0);
+            }
+            if r.turn.is_multiple_of(5) {
+                r.say("La matiere ici brule.");
+            }
+        }
+        // The air and the climate of a surface: a suit protects in proportion to its defence, and
+        // warm clothes in the cold.
         if let (Some((pressure, temp)), true) = (r.env, r.on_surface()) {
             for who in self.party_up(r) {
-                let defense = self.crew.members[who].gear_stat(&self.data, "defense");
+                let p = &self.crew.members[who];
+                let defense = p.gear_stat(&self.data, "defense")
+                    + if temp < 250.0 {
+                        p.gear_stat(&self.data, "warmth")
+                    } else {
+                        0.0
+                    };
                 let (dmg, why) = environment_damage(pressure, temp, defense);
                 if dmg > 0.0 {
                     let p = &mut self.crew.members[who];
@@ -1904,6 +2247,7 @@ impl Sim {
         }
         let mut rng = Rng::new(hash_coord(r.seed, i64::from(r.turn), r.cur as i64, 41));
         let (px, py) = (r.x, r.y);
+        let data = std::sync::Arc::clone(&self.data);
         for k in 0..r.floor().monsters.len() {
             let (mx, my, hunts, attack, sight, awake, stationary, sleeper, friendly) = {
                 let m = &r.floor().monsters[k];
@@ -1937,8 +2281,12 @@ impl Sim {
                 }
                 continue;
             }
+            let animal = r.floor().monsters[k].species.is_some();
             let free = |r: &Rogue, x: i32, y: i32| {
-                r.walkable(x, y) && r.monster_at(x, y).is_none() && (x, y) != (px, py)
+                r.walkable(x, y)
+                    && r.monster_at(x, y).is_none()
+                    && (x, y) != (px, py)
+                    && !(animal && r.mat(x, y).is_some_and(|m| animal_avoids(&data, m)))
             };
             if hunts {
                 if dist <= 1 {
@@ -3728,5 +4076,444 @@ mod tests {
             s.herd.push(a);
         }
         assert!(s.rogue_capture().is_err());
+    }
+
+    // ---- matter: digging, building, sliding, burning ----------------------------------------
+
+    fn mat_id(s: &Sim, id: &str) -> u8 {
+        s.data.material_index(id).unwrap() as u8
+    }
+
+    /// A landing swept clean: an open field of bare regolith around the squad, nobody else.
+    fn bare_field() -> Sim {
+        let (mut s, body, cx, cy) = landing_site();
+        s.rogue_land(body, cx, cy, vec![0], false).unwrap();
+        s.crew.members[0].gear = vec![None; 3];
+        let reg = mat_id(&s, "regolithe");
+        let mut r = s.rogue.take().unwrap();
+        let (w, h) = (r.w, r.h);
+        let f = &mut r.floors[0];
+        f.monsters.clear();
+        f.items.clear();
+        f.sites.clear();
+        for i in 0..w * h {
+            if f.tiles[i] != T_UP {
+                f.tiles[i] = T_FLOOR;
+                f.mats[i] = reg;
+            }
+        }
+        r.env = Some((1.0, 288.0));
+        s.rogue = Some(r);
+        s
+    }
+
+    fn put(s: &mut Sim, x: i32, y: i32, tile: u8, mat: &str) {
+        let k = mat_id(s, mat);
+        let r = s.rogue.as_mut().unwrap();
+        let i = r.idx(x, y);
+        r.floors[0].tiles[i] = tile;
+        r.floors[0].mats[i] = k;
+    }
+
+    #[test]
+    fn digging_gives_what_the_matter_holds_and_lays_the_floor_bare() {
+        let mut s = bare_field();
+        let (x, y) = {
+            let r = s.rogue.as_ref().unwrap();
+            (r.x, r.y)
+        };
+        // Eight dug cells of rock: iron and silica come out, each cell becomes bedrock floor.
+        for dy in -1..=1 {
+            for dx in -1..=1 {
+                if (dx, dy) != (0, 0) {
+                    put(&mut s, x + dx, y + dy, T_WALL, "roche");
+                }
+            }
+        }
+        let iron = s.data.resource_index("iron").unwrap();
+        let silica = s.data.resource_index("silica").unwrap();
+        for (dx, dy) in [
+            (1, 0),
+            (-1, 0),
+            (0, 1),
+            (0, -1),
+            (1, 1),
+            (-1, -1),
+            (1, -1),
+            (-1, 1),
+        ] {
+            let msg = s.rogue_dig(dx, dy).expect("rock can be dug");
+            let r = s.rogue.as_ref().unwrap();
+            assert!(msg.contains("Roche"), "{msg}");
+            assert_eq!(r.tile(x + dx, y + dy), T_FLOOR, "a dug wall is walkable");
+            assert_eq!(
+                s.data.materials[r.mat(x + dx, y + dy).unwrap()].id,
+                "roche_nue",
+                "the floor under shows"
+            );
+        }
+        let r = s.rogue.as_ref().unwrap();
+        let got = |res: usize| r.loot.iter().find(|l| l.0 == res).map_or(0.0, |l| l.1);
+        assert!(got(silica) > 3.0, "silica {}", got(silica));
+        assert!(got(iron) > 2.0, "iron {}", got(iron));
+        // Something that is not there cannot be dug: water, bedrock, a monster's cell.
+        let mut s = bare_field();
+        let (x, y) = {
+            let r = s.rogue.as_ref().unwrap();
+            (r.x, r.y)
+        };
+        put(&mut s, x + 1, y, T_WATER, "eau");
+        assert!(s.rogue_dig(1, 0).is_err());
+        assert!(s.rogue_dig(0, 1).is_ok(), "the ground can be dug too");
+        assert!(s.rogue_dig(0, 1).is_err(), "bedrock is the end");
+        assert!(s.rogue_dig(0, 0).is_err());
+    }
+
+    #[test]
+    fn hard_matter_needs_a_tool_and_takes_longer() {
+        let mut s = bare_field();
+        let (x, y) = {
+            let r = s.rogue.as_ref().unwrap();
+            (r.x, r.y)
+        };
+        put(&mut s, x + 1, y, T_WALL, "granit");
+        put(&mut s, x - 1, y, T_WALL, "bosquet");
+        assert!(
+            s.rogue_dig(1, 0).is_err(),
+            "bare hands do not break granite"
+        );
+        let t0 = s.rogue.as_ref().unwrap().turn;
+        s.rogue_dig(-1, 0).expect("a thicket gives way");
+        let soft = s.rogue.as_ref().unwrap().turn - t0;
+        let pick = s.data.gear_index("pioche").unwrap();
+        s.crew.members[0].gear[2] = Some(pick);
+        let t1 = s.rogue.as_ref().unwrap().turn;
+        s.rogue_dig(1, 0).expect("a pick breaks granite");
+        let hard = s.rogue.as_ref().unwrap().turn - t1;
+        assert!(hard > soft, "granite {hard} turns vs thicket {soft}");
+        // The tool shortens the work on the same matter.
+        put(&mut s, x + 1, y, T_WALL, "granit");
+        let t2 = s.rogue.as_ref().unwrap().turn;
+        s.rogue_dig(1, 0).unwrap();
+        let with = s.rogue.as_ref().unwrap().turn - t2;
+        s.crew.members[0].gear[2] = None;
+        put(&mut s, x + 1, y, T_WALL, "gres");
+        put(&mut s, x, y + 1, T_WALL, "gres");
+        let t3 = s.rogue.as_ref().unwrap().turn;
+        s.rogue_dig(1, 0).unwrap();
+        let bare = s.rogue.as_ref().unwrap().turn - t3;
+        s.crew.members[0].gear[2] = Some(pick);
+        let t4 = s.rogue.as_ref().unwrap().turn;
+        s.rogue_dig(0, 1).unwrap();
+        let tooled = s.rogue.as_ref().unwrap().turn - t4;
+        assert!(tooled < bare, "pick {tooled} vs hands {bare}");
+        assert!(with >= tooled);
+    }
+
+    #[test]
+    fn the_physics_of_the_world_scales_what_the_ground_holds() {
+        let s = bare_field();
+        let r = s.rogue.as_ref().unwrap();
+        let body = r.body.unwrap();
+        let tilt = f64::from(s.planet_map(body).unwrap().surface.tilt);
+        let ph = s.system.physics(body, tilt);
+        let m = s.dig_mods(r);
+        assert!((m.metal - (ph.density / 5514.0).clamp(0.4, 2.0)).abs() < 1e-9);
+        // The factor reads the category and the id of the resource.
+        let dense = DigMods {
+            metal: 2.0,
+            ..DigMods::NEUTRAL
+        };
+        assert_eq!(dense.factor("metal", "iron"), 2.0);
+        assert_eq!(dense.factor("precious", "gold"), 2.0);
+        assert_eq!(dense.factor("mineral", "silica"), 1.0);
+        let hot = DigMods {
+            volcanic: 2.5,
+            ..DigMods::NEUTRAL
+        };
+        assert_eq!(hot.factor("mineral", "sulfur"), 2.5);
+        assert_eq!(hot.factor("metal", "iron"), 1.0);
+        let icy = DigMods {
+            cold: 3.0,
+            ..DigMods::NEUTRAL
+        };
+        assert_eq!(icy.factor("volatile", "ammonia"), 3.0);
+        assert_eq!(icy.factor("volatile", "water_ice"), 3.0);
+        assert_eq!(icy.factor("metal", "iron"), 1.0);
+        // The same cell dug on a cold surface gives more ice than on a warm one.
+        let ice_kg = |temp: f64| -> f64 {
+            let mut s = bare_field();
+            s.rogue.as_mut().unwrap().env = Some((1.0, temp));
+            let (x, y) = {
+                let r = s.rogue.as_ref().unwrap();
+                (r.x, r.y)
+            };
+            let wi = s.data.resource_index("water_ice").unwrap();
+            let mut total = 0.0;
+            for k in 1..=5 {
+                put(&mut s, x + 1, y, T_WALL, "glace_dure");
+                let pick = s.data.gear_index("pioche").unwrap();
+                s.crew.members[0].gear[2] = Some(pick);
+                let r = s.rogue.as_mut().unwrap();
+                r.seed ^= k;
+                s.rogue_dig(1, 0).unwrap();
+                let r = s.rogue.as_ref().unwrap();
+                total = r.loot.iter().find(|l| l.0 == wi).map_or(0.0, |l| l.1);
+            }
+            total
+        };
+        assert!(
+            ice_kg(150.0) > ice_kg(300.0) * 2.0,
+            "cold worlds hold more ice"
+        );
+        // A deeper floor of a mine is richer.
+        let mut deep = s.rogue.as_ref().unwrap().clone();
+        deep.cur = 0;
+        let shallow = s.dig_mods(&deep).depth;
+        assert_eq!(shallow, 1.0);
+        let mut below = deep.clone();
+        below.floors.push(below.floors[0].clone());
+        below.cur = 1;
+        assert!(s.dig_mods(&below).depth > shallow);
+    }
+
+    #[test]
+    fn ice_makes_the_squad_slide_and_the_rover_grips() {
+        let walk = |mat: &str, rover: bool| -> i32 {
+            let mut s = bare_field();
+            let (x, y) = {
+                let r = s.rogue.as_ref().unwrap();
+                (r.x, r.y)
+            };
+            for dx in 0..40 {
+                put(&mut s, x + dx, y, T_FLOOR, mat);
+            }
+            s.rogue.as_mut().unwrap().vehicle = rover;
+            for _ in 0..8 {
+                let _ = s.rogue_step(1, 0);
+            }
+            s.rogue.as_ref().unwrap().x - x
+        };
+        assert_eq!(walk("regolithe", false), 8, "plain ground: one cell a step");
+        assert!(walk("glace", false) > 8, "ice carries further");
+    }
+
+    #[test]
+    fn caustic_ground_and_lava_hurt_unprotected_squads() {
+        let health_after = |mat: &str, neighbour: Option<&str>, armour: bool| -> f32 {
+            let mut s = bare_field();
+            let (x, y) = {
+                let r = s.rogue.as_ref().unwrap();
+                (r.x, r.y)
+            };
+            put(&mut s, x, y, T_FLOOR, mat);
+            if let Some(n) = neighbour {
+                put(&mut s, x + 1, y, T_WATER, n);
+            }
+            if armour {
+                let suit = s.data.gear_index("exosquelette").unwrap();
+                s.crew.members[0].gear[1] = Some(suit);
+            }
+            s.crew.members[0].health = 1.0;
+            for _ in 0..20 {
+                s.rogue_step(0, 0).unwrap();
+            }
+            s.crew.members[0].health
+        };
+        let safe = health_after("regolithe", None, false);
+        let fumes = health_after("soufre", None, false);
+        let scorched = health_after("regolithe", Some("lave"), false);
+        let water = health_after("regolithe", Some("eau"), false);
+        assert!(fumes < safe - 0.05, "{fumes} vs {safe}");
+        assert!(scorched < safe - 0.1, "{scorched} vs {safe}");
+        assert!((water - safe).abs() < 1e-6, "water does not burn");
+        assert!(
+            health_after("soufre", None, true) > fumes + 0.03,
+            "armour stops part of it"
+        );
+    }
+
+    #[test]
+    fn warm_clothes_stop_the_cold() {
+        let (mut s, body, cx, cy) = landing_site();
+        let cold = |s: &mut Sim, kit: Option<&str>| -> f32 {
+            s.rogue = None;
+            s.rogue_land(body, cx, cy, vec![0], false).unwrap();
+            s.crew.members[0].gear = vec![None; 3];
+            if let Some(k) = kit {
+                s.crew.members[0].gear[1] = Some(s.data.gear_index(k).unwrap());
+            }
+            s.crew.members[0].health = 1.0;
+            let r = s.rogue.as_mut().unwrap();
+            r.env = Some((1.0, 150.0));
+            r.floors[0].monsters.clear();
+            for _ in 0..10 {
+                s.rogue_step(0, 0).unwrap();
+            }
+            1.0 - s.crew.members[0].health
+        };
+        let bare = cold(&mut s, None);
+        let wrapped = cold(&mut s, Some("combi_renforcee"));
+        assert!(bare > 0.0);
+        assert!(wrapped < bare * 0.6, "{wrapped} vs {bare}");
+        // Warmth counts on top of the suit's own defence: more than that defence alone would stop.
+        let g = &s.data.gear[s.data.gear_index("combi_renforcee").unwrap()];
+        assert!(g.warmth > 0.0);
+        let by_defence = environment_damage(1.0, 150.0, g.defense).0 as f32 * 10.0;
+        assert!(wrapped < by_defence * 0.5, "{wrapped} vs {by_defence}");
+    }
+
+    #[test]
+    fn the_squad_builds_walls_floors_and_bridges_that_are_its_own() {
+        let mut s = bare_field();
+        let (x, y) = {
+            let r = s.rogue.as_ref().unwrap();
+            (r.x, r.y)
+        };
+        let reg = s.data.resource_index("regolith").unwrap();
+        let iron = s.data.resource_index("iron").unwrap();
+        // Nothing carried, nothing built.
+        assert!(s.rogue_build(1, 0, true).is_err());
+        s.rogue.as_mut().unwrap().loot = vec![(reg, 25.0), (iron, 7.0)];
+        let msg = s.rogue_build(1, 0, true).expect("a wall of cut stone");
+        assert!(msg.contains("Pierre"), "{msg}");
+        {
+            let r = s.rogue.as_ref().unwrap();
+            assert_eq!(r.tile(x + 1, y), T_WALL);
+            assert_eq!(
+                s.data.materials[r.mat(x + 1, y).unwrap()].id,
+                "pierre_taillee"
+            );
+            assert!(r.owned(x + 1, y) && !r.owned(x - 1, y));
+            assert_eq!(r.built_count(), 1);
+            let left = r.loot.iter().find(|l| l.0 == reg).unwrap().1;
+            assert!((left - 15.0).abs() < 1e-6, "the stone was paid: {left}");
+        }
+        // A built wall is a wall: it stops the squad, and it can be dug out again.
+        assert!(s.rogue_step(1, 0).is_err());
+        assert!(s.rogue_build(1, 0, true).is_err(), "already built");
+        s.rogue.as_mut().unwrap().loot = vec![(iron, 7.0)];
+        assert!(
+            s.rogue_build(-1, 0, true).is_err(),
+            "no stone left: the wall is refused"
+        );
+        // A floor of sheet metal over water is a bridge.
+        put(&mut s, x, y + 1, T_WATER, "eau");
+        assert!(s.rogue_step(0, 1).is_err(), "water stops the squad");
+        s.rogue_build(0, 1, false).expect("a floor over the water");
+        {
+            let r = s.rogue.as_ref().unwrap();
+            assert_eq!(r.tile(x, y + 1), T_FLOOR);
+            assert_eq!(s.data.materials[r.mat(x, y + 1).unwrap()].id, "tole");
+            assert!(r.owned(x, y + 1));
+        }
+        s.rogue_step(0, 1).expect("the bridge holds");
+        // Walls cannot be built over water, nor on a creature.
+        s.rogue.as_mut().unwrap().loot = vec![(reg, 25.0), (iron, 7.0)];
+        let (nx, ny) = {
+            let r = s.rogue.as_ref().unwrap();
+            (r.x, r.y)
+        };
+        put(&mut s, nx + 1, ny, T_WATER, "eau");
+        assert!(s.rogue_build(1, 0, true).is_err());
+        // Digging out what was built gives its materials back.
+        put(&mut s, nx - 1, ny, T_WALL, "pierre_taillee");
+        s.crew.members[0].gear[2] = s.data.gear_index("pioche");
+        s.rogue_dig(-1, 0).expect("cut stone breaks");
+        assert!(s.rogue.as_ref().unwrap().loot.iter().any(|l| l.0 == reg));
+    }
+
+    #[test]
+    fn plants_take_root_only_where_the_matter_lets_them_and_animals_keep_off_ice() {
+        let (mut s, body, cx, cy) = landing_site();
+        s.rogue_land(body, cx, cy, vec![0], false).unwrap();
+        let d = std::sync::Arc::clone(&s.data);
+        let r = s.rogue.as_ref().unwrap();
+        let f = r.floor();
+        for it in f.items.iter().filter(|i| i.plant) {
+            let m = &d.materials[r.mat(it.x, it.y).unwrap()];
+            assert!(m.fertility > 0.0, "a plant on {}", m.id);
+        }
+        for m in f.monsters.iter().filter(|m| m.species.is_some()) {
+            let mat = r.mat(m.x, m.y).unwrap();
+            assert!(
+                !animal_avoids(&d, mat),
+                "an animal on {}",
+                d.materials[mat].id
+            );
+        }
+        // They keep off it while they walk too: a field of ice with one dry cell, a herd on it.
+        let mut s = bare_field();
+        let (x, y) = {
+            let r = s.rogue.as_ref().unwrap();
+            (r.x, r.y)
+        };
+        let prey = (0..s.data.species.len())
+            .find(|&i| !s.data.species[i].is_producer())
+            .unwrap();
+        for dx in -6..=6 {
+            for dy in -6..=6 {
+                put(&mut s, x + dx, y + dy, T_FLOOR, "regolithe");
+            }
+        }
+        for dx in 3..=6 {
+            for dy in -6..=6 {
+                put(&mut s, x + dx, y + dy, T_FLOOR, "glace");
+            }
+        }
+        let mut a = mon_from_species(&s.data, prey, x + 2, y);
+        a.hunts = false;
+        a.awake = true;
+        s.rogue.as_mut().unwrap().floors[0].monsters.push(a);
+        let ice = mat_id(&s, "glace");
+        for _ in 0..60 {
+            s.rogue_step(0, 0).unwrap();
+            let r = s.rogue.as_ref().unwrap();
+            for m in &r.floor().monsters {
+                assert_ne!(
+                    r.floor().mats[r.idx(m.x, m.y)],
+                    ice,
+                    "the animal stepped on ice at ({}, {})",
+                    m.x,
+                    m.y
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn every_material_that_gives_or_costs_something_is_consistent() {
+        let d = data();
+        for m in &d.materials {
+            for (res, kg, rarity) in &m.yields {
+                assert!(d.resource_index(res).is_some() && *kg > 0.0 && *rarity > 0.0);
+            }
+            if m.kind == "wall" && !m.yields.is_empty() {
+                assert!(!m.under.is_empty(), "{} gives but cannot be dug", m.id);
+            }
+            if !m.cost.is_empty() {
+                // What can be built can be dug out for at least part of its price.
+                assert!(!m.yields.is_empty(), "{} is built but gives nothing", m.id);
+            }
+        }
+        // Every kind of resource the physics modulates is obtainable somewhere.
+        for cat in ["metal", "precious", "volatile"] {
+            assert!(
+                d.materials.iter().any(|m| m
+                    .yields
+                    .iter()
+                    .any(|(r, _, _)| d.resources[d.resource_index(r).unwrap()].category == cat)),
+                "no material gives a {cat}"
+            );
+        }
+        // The data refuses a broken material.
+        let mut bad = (*d).clone();
+        bad.materials[0].under = "nulle_part".to_string();
+        assert!(bad.validate().is_err());
+        let mut bad = (*d).clone();
+        bad.materials[0]
+            .yields
+            .push(("pas_une_ressource".to_string(), 1.0, 0.5));
+        assert!(bad.validate().is_err());
     }
 }

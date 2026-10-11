@@ -125,8 +125,43 @@ impl Game {
             }
             return;
         }
+        if code == KeyCode::KeyF {
+            self.fpv = !self.fpv;
+            if self.fpv {
+                if let Some(r) = self.sim.rogue.as_ref() {
+                    self.fpv_dir = crate::fpv_view::open_direction(r);
+                }
+            }
+            return;
+        }
         let step = |dx: i32, dy: i32| Some((dx, dy));
         let [up, down, right, left, _, _] = self.settings.move_keys();
+        if self.fpv {
+            // First person: left and right turn, up and down step along the facing.
+            let (fx, fy) = crate::fpv_view::step_of(self.fpv_dir);
+            let fp = match code {
+                c if c == KeyCode::ArrowLeft || c == KeyCode::Numpad4 || c == left => {
+                    self.fpv_dir = (self.fpv_dir + 7) % 8;
+                    return;
+                }
+                c if c == KeyCode::ArrowRight || c == KeyCode::Numpad6 || c == right => {
+                    self.fpv_dir = (self.fpv_dir + 1) % 8;
+                    return;
+                }
+                c if c == KeyCode::ArrowUp || c == KeyCode::Numpad8 || c == up => step(fx, fy),
+                c if c == KeyCode::ArrowDown || c == KeyCode::Numpad2 || c == down => {
+                    step(-fx, -fy)
+                }
+                KeyCode::Space | KeyCode::Numpad5 | KeyCode::Period => step(0, 0),
+                _ => None,
+            };
+            if let Some((dx, dy)) = fp {
+                if let Err(e) = self.sim.rogue_step(dx, dy) {
+                    self.say(e.to_uppercase());
+                }
+                return;
+            }
+        }
         let dir = match code {
             c if c == KeyCode::ArrowLeft || c == KeyCode::Numpad4 || c == left => step(-1, 0),
             c if c == KeyCode::ArrowRight || c == KeyCode::Numpad6 || c == right => step(1, 0),
@@ -296,27 +331,9 @@ fn draw_choose(fb: &mut Framebuffer, g: &Game) {
     }
 }
 
-fn draw_run(fb: &mut Framebuffer, g: &Game, r: &Rogue) {
+/// The map in characters: tiles, items, creatures, the squad, and the zone to click.
+fn draw_map(fb: &mut Framebuffer, g: &Game, r: &Rogue) {
     let s = &g.sim;
-    let th = &s.data.rogue_themes[r.theme];
-    let title = if r.on_surface() {
-        format!("SURFACE - {}", r.place.to_uppercase())
-    } else if r.parent.is_some() {
-        format!(
-            "{} (SOUS LA SURFACE)  -  ETAGE {}/{}",
-            th.name.to_uppercase(),
-            r.cur + 1,
-            th.floors
-        )
-    } else {
-        format!(
-            "{}  -  ETAGE {}/{}",
-            th.name.to_uppercase(),
-            r.cur + 1,
-            th.floors
-        )
-    };
-    fb.text(1, 1, &title, AMBER);
     let vis = r.visible();
     let f = r.floor();
     let (cx, cy) = camera(r);
@@ -412,8 +429,53 @@ fn draw_run(fb: &mut Framebuffer, g: &Game, r: &Rogue) {
             None,
         );
     }
+}
+
+/// The colour of the walls in first person, by place.
+fn wall_color(theme: &str) -> u32 {
+    match theme {
+        "station" | "colonie" | "vaisseau" | "depot" | "laboratoire" => 0x0070_8898,
+        "epave" | "reacteur" | "base_pirate" => 0x0090_6048,
+        "ruche" => 0x0090_A040,
+        "grotte_cristal" | "glace" => 0x0060_B0D0,
+        "ruines" | "station_ancienne" | "portail" => 0x00B0_9060,
+        "reve" => 0x0090_60C0,
+        _ => 0x0080_6048,
+    }
+}
+
+fn draw_run(fb: &mut Framebuffer, g: &Game, r: &Rogue) {
+    let s = &g.sim;
+    let th = &s.data.rogue_themes[r.theme];
+    let title = if r.on_surface() {
+        format!("SURFACE - {}", r.place.to_uppercase())
+    } else if r.parent.is_some() {
+        format!(
+            "{} (SOUS LA SURFACE)  -  ETAGE {}/{}",
+            th.name.to_uppercase(),
+            r.cur + 1,
+            th.floors
+        )
+    } else {
+        format!(
+            "{}  -  ETAGE {}/{}",
+            th.name.to_uppercase(),
+            r.cur + 1,
+            th.floors
+        )
+    };
+    fb.text(1, 1, &title, AMBER);
+    if g.fpv {
+        crate::fpv_view::draw(fb, r, g.fpv_dir, wall_color(&th.id), r.on_surface());
+    } else {
+        draw_map(fb, g, r);
+    }
     // Side panel.
-    let sx = ((OX + r.w.min(VIEW_COLS) as i32 * TILE_W) / 8 + 2) as usize;
+    let sx = if g.fpv {
+        ((crate::fpv_view::X0 + crate::fpv_view::W) / 8 + 2) as usize
+    } else {
+        ((OX + r.w.min(VIEW_COLS) as i32 * TILE_W) / 8 + 2) as usize
+    };
     fb.text(sx, 3, "EQUIPE", AMBER);
     for (k, &i) in r.party.iter().enumerate() {
         let p = &s.crew.members[i];
@@ -487,6 +549,7 @@ fn draw_run(fb: &mut Framebuffer, g: &Game, r: &Rogue) {
         ("[ESP] ATTENDRE", KeyCode::Space),
         ("[TAB] CHEF", KeyCode::Tab),
         ("[V] LANCER UN DRONE", KeyCode::KeyV),
+        ("[F] VUE A LA PREMIERE PERSONNE", KeyCode::KeyF),
         ("[C] CAPTURER UNE BETE", KeyCode::KeyC),
     ];
     if r.on_surface() && r.parent.is_none() {
@@ -496,15 +559,24 @@ fn draw_run(fb: &mut Framebuffer, g: &Game, r: &Rogue) {
         word(fb, g, sx, y, label, key);
         y += 1;
     }
-    fb.text(sx, y + 1, "FLECHES / PAVE NUM. / ZQSD", DIM);
+    fb.text(
+        sx,
+        y + 1,
+        if g.fpv {
+            "GAUCHE/DROITE TOURNER, HAUT/BAS AVANCER"
+        } else {
+            "FLECHES / PAVE NUM. / ZQSD"
+        },
+        DIM,
+    );
     fb.text(sx, y + 2, "CLIC : MARCHER JUSQU'A LA CASE", DIM);
     fb.text(sx, y + 3, "FONCER SUR UN MONSTRE = ATTAQUER", DIM);
     fb.text(sx, y + 4, &format!("VUE : {VIEW_RADIUS} CASES"), DIM);
     // The terminals seen on this floor, and the one under the squad.
     if r.social {
         let mut seen: Vec<(usize, bool)> = Vec::new();
-        for (i, t) in f.tiles.iter().enumerate() {
-            if *t >= T_TERMINAL && f.seen[i] {
+        for (i, t) in r.floor().tiles.iter().enumerate() {
+            if *t >= T_TERMINAL && r.floor().seen[i] {
                 seen.push(((*t - T_TERMINAL) as usize, i == r.idx(r.x, r.y)));
             }
         }
@@ -522,7 +594,11 @@ fn draw_run(fb: &mut Framebuffer, g: &Game, r: &Rogue) {
         }
     }
     // Log.
-    let log_row = ((OY + r.h.min(VIEW_ROWS) as i32 * TILE_H) / 10 + 1) as usize;
+    let log_row = if g.fpv {
+        ((crate::fpv_view::Y0 + crate::fpv_view::H) / 10 + 1) as usize
+    } else {
+        ((OY + r.h.min(VIEW_ROWS) as i32 * TILE_H) / 10 + 1) as usize
+    };
     for (k, line) in r.log.iter().rev().take(5).enumerate() {
         fb.text(1, log_row + k, line, if k == 0 { AMBER } else { DIM });
     }

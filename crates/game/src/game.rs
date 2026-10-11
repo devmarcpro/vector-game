@@ -212,6 +212,9 @@ pub struct Game {
     pub trade_ui: crate::trade_view::TradeUi,
     pub cosmos_ui: crate::cosmos_view::CosmosUi,
     pub rogue_ui: crate::rogue_view::RogueUi,
+    /// First-person view of the exploration, and the way the squad faces (eighths of a circle).
+    pub fpv: bool,
+    pub fpv_dir: i32,
     pub comp_series: Vec<Vec<f64>>,
     pub bourse_live: Vec<f64>,
     pub bourse_news: Vec<vector_sim::bourse::ActiveEvent>,
@@ -342,6 +345,8 @@ impl Game {
             comp_sel: 0,
             farm: Default::default(),
             rogue_ui: Default::default(),
+            fpv: false,
+            fpv_dir: 0,
             cosmos_ui: crate::cosmos_view::CosmosUi {
                 stasis: 3,
                 ..Default::default()

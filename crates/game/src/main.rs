@@ -12,6 +12,7 @@ mod farm_view;
 mod fleet_map_view;
 mod flight_menu;
 mod flow_view;
+mod fpv_view;
 mod game;
 mod globe;
 mod hud;
@@ -381,7 +382,8 @@ fn snapshot(path: &str, scene: &str, data: Arc<GameData>) {
             g.screen = Screen::Rogue;
         }
         s if s.starts_with("rogue_") => {
-            let id = &s[6..];
+            let fpv = s.ends_with("_fpv");
+            let id = s[6..].trim_end_matches("_fpv");
             let theme = g.data.rogue_theme_index(id).expect("a known place");
             for p in &mut g.sim.crew.members {
                 p.health = 1.0;
@@ -414,6 +416,10 @@ fn snapshot(path: &str, scene: &str, data: Arc<GameData>) {
                 }
             }
             g.screen = Screen::Rogue;
+            if fpv {
+                g.fpv = true;
+                g.fpv_dir = fpv_view::open_direction(g.sim.rogue.as_ref().expect("a run"));
+            }
         }
         "cosmos" => {
             g.sim.credits = 100_000.0;
@@ -554,7 +560,7 @@ fn snapshot(path: &str, scene: &str, data: Arc<GameData>) {
             g.sim.target = Some(i);
             g.sim.update_ref_pub();
         }
-        "surface" | "globe" | "walk" | "expedition" => {
+        "surface" | "globe" | "walk" | "walk_fpv" | "expedition" => {
             g.sim.reveal_all();
             let i = g
                 .sim
@@ -581,7 +587,7 @@ fn snapshot(path: &str, scene: &str, data: Arc<GameData>) {
             g.open_surface();
             g.surf_globe = scene == "globe";
             g.surf_spin = 0.9;
-            if scene == "walk" || scene == "expedition" {
+            if scene.starts_with("walk") || scene == "expedition" {
                 let body = g.surf.as_ref().map(|m| m.body).expect("map");
                 g.sim.ship.pos = g.sim.bodies[body].pos
                     - vector_core::Vec3::new(0.0, 0.0, g.sim.bodies[body].radius * 3.0);
@@ -602,11 +608,15 @@ fn snapshot(path: &str, scene: &str, data: Arc<GameData>) {
                     }
                 }
                 g.open_expedition();
-                if scene == "walk" {
+                if scene.starts_with("walk") {
                     g.exp_vehicle = true;
                     g.key(KeyCode::Enter, None, true);
                     for k in [KeyCode::ArrowRight, KeyCode::ArrowRight, KeyCode::ArrowDown] {
                         g.key(k, None, true);
+                    }
+                    if scene == "walk_fpv" {
+                        g.fpv = true;
+                        g.fpv_dir = fpv_view::open_direction(g.sim.rogue.as_ref().expect("a run"));
                     }
                 }
             }

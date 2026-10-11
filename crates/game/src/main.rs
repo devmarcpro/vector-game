@@ -10,6 +10,7 @@ mod flow_view;
 mod game;
 mod hud;
 mod mouse;
+mod power_view;
 mod scene;
 mod script;
 mod settings;

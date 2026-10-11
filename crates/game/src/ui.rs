@@ -658,6 +658,9 @@ fn draw_ship(fb: &mut Framebuffer, g: &Game) {
         fb.text(x, top + i, l, GREEN);
     }
     draw_ship_schematic(fb, g);
+    if !g.picker {
+        crate::power_view::draw(fb, g, 720, 330);
+    }
     if g.picker {
         let list = g.compatible_modules(g.ship_sel);
         let y0 = top + hull.slots.len() + 3;

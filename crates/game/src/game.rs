@@ -59,6 +59,7 @@ pub enum Screen {
     Bourse,
     Family,
     Factions,
+    Proto,
 }
 
 /// Route being composed in the fleet screen.
@@ -119,6 +120,9 @@ pub struct Game {
     /// Crew screen: the organ list of the selected person has the keys.
     pub organ_mode: bool,
     pub organ_sel: usize,
+    /// Interface prototypes (F12): which one, and the implant slot picked in the body one.
+    pub proto: u8,
+    pub proto_slot: usize,
     /// Fleet screen: map of colonies and routes instead of the lists.
     pub fleet_map: bool,
     pub b_sel: usize,
@@ -232,6 +236,8 @@ impl Game {
             crew_net: false,
             organ_mode: false,
             organ_sel: 0,
+            proto: 0,
+            proto_slot: 0,
             fleet_map: false,
             b_sel: 0,
             s_sel: 0,
@@ -701,6 +707,7 @@ impl Game {
             Screen::Surface => self.surface_key(code),
             Screen::Bourse => self.bourse_key(code),
             Screen::Factions => self.factions_key(code),
+            Screen::Proto => self.proto_key(code),
             Screen::Family => self.family_key(code),
             Screen::Destroyed => {
                 if code == KeyCode::Enter {
@@ -1967,6 +1974,7 @@ impl Game {
                 Err(e) => self.say(format!("AMARRAGE IMPOSSIBLE: {}", e.to_uppercase())),
             },
             KeyCode::F5 => self.save_game(),
+            KeyCode::F12 => self.screen = Screen::Proto,
             KeyCode::F9 => {
                 self.load_game();
             }
@@ -2145,6 +2153,7 @@ mod tests {
             Screen::Bourse,
             Screen::Family,
             Screen::Factions,
+            Screen::Proto,
         ] {
             g.screen = s;
             let line = crate::tutorial::hint_line(&g);

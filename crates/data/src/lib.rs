@@ -482,6 +482,30 @@ pub struct Organ {
     pub afflicted_by: Vec<String>,
 }
 
+/// Slots of the body and how many implants each takes.
+pub const CYBER_SLOTS: [(&str, usize); 6] = [
+    ("tete", 1),
+    ("torse", 1),
+    ("bras", 2),
+    ("jambes", 1),
+    ("neuro", 1),
+    ("peau", 1),
+];
+
+/// A cybernetic implant (see `data/cybernetics.ron`).
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct Cybernetic {
+    pub id: String,
+    pub name: String,
+    pub slot: String,
+    pub effects: Vec<(String, f64)>,
+    pub power: f64,
+    pub upkeep: f64,
+    pub stress: f64,
+    pub value: f64,
+    pub hackable: bool,
+}
+
 /// A gene (see `data/genes.ron`): two alleles of 0..3 per person.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Gene {
@@ -564,6 +588,7 @@ pub struct GameData {
     pub ethos: Ethos,
     pub genes: Vec<Gene>,
     pub organs: Vec<Organ>,
+    pub cybernetics: Vec<Cybernetic>,
 }
 
 fn read<T: for<'a> Deserialize<'a>>(path: &Path) -> Result<T, DataError> {
@@ -598,6 +623,7 @@ impl GameData {
             ethos: read(&dir.join("ethos.ron"))?,
             genes: read(&dir.join("genes.ron"))?,
             organs: read(&dir.join("organs.ron"))?,
+            cybernetics: read(&dir.join("cybernetics.ron"))?,
         };
         // Generated extension files (tools/gen_scale.py) extend the hand-written tables.
         let mut extra_resources: Vec<Resource> = read(&dir.join("resources_organs.ron"))?;
@@ -1017,7 +1043,54 @@ impl GameData {
         self.validate_world_events()?;
         self.validate_ethos()?;
         self.validate_genes()?;
-        self.validate_organs()
+        self.validate_organs()?;
+        self.validate_cybernetics()
+    }
+
+    pub fn cyber_index(&self, id: &str) -> Option<usize> {
+        self.cybernetics.iter().position(|c| c.id == id)
+    }
+
+    /// Implants: unique ids, known slots and effect keys, sane numbers.
+    fn validate_cybernetics(&self) -> Result<(), DataError> {
+        let bad = |s: String| Err(DataError::Invalid(s));
+        const KEYS: [&str; 9] = [
+            "health_base",
+            "work_speed",
+            "stress_resist",
+            "social_need",
+            "morale_base",
+            "luck",
+            "sleep_need",
+            "appetite",
+            "temper",
+        ];
+        let mut seen = std::collections::HashSet::new();
+        for c in &self.cybernetics {
+            if !seen.insert(c.id.as_str()) {
+                return bad(format!("implant {} en double", c.id));
+            }
+            if !CYBER_SLOTS.iter().any(|(s, _)| *s == c.slot) {
+                return bad(format!("implant {}: emplacement {} inconnu", c.id, c.slot));
+            }
+            if !(c.power >= 0.0 && c.upkeep >= 0.0 && c.stress >= 0.0 && c.value > 0.0)
+                || c.effects.is_empty()
+            {
+                return bad(format!("implant {}: valeurs invalides", c.id));
+            }
+            for (k, w) in &c.effects {
+                let known = KEYS.contains(&k.as_str())
+                    || k.strip_prefix("skill:")
+                        .is_some_and(|s| self.skill_index(s).is_some());
+                if !known || !w.is_finite() || *w == 0.0 {
+                    return bad(format!("implant {}: effet {k} invalide", c.id));
+                }
+            }
+        }
+        if self.cybernetics.len() < 8 {
+            return bad("moins de 8 implants".into());
+        }
+        Ok(())
     }
 
     pub fn organ_index(&self, id: &str) -> Option<usize> {
@@ -1574,6 +1647,32 @@ mod tests {
             d.unlocking_tech("module", "fusion_mk1").is_none(),
             "tier 1 is free"
         );
+    }
+
+    #[test]
+    fn cybernetics_are_validated() {
+        let ok = GameData::load(&dir()).expect("data loads");
+        assert!(ok.cybernetics.len() >= 8);
+        // Every implant has its tradable part.
+        for c in &ok.cybernetics {
+            assert!(
+                ok.resource_index(&format!("cyber_{}", c.id)).is_some(),
+                "{}",
+                c.id
+            );
+        }
+        let mut d = ok.clone();
+        d.cybernetics[0].slot = "orteil".into();
+        assert!(d.validate().is_err(), "unknown slot");
+        let mut d = ok.clone();
+        d.cybernetics[0]
+            .effects
+            .push(("skill:cuisine_quantique".into(), 1.0));
+        assert!(d.validate().is_err(), "unknown skill");
+        let mut d = ok;
+        let dup = d.cybernetics[0].clone();
+        d.cybernetics.push(dup);
+        assert!(d.validate().is_err(), "duplicate");
     }
 
     #[test]

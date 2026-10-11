@@ -143,6 +143,7 @@ pub fn hint_line(g: &Game) -> String {
         }
         Screen::Recruit => "HAUT/BAS CANDIDAT  ENTREE EMBAUCHER  K EQUIPAGE  ECHAP RETOUR",
         Screen::Journal => "HAUT/BAS DEFILER  K EQUIPAGE  J/ECHAP RETOUR",
+        Screen::Proto => "CLIC SUR LES ELEMENTS  GAUCHE/DROITE OU 1-2 PROTOTYPE  F12/ECHAP RETOUR",
         Screen::Factions => "GAUCHE/DROITE FACTION  CLIC : CHOISIR  X/ECHAP RETOUR",
         Screen::Galaxy => {
             "HAUT/BAS ETOILE  +/- ZOOM  ENTREE SAUT FTL  L/ECHAP RETOUR  (RETOUR ARRIERE ANNULE UNE CHARGE)"
@@ -222,6 +223,7 @@ pub fn help_lines(screen: Screen) -> &'static [&'static str] {
         ],
         Screen::Recruit => &["Haut/Bas : candidat   Entree : embaucher"],
         Screen::Journal => &["Haut/Bas ou PgUp/PgDn : defiler   Echap : retour"],
+        Screen::Proto => &["Prototypes d'interface : le corps (1) et le hall de la station (2)", "Tout est clicable ; rien n'est encore branche"],
         Screen::Factions => &[
             "Gauche/Droite ou clic : choisir une faction",
             "Lignes vertes : allies   lignes rouges : ennemis",

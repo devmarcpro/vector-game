@@ -11,6 +11,7 @@ mod game;
 mod hud;
 mod mouse;
 mod power_view;
+mod proto_view;
 mod scene;
 mod script;
 mod settings;
@@ -242,6 +243,12 @@ fn snapshot(path: &str, scene: &str, data: Arc<GameData>) {
         "map" => {
             g.map = true;
             g.cycle_target(|_| true);
+        }
+        "proto0" | "proto1" => {
+            g.proto = if scene == "proto0" { 0 } else { 1 };
+            g.organ_sel = 2;
+            g.proto_slot = 3;
+            g.screen = Screen::Proto;
         }
         "factions" => {
             g.sim.reputation[1] = 0.6;

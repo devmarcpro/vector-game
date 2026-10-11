@@ -52,7 +52,10 @@ impl Market {
             let value = data.resources[i].value.max(0.01);
             let mut reference = 2.0e4 / (1.0 + value).sqrt() * rng.range(0.6, 1.4);
             // Grafts and prostheses are counted in pieces, not tonnes.
-            if matches!(data.resources[i].category.as_str(), "organes" | "protheses") {
+            if matches!(
+                data.resources[i].category.as_str(),
+                "organes" | "protheses" | "cybernetique"
+            ) {
                 reference = rng.range(1.5, 5.0);
             }
             let factor = if ind.produces.iter().any(|p| p == id) {

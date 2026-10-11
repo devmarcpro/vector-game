@@ -1,4 +1,5 @@
-"""Generates data/resources_organs.ron (grafts and prostheses as trade goods) from data/organs.ron."""
+"""Generates data/resources_organs.ron (grafts, prostheses and cybernetic implants as trade goods)
+from data/organs.ron and data/cybernetics.ron."""
 import re
 import pathlib
 
@@ -19,6 +20,13 @@ for i, n, v in organs:
     out.append(
         f' (id:"prosthesis_{i}", name:"Prothèse : {n}", category:"protheses", density:3000.0, value:{float(v) * 0.4:.1f}),'
     )
+cyber = re.findall(
+    r'\(id:"(\w+)", name:"([^"]+)", slot:"\w+".*?value:([\d.]+)', (root / "data" / "cybernetics.ron").read_text(encoding="utf-8")
+)
+for i, n, v in cyber:
+    out.append(
+        f' (id:"cyber_{i}", name:"Implant : {n}", category:"cybernetique", density:2500.0, value:{float(v):.1f}),'
+    )
 out.append("]")
 (root / "data" / "resources_organs.ron").write_bytes(("\n".join(out) + "\n").encode("utf-8"))
-print(len(organs) * 2, "resources")
+print(len(organs) * 2 + len(cyber), "resources")

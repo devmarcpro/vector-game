@@ -401,7 +401,11 @@ impl Colony {
             let d = &data.buildings[b.def];
             if d.power > 0.0 {
                 if d.burns.is_empty() {
-                    let k = if d.id == "solar_farm" { self.flux } else { 1.0 };
+                    let k = match d.id.as_str() {
+                        "solar_farm" => self.flux,
+                        "geothermal_plant" => crate::geo::geothermal_factor(&self.tags),
+                        _ => 1.0,
+                    };
                     supply += d.power * b.health * k;
                 } else {
                     // Fuel plants run only while their fuel lasts.
@@ -836,9 +840,16 @@ impl Sim {
             self.ship.cargo.remove(&data, r, kg);
         }
         self.credits -= PERMIT_COST;
-        let tags = site_tags(&cb);
+        let mut tags = site_tags(&cb);
         let id = self.next_colony;
         self.next_colony += 1;
+        // What the ground is made of where the city will stand (see `geo.rs`).
+        let mut deposits = site_deposits(&data, &cb, self.system.seed);
+        let site = self.founding_site(i, id);
+        if let Some((sg, _)) = &site {
+            tags.extend(sg.tags.iter().cloned());
+            crate::geo::merge_deposits(&mut deposits, &sg.deposits);
+        }
         let d_au = (self.bodies[i].pos.length() / vector_world::orbit::AU).max(0.01);
         let founders = self
             .data
@@ -868,7 +879,7 @@ impl Sim {
             system_seed: self.system.seed,
             body: i,
             body_name: cb.name.clone(),
-            deposits: site_deposits(&data, &cb, self.system.seed),
+            deposits,
             tags,
             flux: self.system.luminosity / (d_au * d_au),
             founded: self.time,
@@ -905,6 +916,21 @@ impl Sim {
             }
         }
         c.log_line(self.time, format!("Fondation de {}.", c.name));
+        if let Some((sg, _)) = &site {
+            c.log_line(
+                self.time,
+                format!(
+                    "Géologie du site : roche {}, chaleur du sol {:.0} %, {} gisement(s) à portée.",
+                    match sg.rock {
+                        vector_world::geology::Rock::Igneous => "ignée",
+                        vector_world::geology::Rock::Sedimentary => "sédimentaire",
+                        vector_world::geology::Rock::Metamorphic => "métamorphique",
+                    },
+                    sg.heat * 100.0,
+                    sg.in_reach.len()
+                ),
+            );
+        }
         c.update(&data, self.time);
         self.colonies.push(c);
         self.events.push(Event::ColonyFounded {
@@ -1227,6 +1253,59 @@ pub(crate) mod tests {
             assert!(site_tags(&g).contains(&"gas_giant".to_string()));
         }
         assert!(site_tags(rocky_body).contains(&"rocky".to_string()));
+    }
+
+    #[test]
+    fn a_colony_carries_the_geology_of_its_site() {
+        let (s, ci) = founded();
+        let c = &s.colonies[ci];
+        let (sg, _) = s
+            .founding_site(c.body, c.id)
+            .expect("a solid world has a site");
+        // The ore of the deposits in reach is in the ground, on top of the usual abundances.
+        let base = site_deposits(&s.data, &s.system.bodies[c.body], s.system.seed);
+        for (r, x) in &sg.deposits {
+            let have = c.deposits.iter().find(|(i, _)| i == r).map_or(0.0, |p| p.1);
+            let usual = base.iter().find(|(i, _)| i == r).map_or(0.0, |p| p.1);
+            assert!(have >= usual + x - 1e-9, "{r}: {have} vs {usual} + {x}");
+        }
+        // The heat of the ground is a tag (and none in between), and the log tells the geology.
+        let hot_or_cold = sg.heat >= crate::geo::WARM || sg.heat < crate::geo::COLD;
+        assert_eq!(c.tags.iter().any(|t| t.starts_with("geo_")), hot_or_cold);
+        assert!(c.log.iter().any(|(_, l)| l.starts_with("Géologie du site")));
+    }
+
+    #[test]
+    fn geothermal_plants_follow_the_heat_of_the_ground() {
+        let (mut s, ci) = founded();
+        let data = Arc::clone(&s.data);
+        let plant = data.building_index("geothermal_plant").expect("plant");
+        let t = s.time + DAY;
+        let c = &mut s.colonies[ci];
+        c.buildings.push(BuildingInst {
+            def: plant,
+            progress: 1.0,
+            enabled: true,
+            recipe: 0,
+            health: 1.0,
+        });
+        let supply = |c: &mut Colony, tag: &str, t: f64| {
+            c.tags.retain(|x| !x.starts_with("geo_"));
+            if !tag.is_empty() {
+                c.tags.push(tag.to_string());
+            }
+            c.update(&data, t);
+            c.stats.power_supply
+        };
+        let none = supply(c, "", t);
+        let hot = supply(c, "geo_hot", t + DAY);
+        let cold = supply(c, "geo_cold", t + 2.0 * DAY);
+        let rated = data.buildings[plant].power;
+        assert!(
+            (hot - cold - 1.6 * rated).abs() < 1.0,
+            "{hot} {cold} {rated}"
+        );
+        assert!(hot > none && none > cold, "{hot} {none} {cold}");
     }
 
     #[test]

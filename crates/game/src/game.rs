@@ -113,6 +113,8 @@ pub struct Game {
     pub journal_tab: u8,
     pub log_seen: usize,
     pub gal_cache: Vec<StarEntry>,
+    /// Nebulae, clusters and remnants within reach of the galactic map (see `vector_world::cosmos`).
+    pub gal_features: Vec<vector_world::cosmos::Feature>,
     pub gal_sel: usize,
     pub gal_zoom: f64,
     pub offers: Vec<vector_sim::economy::Contract>,
@@ -278,6 +280,7 @@ impl Game {
             journal_tab: 0,
             log_seen: 0,
             gal_cache: Vec::new(),
+            gal_features: Vec::new(),
             gal_sel: 0,
             gal_zoom: 14.0,
             offers: Vec::new(),
@@ -2146,6 +2149,7 @@ impl Game {
             .into_iter()
             .filter(|e| e.id != here && self.sim.is_seen(e.pos))
             .collect();
+        self.gal_features = self.sim.galaxy.features_near(self.sim.here_pos, 90.0);
         self.gal_sel = 0;
         self.screen = Screen::Galaxy;
     }

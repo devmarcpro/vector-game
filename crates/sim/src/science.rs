@@ -29,6 +29,22 @@ pub struct Environment {
     pub rift: f64,
 }
 
+/// Half width (m) of the ion tail of a comet, and the damage per second at its axis.
+pub const COMET_TAIL_WIDTH: f64 = 3.0e5;
+pub const COMET_TAIL_ION: f64 = 4.0;
+
+/// Distance from `p` to the segment `a`-`b`.
+fn distance_to_segment(p: Vec3, a: Vec3, b: Vec3) -> f64 {
+    let ab = b - a;
+    let l2 = ab.dot(ab);
+    let t = if l2 > 0.0 {
+        ((p - a).dot(ab) / l2).clamp(0.0, 1.0)
+    } else {
+        0.0
+    };
+    (p - (a + ab * t)).length()
+}
+
 pub fn flare_probability_per_day(c: StarClass) -> f64 {
     match c {
         StarClass::M => 0.04,
@@ -78,6 +94,8 @@ impl Sim {
     pub fn ship_research_rate(&self) -> f64 {
         let role = crate::crew::Crew::role_index(&self.data, "scientist");
         let eff = self.crew.role_efficiency(&self.data, role, self.time);
+        // A supernova remnant or a planetary nebula is worth studying: the labs work harder.
+        let eff = eff * (1.0 + self.cosmic_effects().interest);
         self.ship
             .design
             .modules(&self.data)
@@ -151,6 +169,30 @@ impl Sim {
                 "rift" => e.rift += strength * 0.02 * f,
                 _ => {}
             }
+        }
+        // The star itself: the beam of a pulsar, the X-rays of a black hole's disc, and the
+        // gravitational lens of the hole that magnifies what the sensors see at its focus.
+        let r = p.length();
+        let scale = self.hazard_scale();
+        e.radiation += self.system.star_radiation(r) * scale;
+        e.sensor_mult *= self.system.lens_gain(r);
+        // The medium between the stars and the nucleus of the galaxy.
+        let cosmic = self.cosmic_effects();
+        e.radiation += cosmic.radiation * scale;
+        e.sensor_mult *= cosmic.sensor_mult;
+        // The ion tail of a comet, blown away from the star: plasma that eats electronics.
+        for (i, b) in self.system.bodies.iter().enumerate() {
+            let Some(tail) = self.system.comet_tail(i, self.time) else {
+                continue;
+            };
+            let head = self.bodies[i].pos;
+            let d = distance_to_segment(p, head, head + tail);
+            if d < COMET_TAIL_WIDTH {
+                let f = 1.0 - d / COMET_TAIL_WIDTH;
+                e.ion += COMET_TAIL_ION * f * scale;
+                e.sensor_mult *= 1.0 - 0.3 * f;
+            }
+            let _ = b;
         }
         e.sensor_mult = e.sensor_mult.max(0.05);
         e.agility_mult = e.agility_mult.max(0.15);
@@ -263,6 +305,7 @@ impl Sim {
                 self.events.push(Event::RiftJump);
             }
         }
+        self.cosmic_tick();
         self.flare_tick();
         self.meteor_tick(dt);
     }
@@ -276,14 +319,23 @@ impl Sim {
                 return;
             };
             let mut rng = Rng::new(hash_coord(self.system.seed, day, 77, 5));
-            self.pending_flare =
-                (rng.f64() < flare_probability_per_day(class) * self.rules.event_freq).then(|| {
-                    (
-                        day as f64 * DAY + rng.f64() * DAY,
-                        rng.range(0.2, 1.0),
-                        false,
-                    )
-                });
+            // Black holes and rogue worlds have no surface to flare; a neutron star flares only
+            // if it is a magnetar (its bursts are the fiercest).
+            let p = match class {
+                StarClass::X | StarClass::R => 0.0,
+                StarClass::N => match self.system.pulsar() {
+                    Some(pl) if pl.magnetar => 0.08,
+                    _ => 0.0,
+                },
+                c => flare_probability_per_day(c),
+            };
+            self.pending_flare = (rng.f64() < p * self.rules.event_freq).then(|| {
+                (
+                    day as f64 * DAY + rng.f64() * DAY,
+                    rng.range(0.2, 1.0),
+                    false,
+                )
+            });
         }
         let Some((t, severity, warned)) = self.pending_flare else {
             return;
@@ -296,6 +348,11 @@ impl Sim {
             self.pending_flare = None;
             let d_au = (self.ship.pos.length() / AU).max(0.05);
             let mut dose = severity * 2.0 / (d_au * d_au);
+            // A variable star is brighter at some times than at others; a magnetar burst is worse.
+            dose *= self.system.luminosity_at(self.time) / self.system.luminosity.max(1e-12);
+            if self.system.star_class == StarClass::N {
+                dose *= 4.0;
+            }
             if self.docked.is_some() {
                 dose *= 0.05;
             } else if self.ship.sys.shield_pts > 0.3 * self.effective.shield_cap.max(1.0) {

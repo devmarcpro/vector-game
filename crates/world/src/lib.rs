@@ -1,13 +1,16 @@
 //! Procedural universe: stellar systems generated deterministically from a seed.
+pub mod cosmos;
 pub mod galaxy;
+pub mod geology;
 pub mod names;
 pub mod orbit;
 pub mod physics;
+pub mod stellar;
 pub mod surface;
 
 use names::{pick, roman, star_name};
 use orbit::{Orbit, AU, G, M_EARTH, M_SUN, R_EARTH, R_SUN};
-use vector_core::{Rng, Vec3};
+use vector_core::{hash_coord, Rng, Vec3};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum StarClass {
@@ -20,10 +23,16 @@ pub enum StarClass {
     M,
     /// White dwarf: a faint stellar remnant.
     D,
+    /// Neutron star (a pulsar when it spins): the 12 km core left by a supernova.
+    N,
+    /// Stellar black hole.
+    X,
+    /// Rogue world of planetary mass, with the moons it kept.
+    R,
 }
 
 impl StarClass {
-    pub const ALL: [StarClass; 8] = [
+    pub const ALL: [StarClass; 11] = [
         Self::O,
         Self::B,
         Self::A,
@@ -32,9 +41,12 @@ impl StarClass {
         Self::K,
         Self::M,
         Self::D,
+        Self::N,
+        Self::X,
+        Self::R,
     ];
     pub fn letter(self) -> &'static str {
-        ["O", "B", "A", "F", "G", "K", "M", "D"][self as usize]
+        ["O", "B", "A", "F", "G", "K", "M", "D", "N", "X", "R"][self as usize]
     }
 }
 
@@ -168,14 +180,19 @@ pub enum AstType {
     S,
     M,
     I,
+    /// Basaltic (the family of Vesta): the crust of a differentiated body that was shattered.
+    V,
+    /// Dark and primitive, rich in organics (Trojans, outer belt).
+    D,
 }
 
 impl AstType {
     pub fn id(self) -> &'static str {
-        ["C", "S", "M", "I"][self as usize]
+        ["C", "S", "M", "I", "V", "D"][self as usize]
     }
+    pub const ALL: [AstType; 6] = [Self::C, Self::S, Self::M, Self::I, Self::V, Self::D];
     pub fn density(self) -> f64 {
-        [1400.0, 2700.0, 5300.0, 1000.0][self as usize]
+        [1400.0, 2700.0, 5300.0, 1000.0, 3200.0, 1300.0][self as usize]
     }
 }
 
@@ -227,6 +244,8 @@ pub struct System {
     pub name: String,
     pub designation: String,
     pub star_class: StarClass,
+    /// Where the star is in its life (see `stellar.rs`).
+    pub stage: stellar::StarStage,
     /// Luminosity in solar units.
     pub luminosity: f64,
     /// Body 0 is always the star.
@@ -273,6 +292,9 @@ fn mass_range(c: StarClass) -> (f64, f64) {
         StarClass::K => (0.45, 0.8),
         StarClass::M => (0.08, 0.45),
         StarClass::D => (0.5, 1.2),
+        StarClass::N => (1.2, 2.2),
+        StarClass::X => (5.0, 30.0),
+        StarClass::R => (0.0005, 0.012),
     }
 }
 
@@ -409,24 +431,52 @@ pub struct StarHeader {
     pub luminosity: f64,
     pub radius_sun: f64,
     pub teff: f64,
+    /// Where the star is in its life (see `stellar.rs`).
+    pub stage: stellar::StarStage,
     pub name: String,
     pub designation: String,
 }
 
 /// Draw the star header; `rng` is left positioned exactly where the rest of generation continues.
-fn star_header(rng: &mut Rng) -> StarHeader {
-    let class = pick_class(rng);
+fn star_header(seed: u64, rng: &mut Rng) -> StarHeader {
+    use stellar::StarStage as St;
+    let mut class = pick_class(rng);
     let (m0, m1) = mass_range(class);
-    let m = rng.range(m0, m1);
-    let (lum, rad) = if class == StarClass::D {
-        (0.001 * m, 0.0125)
-    } else {
-        (
+    let mut m = rng.range(m0, m1);
+    if class == StarClass::D {
+        // The census slot of the remnants: most are white dwarfs, some neutron stars or black holes.
+        class = stellar::remnant_class(seed);
+        match class {
+            StarClass::N => m = 1.2 + (m - 0.5) / 0.7,
+            StarClass::X => m = 5.0 + (m - 0.5) / 0.7 * 25.0,
+            StarClass::R => m = 0.0005 + (m - 0.5) / 0.7 * 0.0115,
+            _ => {}
+        }
+    }
+    let stage = stellar::stage_of(seed, class, m);
+    let (lum, rad) = match stage {
+        St::WhiteDwarf => (0.001 * m, 0.0125),
+        St::NeutronStar => (2.0e-6, stellar::compact_radius(stage, m)),
+        St::BlackHole => (1.0e-9, stellar::compact_radius(stage, m)),
+        St::Rogue => {
+            let (r, t) = stellar::rogue_shape(seed);
+            (r * r * (t / 5772.0).powi(4), r)
+        }
+        St::RedGiant | St::RedSupergiant => {
+            let (r, t) = stellar::giant_shape(seed, stage);
+            (r * r * (t / 5772.0).powi(4), r)
+        }
+        St::MainSequence => (
             luminosity(m),
             if m < 1.0 { m.powf(0.8) } else { m.powf(0.57) },
-        )
+        ),
     };
-    let teff = 5772.0 * (lum / (rad * rad)).powf(0.25);
+    // A black hole shines by what falls into it, not by its own surface.
+    let teff = if stage == St::BlackHole {
+        2.0
+    } else {
+        5772.0 * (lum / (rad * rad)).powf(0.25)
+    };
     let name = star_name(rng);
     let designation = format!("HD {}", 1000 + rng.next_u64() % 900_000);
     StarHeader {
@@ -435,6 +485,7 @@ fn star_header(rng: &mut Rng) -> StarHeader {
         luminosity: lum,
         radius_sun: rad,
         teff,
+        stage,
         name,
         designation,
     }
@@ -442,7 +493,7 @@ fn star_header(rng: &mut Rng) -> StarHeader {
 
 /// Summary of the star a seed would produce, without generating the planets.
 pub fn peek_star(seed: u64) -> StarHeader {
-    star_header(&mut Rng::new(seed))
+    star_header(seed, &mut Rng::new(seed))
 }
 
 /// Generate a complete stellar system deterministically from `seed`.
@@ -456,7 +507,8 @@ pub fn generate_system(seed: u64) -> System {
         teff,
         name,
         designation,
-    } = star_header(&mut rng);
+        stage,
+    } = star_header(seed, &mut rng);
     let star_mass = m * M_SUN;
     let mu_star = G * star_mass;
     let star = CelBody {
@@ -471,12 +523,32 @@ pub fn generate_system(seed: u64) -> System {
         pressure: 0.0,
         atmosphere: vec![],
     };
+    let mut star = star;
+    if stage == stellar::StarStage::NeutronStar {
+        // Pulsars spin in milliseconds to seconds.
+        star.rotation_period = system_pulsar_period(seed);
+    }
     let mut bodies = vec![star];
     let mut belts = Vec::new();
 
     let n_planets = ((rng.f64().powf(0.8)) * 9.0) as usize;
-    let mut a = (rng.range(0.04, 0.4) * lum.sqrt()).max(rad * R_SUN * 4.0 / AU);
-    let frost = 2.7 * lum.sqrt();
+    // A black hole keeps no planets, a neutron star at most two; their orbits are laid out as
+    // around a dim sun, since their own light says nothing of where matter gathered.
+    let n_planets = match class {
+        StarClass::X => 0,
+        StarClass::N => n_planets.min(2),
+        StarClass::R => 1 + n_planets % 3,
+        _ => n_planets,
+    };
+    let lum_orb = if class == StarClass::R {
+        1.0e-5
+    } else if matches!(class, StarClass::N | StarClass::X) {
+        0.2
+    } else {
+        lum
+    };
+    let mut a = (rng.range(0.04, 0.4) * lum_orb.sqrt()).max(rad * R_SUN * 4.0 / AU);
+    let frost = 2.7 * lum_orb.sqrt();
     let mut planet_idx = Vec::new();
     for pi in 0..n_planets {
         a *= rng.range(1.45, 2.1);
@@ -484,7 +556,17 @@ pub fn generate_system(seed: u64) -> System {
         let beyond = a > frost;
         let albedo = rng.range(0.1, 0.5);
         let t = eq_temp(lum, a, albedo);
-        let (pk, mass_e) = if beyond && rng.f64() < 0.75 {
+        let (pk, mass_e) = if class == StarClass::R {
+            // Only small icy moons keep company with a rogue world.
+            (
+                if rng.f64() < 0.7 {
+                    PlanetKind::Ice
+                } else {
+                    PlanetKind::Dwarf
+                },
+                rng.range(0.001, 0.05),
+            )
+        } else if beyond && rng.f64() < 0.75 {
             if rng.f64() < 0.6 {
                 (PlanetKind::GasGiant, rng.range(50.0, 400.0))
             } else {
@@ -592,6 +674,15 @@ pub fn generate_system(seed: u64) -> System {
                 x if x < 0.90 => AstType::M,
                 _ => AstType::I,
             };
+            // Families keep a spectral type of their own: a shattered basaltic crust among the
+            // silicates, primitive dark bodies among the carbonaceous and icy ones past the frost line.
+            let roll =
+                (hash_coord(seed, bi as i64, c as i64, 0xA57) >> 11) as f64 / (1u64 << 53) as f64;
+            let class = match class {
+                AstType::S if roll < 0.25 => AstType::V,
+                AstType::C | AstType::I if base_a > frost * AU && roll < 0.6 => AstType::D,
+                k => k,
+            };
             for k in 0..8 {
                 let mut o = base.clone();
                 o.a += rng.range(-30.0e3, 30.0e3);
@@ -692,15 +783,24 @@ pub fn generate_system(seed: u64) -> System {
         name,
         designation,
         star_class: class,
+        stage,
         luminosity: lum,
         bodies,
         belts,
     };
-    // A rare portal (1 system in 10), rolled last so everything else is unchanged.
+    // Companions, rings, Trojans and the orbits of comets: their own random stream, so nothing
+    // drawn before moves. Then a rare portal (1 system in 10), always the last body.
+    stellar::add_extras(&mut system);
     if rng.f64() < PORTAL_CHANCE {
         add_portal(&mut system);
     }
     system
+}
+
+/// Spin period of a pulsar (s): the one `System::pulsar` reports.
+fn system_pulsar_period(seed: u64) -> f64 {
+    let (lo, hi) = stellar::PULSAR_PERIOD_S;
+    lo * (hi / lo).powf((hash_coord(seed, 8, 8, 0x57E1) >> 11) as f64 / (1u64 << 53) as f64)
 }
 
 /// Share of systems that hold a natural portal.
@@ -846,7 +946,12 @@ mod tests {
         for s in 0..400u64 {
             let sys = generate_system(s);
             let rocks: Vec<usize> = (0..sys.bodies.len())
-                .filter(|&i| matches!(sys.bodies[i].kind, BodyKind::Asteroid(_)))
+                .filter(|&i| {
+                    // Belt families only: not the ring particles of a giant nor its Trojans.
+                    matches!(sys.bodies[i].kind, BodyKind::Asteroid(_))
+                        && sys.bodies[i].orbit.as_ref().is_some_and(|o| o.parent == 0)
+                        && !sys.bodies[i].name.starts_with("Troyen")
+                })
                 .collect();
             if rocks.is_empty() {
                 continue;

@@ -1340,7 +1340,28 @@ fn class_color(c: vector_world::StarClass) -> u32 {
         K => 0x00F0_9040,
         M => 0x00FF_5040,
         D => 0x00C8_D0E0,
+        N => 0x00A0_E0FF,
+        X => 0x0090_5030,
+        R => 0x00A0_4030,
     }
+}
+
+fn feature_color(k: vector_world::cosmos::FeatureKind) -> u32 {
+    use vector_world::cosmos::FeatureKind::*;
+    match k {
+        EmissionNebula => 0x00FF_4050,
+        ReflectionNebula => 0x0060_A0FF,
+        PlanetaryNebula => 0x0040_FFC0,
+        SupernovaRemnant => 0x00FF_A030,
+        OpenCluster => 0x00A0_C0FF,
+        GlobularCluster => 0x00FF_E080,
+        StarFormingRegion => 0x00FF_70C0,
+    }
+}
+
+fn dim_color(c: u32, k: f32) -> u32 {
+    let ch = |s: u32| (((c >> s) & 0xFF) as f32 * k) as u32;
+    (ch(16) << 16) | (ch(8) << 8) | ch(0)
 }
 
 fn draw_galaxy(fb: &mut Framebuffer, g: &Game) {
@@ -1380,6 +1401,23 @@ fn draw_galaxy(fb: &mut Framebuffer, g: &Game) {
     fb.line(cx - 6.0, cy, cx + 6.0, cy, RED);
     fb.line(cx, cy - 6.0, cx, cy + 6.0, RED);
     fb.text_at(cx as i32 + 8, cy as i32 + 6, "ICI", RED);
+    // The medium between the stars: nebulae, clusters, remnants, as circles of their true size.
+    for f in &g.gal_features {
+        let (x, y) = proj(f.pos);
+        let col = feature_color(f.kind);
+        fb.circle(x, y, f.radius as f32 * zoom, dim_color(col, 0.55));
+        fb.circle(x, y, f.radius as f32 * zoom * 0.5, dim_color(col, 0.3));
+        let name = g
+            .data
+            .cosmos_def(f.kind.id())
+            .map_or("", |d| d.name.as_str());
+        fb.text_at(
+            x as i32 - 24,
+            y as i32,
+            &name.to_uppercase(),
+            dim_color(col, 0.8),
+        );
+    }
     for (k, e) in g.gal_cache.iter().enumerate() {
         let (x, y) = proj(e.pos);
         let h = (e.pos[1] - s.here_pos[1]) as f32 * zoom * 0.5;
@@ -1455,6 +1493,7 @@ fn draw_galaxy(fb: &mut Framebuffer, g: &Game) {
             GREEN,
         );
         fb.text(x, 9, &format!("DISTANCE {d:.1} AL"), GREEN);
+        fb.text(x, 14, e.header.stage.label(), AMBER);
         let owner = s.galaxy.territory(e.pos, s.data.factions.len());
         let (oname, ocol) = owner.map_or(("NON REVENDIQUE".to_string(), DIM), |f| {
             (
@@ -1487,6 +1526,53 @@ fn draw_galaxy(fb: &mut Framebuffer, g: &Game) {
     } else {
         fb.text(x, 4, "AUCUNE ETOILE CONNUE", DIM);
     }
+    // The medium here and the nucleus of the galaxy.
+    fb.text(x, 17, "MILIEU INTERSTELLAIRE", AMBER);
+    let fx = s.cosmic_effects();
+    fb.text(
+        x,
+        18,
+        &format!("ICI : DOSE {:.2} GY/H", fx.radiation),
+        if fx.radiation > 0.5 { RED } else { GREEN },
+    );
+    fb.text(
+        x,
+        19,
+        &format!(
+            "CAPTEURS x{:.2}  LABOS +{:.0} %",
+            fx.sensor_mult,
+            fx.interest * 100.0
+        ),
+        GREEN,
+    );
+    for (k, f) in g.gal_features.iter().take(3).enumerate() {
+        let d = ((f.pos[0] - s.here_pos[0]).powi(2)
+            + (f.pos[1] - s.here_pos[1]).powi(2)
+            + (f.pos[2] - s.here_pos[2]).powi(2))
+        .sqrt();
+        let name = g
+            .data
+            .cosmos_def(f.kind.id())
+            .map_or("", |d| d.name.as_str());
+        fb.text(
+            x,
+            20 + k,
+            &format!(
+                "{} {d:.0} AL",
+                name.to_uppercase().chars().take(24).collect::<String>()
+            ),
+            feature_color(f.kind),
+        );
+    }
+    fb.text(
+        x,
+        24,
+        &format!(
+            "TROU NOIR CENTRAL {:.0} AL",
+            vector_world::galaxy::Galaxy::centre_distance(s.here_pos),
+        ),
+        DIM,
+    );
     let b = fb.rows() - 4;
     fb.text(
         1,

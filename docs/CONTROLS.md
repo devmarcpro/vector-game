@@ -94,6 +94,8 @@ Par défaut AZERTY : tangage Z/S, lacet Q/D, roulis A/E. Options > Clavier bascu
 Écran de préparation : Haut/Bas, Espace coche un équipier ou le rover, Entrée part. Ensuite c'est l'exploration commune (voir « Exploration à pied ») : flèches, pavé numérique ou Z/Q/S/D pour avancer (foncer sur un animal ou un monstre l'attaque), les plantes et le butin se ramassent en marchant, Entrée sur un site (ruine, grotte, épave…) y descend et sur < remonte, V lance un drone, R rappelle l'équipe depuis la surface, Tab change de chef, clic = marcher jusqu'à la case.
 
 - **Globe de surface** : glisser avec le bouton gauche pour le faire tourner.
+- **Couche GEOLOGIE** (écran de surface F8, Tab jusqu'à la dernière couche ou clic sur son onglet) : plaques teintées, frontières convergentes (^), divergentes (=) et transformantes (/), volcans actifs (A) et éteints (a), gisements (M veine, H sulfures, K kimberlite, E évaporites, P pétrole, G pegmatite, I glace) ; le panneau de droite donne plaque, roche, frontière, chaleur du sol et gisements à moins de 6 cases du curseur. Fonder une colonie à moins de 12 cases d'un gisement en met le minerai dans son sol.
+- **Carte galactique (L)** : les cercles colorés sont les nébuleuses, amas et régions de formation d'étoiles à portée (rayon réel), le panneau donne le stade de l'étoile choisie, les effets du milieu où l'on est et la distance au trou noir central. Codex (F6) : catégories GEOLOGIE et ASTRONOMIE.
 
 - **Menu de pilotage** (cockpit, à droite) : cliquer un mot ouvre l'écran ou exécute la commande ; les mots « (MAINT.) » agissent tant que le bouton de la souris reste enfoncé. F11 plie ou déplie le menu (Options > Menu de pilotage pour le retirer).
 

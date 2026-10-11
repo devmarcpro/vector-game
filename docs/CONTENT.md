@@ -49,3 +49,9 @@ Mœurs : data/ethos.ron (8 axes, 8 étiquettes morales, 8 profils de faction), g
 
 ## Entreprises
 `data/companies.ron` : id, nom, siège (faction), cours de base, rendement annuel, volatilité, biens (id, poids, total 1), texte.
+
+## Geologie
+`data/geology.ron` : id, nom, groupe (limite, roche, gisement, volcan, erosion, relief), texte, rendements (id de ressource, part, total 1 pour un gisement). Les nombres vivent dans `world/geology.rs` ; chaque id d'un type du code (frontiere, roche, gisement, volcan) a son entree (test), le codex tire ses chiffres d'un monde type genere.
+
+## Astronomie
+`data/cosmos.ron` : id, nom, groupe (etoile, systeme, milieu, galaxie, asteroide), lien (classe d'asteroide de `asteroids.ron`), texte. Chaque stade d'etoile, chaque type d'objet du milieu interstellaire et chaque classe d'asteroide du code a son entree (test).

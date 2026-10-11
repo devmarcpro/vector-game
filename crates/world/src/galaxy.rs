@@ -6,7 +6,7 @@ use vector_core::{hash_coord, Rng};
 /// Sector edge length in light years.
 pub const SECTOR_LY: f64 = 10.0;
 /// The Sun-like reference radius from the galactic centre (ly) and the disc scale length.
-const R_SUN_LY: f64 = 26_000.0;
+pub const R_SUN_LY: f64 = 26_000.0;
 const SCALE_LEN: f64 = 9_000.0;
 const SCALE_HEIGHT: f64 = 300.0;
 const MAX_PER_SECTOR: usize = 40;
@@ -70,6 +70,14 @@ impl Galaxy {
         let theta = z.atan2(x);
         let arms = 1.0 + 0.7 * (2.0 * theta - 4.0 * (r.max(1.0) / 3_000.0).ln()).cos();
         ((disc * arms + bulge) * (1.0 - (r / EDGE_LY).powi(4))).clamp(0.0, MAX_PER_SECTOR as f64)
+    }
+
+    /// How much the spiral arms add at `c` (ly): 0.3 between the arms, 1.7 along them.
+    pub fn arm_strength(c: [f64; 3]) -> f64 {
+        let (x, z) = (c[0] + R_SUN_LY, c[2]);
+        let r = (x * x + z * z).sqrt();
+        let theta = z.atan2(x);
+        1.0 + 0.7 * (2.0 * theta - 4.0 * (r.max(1.0) / 3_000.0).ln()).cos()
     }
 
     fn poisson(rng: &mut Rng, lambda: f64) -> usize {

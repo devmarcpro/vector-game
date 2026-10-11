@@ -2,6 +2,7 @@
 //! temperature and humidity on an equirectangular grid. Nothing is stored: the same seed always
 //! gives the same map. Noise is sampled on the unit sphere, so the map has no seam at the
 //! date line and no stretching at the poles.
+use crate::geology::{self, GeoParams, Geology};
 use crate::PlanetKind;
 use vector_core::hash_coord;
 
@@ -56,6 +57,8 @@ pub struct Surface {
     pub tilt: f32,
     /// Fraction of cells below sea level.
     pub sea_frac: f32,
+    /// Plates, boundaries, rock, volcanoes and ore: the relief above derives from them.
+    pub geo: Geology,
 }
 
 impl Surface {
@@ -98,7 +101,7 @@ fn noise3(seed: u64, x: f64, y: f64, z: f64) -> f64 {
     lerp(lerp(x00, x10, fy), lerp(x01, x11, fy), fz)
 }
 
-fn fbm(seed: u64, p: [f64; 3], octaves: u32) -> f64 {
+pub(crate) fn fbm(seed: u64, p: [f64; 3], octaves: u32) -> f64 {
     let (mut sum, mut amp, mut freq, mut norm) = (0.0, 1.0, 1.0, 0.0);
     for o in 0..octaves {
         sum += amp
@@ -124,6 +127,18 @@ fn sphere(x: usize, y: usize) -> [f64; 3] {
 /// Generate the surface of a body. `seed` identifies the body (system seed mixed with its index),
 /// `temp_eq` is its equilibrium temperature in K. None for gas and ice giants.
 pub fn generate(seed: u64, kind: PlanetKind, temp_eq: f64) -> Option<Surface> {
+    let pressure = match kind {
+        PlanetKind::Barren | PlanetKind::Dwarf => 0.0,
+        PlanetKind::Venusian => 90.0,
+        _ => 1.0,
+    };
+    generate_with(seed, kind, temp_eq, &GeoParams::for_kind(kind, pressure))
+}
+
+/// Same, with what the inside of the body does (its `Activity`), its age and its air: the relief
+/// is built from plates and hot spots (see `geology.rs`) and then eroded for as long as the
+/// system has lived.
+pub fn generate_with(seed: u64, kind: PlanetKind, temp_eq: f64, gp: &GeoParams) -> Option<Surface> {
     let prof = profile(kind)?;
     let scale = 1.6 + 1.4 * prof.rough;
     // Raw relief: continents (low frequency) plus detail, ridged a little for mountain chains.
@@ -138,6 +153,11 @@ pub fn generate(seed: u64, kind: PlanetKind, temp_eq: f64) -> Option<Surface> {
             raw[Surface::idx(x, y)] = base + 0.25 * prof.rough * ridge.max(0.0);
         }
     }
+    let tect = geology::tectonics(seed, prof.water, gp);
+    for (r, t) in raw.iter_mut().zip(&tect.relief) {
+        *r += f64::from(*t) * 1.2;
+    }
+    let mut geo = tect.geo;
     // Sea level: the quantile that puts `water` of the surface under it (area-weighted by cos lat).
     let mut order: Vec<usize> = (0..W * H).collect();
     order.sort_by(|&a, &b| raw[a].total_cmp(&raw[b]));
@@ -171,6 +191,7 @@ pub fn generate(seed: u64, kind: PlanetKind, temp_eq: f64) -> Option<Surface> {
         elev[i] = e as f32;
         sea_cells += usize::from(e < 0.0);
     }
+    geology::erode(&mut elev, &mut geo.sediment, gp, prof.wet);
     // Moisture: how much water lies within a few cells (box blur of the sea mask), wrapped in
     // longitude, scaled by how wet the world is.
     let mut mask = vec![0.0f32; W * H];
@@ -220,6 +241,7 @@ pub fn generate(seed: u64, kind: PlanetKind, temp_eq: f64) -> Option<Surface> {
             temp[i] = t as f32;
         }
     }
+    geology::classify(&mut geo, seed, kind, &elev, &hum, &temp);
     let tilt = (hash_coord(seed, 7, 7, 7) % 10_000) as f64 / 10_000.0 * 0.65 + 0.02;
     Some(Surface {
         elev,
@@ -227,6 +249,7 @@ pub fn generate(seed: u64, kind: PlanetKind, temp_eq: f64) -> Option<Surface> {
         hum,
         tilt: tilt as f32,
         sea_frac: sea_cells as f32 / (W * H) as f32,
+        geo,
     })
 }
 

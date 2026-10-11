@@ -104,7 +104,14 @@ pub fn build_map(
         _ => return None,
     };
     let seed = hash_coord(system.seed, body as i64, 0xB10E, 1);
-    let surface = surface::generate(seed, kind, b.temp)?;
+    // What the inside of the body does (plates, a rigid shell, nothing), how long it has been
+    // doing it and whether there is air to blow on it decide the relief (see `geology.rs`).
+    let gp = vector_world::geology::GeoParams {
+        activity: system.physics(body, 0.0).activity,
+        age_gyr: system.age() / 1.0e9,
+        pressure: b.pressure,
+    };
+    let surface = surface::generate_with(seed, kind, b.temp, &gp)?;
     let mut biome = vec![0u8; W * H];
     for (i, cell) in biome.iter_mut().enumerate() {
         let idx = data.classify_biome(
@@ -313,6 +320,14 @@ impl Sim {
             _ if roll < 0.028 => (CatastropheKind::Drought, cell(5)),
             _ if roll < 0.034 => (CatastropheKind::Blizzard, cell(6)),
             _ => return None,
+        };
+        // Quakes strike the faults of the world and eruptions its active volcanoes (see
+        // `Geology::quake_site`); a world with no plates, or dead, has neither.
+        let geo = &map.surface.geo;
+        let (x, y) = match kind {
+            CatastropheKind::Earthquake => geo.quake_site(h(11))?,
+            CatastropheKind::Eruption => geo.eruption_site(h(12))?,
+            _ => (x, y),
         };
         let i = Surface::idx(x, y);
         let (hum, t, sea) = (
@@ -544,6 +559,65 @@ mod tests {
         let (sl, il) = sim_with(PlanetKind::Lava);
         let ml = sl.planet_map(il).expect("map");
         assert!(count(&sl, &ml) > n);
+    }
+
+    #[test]
+    fn quakes_strike_the_faults_eruptions_the_active_volcanoes_and_a_dead_world_is_quiet() {
+        let (s, i) = sim_with(PlanetKind::Terran);
+        let m = s.planet_map(i).expect("map");
+        let geo = &m.surface.geo;
+        let faults = geo.fault_cells();
+        let volcano_cells: Vec<(usize, usize)> = geo.volcanoes.iter().map(|v| (v.x, v.y)).collect();
+        let (mut quakes, mut eruptions) = (0, 0);
+        for d in 0..20_000 {
+            let Some(c) = s.catastrophe_on(&m, d) else {
+                continue;
+            };
+            match c.kind {
+                CatastropheKind::Earthquake => {
+                    quakes += 1;
+                    assert!(
+                        faults.contains(&(c.x, c.y)) || volcano_cells.contains(&(c.x, c.y)),
+                        "a quake at {:?} is on no fault",
+                        (c.x, c.y)
+                    );
+                }
+                CatastropheKind::Eruption => {
+                    eruptions += 1;
+                    assert!(geo
+                        .volcanoes
+                        .iter()
+                        .any(|v| v.active && (v.x, v.y) == (c.x, c.y)));
+                }
+                _ => {}
+            }
+        }
+        assert!(quakes > 20 && eruptions > 10, "{quakes} {eruptions}");
+        // The same world with its inside dead: no quake, no eruption, ever.
+        let mut dead = m.clone();
+        dead.surface.geo.activity = vector_world::physics::Activity::Dead;
+        dead.surface.geo.volcanoes.clear();
+        for d in 0..20_000 {
+            if let Some(c) = s.catastrophe_on(&dead, d) {
+                assert!(!matches!(
+                    c.kind,
+                    CatastropheKind::Earthquake | CatastropheKind::Eruption
+                ));
+            }
+        }
+    }
+
+    #[test]
+    fn the_relief_of_a_world_follows_what_its_inside_does() {
+        // The same system, one world: its map is built with its Activity and the age of its star.
+        let (s, i) = sim_with(PlanetKind::Terran);
+        let m = s.planet_map(i).expect("map");
+        let ph = s.system.physics(i, 0.0);
+        assert_eq!(m.surface.geo.activity, ph.activity);
+        assert!((f64::from(m.surface.geo.age_gyr) - s.system.age() / 1.0e9).abs() < 1e-3);
+        let (sb, ib) = sim_with(PlanetKind::Barren);
+        let mb = sb.planet_map(ib).expect("map");
+        assert_eq!(mb.surface.geo.activity, sb.system.physics(ib, 0.0).activity);
     }
 
     #[test]

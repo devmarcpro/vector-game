@@ -9,13 +9,14 @@ use vector_render::Framebuffer;
 use vector_sim::planet::{PlanetMap, Weather};
 use vector_world::surface::{Surface, H, W};
 
-pub const LAYERS: [&str; 6] = [
+pub const LAYERS: [&str; 7] = [
     "BIOMES",
     "ALTITUDE",
     "TEMPERATURE",
     "HUMIDITE",
     "METEO",
     "VIE",
+    "GEOLOGIE",
 ];
 
 /// Metres per unit of relative elevation (peaks and trenches of a living world).
@@ -119,8 +120,61 @@ fn cell(g: &Game, map: &PlanetMap, x: usize, y: usize) -> (char, u32) {
         2 => ('#', temp_color(g.sim.temp_now(map, x, y))),
         3 => ('#', hum_color(f64::from(s.hum[i]))),
         4 => weather_glyph(g.sim.weather_at(map, x, y).0),
-        _ => ('#', life_color(g, map.biome_at(x, y))),
+        5 => ('#', life_color(g, map.biome_at(x, y))),
+        _ => geology_cell(map, x, y),
     }
+}
+
+/// Volcano, ore body, plate boundary or rock of a cell, in that order of importance; the tint of
+/// the ground is that of its plate.
+fn geology_cell(map: &PlanetMap, x: usize, y: usize) -> (char, u32) {
+    use vector_world::geology::{Boundary, DepositKind, Rock};
+    let geo = &map.surface.geo;
+    if let Some(v) = geo.volcanoes.iter().find(|v| v.x == x && v.y == y) {
+        return if v.active {
+            ('A', 0x00FF_5020)
+        } else {
+            ('a', 0x0090_5030)
+        };
+    }
+    if let Some(d) = geo.deposits.iter().find(|d| d.x == x && d.y == y) {
+        let ch = match d.kind {
+            DepositKind::MetalVein => 'M',
+            DepositKind::Hydrothermal => 'H',
+            DepositKind::Kimberlite => 'K',
+            DepositKind::Evaporite => 'E',
+            DepositKind::Petroleum => 'P',
+            DepositKind::Pegmatite => 'G',
+            DepositKind::IceField => 'I',
+        };
+        return (ch, 0x00FF_E060);
+    }
+    match geo.boundary_at(x, y) {
+        Some(Boundary::Convergent) => return ('^', 0x00FF_6060),
+        Some(Boundary::Divergent) => return ('=', 0x0060_E0FF),
+        Some(Boundary::Transform) => return ('/', 0x00E0_E060),
+        None => {}
+    }
+    let ch = match geo.rock_at(x, y) {
+        Rock::Igneous => '.',
+        Rock::Sedimentary => ':',
+        Rock::Metamorphic => '%',
+    };
+    // A dim colour per plate, lighter on land than under the sea.
+    let p = geo.plate_at(x, y) as u32;
+    let base = [
+        0x0040_6080u32,
+        0x0060_8040,
+        0x0080_5060,
+        0x0070_7040,
+        0x0040_7070,
+        0x0070_5090,
+    ];
+    let c = base[(p as usize) % base.len()];
+    let sea = map.surface.is_sea(x, y);
+    let k = if sea { 0.55 } else { 1.0 };
+    let ch2 = |s: u32| (((c >> s) & 0xFF) as f32 * k) as u32;
+    (ch, (ch2(16) << 16) | (ch2(8) << 8) | ch2(0))
 }
 
 /// Density of living biomass of a biome (kg per km2), on a log scale from dead rock to jungle.
@@ -380,6 +434,67 @@ fn draw_panel(fb: &mut Framebuffer, g: &Game, map: &PlanetMap, col: usize, row: 
         },
         GREEN,
     );
+    {
+        use vector_world::geology::Boundary;
+        let geo = &map.surface.geo;
+        let plate = &geo.plates[geo.plate_at(cx, cy)];
+        line(
+            fb,
+            format!(
+                "PLAQUE {} ({})",
+                geo.plate_at(cx, cy) + 1,
+                if plate.oceanic {
+                    "OCEANIQUE"
+                } else {
+                    "CONTINENTALE"
+                }
+            ),
+            GREEN,
+        );
+        line(
+            fb,
+            format!(
+                "ROCHE {}",
+                match geo.rock_at(cx, cy) {
+                    vector_world::geology::Rock::Igneous => "IGNEE",
+                    vector_world::geology::Rock::Sedimentary => "SEDIMENTAIRE",
+                    vector_world::geology::Rock::Metamorphic => "METAMORPHIQUE",
+                }
+            ),
+            GREEN,
+        );
+        if let Some(b) = geo.boundary_at(cx, cy) {
+            line(
+                fb,
+                format!(
+                    "FRONTIERE {}",
+                    match b {
+                        Boundary::Convergent => "CONVERGENTE (MONTAGNES, FOSSES, VOLCANS)",
+                        Boundary::Divergent => "DIVERGENTE (DORSALE, RIFT)",
+                        Boundary::Transform => "TRANSFORMANTE (FAILLE, SEISMES)",
+                    }
+                ),
+                AMBER,
+            );
+        }
+        line(
+            fb,
+            format!("CHALEUR DU SOL {:.0} %", geo.heat_at(cx, cy) * 100.0),
+            GREEN,
+        );
+        for d in geo.deposits_near((cx, cy), 6.0).iter().take(2) {
+            let name = g
+                .data
+                .geo_def(d.kind.id())
+                .map_or(d.kind.id(), |def| def.name.as_str())
+                .to_uppercase();
+            line(
+                fb,
+                format!("GISEMENT : {name} ({:.0} %)", d.richness * 100.0),
+                0x00FF_E060,
+            );
+        }
+    }
     let (tm, tn) = (f64::from(map.surface.temp[i]), sim.temp_now(map, cx, cy));
     line(
         fb,

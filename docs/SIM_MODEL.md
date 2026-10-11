@@ -168,3 +168,48 @@ Tout est derive (rien n'est stocke, meme graine = memes nombres) et une seule fo
 - Interieur : fraction du noyau selon la densite, flux de chaleur ~ R / age (+ chauffage de maree selon
   l'excentricite), activite (inerte, couvercle fige, plaques, volcanique, fluide), champ magnetique
   (dynamo : noyau fluide + rotation + taille).
+
+## Geologie et tectonique (`world/geology.rs`)
+
+- Plaques : points aleatoires de la sphere, deformes par un bruit avant le calcul de la plus proche (les
+  frontieres ne sont pas des droites). Vitesse du sol en un point p : pole x p. Soit n la direction de la
+  plaque A vers la plaque B au point p, `v_rel = v_A - v_B` : fermeture = v_rel . n (> 0 : convergence),
+  cisaillement = v_rel . (p x n) ; frontiere transformante si |cisaillement| > 1,2 |fermeture|.
+- Proximite d'une frontiere : s = exp(-(ecart/w)^2) avec ecart = angle(2e plaque) - angle(1re) et
+  w = 0,16 rad (0,12 sur un monde volcanique) ; amplitude = min(1, |fermeture|/0,6) x s.
+- Relief : decalage de croute (continentale +0,30, oceanique -0,35) lisse a la frontiere, convergence
+  continent-continent +1,0 m, continent-ocean +1,0 cote continent et -0,9 cote ocean (fosse), ocean-ocean
+  fosse -0,9 / arc +0,5, divergence ocean +0,35 (dorsale) ou continent -0,5 (rift), poids selon l'activite
+  (plaques 1, volcanique 0,7, couvercle fige 0,5 hors points chauds, mort 0).
+- Points chauds : une chaine de 6 bosses gaussiennes (hauteur x0,7 a chaque pas) decalees le long de la
+  derive de la plaque (rotation autour de son pole), la premiere est active ; un monde a une seule plaque
+  n'a qu'une grosse bosse (Olympus Mons).
+- Erosion : age_rel = min(age/4,5 Gyr, 2) ; hydraulique h = humidite x age_rel (une part 0,12 h de la
+  pente est enlevee de la case et 80 % deposee en aval, en sediment), eolienne (1 - humidite) x air x
+  age_rel (lissage 0,08), glaciaire au-dela de 0,9 rad de latitude (lissage 0,12) ; 2 + 6 age_rel tours.
+- Chaleur du sol (geothermie) = base (volcanique 0,7, plaques 0,35, couvercle 0,12, autre 0,02) + 0,5
+  proximite de frontiere convergente/divergente + 0,8 proximite (5 cases) d'un volcan actif ; une
+  centrale geothermique produit x2 (>= 0,8), x1,2 (>= 0,4), x0,4 (< 0,2), x1 pour une ancienne colonie.
+- Gisements : score par case selon la geologie (voir `classify`), meilleurs sites espaces d'au moins 5 a
+  12 cases ; richesse 0,2-1. Une colonie fondee a moins de 12 cases d'un gisement ajoute au sol
+  `0,04 x part x richesse x (1 - 0,5 distance/12)` d'abondance relative pour chaque ressource qu'il rend.
+
+## Astronomie (`world/stellar.rs`, `cosmos.rs`)
+
+- Stades : sequence principale, geante rouge (R 10-70 R_sol, T 3500-4500 K), supergeante (R 100-500,
+  T 3300-4200 K), naine blanche (R 0,0125), etoile a neutrons (12 km, 1,2-2,2 M_sol), trou noir (horizon
+  2 G M / c^2 = 2,95 km par M_sol, 5-30 M_sol), monde errant (0,1 R_sol, 0,0005-0,012 M_sol).
+- Variabilite : L(t) = L (1 + a sin(2 pi t / P + phase)) ; geante : P 150-450 j, a 25-60 % ; supergeante
+  P 5-60 j, a 10-30 %.
+- Rayonnement stellaire (Gy/h) : pulsar 0,3 (UA/r)^2 (magnetar x20), trou noir a disque 0,15 (UA/r)^2, plafonne a r = 0,01 UA.
+- Lentille : foyer r_f = 1e10 G M / c^2 (b = 1e5 horizons) ; gain des capteurs 1 + 2 exp(-((r - r_f)/0,3 r_f)^2).
+- Anneaux : de 1,25 R a min(2,44 R (rho_planete/920)^(1/3), 0,9 a_premiere_lune) ; 10 blocs de glace/silicates.
+- Comete : e 0,85-0,97, perihelie >= 0,25 UA sqrt(L) ; queue dirigee de l'etoile vers l'exterieur, de longueur
+  6e9 m (reach/4r)^2 (plafond 4e10 m), nulle au-dela de 4 UA sqrt(L) ; plasma : 4 degats/s sur l'axe, 3e5 m de large.
+- Compagnons : au moins 8 fois la derniere planete et 30 UA ; masse 0,1 a 1 fois celle de l'etoile principale.
+- Milieu : un objet au plus par cellule de 40 al, probabilite 0,012 (0,3 + densite d'etoiles) ; rayon, dose,
+  opacite, interet par type (`FeatureKind`) ; dose au carre de la profondeur, capteurs 1 - opacite sqrt(profondeur).
+- Noyau galactique : 4,3e6 M_sol, dose 5 Gy/h a 1000 al, carre inverse, nulle au-dela de 3000 al.
+- Ondes gravitationnelles : un evenement par jour avec la probabilite 0,2, dans un disque exponentiel (echelle
+  9000 al) autour du noyau ; deformation h = 1e-21 (M_chirp/28)^(5/3) x 1,34e9 al / d ; entendu au-dessus de 1e-16 ;
+  points de recherche 15 sqrt(h/seuil) (max 150, x1,5 pour une kilonova).

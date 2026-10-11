@@ -10,10 +10,7 @@ use vector_world::{generate_system, BodyKind};
 fn good_home(seed: u64) -> bool {
     let sys = generate_system(seed);
     sys.bodies.iter().any(|b| b.kind == BodyKind::Station)
-        && sys
-            .bodies
-            .iter()
-            .any(|b| matches!(b.kind, BodyKind::Asteroid(_)))
+        && !sys.belts.is_empty()
         && sys
             .bodies
             .iter()

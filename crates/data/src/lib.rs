@@ -587,6 +587,33 @@ pub struct Material {
     pub text: String,
 }
 
+/// An entry of the geology of the solid worlds (see `data/geology.ron`): a kind of plate
+/// boundary, rock, ore body, volcano, erosion or landform. The numbers live in
+/// `vector_world::geology`; the data names them and says what an ore body yields.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct GeoDef {
+    pub id: String,
+    pub name: String,
+    /// limite, roche, gisement, volcan, erosion or relief.
+    pub group: String,
+    pub text: String,
+    /// What an ore body gives: (resource id, share), adding up to 1.
+    pub yields: Vec<(String, f64)>,
+}
+
+/// An entry of astronomy (see `data/cosmos.ron`): a stage of a star, an object of a system, of
+/// the interstellar medium or of the galaxy, or a family of asteroids.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct CosmosDef {
+    pub id: String,
+    pub name: String,
+    /// etoile, systeme, milieu, galaxie or asteroide.
+    pub group: String,
+    /// For asteroids: the class of `asteroids.ron` whose composition the codex shows.
+    pub link: String,
+    pub text: String,
+}
+
 /// A place explorable on foot (see `data/rogue_themes.ron`).
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct RogueTheme {
@@ -799,6 +826,8 @@ pub struct GameData {
     pub rogue_themes: Vec<RogueTheme>,
     pub materials: Vec<Material>,
     pub companies: Vec<Company>,
+    pub geology: Vec<GeoDef>,
+    pub cosmos: Vec<CosmosDef>,
 }
 
 fn read<T: for<'a> Deserialize<'a>>(path: &Path) -> Result<T, DataError> {
@@ -845,6 +874,8 @@ impl GameData {
             rogue_themes: read(&dir.join("rogue_themes.ron"))?,
             materials: read(&dir.join("materials.ron"))?,
             companies: read(&dir.join("companies.ron"))?,
+            geology: read(&dir.join("geology.ron"))?,
+            cosmos: read(&dir.join("cosmos.ron"))?,
         };
         // Generated extension files (tools/gen_scale.py) extend the hand-written tables.
         let mut extra_resources: Vec<Resource> = read(&dir.join("resources_organs.ron"))?;
@@ -1274,6 +1305,7 @@ impl GameData {
         self.validate_cartels()?;
         self.validate_dimensions()?;
         self.validate_materials()?;
+        self.validate_geology()?;
         self.validate_rogue()?;
         self.validate_companies()
     }
@@ -1315,6 +1347,67 @@ impl GameData {
     /// Beliefs: unique ids, sane ranges, and every possible faith has at least one belief.
     pub fn rogue_monster_index(&self, id: &str) -> Option<usize> {
         self.rogue_monsters.iter().position(|m| m.id == id)
+    }
+
+    pub fn geo_def(&self, id: &str) -> Option<&GeoDef> {
+        self.geology.iter().find(|g| g.id == id)
+    }
+
+    pub fn cosmos_def(&self, id: &str) -> Option<&CosmosDef> {
+        self.cosmos.iter().find(|g| g.id == id)
+    }
+
+    /// Geology and astronomy: unique ids, known groups, text; ore bodies yield known resources
+    /// in shares that add up to one; asteroid entries name a class that exists.
+    fn validate_geology(&self) -> Result<(), DataError> {
+        let bad = |s: String| Err(DataError::Invalid(s));
+        let mut seen = std::collections::HashSet::new();
+        for g in &self.geology {
+            if !seen.insert(g.id.as_str()) {
+                return bad(format!("geologie {} en double", g.id));
+            }
+            if !["limite", "roche", "gisement", "volcan", "erosion", "relief"]
+                .contains(&g.group.as_str())
+                || g.text.len() < 20
+            {
+                return bad(format!("geologie {}: groupe ou texte invalide", g.id));
+            }
+            let total: f64 = g.yields.iter().map(|(_, s)| s).sum();
+            if g.group == "gisement" && (total - 1.0).abs() > 0.01 {
+                return bad(format!("gisement {}: parts = {total}", g.id));
+            }
+            if g.group != "gisement" && !g.yields.is_empty() {
+                return bad(format!(
+                    "geologie {}: seul un gisement donne des ressources",
+                    g.id
+                ));
+            }
+            for (r, s) in &g.yields {
+                if self.resource_index(r).is_none() || *s <= 0.0 {
+                    return bad(format!(
+                        "gisement {}: ressource {r} inconnue ou part nulle",
+                        g.id
+                    ));
+                }
+            }
+        }
+        let mut seen = std::collections::HashSet::new();
+        for c in &self.cosmos {
+            if !seen.insert(c.id.as_str()) {
+                return bad(format!("astronomie {} en double", c.id));
+            }
+            if !["etoile", "systeme", "milieu", "galaxie", "asteroide"].contains(&c.group.as_str())
+                || c.text.len() < 20
+            {
+                return bad(format!("astronomie {}: groupe ou texte invalide", c.id));
+            }
+            if (c.group == "asteroide") != !c.link.is_empty()
+                || (!c.link.is_empty() && self.asteroids.iter().all(|a| a.id != c.link))
+            {
+                return bad(format!("astronomie {}: classe d'asteroide invalide", c.id));
+            }
+        }
+        Ok(())
     }
 
     pub fn material_index(&self, id: &str) -> Option<usize> {
@@ -2309,6 +2402,46 @@ mod tests {
             d.unlocking_tech("module", "fusion_mk1").is_none(),
             "tier 1 is free"
         );
+    }
+
+    #[test]
+    fn geology_and_astronomy_are_validated() {
+        let ok = GameData::load(&dir()).expect("data loads");
+        assert!(ok.geology.len() >= 20 && ok.cosmos.len() >= 25);
+        let mut d = ok.clone();
+        d.geology.push(d.geology[0].clone());
+        assert!(d.validate().is_err(), "duplicate id");
+        let mut d = ok.clone();
+        let k = d
+            .geology
+            .iter()
+            .position(|g| g.group == "gisement")
+            .expect("deposit");
+        d.geology[k].yields[0].1 += 0.3;
+        assert!(
+            d.validate().is_err(),
+            "a deposit yields in shares that add up to one"
+        );
+        let mut d = ok.clone();
+        d.geology[k].yields[0].0 = "unobtainium".into();
+        assert!(d.validate().is_err(), "unknown resource");
+        let mut d = ok.clone();
+        d.geology[0].yields.push(("iron".into(), 1.0));
+        assert!(d.validate().is_err(), "only an ore body yields");
+        let mut d = ok.clone();
+        d.geology[0].group = "magie".into();
+        assert!(d.validate().is_err(), "unknown group");
+        let mut d = ok.clone();
+        let a = d
+            .cosmos
+            .iter()
+            .position(|c| c.group == "asteroide")
+            .expect("asteroid");
+        d.cosmos[a].link = "Z".into();
+        assert!(d.validate().is_err(), "unknown asteroid class");
+        let mut d = ok;
+        d.cosmos[0].link = "C".into();
+        assert!(d.validate().is_err(), "only an asteroid entry has a class");
     }
 
     #[test]

@@ -16,6 +16,9 @@ const STAKES: [f64; 6] = [10.0, 50.0, 100.0, 500.0, 1000.0, 5000.0];
 #[derive(Default)]
 pub struct FarmUi {
     pub animal: usize,
+    /// The livestock screen of a station's dealer (buy and sell) or of the ship's pens (breed
+    /// and slaughter): animals are kept aboard, bought and sold at stations.
+    pub dealer: bool,
     pub species: usize,
     pub game: usize,
     pub number: u32,
@@ -68,6 +71,16 @@ impl Game {
                 self.farm.species = (self.farm.species + 1) % list.len();
                 return;
             }
+            KeyCode::KeyB | KeyCode::KeyS if !self.farm.dealer => {
+                Err("ACHAT ET VENTE CHEZ UN ELEVEUR, DANS UNE STATION")
+            }
+            KeyCode::KeyP | KeyCode::KeyH if self.farm.dealer => {
+                Err("LES ENCLOS SONT A BORD DE VOTRE VAISSEAU")
+            }
+            KeyCode::KeyS => self
+                .sim
+                .sell_animal(self.farm.animal)
+                .map(|c| format!("ANIMAL VENDU POUR {c:.0} CR")),
             KeyCode::KeyB if !list.is_empty() => {
                 let s = list[self.farm.species % list.len()];
                 self.sim
@@ -149,7 +162,17 @@ fn word(
 
 pub fn draw_livestock(fb: &mut Framebuffer, g: &Game) {
     let s = &g.sim;
-    fb.text(1, 1, "== ELEVAGE ==", AMBER);
+    let dealer = g.farm.dealer;
+    fb.text(
+        1,
+        1,
+        if dealer {
+            "== MARCHE AUX BETES (STATION) =="
+        } else {
+            "== ENCLOS DU VAISSEAU =="
+        },
+        AMBER,
+    );
     fb.text(
         20,
         1,
@@ -165,7 +188,7 @@ pub fn draw_livestock(fb: &mut Framebuffer, g: &Game) {
         DIM,
     );
     let list = s.domestic_species();
-    if let Some(&sp) = list.get(g.farm.species % list.len().max(1)) {
+    if let (true, Some(&sp)) = (dealer, list.get(g.farm.species % list.len().max(1))) {
         fb.text(
             1,
             3,
@@ -237,16 +260,20 @@ pub fn draw_livestock(fb: &mut Framebuffer, g: &Game) {
     }
     let row = 6 + vector_sim::livestock::HERD_MAX + 1;
     let mut x = 1;
-    x = word(fb, g, x, row, "[B] ACHETER", KeyCode::KeyB);
-    x = word(
-        fb,
-        g,
-        x,
-        row,
-        "[P] REPRODUIRE (MEILLEUR PARTENAIRE)",
-        KeyCode::KeyP,
-    );
-    word(fb, g, x, row, "[H] ABATTRE", KeyCode::KeyH);
+    if dealer {
+        x = word(fb, g, x, row, "[B] ACHETER L'ESPECE CHOISIE", KeyCode::KeyB);
+        word(fb, g, x, row, "[S] VENDRE L'ANIMAL CHOISI", KeyCode::KeyS);
+    } else {
+        x = word(
+            fb,
+            g,
+            x,
+            row,
+            "[P] REPRODUIRE (MEILLEUR PARTENAIRE)",
+            KeyCode::KeyP,
+        );
+        word(fb, g, x, row, "[H] ABATTRE", KeyCode::KeyH);
+    }
     fb.text(
         1,
         row + 2,

@@ -157,6 +157,17 @@ impl Sim {
         Ok(price)
     }
 
+    /// Sell animal `i` to the dealer of the station (less than a new one costs: he must live).
+    pub fn sell_animal(&mut self, i: usize) -> Result<f64, &'static str> {
+        self.docked
+            .ok_or("non amarre : l'eleveur est a la station")?;
+        let a = self.herd.get(i).ok_or("animal inconnu")?;
+        let pay = self.animal_price(a.species) * (0.35 + 0.4 * a.quality());
+        self.herd.remove(i);
+        self.credits += pay;
+        Ok(pay)
+    }
+
     /// Whether animal `i` could breed with animal `j`.
     pub fn can_breed(&self, i: usize, j: usize) -> Result<(), &'static str> {
         let (Some(a), Some(b)) = (self.herd.get(i), self.herd.get(j)) else {
@@ -326,6 +337,30 @@ mod tests {
         s.undock();
         s.herd.pop();
         assert!(s.buy_animal(list[0]).is_err(), "no dealer in space");
+    }
+
+    #[test]
+    fn the_dealer_buys_animals_for_less_than_he_sells_them() {
+        let mut s = docked();
+        let sp = s.domestic_species()[0];
+        let price = s.buy_animal(sp).unwrap();
+        let c = s.credits;
+        let got = s.sell_animal(0).expect("sold");
+        assert!(got > 0.0 && got < price, "{got} vs {price}");
+        assert_eq!(s.credits, c + got);
+        assert!(s.herd.is_empty());
+        assert!(s.sell_animal(0).is_err());
+        s.undock();
+        s.herd.push(crate::livestock::Animal {
+            species: sp,
+            male: true,
+            born: 0.0,
+            genes: [[2; 2]; 4],
+            hunger: 0.0,
+            last_birth: f64::MIN,
+            gen: 0,
+        });
+        assert!(s.sell_animal(0).is_err(), "no dealer in space");
     }
 
     #[test]

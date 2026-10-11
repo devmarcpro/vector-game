@@ -6,10 +6,11 @@
 use crate::game::{Game, Screen};
 use crate::hud::{AMBER, DIM, GREEN};
 use crate::mouse::Act;
+use vector_data::ROGUE_TERMINALS;
 use vector_render::Framebuffer;
 use vector_sim::rogue::{
-    Rogue, TargetKind, MAX_PARTY, T_DOWN, T_FEATURE, T_FLOOR, T_SITE, T_UP, T_WALL, T_WATER,
-    VIEW_RADIUS,
+    Rogue, TargetKind, MAX_PARTY, T_DOWN, T_FEATURE, T_FLOOR, T_SITE, T_TERMINAL, T_UP, T_WALL,
+    T_WATER, VIEW_RADIUS,
 };
 use winit::keyboard::KeyCode;
 
@@ -145,7 +146,15 @@ impl Game {
             return;
         }
         let res = match code {
-            KeyCode::Enter => self.sim.rogue_stairs(),
+            KeyCode::Enter => {
+                let res = self.sim.rogue_stairs();
+                // A terminal under the squad: open its screen.
+                if let Some(i) = self.sim.rogue.as_mut().and_then(|r| r.terminal.take()) {
+                    self.open_terminal(i);
+                    return;
+                }
+                res
+            }
             KeyCode::KeyR => self.sim.rogue_recall(),
             KeyCode::KeyV => self
                 .sim
@@ -216,6 +225,8 @@ fn draw_choose(fb: &mut Framebuffer, g: &Game) {
         let th = &s.data.rogue_themes[t.theme];
         let what = match t.kind {
             TargetKind::Landing(_) => "SURFACE".to_string(),
+            TargetKind::Ship => "SALLES ET EQUIPAGE".to_string(),
+            TargetKind::Place if !th.social.is_empty() => "SERVICES ET PASSANTS".to_string(),
             TargetKind::Place => format!("{} ETAGES", th.floors),
         };
         fb.text(
@@ -322,6 +333,7 @@ fn draw_run(fb: &mut Framebuffer, g: &Game, r: &Rogue) {
             }
             let lit = vis[i];
             let t = f.tiles[i];
+            let glyph: String;
             let (ch, col) = match t {
                 T_WALL => ("#", if lit { WALL } else { FAR }),
                 T_FLOOR => (".", if lit { GREEN } else { FAR }),
@@ -335,6 +347,16 @@ fn draw_run(fb: &mut Framebuffer, g: &Game, r: &Rogue) {
                     }
                     None => ("?", AMBER),
                 },
+                t if t >= T_TERMINAL => {
+                    let k = (t - T_TERMINAL) as usize;
+                    match ROGUE_TERMINALS.get(k) {
+                        Some(def) => {
+                            glyph = def.2.to_string();
+                            (glyph.as_str(), if lit { AMBER } else { FAR })
+                        }
+                        None => ("?", AMBER),
+                    }
+                }
                 t if t >= T_FEATURE => {
                     let (c, col) = feature_glyph((t - T_FEATURE) as usize);
                     (c, if lit { col } else { FAR })
@@ -364,6 +386,8 @@ fn draw_run(fb: &mut Framebuffer, g: &Game, r: &Rogue) {
                 &m.glyph.to_string(),
                 if m.boss {
                     0x00FF_40FF
+                } else if m.friendly {
+                    0x0060_E0E0
                 } else if !m.hunts {
                     0x0090_D090
                 } else if m.awake {
@@ -411,7 +435,11 @@ fn draw_run(fb: &mut Framebuffer, g: &Game, r: &Rogue) {
             },
         );
     }
-    fb.text(sx, 9, &format!("TOUR {}   TUES {}", r.turn, r.kills), DIM);
+    if r.social {
+        fb.text(sx, 9, &format!("TOUR {}", r.turn), DIM);
+    } else {
+        fb.text(sx, 9, &format!("TOUR {}   TUES {}", r.turn, r.kills), DIM);
+    }
     if r.buff > 0 {
         fb.text(sx, 10, &format!("BENEDICTION {} TOURS", r.buff), UP);
     }
@@ -428,26 +456,28 @@ fn draw_run(fb: &mut Framebuffer, g: &Game, r: &Rogue) {
         .iter()
         .filter(|&&i| s.crew.members[i].health > 0.0)
         .count();
-    fb.text(
-        sx,
-        14,
-        &format!("PORTE {:.0}/{:.0} KG", r.loot_mass(), r.carry_cap(up_n)),
-        AMBER,
-    );
-    for (k, (res, kg)) in r.loot.iter().take(8).enumerate() {
+    if !r.social {
         fb.text(
             sx,
-            15 + k,
-            &format!(
-                "{:<14.14} {:>6.1} KG",
-                s.data.resources[*res].name.to_uppercase(),
-                kg
-            ),
-            GREEN,
+            14,
+            &format!("PORTE {:.0}/{:.0} KG", r.loot_mass(), r.carry_cap(up_n)),
+            AMBER,
         );
-    }
-    if r.loot.is_empty() {
-        fb.text(sx, 15, "RIEN", DIM);
+        for (k, (res, kg)) in r.loot.iter().take(8).enumerate() {
+            fb.text(
+                sx,
+                15 + k,
+                &format!(
+                    "{:<14.14} {:>6.1} KG",
+                    s.data.resources[*res].name.to_uppercase(),
+                    kg
+                ),
+                GREEN,
+            );
+        }
+        if r.loot.is_empty() {
+            fb.text(sx, 15, "RIEN", DIM);
+        }
     }
     fb.text(sx, 24, "COMMANDES", AMBER);
     let mut y = 25;
@@ -468,6 +498,27 @@ fn draw_run(fb: &mut Framebuffer, g: &Game, r: &Rogue) {
     fb.text(sx, y + 2, "CLIC : MARCHER JUSQU'A LA CASE", DIM);
     fb.text(sx, y + 3, "FONCER SUR UN MONSTRE = ATTAQUER", DIM);
     fb.text(sx, y + 4, &format!("VUE : {VIEW_RADIUS} CASES"), DIM);
+    // The terminals seen on this floor, and the one under the squad.
+    if r.social {
+        let mut seen: Vec<(usize, bool)> = Vec::new();
+        for (i, t) in f.tiles.iter().enumerate() {
+            if *t >= T_TERMINAL && f.seen[i] {
+                seen.push(((*t - T_TERMINAL) as usize, i == r.idx(r.x, r.y)));
+            }
+        }
+        seen.sort_unstable();
+        fb.text(sx, y + 6, "BORNES (ENTREE SUR UNE BORNE)", AMBER);
+        for (k, (t, here)) in seen.iter().take(14).enumerate() {
+            if let Some(def) = ROGUE_TERMINALS.get(*t) {
+                fb.text(
+                    sx,
+                    y + 7 + k,
+                    &format!("{}  {}", def.2, def.1),
+                    if *here { WHITE } else { GREEN },
+                );
+            }
+        }
+    }
     // Log.
     let log_row = ((OY + r.h.min(VIEW_ROWS) as i32 * TILE_H) / 10 + 1) as usize;
     for (k, line) in r.log.iter().rev().take(5).enumerate() {

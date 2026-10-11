@@ -525,6 +525,30 @@ pub const ROGUE_FEATURES: [&str; 9] = [
     "terminal", "medbay", "cache", "altar", "mutagen", "fountain", "trap", "portal", "vault",
 ];
 
+/// The terminals of the social places (stations, colonies, the ship): id, label, glyph. Stepping
+/// on one and pressing Enter opens the screen of the same name.
+pub const ROGUE_TERMINALS: [(&str, &str, char); 19] = [
+    ("marche", "MARCHE", '$'),
+    ("chantier", "CHANTIER NAVAL", 'Y'),
+    ("banque", "BANQUE", 'B'),
+    ("bourse", "BOURSE", 'T'),
+    ("courtage", "COURTAGE", 'D'),
+    ("contrats", "CONTRATS", 'C'),
+    ("recrutement", "RECRUTEMENT", 'R'),
+    ("elevage", "ENCLOS DU VAISSEAU", 'L'),
+    ("eleveur", "MARCHE AUX BETES", 'V'),
+    ("casino", "CASINO", 'A'),
+    ("infirmerie", "INFIRMERIE", '+'),
+    ("equipage", "EQUIPAGE", 'K'),
+    ("soute", "SOUTE", 'I'),
+    ("pont", "PONT DE COMMANDE", 'P'),
+    ("ingenierie", "INGENIERIE", 'H'),
+    ("science", "LABORATOIRE", 'F'),
+    ("carte", "CARTE GALACTIQUE", 'G'),
+    ("gestion", "GESTION DE LA COLONIE", 'E'),
+    ("temps", "ANCRES TEMPORELLES", '0'),
+];
+
 /// A creature or machine of the roguelike exploration (see `data/rogue_monsters.ron`).
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct RogueMonster {
@@ -554,6 +578,12 @@ pub struct RogueTheme {
     pub hazard: f64,
     pub hazard_name: String,
     pub text: String,
+    /// Social places only (stations, colonies): the terminals found in the rooms, and what the
+    /// people met there say.
+    #[serde(default)]
+    pub social: Vec<String>,
+    #[serde(default)]
+    pub lines: Vec<String>,
 }
 
 /// A dimension behind a portal (see `data/dimensions.ron`).
@@ -1309,6 +1339,20 @@ impl GameData {
                     return bad(format!("lieu {}: element {f} inconnu", t.id));
                 }
             }
+            for f in &t.social {
+                if !ROGUE_TERMINALS.iter().any(|x| x.0 == f) {
+                    return bad(format!("lieu {}: borne {f} inconnue", t.id));
+                }
+                if t.rooms.0 <= t.social.len() {
+                    return bad(format!(
+                        "lieu {}: pas assez de salles pour les bornes",
+                        t.id
+                    ));
+                }
+            }
+            if (!t.social.is_empty() || t.id == "vaisseau") && t.lines.len() < 3 {
+                return bad(format!("lieu {}: lieu social sans repliques", t.id));
+            }
         }
         for needed in [
             "station",
@@ -1327,6 +1371,7 @@ impl GameData {
             "reacteur",
             "laboratoire",
             "surface",
+            "vaisseau",
         ] {
             if self.rogue_theme_index(needed).is_none() {
                 return bad(format!("lieu {needed} manquant"));
@@ -2190,6 +2235,19 @@ mod tests {
     #[test]
     fn rogue_content_is_validated() {
         let ok = GameData::load(&dir()).expect("data loads");
+        assert!(
+            ok.rogue_themes
+                .iter()
+                .any(|t| t.id == "station" && t.social.len() >= 8),
+            "the station is a social place with many terminals"
+        );
+        let mut d = ok.clone();
+        d.rogue_themes[0].social.push("piscine".into());
+        assert!(d.validate().is_err(), "unknown terminal");
+        let mut d = ok.clone();
+        let st = d.rogue_theme_index("station").unwrap();
+        d.rogue_themes[st].lines.clear();
+        assert!(d.validate().is_err(), "a social place talks");
         assert!(ok.rogue_themes.len() >= 15 && ok.rogue_monsters.len() >= 15);
         let mut d = ok.clone();
         d.rogue_themes[0].monsters.push(("dragon".into(), 1.0));

@@ -275,6 +275,54 @@ fn snapshot(path: &str, scene: &str, data: Arc<GameData>) {
             g.open_dialogue();
             g.dlg_sel = 1;
         }
+        "visit_ship" | "visit_station" => {
+            let d = Arc::clone(&g.data);
+            for k in 0..4 {
+                let p = vector_sim::crew::generate_person(&d, 700 + k, None);
+                g.sim.crew.hire(&d, p, 1, 0.0);
+            }
+            g.sim.crew.members[2].hunger = 0.9;
+            let station = scene == "visit_station";
+            if station {
+                let (st, _) = g.sim.nearest_station().expect("station");
+                g.sim.spawn_near(st, g.sim.bodies[st].radius + 200.0);
+                g.sim.try_dock().expect("dock");
+            }
+            let i = g
+                .sim
+                .rogue_targets()
+                .iter()
+                .position(|t| {
+                    if station {
+                        g.data.rogue_themes[t.theme].id == "station"
+                    } else {
+                        t.kind == vector_sim::rogue::TargetKind::Ship
+                    }
+                })
+                .expect("a place");
+            g.sim.rogue_enter(i, vec![]).expect("goes");
+            for _ in 0..12 {
+                let target = {
+                    let r = g.sim.rogue.as_ref().expect("a run");
+                    let mut best = (r.x, r.y);
+                    let mut d = 0;
+                    for y in 0..r.h as i32 {
+                        for x in 0..r.w as i32 {
+                            if r.floor().seen[r.idx(x, y)] && r.walkable(x, y) {
+                                let dd = (x - r.x).abs().max((y - r.y).abs());
+                                if dd > d {
+                                    d = dd;
+                                    best = (x, y);
+                                }
+                            }
+                        }
+                    }
+                    best
+                };
+                let _ = g.sim.rogue_travel(target.0, target.1, 30);
+            }
+            g.screen = Screen::Rogue;
+        }
         "rogue0" => {
             let (st, _) = g.sim.nearest_station().expect("station");
             g.sim.spawn_near(st, g.sim.bodies[st].radius + 200.0);

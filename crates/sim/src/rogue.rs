@@ -10,7 +10,7 @@
 use crate::{ShipInput, Sim};
 use serde::{Deserialize, Serialize};
 use vector_core::{hash_coord, Rng};
-use vector_data::{GameData, ROGUE_FEATURES};
+use vector_data::{GameData, ROGUE_FEATURES, ROGUE_TERMINALS};
 use vector_world::surface::{Surface, H as SURF_H, W as SURF_W};
 use vector_world::{AnomalyKind, BodyKind};
 
@@ -25,6 +25,8 @@ pub const T_WATER: u8 = 4;
 pub const T_SITE: u8 = 5;
 /// First feature tile; feature `k` of `ROGUE_FEATURES` is `T_FEATURE + k`.
 pub const T_FEATURE: u8 = 6;
+/// First terminal tile; terminal `k` of `ROGUE_TERMINALS` is `T_TERMINAL + k`.
+pub const T_TERMINAL: u8 = T_FEATURE + 16;
 
 /// How far the squad sees, and seconds one turn takes in a dungeon and on a surface.
 pub const VIEW_RADIUS: i32 = 9;
@@ -68,6 +70,11 @@ pub struct Mon {
     pub boss: bool,
     /// (resource, min kg, max kg) dropped when it dies.
     pub drops: Vec<(usize, f64, f64)>,
+    /// A person of a social place: bumping into one talks to it. `crew` is a member of the
+    /// ship's crew walking about the ship, `lines` what a passer-by says.
+    pub friendly: bool,
+    pub crew: Option<u32>,
+    pub lines: Vec<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -131,6 +138,10 @@ pub struct Rogue {
     pub turn_seconds: f64,
     /// The place this one was entered from (a surface above a dungeon).
     pub parent: Option<Box<Rogue>>,
+    /// A social place (station, colony, the ship): terminals and people instead of monsters.
+    pub social: bool,
+    /// The terminal the squad just used (index in `ROGUE_TERMINALS`), for the screen to open.
+    pub terminal: Option<usize>,
 }
 
 impl Rogue {
@@ -265,6 +276,8 @@ pub enum TargetKind {
     Place,
     /// A landing on the surface of this body.
     Landing(usize),
+    /// The ship itself, walked from room to room.
+    Ship,
 }
 
 /// Where a place can be entered from: a label, the theme and the seed of the place.
@@ -307,6 +320,9 @@ fn mon_from_def(
         awake,
         boss,
         drops,
+        friendly: false,
+        crew: None,
+        lines: Vec::new(),
     }
 }
 
@@ -342,6 +358,9 @@ fn mon_from_species(data: &GameData, sp: usize, x: i32, y: i32) -> Mon {
             .iter()
             .filter_map(|(r, kg)| data.resource_index(r).map(|i| (i, *kg, *kg)))
             .collect(),
+        friendly: false,
+        crew: None,
+        lines: Vec::new(),
     }
 }
 
@@ -409,21 +428,27 @@ fn pick_weighted<T: Clone>(list: &[(T, f64)], rng: &mut Rng) -> T {
     list[list.len() - 1].0.clone()
 }
 
-/// Build floor `depth` of a place.
-pub fn generate_floor(data: &GameData, theme: usize, seed: u64, depth: u32) -> Floor {
-    let t = &data.rogue_themes[theme];
-    let (w, h) = t.size;
-    let last = depth + 1 >= t.floors;
-    let mut rng = Rng::new(hash_coord(seed, i64::from(depth), 11, 22));
+type Room = (i32, i32, i32, i32);
+
+fn room_center(r: &Room) -> (i32, i32) {
+    (r.0 + r.2 / 2, r.1 + r.3 / 2)
+}
+
+/// Carve up to `n` rooms (smaller ones when `small`) and link them in a chain with corridors:
+/// every floor cell is reachable from the first room. The common ground of dungeons and of the
+/// social places.
+fn carve_rooms(w: usize, h: usize, n: usize, rng: &mut Rng, small: bool) -> (Vec<u8>, Vec<Room>) {
     let mut tiles = vec![T_WALL; w * h];
-    let n_rooms = t.rooms.0 + (rng.f64() * (t.rooms.1 - t.rooms.0 + 1) as f64) as usize;
-    let mut rooms: Vec<(i32, i32, i32, i32)> = Vec::new();
-    for _ in 0..400 {
-        if rooms.len() >= n_rooms {
+    let mut rooms: Vec<Room> = Vec::new();
+    for _ in 0..1500 {
+        if rooms.len() >= n {
             break;
         }
-        let rw = 5 + (rng.f64() * 8.0) as i32;
-        let rh = 4 + (rng.f64() * 5.0) as i32;
+        let (rw, rh) = if small {
+            (4 + (rng.f64() * 4.0) as i32, 3 + (rng.f64() * 3.0) as i32)
+        } else {
+            (5 + (rng.f64() * 8.0) as i32, 4 + (rng.f64() * 5.0) as i32)
+        };
         let x = 1 + (rng.f64() * (w as i32 - rw - 2) as f64) as i32;
         let y = 1 + (rng.f64() * (h as i32 - rh - 2) as f64) as i32;
         let clash = rooms.iter().any(|r| {
@@ -439,10 +464,9 @@ pub fn generate_floor(data: &GameData, theme: usize, seed: u64, depth: u32) -> F
             }
         }
     }
-    let center = |r: &(i32, i32, i32, i32)| (r.0 + r.2 / 2, r.1 + r.3 / 2);
     for k in 1..rooms.len() {
-        let (ax, ay) = center(&rooms[k - 1]);
-        let (bx, by) = center(&rooms[k]);
+        let (ax, ay) = room_center(&rooms[k - 1]);
+        let (bx, by) = room_center(&rooms[k]);
         let horizontal_first = rng.f64() < 0.5;
         let mut carve = |x: i32, y: i32| {
             tiles[y as usize * w + x as usize] = T_FLOOR.max(tiles[y as usize * w + x as usize])
@@ -469,6 +493,115 @@ pub fn generate_floor(data: &GameData, theme: usize, seed: u64, depth: u32) -> F
         }
         carve(bx, by);
     }
+    (tiles, rooms)
+}
+
+/// A floor of a social place: an entrance, a terminal in the middle of each of the other rooms
+/// (in a shuffled order), and people about. `funcs` are indices in `ROGUE_TERMINALS`; `crew` the
+/// members of the ship's crew to put in the rooms (the ship only).
+pub fn generate_social(
+    data: &GameData,
+    theme: usize,
+    seed: u64,
+    funcs: &[usize],
+    crew: &[(u32, String)],
+) -> Floor {
+    let t = &data.rogue_themes[theme];
+    let (w, h) = t.size;
+    let mut rng = Rng::new(hash_coord(seed, 0, 11, 23));
+    let n_rooms = (funcs.len() + 1).max(4);
+    let (mut tiles, rooms) = carve_rooms(w, h, n_rooms, &mut rng, true);
+    let start = room_center(&rooms[0]);
+    tiles[start.1 as usize * w + start.0 as usize] = T_UP;
+    // Shuffle the functions over the other rooms.
+    let mut order: Vec<usize> = funcs.to_vec();
+    for k in (1..order.len()).rev() {
+        order.swap(k, (rng.f64() * (k + 1) as f64) as usize % (k + 1));
+    }
+    for (room, f) in rooms.iter().skip(1).zip(&order) {
+        let c = room_center(room);
+        tiles[c.1 as usize * w + c.0 as usize] = T_TERMINAL + *f as u8;
+    }
+    let mut monsters: Vec<Mon> = Vec::new();
+    let free = |tiles: &Vec<u8>, monsters: &Vec<Mon>, c: (i32, i32)| {
+        tiles[c.1 as usize * w + c.0 as usize] == T_FLOOR
+            && !monsters.iter().any(|m| (m.x, m.y) == c)
+    };
+    let person =
+        |name: String, glyph: char, x: i32, y: i32, crew: Option<u32>, lines: Vec<String>| Mon {
+            name,
+            glyph,
+            x,
+            y,
+            hp: 5.0,
+            attack: 0.0,
+            defense: 0.0,
+            sight: 6,
+            hunts: false,
+            stationary: false,
+            sleeper: false,
+            awake: true,
+            boss: false,
+            drops: Vec::new(),
+            friendly: true,
+            crew,
+            lines,
+        };
+    let place = |monsters: &mut Vec<Mon>, rng: &mut Rng, who: Option<(u32, &String)>| {
+        for _ in 0..40 {
+            let room = &rooms[(rng.f64() * rooms.len() as f64) as usize % rooms.len()];
+            let c = (
+                room.0 + (rng.f64() * f64::from(room.2)) as i32,
+                room.1 + (rng.f64() * f64::from(room.3)) as i32,
+            );
+            if (c != start) && free(&tiles, monsters, c) {
+                let m = match who {
+                    Some((id, name)) => person(
+                        name.clone(),
+                        name.chars()
+                            .find(|c| c.is_ascii_alphabetic())
+                            .unwrap_or('c')
+                            .to_ascii_uppercase(),
+                        c.0,
+                        c.1,
+                        Some(id),
+                        Vec::new(),
+                    ),
+                    None => person("Passant".to_string(), '@', c.0, c.1, None, t.lines.clone()),
+                };
+                monsters.push(m);
+                return;
+            }
+        }
+    };
+    if crew.is_empty() {
+        for _ in 0..(rooms.len() * 2).min(16) {
+            place(&mut monsters, &mut rng, None);
+        }
+    } else {
+        for (id, name) in crew {
+            place(&mut monsters, &mut rng, Some((*id, name)));
+        }
+    }
+    Floor {
+        seen: vec![false; w * h],
+        tiles,
+        monsters,
+        items: Vec::new(),
+        sites: Vec::new(),
+        start,
+    }
+}
+
+/// Build floor `depth` of a place.
+pub fn generate_floor(data: &GameData, theme: usize, seed: u64, depth: u32) -> Floor {
+    let t = &data.rogue_themes[theme];
+    let (w, h) = t.size;
+    let last = depth + 1 >= t.floors;
+    let mut rng = Rng::new(hash_coord(seed, i64::from(depth), 11, 22));
+    let n_rooms = t.rooms.0 + (rng.f64() * (t.rooms.1 - t.rooms.0 + 1) as f64) as usize;
+    let (mut tiles, rooms) = carve_rooms(w, h, n_rooms, &mut rng, false);
+    let center = room_center;
     let start = center(&rooms[0]);
     tiles[start.1 as usize * w + start.0 as usize] = T_UP;
     if !last {
@@ -615,7 +748,8 @@ impl Sim {
         let dim = self.multiverse.dimension > 0;
         let mut out = Vec::new();
         let mut add = |label: String, id: &str, seed: u64, portal: bool, kind: TargetKind| {
-            let id = if dim && !portal && kind == TargetKind::Place {
+            let social = matches!(id, "station" | "colonie" | "vaisseau");
+            let id = if dim && !portal && !social && kind == TargetKind::Place {
                 "reve"
             } else {
                 id
@@ -637,7 +771,8 @@ impl Sim {
             );
             let name = b.name.clone();
             match b.kind {
-                BodyKind::Station if self.docked == Some(i) || dist <= ENTER_RANGE => {
+                // A station is walked only from its dock: it is not yours to wander into.
+                BodyKind::Station if self.docked == Some(i) => {
                     add(
                         format!("Station : {name}"),
                         "station",
@@ -701,6 +836,23 @@ impl Sim {
                 _ => {}
             }
         }
+        if let Some(ci) = self.docked_colony() {
+            let c = &self.colonies[ci];
+            add(
+                format!("Colonie : {}", c.name),
+                "colonie",
+                hash_coord(self.system.seed, c.id as i64, 4, 4),
+                false,
+                TargetKind::Place,
+            );
+        }
+        add(
+            "Parcourir le vaisseau".to_string(),
+            "vaisseau",
+            hash_coord(self.system.seed, 0, 99, 9),
+            true,
+            TargetKind::Ship,
+        );
         for w in &self.wrecks {
             if (self.ship.pos - w.pos).length() <= 30_000.0 {
                 let seed = hash_coord(self.system.seed, i64::from(w.id), 77, 5);
@@ -784,10 +936,13 @@ impl Sim {
             .into_iter()
             .nth(i)
             .ok_or("rien a explorer ici")?;
-        let party = if party.is_empty() {
-            self.rogue_squad()
-        } else {
+        let party = if !party.is_empty() {
             party
+        } else if target.kind == TargetKind::Ship {
+            // Aboard, the AI walks as one member of the crew; the others are about the ship.
+            self.rogue_squad().into_iter().take(1).collect()
+        } else {
+            self.rogue_squad()
         };
         if let TargetKind::Landing(body) = target.kind {
             let (cx, cy) = self.default_landing(body).ok_or("pas de terre ferme")?;
@@ -798,8 +953,74 @@ impl Sim {
             return Err("personne n'est en etat de partir");
         }
         let seed = self.next_visit_seed(target.seed);
-        self.rogue_begin(target.theme, seed, party);
+        if self.data.rogue_themes[target.theme].social.is_empty() && target.kind != TargetKind::Ship
+        {
+            self.rogue_begin(target.theme, seed, party);
+        } else {
+            self.rogue_begin_social(target.theme, seed, party);
+        }
         Ok(())
+    }
+
+    /// The terminals the ship's modules give it: the bridge, the crew's quarters and the time
+    /// anchors always, the rest from what is installed.
+    pub fn ship_terminals(&self) -> Vec<usize> {
+        let mut ids: Vec<&str> = vec!["pont", "equipage", "temps"];
+        for m in self.ship.design.slots.iter().flatten() {
+            let def = &self.data.modules[*m];
+            let f = match def.category.as_str() {
+                "cargo" => Some("soute"),
+                "reactor" | "engine" | "battery" => Some("ingenierie"),
+                "scanner" | "ftl" => Some("carte"),
+                _ if def.food > 0.0 => Some("elevage"),
+                _ if def.medical > 0.0 => Some("infirmerie"),
+                _ if def.science > 0.0 => Some("science"),
+                _ => None,
+            };
+            if let Some(f) = f {
+                if !ids.contains(&f) {
+                    ids.push(f);
+                }
+            }
+        }
+        ids.iter()
+            .filter_map(|id| ROGUE_TERMINALS.iter().position(|t| t.0 == *id))
+            .collect()
+    }
+
+    /// Start a walk through a social place (a station, a colony, the ship) from the ship.
+    pub fn rogue_begin_social(&mut self, theme: usize, seed: u64, party: Vec<usize>) {
+        let ship = self.data.rogue_themes[theme].id == "vaisseau";
+        let funcs: Vec<usize> = if ship {
+            self.ship_terminals()
+        } else {
+            self.data.rogue_themes[theme]
+                .social
+                .iter()
+                .filter_map(|f| ROGUE_TERMINALS.iter().position(|t| t.0 == f))
+                .collect()
+        };
+        let crew: Vec<(u32, String)> = if ship {
+            self.crew
+                .members
+                .iter()
+                .enumerate()
+                .filter(|(i, p)| p.alive && !party.contains(i))
+                .map(|(_, p)| (p.id, p.name.clone()))
+                .take(14)
+                .collect()
+        } else {
+            Vec::new()
+        };
+        let floor = generate_social(&self.data, theme, seed, &funcs, &crew);
+        let mut r = self.new_run(theme, seed, party);
+        r.social = true;
+        let (x, y) = floor.start;
+        r.floors = vec![floor];
+        r.x = x;
+        r.y = y;
+        r.reveal();
+        self.rogue = Some(r);
     }
 
     /// The members of `party` still able to go.
@@ -846,6 +1067,8 @@ impl Sim {
             env: None,
             turn_seconds: TURN_SECONDS,
             parent: None,
+            social: false,
+            terminal: None,
         };
         r.say(format!("{} : {}", t.name, t.text));
         r.reveal();
@@ -1038,6 +1261,8 @@ impl Sim {
             env: Some((map.pressure, self.temp_now(&map, cx, cy))),
             turn_seconds: SURFACE_TURN_SECONDS,
             parent: None,
+            social: false,
+            terminal: None,
         };
         r.say(format!(
             "Debarquement en {} : {}{}.",
@@ -1174,7 +1399,11 @@ impl Sim {
         for _ in 0..steps {
             let (nx, ny) = (r.x + dx, r.y + dy);
             if let Some(k) = r.monster_at(nx, ny) {
-                self.rogue_attack(r, k);
+                if r.floor().monsters[k].friendly {
+                    self.rogue_talk(r, k);
+                } else {
+                    self.rogue_attack(r, k);
+                }
                 break;
             }
             if !r.walkable(nx, ny) {
@@ -1186,6 +1415,52 @@ impl Sim {
         }
         self.rogue_end_turn(r);
         Ok(())
+    }
+
+    /// Talk to a person: a member of the crew tells how they feel, a passer-by a line of the
+    /// place, sometimes a rumour of the exchange (the same rumours as the brokerage).
+    fn rogue_talk(&mut self, r: &mut Rogue, k: usize) {
+        let m = r.floor().monsters[k].clone();
+        let mut rng = Rng::new(hash_coord(r.seed, i64::from(r.turn), k as i64, 71));
+        let text = if let Some(id) = m.crew {
+            match self.crew.members.iter().find(|p| p.id == id) {
+                None => "...".to_string(),
+                Some(p) => {
+                    let mut worries: Vec<(f32, &str)> = vec![
+                        (p.hunger, "J'ai faim."),
+                        (p.thirst, "J'ai soif."),
+                        (p.fatigue, "Je tombe de sommeil."),
+                        (p.stress, "Je suis a cran, ces temps-ci."),
+                        (p.social, "On ne se parle plus assez, ici."),
+                    ];
+                    worries.sort_by(|a, b| b.0.total_cmp(&a.0));
+                    let role = self.data.roles[p.role].name.to_lowercase();
+                    let mood = if self.is_pregnant(p.id) {
+                        "J'attends un enfant.".to_string()
+                    } else if worries[0].0 > 0.6 {
+                        worries[0].1.to_string()
+                    } else if p.morale > 0.7 {
+                        "Tout va bien, merci de demander.".to_string()
+                    } else {
+                        "On fait aller.".to_string()
+                    };
+                    format!("{mood} ({role}, sante {:.0} %)", p.health * 100.0)
+                }
+            }
+        } else {
+            let rumours = self.rumours();
+            if !rumours.is_empty() && rng.f64() < 0.35 {
+                let ru = &rumours[(rng.f64() * rumours.len() as f64) as usize % rumours.len()];
+                let name = self.data.world_events[ru.def].name.to_lowercase();
+                let days = ((ru.start - self.time) / 86_400.0).max(0.0);
+                format!("On dit que \"{name}\" arrive dans {days:.0} jours.")
+            } else if m.lines.is_empty() {
+                "...".to_string()
+            } else {
+                m.lines[(rng.f64() * m.lines.len() as f64) as usize % m.lines.len()].clone()
+            }
+        };
+        r.say(format!("{} : {text}", m.name));
     }
 
     /// The squad strikes monster `k`.
@@ -1500,7 +1775,7 @@ impl Sim {
         let mut rng = Rng::new(hash_coord(r.seed, i64::from(r.turn), r.cur as i64, 41));
         let (px, py) = (r.x, r.y);
         for k in 0..r.floor().monsters.len() {
-            let (mx, my, hunts, attack, sight, awake, stationary, sleeper) = {
+            let (mx, my, hunts, attack, sight, awake, stationary, sleeper, friendly) = {
                 let m = &r.floor().monsters[k];
                 (
                     m.x,
@@ -1511,6 +1786,7 @@ impl Sim {
                     m.awake,
                     m.stationary,
                     m.sleeper,
+                    m.friendly,
                 )
             };
             let name = r.floor().monsters[k].name.clone();
@@ -1557,7 +1833,7 @@ impl Sim {
                 }
             } else if !stationary {
                 // Prey flees from the squad and otherwise wanders a little.
-                let target = if dist <= 3 {
+                let target = if dist <= 3 && !friendly {
                     (mx - (px - mx).signum(), my - (py - my).signum())
                 } else if rng.f64() < 0.3 {
                     (
@@ -1665,6 +1941,14 @@ impl Sim {
                 let msg = self.rogue_leave(&mut r);
                 self.rogue = Some(r);
                 Ok(msg)
+            }
+            t if t >= T_TERMINAL && ((t - T_TERMINAL) as usize) < ROGUE_TERMINALS.len() => {
+                let idx = (t - T_TERMINAL) as usize;
+                r.terminal = Some(idx);
+                let label = ROGUE_TERMINALS[idx].1.to_string();
+                r.say(format!("Borne : {}.", label.to_lowercase()));
+                self.rogue = Some(r);
+                Ok(label)
             }
             T_SITE => {
                 let k = r
@@ -1913,7 +2197,7 @@ mod tests {
     fn every_floor_of_every_place_is_connected_deterministic_and_populated() {
         let d = data();
         for (t, th) in d.rogue_themes.iter().enumerate() {
-            if th.id == "surface" {
+            if th.id == "surface" || th.id == "vaisseau" || !th.social.is_empty() {
                 continue;
             }
             for depth in 0..th.floors {
@@ -2344,6 +2628,14 @@ mod tests {
         let mut s = new_sim(5, data());
         let (st, _) = s.nearest_station().expect("station");
         s.spawn_near(st, s.bodies[st].radius + 200.0);
+        // A station is not yours to wander into: only from its dock.
+        assert!(
+            !s.rogue_targets()
+                .iter()
+                .any(|t| s.data.rogue_themes[t.theme].id == "station"),
+            "not docked, no walk"
+        );
+        s.try_dock().unwrap();
         let targets = s.rogue_targets();
         assert!(
             targets
@@ -2369,8 +2661,10 @@ mod tests {
                 gm: 0.0,
             });
             let ts = t.rogue_targets();
-            let last = ts.last().unwrap();
-            assert_eq!(d.rogue_themes[last.theme].id, id, "{kind:?}");
+            assert!(
+                ts.iter().any(|x| d.rogue_themes[x.theme].id == id),
+                "{kind:?} leads to {id}"
+            );
         }
         // In a dimension every place turns to a dream (a landing stays a landing).
         let mut t = new_sim(5, Arc::clone(&d));
@@ -2380,7 +2674,7 @@ mod tests {
         assert!(t
             .rogue_targets()
             .iter()
-            .filter(|x| x.kind == TargetKind::Place)
+            .filter(|x| x.kind == TargetKind::Place && d.rogue_themes[x.theme].social.is_empty())
             .all(|x| d.rogue_themes[x.theme].id == "reve"));
         // Entering: one at a time, and a place changes between visits.
         let mut s = new_sim(5, data());
@@ -2389,8 +2683,21 @@ mod tests {
         let i = s
             .rogue_targets()
             .iter()
-            .position(|t| t.kind == TargetKind::Place)
-            .unwrap();
+            .position(|t| {
+                t.kind == TargetKind::Place && s.data.rogue_themes[t.theme].social.is_empty()
+            })
+            .unwrap_or_else(|| {
+                // Nothing wild near the station: use a made-up place.
+                s.bodies.push(crate::Body {
+                    name: "Epave".into(),
+                    kind: BodyKind::Anomaly(AnomalyKind::DerelictShip),
+                    pos: s.ship.pos,
+                    vel: vector_core::Vec3::ZERO,
+                    radius: 100.0,
+                    gm: 0.0,
+                });
+                s.rogue_targets().len() - 2
+            });
         s.rogue_enter(i, vec![]).expect("goes");
         assert!(s.rogue_enter(i, vec![]).is_err(), "one at a time");
         let first = s.rogue.as_ref().unwrap().floors[0].tiles.clone();
@@ -2897,6 +3204,229 @@ mod tests {
             s.rogue.as_ref().unwrap().drone_turns,
             0,
             "its batteries ran out"
+        );
+    }
+
+    // ---- social places ----------------------------------------------------------------------
+
+    #[test]
+    fn social_places_hold_every_terminal_once_and_people_not_monsters() {
+        let d = data();
+        for id in ["station", "colonie"] {
+            let t = d.rogue_theme_index(id).unwrap();
+            let th = &d.rogue_themes[t];
+            let funcs: Vec<usize> = th
+                .social
+                .iter()
+                .map(|f| ROGUE_TERMINALS.iter().position(|x| x.0 == f).unwrap())
+                .collect();
+            for seed in 0..8u64 {
+                let f = generate_social(&d, t, seed, &funcs, &[]);
+                assert_eq!(
+                    f.tiles,
+                    generate_social(&d, t, seed, &funcs, &[]).tiles,
+                    "deterministic"
+                );
+                let (w, h) = th.size;
+                let reach = reachable(&f, w, h, f.start);
+                for (i, tile) in f.tiles.iter().enumerate() {
+                    if *tile != T_WALL {
+                        assert!(reach[i], "{id}: cell {i} cut off");
+                    }
+                }
+                for k in &funcs {
+                    let n = f
+                        .tiles
+                        .iter()
+                        .filter(|t| **t == T_TERMINAL + *k as u8)
+                        .count();
+                    assert_eq!(
+                        n, 1,
+                        "{id}: terminal {} appears once",
+                        ROGUE_TERMINALS[*k].0
+                    );
+                }
+                assert_eq!(f.tiles[f.start.1 as usize * w + f.start.0 as usize], T_UP);
+                assert!(f.monsters.len() >= 6, "{id}: people about");
+                assert!(f
+                    .monsters
+                    .iter()
+                    .all(|m| m.friendly && !m.hunts && m.attack == 0.0));
+            }
+        }
+    }
+
+    #[test]
+    fn the_ship_is_drawn_from_its_modules_and_its_crew_walks_in_it() {
+        let mut s = new_sim(5, data());
+        // The crew: the squad goes out, the others are in the rooms.
+        let d = Arc::clone(&s.data);
+        for k in 0..3 {
+            let p = crate::crew::generate_person(&d, 900 + k, None);
+            s.crew.hire(&d, p, 1, 0.0);
+        }
+        let funcs = s.ship_terminals();
+        let names: Vec<&str> = funcs.iter().map(|k| ROGUE_TERMINALS[*k].0).collect();
+        for needed in ["pont", "equipage", "temps"] {
+            assert!(names.contains(&needed), "{needed} in {names:?}");
+        }
+        assert!(names.contains(&"soute"), "the ship has a hold: {names:?}");
+        let mut dup = names.clone();
+        dup.sort_unstable();
+        dup.dedup();
+        assert_eq!(dup.len(), names.len(), "each room once");
+        let i = s
+            .rogue_targets()
+            .iter()
+            .position(|t| t.kind == TargetKind::Ship)
+            .expect("the ship can always be walked");
+        s.rogue_enter(i, vec![0]).expect("goes");
+        let r = s.rogue.as_ref().unwrap();
+        assert!(r.social && r.party == vec![0]);
+        let aboard: Vec<u32> = r.floor().monsters.iter().filter_map(|m| m.crew).collect();
+        assert_eq!(
+            aboard.len(),
+            s.crew.members.len() - 1,
+            "everybody else is aboard"
+        );
+        assert!(!aboard.contains(&s.crew.members[0].id));
+        for k in &funcs {
+            assert_eq!(
+                r.floor()
+                    .tiles
+                    .iter()
+                    .filter(|t| **t == T_TERMINAL + *k as u8)
+                    .count(),
+                1
+            );
+        }
+        // Without a medbay the ship has no infirmary; with one it does.
+        let medbay = s
+            .data
+            .modules
+            .iter()
+            .position(|m| m.medical > 0.0)
+            .expect("a medical module");
+        let slot = s
+            .ship
+            .design
+            .slots
+            .iter()
+            .position(|m| m.is_none())
+            .or_else(|| s.ship.design.slots.iter().position(|m| m.is_some()))
+            .unwrap();
+        s.ship.design.slots[slot] = Some(medbay);
+        let with = s.ship_terminals();
+        assert!(with.iter().any(|k| ROGUE_TERMINALS[*k].0 == "infirmerie"));
+    }
+
+    #[test]
+    fn people_talk_crew_tell_how_they_feel_and_terminals_ask_for_their_screen() {
+        let mut s = new_sim(5, data());
+        let d = Arc::clone(&s.data);
+        let mut p = crate::crew::generate_person(&d, 901, None);
+        p.hunger = 0.95;
+        let k = s.crew.hire(&d, p, 1, 0.0);
+        let hungry = s.crew.members[k].id;
+        let i = s
+            .rogue_targets()
+            .iter()
+            .position(|t| t.kind == TargetKind::Ship)
+            .unwrap();
+        s.rogue_enter(i, vec![0]).unwrap();
+        // Put the hungry one right next to the squad and bump into them.
+        {
+            let r = s.rogue.as_mut().unwrap();
+            let (x, y) = [(1, 0), (-1, 0), (0, 1), (0, -1)]
+                .into_iter()
+                .map(|d| (r.x + d.0, r.y + d.1))
+                .find(|&(x, y)| r.walkable(x, y))
+                .unwrap();
+            let m = r.floors[0]
+                .monsters
+                .iter_mut()
+                .find(|m| m.crew == Some(hungry))
+                .unwrap();
+            m.x = x;
+            m.y = y;
+        }
+        let (px, py) = {
+            let r = s.rogue.as_ref().unwrap();
+            (r.x, r.y)
+        };
+        let (mx, my) = {
+            let r = s.rogue.as_ref().unwrap();
+            let m = r
+                .floor()
+                .monsters
+                .iter()
+                .find(|m| m.crew == Some(hungry))
+                .unwrap();
+            (m.x, m.y)
+        };
+        s.rogue_step(mx - px, my - py).unwrap();
+        let r = s.rogue.as_ref().unwrap();
+        assert_eq!((r.x, r.y), (px, py), "talking does not move the squad");
+        assert!(
+            r.log.iter().any(|l| l.contains("faim")),
+            "the hungry one says so: {:?}",
+            r.log.last()
+        );
+        // A terminal under the squad sets the request for its screen.
+        let k = ROGUE_TERMINALS.iter().position(|t| t.0 == "pont").unwrap();
+        {
+            let r = s.rogue.as_mut().unwrap();
+            let (x, y) = [(1, 0), (-1, 0), (0, 1), (0, -1)]
+                .into_iter()
+                .map(|d| (r.x + d.0, r.y + d.1))
+                .find(|&(x, y)| r.walkable(x, y))
+                .unwrap();
+            r.x = x;
+            r.y = y;
+            let i = r.idx(x, y);
+            r.floors[0].tiles[i] = T_TERMINAL + k as u8;
+        }
+        let label = s.rogue_stairs().unwrap();
+        assert_eq!(label, "PONT DE COMMANDE");
+        assert_eq!(s.rogue.as_ref().unwrap().terminal, Some(k));
+        // The squad leaves by the airlock like from anywhere.
+        {
+            let r = s.rogue.as_mut().unwrap();
+            let (x, y) = r.floor().start;
+            r.x = x;
+            r.y = y;
+        }
+        assert!(s.rogue_stairs().unwrap().starts_with("RETOUR"));
+    }
+
+    #[test]
+    fn a_station_walk_is_social_and_its_passers_by_relay_rumours() {
+        let mut s = new_sim(5, data());
+        let (st, _) = s.nearest_station().unwrap();
+        s.spawn_near(st, s.bodies[st].radius + 200.0);
+        s.try_dock().unwrap();
+        let i = s
+            .rogue_targets()
+            .iter()
+            .position(|t| s.data.rogue_themes[t.theme].id == "station")
+            .unwrap();
+        s.rogue_enter(i, vec![]).unwrap();
+        let r = s.rogue.as_ref().unwrap();
+        assert!(r.social);
+        // Every passer-by, bumped into many times at many dates, says something; some say a rumour.
+        let mut said = std::collections::BTreeSet::new();
+        for turn in 0..400 {
+            s.time = f64::from(turn) * 43_200.0;
+            let mut r = s.rogue.take().unwrap();
+            r.turn = turn;
+            s.rogue_talk(&mut r, 0);
+            said.insert(r.log.last().unwrap().clone());
+            s.rogue = Some(r);
+        }
+        assert!(said.len() >= 4, "{} different things said", said.len());
+        assert!(
+            said.iter().any(|l| l.contains("arrive dans")),
+            "some rumours of the exchange are relayed: {said:?}"
         );
     }
 }

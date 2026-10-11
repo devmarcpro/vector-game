@@ -138,6 +138,8 @@ pub struct Game {
     pub exp_sel: usize,
     /// An exploration started from the surface map: closing it goes back there.
     pub rogue_from_surface: bool,
+    /// A screen was opened from a terminal of a walk: Escape comes back to the walk.
+    pub rogue_visit: bool,
     /// Radio conversation: who, where in the tree, what just happened, the lines so far.
     pub dlg_npc: usize,
     pub dlg_node: String,
@@ -283,6 +285,7 @@ impl Game {
             exp_vehicle: false,
             exp_sel: 0,
             rogue_from_surface: false,
+            rogue_visit: false,
             dlg_npc: 0,
             dlg_node: String::new(),
             dlg_result: String::new(),
@@ -750,7 +753,28 @@ impl Game {
 
     pub fn key(&mut self, code: KeyCode, text: Option<&str>, pressed: bool) {
         let at = self.screen;
+        // The market opened from a terminal: Escape goes back to the walk, not out of the dock.
+        if pressed
+            && self.rogue_visit
+            && at == Screen::Station
+            && code == KeyCode::Escape
+            && !self.console.open
+            && !self.help_open
+        {
+            self.screen = Screen::Rogue;
+            return;
+        }
         self.key_inner(code, text, pressed);
+        if self.rogue_visit {
+            if self.sim.rogue.is_none() {
+                self.rogue_visit = false;
+            } else if matches!(self.screen, Screen::Station | Screen::Flight)
+                && at != self.screen
+                && at != Screen::Rogue
+            {
+                self.screen = Screen::Rogue;
+            }
+        }
         if pressed && self.screen != Screen::MainMenu {
             self.tutorial_tick(Some((at, code)));
         }
@@ -1257,6 +1281,44 @@ impl Game {
         }
     }
 
+    /// Open the screen of a terminal of a walk through a social place; Escape comes back.
+    pub fn open_terminal(&mut self, idx: usize) {
+        let id = vector_data::ROGUE_TERMINALS[idx].0;
+        self.rogue_visit = true;
+        match id {
+            "marche" => self.screen = Screen::Station,
+            "chantier" => self.screen = Screen::Shipyard,
+            "banque" => self.screen = Screen::Bank,
+            "bourse" => self.open_bourse(),
+            "courtage" => self.screen = Screen::Trading,
+            "contrats" => {
+                self.offers = self.sim.offered_contracts();
+                self.contract_sel = 0;
+                self.screen = Screen::Contracts;
+            }
+            "recrutement" => {
+                self.screen = Screen::Recruit;
+                self.recruit_sel = 0;
+            }
+            "eleveur" | "elevage" => {
+                self.farm.dealer = id == "eleveur";
+                self.screen = Screen::Livestock;
+            }
+            "casino" => self.screen = Screen::Casino,
+            "infirmerie" | "equipage" => self.screen = Screen::Crew,
+            "soute" => self.screen = Screen::Inventory,
+            "ingenierie" => self.open_ship(),
+            "science" => self.open_tech(),
+            "carte" => self.open_galaxy(),
+            "gestion" => self.open_empire(),
+            "temps" => self.screen = Screen::Cosmos,
+            _ => {
+                self.rogue_visit = false;
+                self.screen = Screen::Flight;
+            }
+        }
+    }
+
     fn station_key(&mut self, code: KeyCode) {
         let n = self.data.resources.len();
         let res = self.sel_res.min(n - 1);
@@ -1341,6 +1403,7 @@ impl Game {
                 return;
             }
             KeyCode::KeyL => {
+                self.farm.dealer = true;
                 self.screen = Screen::Livestock;
                 return;
             }
@@ -3342,6 +3405,7 @@ mod tests {
         g.key(KeyCode::Enter, None, true);
         let (st, _) = g.sim.nearest_station().expect("station");
         g.sim.spawn_near(st, g.sim.bodies[st].radius + 200.0);
+        g.sim.try_dock().expect("dock");
         g.key(KeyCode::End, None, true);
         assert_eq!(g.screen, Screen::Rogue);
         frame(&g);
@@ -3400,7 +3464,7 @@ mod tests {
         g.key(KeyCode::Enter, None, true);
         assert!(g.sim.rogue.is_none(), "closed");
         g.key(KeyCode::Escape, None, true);
-        assert_eq!(g.screen, Screen::Flight);
+        assert_eq!(g.screen, Screen::Station);
     }
 
     #[test]
@@ -3489,9 +3553,21 @@ mod tests {
         g.key(KeyCode::KeyB, None, true);
         assert_eq!(g.sim.herd.len(), 2);
         frame(&g);
-        g.key(KeyCode::ArrowRight, None, true);
         g.key(KeyCode::KeyH, None, true);
-        assert_eq!(g.sim.herd.len(), 1, "an adult animal was harvested");
+        assert_eq!(g.sim.herd.len(), 2, "no slaughter at the dealer's");
+        g.key(KeyCode::KeyS, None, true);
+        assert_eq!(g.sim.herd.len(), 1, "an animal was sold to the dealer");
+        // The pens aboard the ship: slaughter there, no buying there.
+        g.farm.dealer = false;
+        g.key(KeyCode::KeyB, None, true);
+        assert_eq!(g.sim.herd.len(), 1, "no dealer in the pens");
+        g.key(KeyCode::KeyH, None, true);
+        assert_eq!(
+            g.sim.herd.len(),
+            0,
+            "an adult animal was slaughtered aboard"
+        );
+        g.farm.dealer = true;
         g.key(KeyCode::Escape, None, true);
         assert_eq!(g.screen, Screen::Station);
         g.key(KeyCode::KeyA, None, true);

@@ -1,7 +1,7 @@
 //! Deterministic simulation: flight model, modular ships, gravity, collisions, autopilot, mining, trade, saves.
 //! Units: SI (m, s, kg, N). See docs/SIM_MODEL.md.
-pub mod arms;
 pub mod archive;
+pub mod arms;
 pub mod atmosphere;
 pub mod autopilot;
 pub mod biosphere;
@@ -22,8 +22,8 @@ pub mod design;
 pub mod dialogue;
 pub mod ecology;
 pub mod economy;
-pub mod exotic;
 pub mod epidemic;
+pub mod exotic;
 pub mod fleet;
 pub mod futures;
 pub mod gear;

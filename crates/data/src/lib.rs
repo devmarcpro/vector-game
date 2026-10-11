@@ -1,8 +1,8 @@
 //! Data schemas and loading/validation of `data/*.ron`. Content lives in data, not code.
 pub mod chemistry;
 pub mod dialogue;
-pub mod surprise;
 pub mod medical;
+pub mod surprise;
 pub use medical::{BodyPart, Drug, WoundKind};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;

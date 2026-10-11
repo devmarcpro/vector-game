@@ -2176,6 +2176,29 @@ impl Game {
                 .sim
                 .repay(f64::MAX)
                 .map(|p| format!("PRET REMBOURSE ({p:.0} CR)")),
+            KeyCode::KeyH => {
+                if self.sim.bank.mortgage {
+                    self.sim
+                        .release_mortgage()
+                        .map(|()| "HYPOTHEQUE LEVEE".to_string())
+                } else {
+                    self.sim
+                        .mortgage_ship()
+                        .map(|()| "VAISSEAU HYPOTHEQUE : PLAFOND RELEVE".to_string())
+                }
+            }
+            KeyCode::KeyC => self
+                .sim
+                .buy_currency(1000.0)
+                .map(|u| format!("ACHAT DE {u:.0} UNITES DE MONNAIE LOCALE")),
+            KeyCode::KeyV => self
+                .sim
+                .sell_currency()
+                .map(|g| format!("MONNAIE LOCALE VENDUE : {g:.0} CR")),
+            KeyCode::KeyB => self
+                .sim
+                .launder(f64::MAX)
+                .map(|fee| format!("ARGENT BLANCHI (COMMISSION {fee:.0} CR)")),
             KeyCode::Escape | KeyCode::KeyE => {
                 self.screen = Screen::Station;
                 return;
@@ -3703,6 +3726,8 @@ mod tests {
         let mut g = Game::new(data(), 1);
         g.key(KeyCode::Enter, None, true);
         let offer = vector_sim::economy::Contract {
+            pax: 0,
+            pax_kind: 0,
             id: 1,
             dest_star: g.sim.here,
             dest_seed: 0,

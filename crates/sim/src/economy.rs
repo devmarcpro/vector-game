@@ -13,6 +13,8 @@ pub const HOSTILE_REP: f32 = -60.0;
 pub const BANK_RATE_PER_DAY: f64 = 0.002;
 pub const BASE_CREDIT_LIMIT: f64 = 10_000.0;
 pub const MAX_ACTIVE_CONTRACTS: usize = 5;
+/// Share of the ship's value a bank lends against it.
+pub const MORTGAGE_LTV: f64 = 0.5;
 /// Contract offers refresh every week of game time.
 pub const CONTRACT_EPOCH: f64 = 7.0 * DAY;
 
@@ -22,7 +24,42 @@ pub struct Bank {
     pub last_day: i64,
     pub overdue_days: u32,
     pub total_interest: f64,
+    /// The ship is pledged: the credit ceiling rises, and the bank takes the hold on seizure.
+    pub mortgage: bool,
+    /// Credits earned off the books (black market), not yet laundered.
+    pub dirty: f64,
+    /// Foreign currencies held.
+    pub forex: Vec<Holding>,
+    /// Monthly accounts of the player, oldest first.
+    pub reports: Vec<MonthReport>,
 }
+
+/// Units of a foreign currency held (bought in sector `cell`).
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct Holding {
+    pub faction: usize,
+    pub cell: [i64; 3],
+    pub amount: f64,
+}
+
+/// One month of the player's accounts.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct MonthReport {
+    pub month: i64,
+    pub net_worth: f64,
+    pub credits: f64,
+    pub loan: f64,
+    pub interest: f64,
+    pub dirty: f64,
+}
+
+/// Kinds of passengers: (name, fare per passenger, per light-year).
+pub const PAX_KINDS: [(&str, f64, f64); 4] = [
+    ("TOURISTES", 120.0, 90.0),
+    ("PELERINS", 60.0, 40.0),
+    ("MIGRANTS", 40.0, 30.0),
+    ("REFUGIES", 15.0, 10.0),
+];
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Contract {
@@ -38,6 +75,10 @@ pub struct Contract {
     pub reward: f64,
     pub expires: f64,
     pub faction: Option<usize>,
+    /// Passengers to carry (then `resource` and `kg` mean nothing); 0 for a cargo contract.
+    pub pax: u32,
+    /// Index into `PAX_KINDS`.
+    pub pax_kind: u8,
 }
 
 impl Sim {
@@ -169,6 +210,8 @@ impl Sim {
         for (k, (((r, _f), price), need)) in shortages.into_iter().enumerate() {
             let kg = (need * 0.4).clamp(200.0, 4000.0).round();
             out.push(Contract {
+                pax: 0,
+                pax_kind: 0,
                 id: hash_coord(here_seed, st as i64, epoch, 1000 + k as i64),
                 dest_star: here,
                 dest_seed: here_seed,
@@ -204,6 +247,8 @@ impl Sim {
                 let kg = (rng.range(500.0, 3000.0) / 50.0).round() * 50.0;
                 let d = e.distance_to(self.here_pos);
                 out.push(Contract {
+                    pax: 0,
+                    pax_kind: 0,
                     id: hash_coord(here_seed, st as i64, epoch, 2000 + made as i64),
                     dest_star: e.id,
                     dest_seed: e.seed,
@@ -218,6 +263,47 @@ impl Sim {
                     faction: self.galaxy.territory(e.pos, data.factions.len()),
                 });
                 made += 1;
+            }
+        }
+        // Passengers: tourists, pilgrims and migrants for a neighbouring station; refugees when
+        // this sector is at war (they pay little, and are grateful).
+        {
+            let at_war = self.local_sector().at_war;
+            let near = self.galaxy.nearby(self.here_pos, 9.0);
+            let dests: Vec<_> = near.into_iter().filter(|e| e.id != here).take(6).collect();
+            for k in 0..2usize {
+                if dests.is_empty() {
+                    break;
+                }
+                let e = &dests[(rng.next_u64() % dests.len() as u64) as usize];
+                let sys = generate_system(e.seed);
+                let Some(bi) = sys.bodies.iter().position(|b| b.kind == BodyKind::Station) else {
+                    continue;
+                };
+                let kind = if at_war && k == 0 {
+                    3
+                } else {
+                    (rng.next_u64() % 3) as usize
+                };
+                let pax = 2 + (rng.next_u64() % 10) as u32;
+                let d = e.distance_to(self.here_pos);
+                let (_, fare, per_ly) = PAX_KINDS[kind];
+                out.push(Contract {
+                    pax,
+                    pax_kind: kind as u8,
+                    id: hash_coord(here_seed, st as i64, epoch, 4000 + k as i64),
+                    dest_star: e.id,
+                    dest_seed: e.seed,
+                    dest_body: bi,
+                    dest_name: sys.bodies[bi].name.clone(),
+                    dest_system: sys.name.clone(),
+                    dist_ly: d,
+                    resource: 0,
+                    kg: 0.0,
+                    reward: (f64::from(pax) * (fare + per_ly * d)).round(),
+                    expires: self.time + (20.0 + 6.0 * d) * DAY,
+                    faction: self.galaxy.territory(e.pos, data.factions.len()),
+                });
             }
         }
         // Urgent orders born of the news: arms in a sector at war, the goods of a company that
@@ -243,6 +329,8 @@ impl Sim {
         for (k, (r, mult)) in urgent.into_iter().take(2).enumerate() {
             let kg = (rng.range(300.0, 1500.0) / 50.0).round() * 50.0;
             out.push(Contract {
+                pax: 0,
+                pax_kind: 0,
                 id: hash_coord(here_seed, st as i64, epoch, 3000 + k as i64),
                 dest_star: here,
                 dest_seed: here_seed,
@@ -268,6 +356,9 @@ impl Sim {
         if self.contracts.len() >= MAX_ACTIVE_CONTRACTS {
             return Err("trop de contrats actifs");
         }
+        if c.pax > 0 && c.pax > self.free_berths() {
+            return Err("pas assez de couchettes libres pour ces passagers");
+        }
         self.contracts.push(c);
         Ok(())
     }
@@ -279,6 +370,9 @@ impl Sim {
         if c.dest_star != self.here || c.dest_body != st {
             return Err("ce n'est pas la station de destination");
         }
+        if c.pax > 0 {
+            return self.deliver_passengers(idx, &c);
+        }
         if self.ship.cargo.kg[c.resource] + 1e-6 < c.kg {
             return Err("cargaison insuffisante");
         }
@@ -288,6 +382,40 @@ impl Sim {
         let pay = c.reward * (1.0 - self.tax_rate());
         self.credits += pay;
         self.change_reputation(self.faction, 3.0);
+        self.done_contracts.push(c.id);
+        if self.done_contracts.len() > 200 {
+            self.done_contracts.remove(0);
+        }
+        self.contracts.remove(idx);
+        self.events.push(Event::ContractDone { reward: pay });
+        Ok(pay)
+    }
+
+    /// Berths not taken by the crew or by passengers already aboard.
+    pub fn free_berths(&self) -> u32 {
+        let used =
+            self.crew.count() as f64 + self.contracts.iter().map(|c| f64::from(c.pax)).sum::<f64>();
+        (self.ship.stats.crew_cap - used).max(0.0) as u32
+    }
+
+    /// Passengers step off: the fare (scaled by the comfort of the trip), a tax, and, for
+    /// migrants and refugees, new inhabitants for one of our colonies here.
+    fn deliver_passengers(&mut self, idx: usize, c: &Contract) -> Result<f64, &'static str> {
+        // Comfort: the emptier the ship, the better the fare (0.8 .. 1.2).
+        let crowd = f64::from(c.pax) / f64::from(self.free_berths() + c.pax).max(1.0);
+        let comfort = 1.2 - 0.4 * crowd;
+        let pay = c.reward * comfort * (1.0 - self.tax_rate());
+        self.credits += pay;
+        let kind = c.pax_kind.min(3);
+        self.change_reputation(self.faction, if kind == 3 { 6.0 } else { 2.0 });
+        if kind >= 2 {
+            if let Some(ci) = self
+                .colony_at(c.dest_body)
+                .filter(|_| c.dest_star == self.here)
+            {
+                self.colonies[ci].pop += f64::from(c.pax);
+            }
+        }
         self.done_contracts.push(c.id);
         if self.done_contracts.len() > 200 {
             self.done_contracts.remove(0);
@@ -316,13 +444,177 @@ impl Sim {
     // ---- bank ----------------------------------------------------------------
 
     pub fn credit_limit(&self) -> f64 {
-        BASE_CREDIT_LIMIT
+        let unsecured = (BASE_CREDIT_LIMIT
             + 200.0
                 * self
                     .reputation
                     .iter()
                     .map(|r| f64::from(r.max(0.0)))
-                    .sum::<f64>()
+                    .sum::<f64>())
+            * self.local_sector().credit_factor();
+        unsecured
+            + if self.bank.mortgage {
+                self.ship_value() * MORTGAGE_LTV
+            } else {
+                0.0
+            }
+    }
+
+    /// The economy of the sector the ship is in.
+    pub fn local_sector(&self) -> crate::macroeco::Sector {
+        crate::macroeco::sector(
+            &self.data,
+            &self.galaxy,
+            self.galaxy.seed,
+            crate::politics::cell_of(self.here_pos),
+            self.time,
+        )
+    }
+
+    /// What the ship is worth to a banker: its hull at the shipyard price.
+    pub fn ship_value(&self) -> f64 {
+        self.data.hulls[self.ship.design.hull].cost * crate::fleet::PURCHASE_FACTOR
+    }
+
+    /// Pledge the ship against a higher credit ceiling.
+    pub fn mortgage_ship(&mut self) -> Result<(), &'static str> {
+        self.docked.ok_or("non amarre")?;
+        if self.bank.mortgage {
+            return Err("vaisseau deja hypotheque");
+        }
+        self.bank.mortgage = true;
+        Ok(())
+    }
+
+    /// Lift the pledge once the loan fits under the unsecured ceiling.
+    pub fn release_mortgage(&mut self) -> Result<(), &'static str> {
+        self.docked.ok_or("non amarre")?;
+        if !self.bank.mortgage {
+            return Err("aucune hypotheque");
+        }
+        self.bank.mortgage = false;
+        if self.bank.loan > self.credit_limit() {
+            self.bank.mortgage = true;
+            return Err("le pret depasse le plafond sans hypotheque");
+        }
+        Ok(())
+    }
+
+    /// Everything the player owns minus what is owed: credits, shares, foreign money, the hold at
+    /// reference prices, less the loan.
+    pub fn net_worth(&self) -> f64 {
+        let shares: f64 = self
+            .shares
+            .iter()
+            .map(|&(c, n)| self.company_price(c, self.time) * n)
+            .sum();
+        let forex: f64 = self
+            .bank
+            .forex
+            .iter()
+            .map(|h| {
+                h.amount
+                    * crate::macroeco::sector(
+                        &self.data,
+                        &self.galaxy,
+                        self.galaxy.seed,
+                        h.cell,
+                        self.time,
+                    )
+                    .fx
+            })
+            .sum();
+        let hold: f64 = (0..self.data.resources.len())
+            .map(|r| self.ship.cargo.kg[r] * self.data.resources[r].value)
+            .sum();
+        self.credits + shares + forex + hold - self.bank.loan
+    }
+
+    // ---- currencies -------------------------------------------------------------
+
+    /// Buy the currency of the people whose station this is with `credits` credits (a fee of
+    /// 0.5 %); returns the units obtained.
+    pub fn buy_currency(&mut self, credits: f64) -> Result<f64, &'static str> {
+        self.docked
+            .ok_or("non amarre : le change est a la station")?;
+        let f = self.faction.ok_or("espace libre : pas de monnaie locale")?;
+        if !(1.0..=self.credits).contains(&credits) {
+            return Err("fonds insuffisants");
+        }
+        let cell = crate::politics::cell_of(self.here_pos);
+        let units = credits * (1.0 - crate::macroeco::FX_FEE) / self.local_sector().fx;
+        self.credits -= credits;
+        match self.bank.forex.iter_mut().find(|h| h.faction == f) {
+            Some(h) => h.amount += units,
+            None => self.bank.forex.push(Holding {
+                faction: f,
+                cell,
+                amount: units,
+            }),
+        }
+        Ok(units)
+    }
+
+    /// Sell all the local currency held at today's rate (a fee of 0.5 %); returns the credits.
+    pub fn sell_currency(&mut self) -> Result<f64, &'static str> {
+        self.docked
+            .ok_or("non amarre : le change est a la station")?;
+        let f = self.faction.ok_or("espace libre : pas de monnaie locale")?;
+        let pos = self
+            .bank
+            .forex
+            .iter()
+            .position(|h| h.faction == f)
+            .ok_or("aucune monnaie de ce peuple")?;
+        let h = self.bank.forex.remove(pos);
+        let got = h.amount * self.local_sector().fx * (1.0 - crate::macroeco::FX_FEE);
+        self.credits += got;
+        Ok(got)
+    }
+
+    // ---- off the books ---------------------------------------------------------
+
+    /// Launder dirty money through the contact of the black market (25 % fee, less with trust).
+    pub fn launder(&mut self, amount: f64) -> Result<f64, &'static str> {
+        self.docked.ok_or("non amarre")?;
+        self.faction.ok_or("espace libre : aucun contact")?;
+        let amount = amount.min(self.bank.dirty).min(self.credits);
+        if amount < 1.0 {
+            return Err("pas d'argent sale a blanchir");
+        }
+        let fee = amount * (0.25 - 0.1 * f64::from(self.contact_trust()));
+        self.credits -= fee;
+        self.bank.dirty -= amount;
+        Ok(fee)
+    }
+
+    /// Monthly accounts, and the tax audit that looks for dirty money.
+    fn month_tick(&mut self, month: i64) {
+        let report = MonthReport {
+            month,
+            net_worth: self.net_worth(),
+            credits: self.credits,
+            loan: self.bank.loan,
+            interest: self.bank.total_interest,
+            dirty: self.bank.dirty,
+        };
+        self.bank.reports.push(report);
+        if self.bank.reports.len() > 36 {
+            self.bank.reports.remove(0);
+        }
+        if self.bank.dirty > 0.0 {
+            let mut rng = Rng::new(hash_coord(self.galaxy.seed, month, 5, 0xA0D1));
+            let chance = (self.bank.dirty / (self.credits.max(1000.0) * 2.0)).clamp(0.02, 0.6);
+            if rng.f64() < chance {
+                let fine = (self.bank.dirty * 0.4).min(self.credits.max(0.0));
+                self.credits -= fine;
+                self.bank.dirty = 0.0;
+                self.change_reputation(self.faction, -3.0);
+                self.events.push(Event::MarketNews(format!(
+                    "Controle fiscal : argent sale decouvert, amende de {fine:.0} CR."
+                )));
+            }
+        }
     }
 
     pub fn borrow(&mut self, amount: f64) -> Result<(), &'static str> {
@@ -365,7 +657,8 @@ impl Sim {
             return;
         }
         let before = self.bank.loan;
-        self.bank.loan *= (1.0 + BANK_RATE_PER_DAY).powi(days as i32);
+        let rate = self.local_sector().bank_rate_per_day();
+        self.bank.loan = crate::macroeco::compound(self.bank.loan, rate, days);
         self.bank.total_interest += self.bank.loan - before;
         if self.bank.loan > self.credit_limit() * 1.2 {
             self.bank.overdue_days += days as u32;
@@ -379,6 +672,31 @@ impl Sim {
             self.bank.overdue_days = 0;
             self.change_reputation(self.faction, -10.0);
             self.events.push(Event::BankSeizure { amount: seized });
+            if self.bank.mortgage {
+                // The pledge is called in: the hold goes to the bank at reference prices.
+                let data = std::sync::Arc::clone(&self.data);
+                let mut value = 0.0;
+                for r in 0..data.resources.len() {
+                    let kg = self.ship.cargo.kg[r];
+                    if kg > 0.0 {
+                        self.ship.cargo.remove(&data, r, kg);
+                        value += kg * data.resources[r].value;
+                    }
+                }
+                self.bank.loan = (self.bank.loan - value).max(0.0);
+                self.bank.mortgage = false;
+                self.events.push(Event::MarketNews(format!(
+                    "Hypotheque saisie : la soute part a la banque ({value:.0} CR)."
+                )));
+            }
+        }
+    }
+
+    /// Once per day of the bank tick: close the month when it turns.
+    pub(crate) fn accounts_tick(&mut self) {
+        let month = (self.time / DAY).floor() as i64 / 30;
+        if self.bank.reports.last().is_none_or(|r| r.month < month) && self.time > 0.0 {
+            self.month_tick(month);
         }
     }
 }
@@ -566,6 +884,8 @@ mod tests {
         let st = s.docked.expect("d");
         let water = s.data.resource_index("water").expect("water");
         let c = Contract {
+            pax: 0,
+            pax_kind: 0,
             id: 42,
             dest_star: s.here,
             dest_seed: s.system.seed,
@@ -687,5 +1007,194 @@ mod tests {
             })
             .collect();
         assert!(!urgent.is_empty(), "arms are ordered urgently: {offers:?}");
+    }
+
+    #[test]
+    fn the_loan_grows_by_exact_compound_interest_at_the_local_rate() {
+        let mut s = docked_at_hub();
+        s.bank.last_day = (s.time / DAY).floor() as i64;
+        s.borrow(1000.0).expect("borrow");
+        let rate = s.local_sector().bank_rate_per_day();
+        // Same sector, 10 days later: the tick compounds exactly.
+        s.time += 10.0 * DAY;
+        s.bank_tick();
+        let want = crate::macroeco::compound(1000.0, s.local_sector().bank_rate_per_day(), 10);
+        assert!(
+            (s.bank.loan - want).abs() < 0.5,
+            "{} vs {want} (rate {rate})",
+            s.bank.loan
+        );
+        assert!((s.bank.total_interest - (s.bank.loan - 1000.0)).abs() < 1e-6);
+    }
+
+    #[test]
+    fn mortgaging_the_ship_raises_the_ceiling_and_default_takes_the_hold() {
+        let mut s = docked_at_hub();
+        let base = s.credit_limit();
+        s.mortgage_ship().expect("mortgage");
+        assert!((s.credit_limit() - base - s.ship_value() * MORTGAGE_LTV).abs() < 1e-6);
+        assert!(s.mortgage_ship().is_err(), "already pledged");
+        s.release_mortgage().expect("nothing owed, can release");
+        assert_eq!(s.credit_limit(), base);
+        // Default: a loan far above the ceiling, 30 days.
+        s.mortgage_ship().expect("mortgage");
+        s.bank.last_day = (s.time / DAY).floor() as i64;
+        s.bank.loan = s.credit_limit() * 1.5;
+        let water = s.data.resource_index("water").expect("water");
+        let data = Arc::clone(&s.data);
+        s.ship.cargo.add(&data, water, 200.0);
+        s.time += 31.0 * DAY;
+        s.bank_tick();
+        assert!(!s.bank.mortgage, "the pledge was called in");
+        assert_eq!(s.ship.cargo.kg[water], 0.0, "the hold went to the bank");
+        assert!(s.release_mortgage().is_err());
+    }
+
+    #[test]
+    fn currency_exchange_loses_only_the_fees_and_the_rate_floats() {
+        let mut s = docked_at_hub();
+        s.credits = 10_000.0;
+        s.faction = Some(0);
+        let fx = s.local_sector().fx;
+        let nw0 = s.net_worth();
+        let units = s.buy_currency(1000.0).expect("buy");
+        assert!((units * fx - 1000.0 * (1.0 - crate::macroeco::FX_FEE)).abs() < 1e-6);
+        assert!(
+            (nw0 - s.net_worth() - 1000.0 * crate::macroeco::FX_FEE).abs() < 1e-6,
+            "only the fee is lost"
+        );
+        let back = s.sell_currency().expect("sell");
+        let fee = crate::macroeco::FX_FEE;
+        assert!((back - 1000.0 * (1.0 - fee) * (1.0 - fee)).abs() < 1e-6);
+        assert!(
+            (s.credits - (9000.0 + back)).abs() < 1e-6,
+            "money is conserved"
+        );
+        assert!(s.sell_currency().is_err(), "nothing left to sell");
+        // The rate moves with the date.
+        let a = s.local_sector().fx;
+        s.time += 400.0 * DAY;
+        let b = s.local_sector().fx;
+        assert!((a - b).abs() > 1e-9);
+    }
+
+    #[test]
+    fn dirty_money_is_laundered_for_a_fee_or_found_by_the_audit() {
+        let mut s = docked_at_hub();
+        s.faction = Some(0);
+        s.credits = 50_000.0;
+        s.bank.dirty = 20_000.0;
+        let fee = s.launder(10_000.0).expect("launder");
+        assert!((fee - 2500.0).abs() < 1e-6, "25 % with no trust: {fee}");
+        assert!((s.bank.dirty - 10_000.0).abs() < 1e-9 && (s.credits - 47_500.0).abs() < 1e-6);
+        assert!(s.launder(0.0).is_err() || s.bank.dirty > 0.0);
+        // Left alone for long enough, an audit finds the rest.
+        let mut found = false;
+        for m in 1..400 {
+            s.time = f64::from(m) * 31.0 * DAY;
+            s.bank.dirty = 10_000.0;
+            let c0 = s.credits;
+            s.accounts_tick();
+            if s.credits < c0 {
+                assert_eq!(s.bank.dirty, 0.0);
+                assert!((c0 - s.credits - 4000.0).abs() < 1e-6, "fine of 40 %");
+                found = true;
+                break;
+            }
+        }
+        assert!(found, "the tax office eventually finds dirty money");
+        // No dirty money, no audit.
+        s.bank.dirty = 0.0;
+        let c = s.credits;
+        s.time += 31.0 * DAY;
+        s.accounts_tick();
+        assert_eq!(s.credits, c);
+    }
+
+    #[test]
+    fn monthly_accounts_record_the_net_worth_once_a_month() {
+        let mut s = docked_at_hub();
+        s.time = 100.0 * DAY;
+        s.accounts_tick();
+        s.accounts_tick();
+        assert_eq!(s.bank.reports.len(), 1, "one report per month");
+        let nw = s.net_worth();
+        assert!((s.bank.reports[0].net_worth - nw).abs() < 1e-6);
+        s.time += 35.0 * DAY;
+        s.accounts_tick();
+        assert_eq!(s.bank.reports.len(), 2);
+    }
+
+    #[test]
+    fn passengers_need_berths_pay_a_fare_and_migrants_settle() {
+        let mut s = docked_at_hub();
+        let st = s.docked.expect("docked");
+        let offers = s.offered_contracts();
+        assert!(
+            offers.iter().any(|c| c.pax > 0),
+            "stations offer passengers"
+        );
+        assert!(offers
+            .iter()
+            .filter(|c| c.pax > 0)
+            .all(|c| c.reward > 0.0 && c.kg == 0.0));
+        let make = |pax: u32, kind: u8, s: &Sim| Contract {
+            pax,
+            pax_kind: kind,
+            id: 900 + u64::from(pax),
+            dest_star: s.here,
+            dest_seed: s.system.seed,
+            dest_body: st,
+            dest_name: "x".into(),
+            dest_system: "y".into(),
+            dist_ly: 0.0,
+            resource: 0,
+            kg: 0.0,
+            reward: 1000.0,
+            expires: s.time + 10.0 * DAY,
+            faction: s.faction,
+        };
+        let cap = s.free_berths();
+        assert!(
+            s.accept_contract(make(cap + 1, 0, &s)).is_err(),
+            "no berths"
+        );
+        s.accept_contract(make(2, 0, &s)).expect("2 tourists fit");
+        assert_eq!(s.free_berths(), cap - 2, "passengers take berths");
+        let pay = s.deliver_contract(0).expect("deliver");
+        assert!(
+            pay > 700.0 && pay < 1300.0,
+            "fare within comfort bounds: {pay}"
+        );
+        assert_eq!(s.free_berths(), cap);
+        // Migrants join a colony of ours at the destination.
+        let ci = s.found_colony(st, None).ok();
+        if let Some(ci) = ci {
+            let pop0 = s.colonies[ci].pop;
+            s.accept_contract(make(3, 2, &s)).expect("accept migrants");
+            s.deliver_contract(0).expect("deliver");
+            assert!((s.colonies[ci].pop - pop0 - 3.0).abs() < 1e-9);
+        }
+    }
+
+    #[test]
+    fn a_crash_tightens_credit_and_sinks_the_shares_of_the_sector() {
+        let s = docked_at_hub();
+        let galaxy = vector_world::galaxy::Galaxy::new(s.galaxy.seed);
+        let _ = galaxy;
+        // Find a sector in crash and compare against its calm.
+        let seed = s.galaxy.seed;
+        let (cell, t) = (0..300)
+            .find_map(|x| {
+                let cell = [x, 0, 0];
+                (0..3000).step_by(5).find_map(|d| {
+                    let t = f64::from(d) * DAY;
+                    (crate::macroeco::crisis(seed, cell, t).0 > 0.2).then_some((cell, t))
+                })
+            })
+            .expect("some sector crashes");
+        let m = crate::macroeco::sector(&s.data, &s.galaxy, seed, cell, t);
+        assert!(m.credit_factor() < 0.8 && m.share_factor() < 0.8);
+        assert!(m.unemployment > 0.06);
     }
 }

@@ -29,6 +29,7 @@ pub mod incidents;
 pub mod intrusion;
 pub mod law;
 pub mod livestock;
+pub mod macroeco;
 pub mod market;
 pub mod multiverse;
 pub mod navigation;
@@ -820,6 +821,7 @@ impl Sim {
             self.run_systems(&Activity::default(), dt);
             self.expire_contracts();
             self.bank_tick();
+            self.accounts_tick();
             self.market_news_tick();
             self.futures_tick();
             self.dividend_tick();
@@ -1043,6 +1045,7 @@ impl Sim {
         self.scan_tick(dt);
         self.expire_contracts();
         self.bank_tick();
+        self.accounts_tick();
         self.market_news_tick();
         self.update_npcs();
         self.hazard_tick(dt);

@@ -328,6 +328,16 @@ fn species(producer: bool, body: f64) -> Shape {
     s
 }
 
+/// Wireframe of resource number `i` (a table index, not a codex entry).
+pub fn resource_shape(data: &GameData, i: usize) -> Option<Vec<Seg>> {
+    Some(norm(resource(&data.resources.get(i)?.category)))
+}
+
+/// Wireframe of module number `i` of the modules table.
+pub fn module_shape(data: &GameData, i: usize) -> Option<Vec<Seg>> {
+    Some(norm(module(&data.modules.get(i)?.category)))
+}
+
 /// The wireframe of entry `k` of codex category `cat`, in the unit sphere.
 pub fn shape_for(data: &GameData, cat: usize, k: usize) -> Option<Vec<Seg>> {
     let i = crate::codex::source_index(data, cat, k)?;

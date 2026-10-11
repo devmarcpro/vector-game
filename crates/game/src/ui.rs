@@ -485,6 +485,19 @@ fn draw_station(fb: &mut Framebuffer, g: &Game) {
     let s = &g.sim;
     let Some(st) = s.docked else { return };
     header(fb, g, &format!("STATION {}", s.bodies[st].name));
+    // The good under the cursor, turning at the right of the list.
+    turning(
+        fb,
+        crate::wire_shape::resource_shape(&g.data, g.sel_res),
+        1150.0,
+        200.0,
+    );
+    fb.text_at(
+        1090,
+        290,
+        &g.data.resources[g.sel_res].name.to_uppercase(),
+        DIM,
+    );
     let Some(m) = s.markets.get(&st) else { return };
     let owner = match s.faction {
         Some(f) => format!(
@@ -729,6 +742,15 @@ fn draw_ship(fb: &mut Framebuffer, g: &Game) {
         fb.text(x, top + i, l, GREEN);
     }
     draw_ship_schematic(fb, g);
+    if let Some(m) = g.sim.ship.design.slots.get(g.ship_sel).copied().flatten() {
+        turning(
+            fb,
+            crate::wire_shape::module_shape(&g.data, m),
+            380.0,
+            470.0,
+        );
+        fb.text(2, 34, &g.data.modules[m].name.to_uppercase(), DIM);
+    }
     if !g.picker {
         crate::power_view::draw(fb, g, 720, 330);
     }
@@ -2135,7 +2157,21 @@ fn category_color(category: &str) -> u32 {
 /// its volume (mass / density) takes, so a dense ore is a small block and a gas a big one. A
 /// cell is hatched with more lines the denser the resource. Two bars below tell which of volume
 /// and mass is the limit.
+/// A small turning wireframe of `segs` in the corner reserved for it.
+fn turning(fb: &mut Framebuffer, segs: Option<Vec<crate::wire_shape::Seg>>, cx: f32, cy: f32) {
+    if let Some(s) = segs {
+        let t = crate::proto_view::anim_time();
+        crate::wire_shape::draw(fb, &s, cx, cy, 180.0, t * 0.8, GREEN);
+    }
+}
+
 fn draw_hold(fb: &mut Framebuffer, g: &Game, items: &[usize]) {
+    turning(
+        fb,
+        crate::wire_shape::resource_shape(&g.data, g.sel_res),
+        1120.0,
+        170.0,
+    );
     const CELL: i32 = 8;
     const COLS: usize = 34;
     const ROWS: usize = 22;

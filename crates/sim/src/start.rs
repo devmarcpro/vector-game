@@ -560,7 +560,10 @@ mod tests {
             assert!(std.wanted_until.is_empty());
         }
         let errants = d.faction_index("errants").expect("errants");
-        assert!(outlaw.reputation_with(Some(errants)) > 20.0, "welcome among the clans");
+        assert!(
+            outlaw.reputation_with(Some(errants)) > 20.0,
+            "welcome among the clans"
+        );
         // The settler can found a colony straight away: the kit is complete and the permit paid.
         let mut settler = settler;
         let body = (0..settler.system.bodies.len())

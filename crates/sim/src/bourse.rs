@@ -142,6 +142,7 @@ pub fn world_factors(data: &GameData, galaxy_seed: u64, pos: [f64; 3], t: f64) -
     // War and unrest of the sector, incidents of the companies in it: worked out once.
     let turmoil = crate::politics::turmoil(data, &galaxy, galaxy_seed, pos, t);
     let local = crate::incidents::goods_factors(data, galaxy_seed, pos, t);
+    let sick = crate::epidemic::goods_factors(data, galaxy_seed, pos, t);
     let values = data
         .ethos
         .profile(faction.map(|f| data.factions[f].id.as_str()));
@@ -158,6 +159,7 @@ pub fn world_factors(data: &GameData, galaxy_seed: u64, pos: [f64; 3], t: f64) -
                 * crate::trading::cartel_factor(data, galaxy_seed, pos, t, r)
                 * turmoil.factor(data, r)
                 * local[r]
+                * sick[r]
         })
         .collect()
 }
@@ -340,7 +342,8 @@ mod tests {
         let got = world_factors(&d, 7, pos, peak)[res]
             / crate::trading::cartel_factor(&d, 7, pos, peak, res)
             / crate::politics::turmoil(&d, &galaxy, 7, pos, peak).factor(&d, res)
-            / crate::incidents::goods_factors(&d, 7, pos, peak)[res];
+            / crate::incidents::goods_factors(&d, 7, pos, peak)[res]
+            / crate::epidemic::goods_factors(&d, 7, pos, peak)[res];
         assert!((got / expect - 1.0).abs() < 0.12, "{got} vs {expect}");
     }
     /// A point of space inside a faction's territory.

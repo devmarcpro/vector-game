@@ -6,6 +6,7 @@
 //! heard late (the couriers carry it at a few light years per day), so a distant event is old when
 //! it arrives. Each item says how far away it happened.
 use crate::bourse::DAY;
+use crate::epidemic;
 use crate::incidents::{self, KINDS};
 use crate::politics::{self, cell_center, cell_of, cells_around, EndKind, PolKind, SECTOR_LY};
 use crate::Sim;
@@ -18,7 +19,7 @@ pub const BACKFILL_DAYS: f64 = 25.0;
 /// ship's own sector.
 pub const HEARING_CELLS: i64 = 2;
 pub const COURIER_LY_DAY: f64 = 4.0;
-pub const TAGS: [&str; 7] = [
+pub const TAGS: [&str; 8] = [
     "POLITIQUE",
     "GUERRE",
     "ENTREPRISES",
@@ -26,6 +27,7 @@ pub const TAGS: [&str; 7] = [
     "COLONIES",
     "SCIENCE",
     "CRIME",
+    "SANTE",
 ];
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -95,21 +97,23 @@ impl Sim {
         };
         self.news_scanned_to = self.time;
         let (h0, h1) = (from, self.time);
-        // Your own colonies report at once, wherever they are: their journals make the news.
+        // The journals of your own colonies make the news, wherever they are; like any news
+        // they travel, so a colony far from the ship is heard late (and says how far it is).
         let mut own: Vec<(f64, f64, String)> = Vec::new();
         for col in &self.colonies {
             let d = self
                 .galaxy
                 .star(col.star)
                 .map_or(0.0, |e| e.distance_to(self.here_pos));
+            let delay = (d - SECTOR_LY / 2.0).max(0.0) / COURIER_LY_DAY * DAY;
             for (t, line) in &col.log {
-                if *t > h0 && *t <= h1 {
-                    own.push((*t, d, format!("{} : {line}", col.name)));
+                if *t > h0 - delay && *t <= h1 - delay {
+                    own.push((*t + delay, d, format!("{} : {line}", col.name)));
                 }
             }
         }
         for (t, d, text) in own {
-            self.news_push(t, 4, d, text);
+            self.news_push(t, if text.contains("pidemie") { 7 } else { 4 }, d, text);
         }
         let data = std::sync::Arc::clone(&self.data);
         let seed = self.galaxy.seed;
@@ -169,6 +173,19 @@ impl Sim {
                 };
                 self.news_push(e.time + delay, tag, d, text);
             }
+            for (t, k, at) in epidemic::declarations_in_cell(&data, seed, c, e0, e1) {
+                let place = self.place_name(at);
+                let pa = &data.pathogens[k];
+                self.news_push(
+                    t + delay,
+                    7,
+                    d,
+                    format!(
+                        "Epidemie de {} declaree pres de {place} : {} Les medicaments s'envolent dans la region.",
+                        pa.name, pa.text
+                    ),
+                );
+            }
             for inc in incidents::incidents_in_cell(&data, seed, c, e0, e1) {
                 if inc.start > e0 && inc.start <= e1 {
                     let place = self.place_name(incidents::place(&inc));
@@ -219,7 +236,10 @@ mod tests {
         let mut texts: Vec<_> = s.news.iter().map(|n| n.text.clone()).collect();
         texts.sort();
         texts.dedup();
-        assert_eq!(texts.len(), s.news.len(), "no item twice");
+        let mut all: Vec<_> = s.news.iter().map(|n| n.text.clone()).collect();
+        all.sort();
+        let dup: Vec<_> = all.windows(2).filter(|w| w[0] == w[1]).collect();
+        assert_eq!(texts.len(), s.news.len(), "no item twice: {dup:?}");
         assert!(s.news.iter().all(|n| usize::from(n.tag) < TAGS.len()));
         let tags: std::collections::BTreeSet<u8> = s.news.iter().map(|n| n.tag).collect();
         assert!(
@@ -285,7 +305,8 @@ mod tests {
     #[test]
     fn what_happens_in_your_colonies_makes_the_news_at_once() {
         let (mut s, ci) = crate::colony::tests::founded();
-        let colony_news = |s: &Sim| s.news.iter().filter(|n| n.tag == 4).count();
+        let name = s.colonies[ci].name.clone();
+        let colony_news = |s: &Sim| s.news.iter().filter(|n| n.text.starts_with(&name)).count();
         s.time = 400.0 * DAY;
         s.news_tick();
         let before = colony_news(&s);
@@ -293,7 +314,13 @@ mod tests {
         s.colonies[ci].log_line(s.time - DAY, "Une epidemie se declare.");
         s.news_tick();
         assert_eq!(colony_news(&s), before + 1);
-        let n = s.news.iter().rev().find(|n| n.tag == 4).unwrap();
+        let n = s
+            .news
+            .iter()
+            .rev()
+            .find(|n| n.text.contains("epidemie"))
+            .unwrap();
+        assert_eq!(n.tag, 7, "an epidemic is health news");
         assert!(n.text.contains("epidemie") && n.text.contains(&s.colonies[ci].name));
         s.time += 0.5 * DAY;
         s.news_tick();

@@ -158,6 +158,34 @@ pub struct Disease {
     pub cure: String,
 }
 
+/// An agent of epidemics (see `data/epidemics.ron`): the parameters of a compartmental model.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct Pathogen {
+    pub id: String,
+    pub name: String,
+    /// natural | lab | alien
+    pub origin: String,
+    /// What makes a spontaneous outbreak likelier: any | crowd | hunger | water | wild | lab | alien.
+    pub trigger: String,
+    /// Symptoms in a person: a `diseases.ron` entry (the one system of illness).
+    pub disease: String,
+    pub r0: f64,
+    pub incubation_days: f64,
+    pub infectious_days: f64,
+    /// 0 = immunity for life.
+    pub immunity_days: f64,
+    pub fatality: f64,
+    pub weight: f64,
+    pub vaccine_eff: f64,
+    pub prod_hit: f64,
+    pub prices: Vec<(String, f64)>,
+    pub text: String,
+}
+
+pub const PATHOGEN_ORIGINS: [&str; 3] = ["natural", "lab", "alien"];
+pub const PATHOGEN_TRIGGERS: [&str; 7] =
+    ["any", "crowd", "hunger", "water", "wild", "lab", "alien"];
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Culture {
     pub id: String,
@@ -771,6 +799,7 @@ pub struct GameData {
     pub roles: Vec<Role>,
     pub traits: Vec<Trait>,
     pub diseases: Vec<Disease>,
+    pub pathogens: Vec<Pathogen>,
     pub cultures: Vec<Culture>,
     pub events: Vec<EventDef>,
     pub texts: Vec<(String, Vec<String>)>,
@@ -817,6 +846,7 @@ impl GameData {
             roles: read(&dir.join("roles.ron"))?,
             traits: read(&dir.join("traits.ron"))?,
             diseases: read(&dir.join("diseases.ron"))?,
+            pathogens: read(&dir.join("epidemics.ron"))?,
             cultures: read(&dir.join("cultures_names.ron"))?,
             events: read(&dir.join("events.ron"))?,
             texts: read(&dir.join("text/crew.ron"))?,
@@ -869,6 +899,56 @@ impl GameData {
     }
     pub fn disease_index(&self, id: &str) -> Option<usize> {
         self.diseases.iter().position(|s| s.id == id)
+    }
+
+    /// The pathogen whose symptoms are disease `d` (if it is an epidemic one).
+    pub fn pathogen_of_disease(&self, d: usize) -> Option<usize> {
+        let id = &self.diseases.get(d)?.id;
+        self.pathogens.iter().position(|p| &p.disease == id)
+    }
+
+    /// Pathogens: unique ids, known symptoms (one pathogen per disease), resources, sane rates.
+    fn validate_pathogens(&self) -> Result<(), DataError> {
+        let bad = |s: String| Err(DataError::Invalid(s));
+        let mut seen = BTreeSet::new();
+        let mut diseases = BTreeSet::new();
+        for p in &self.pathogens {
+            if !seen.insert(p.id.as_str()) {
+                return bad(format!("agent pathogene en double: {}", p.id));
+            }
+            if !diseases.insert(p.disease.as_str()) {
+                return bad(format!("agent {}: maladie {} deja prise", p.id, p.disease));
+            }
+            if self.disease_index(&p.disease).is_none() {
+                return bad(format!("agent {}: maladie {} inconnue", p.id, p.disease));
+            }
+            if !PATHOGEN_ORIGINS.contains(&p.origin.as_str()) {
+                return bad(format!("agent {}: origine {} inconnue", p.id, p.origin));
+            }
+            if !PATHOGEN_TRIGGERS.contains(&p.trigger.as_str()) {
+                return bad(format!("agent {}: declencheur {} inconnu", p.id, p.trigger));
+            }
+            if p.r0 <= 0.0
+                || p.incubation_days <= 0.0
+                || p.infectious_days <= 0.0
+                || p.immunity_days < 0.0
+                || !(0.0..=1.0).contains(&p.fatality)
+                || !(0.0..=1.0).contains(&p.vaccine_eff)
+                || !(0.0..=1.0).contains(&p.prod_hit)
+                || p.weight <= 0.0
+            {
+                return bad(format!("agent {}: valeurs hors bornes", p.id));
+            }
+            for (r, _) in &p.prices {
+                if self.resource_index(r).is_none() {
+                    return bad(format!("agent {}: ressource {r} inconnue", p.id));
+                }
+            }
+        }
+        if self.pathogens.len() < 12 {
+            return bad("moins de 12 agents pathogenes".into());
+        }
+        Ok(())
     }
     pub fn trait_index(&self, id: &str) -> Option<usize> {
         self.traits.iter().position(|s| s.id == id)
@@ -1275,6 +1355,7 @@ impl GameData {
         self.validate_dimensions()?;
         self.validate_materials()?;
         self.validate_rogue()?;
+        self.validate_pathogens()?;
         self.validate_companies()
     }
 
@@ -2520,6 +2601,43 @@ mod tests {
         let dup = d.cybernetics[0].clone();
         d.cybernetics.push(dup);
         assert!(d.validate().is_err(), "duplicate");
+    }
+
+    #[test]
+    fn pathogens_are_validated() {
+        let ok = GameData::load(&dir()).expect("data loads");
+        assert!(ok.pathogens.len() >= 12);
+        let mut d = ok.clone();
+        d.pathogens[0].disease = "maladie_fantome".into();
+        assert!(d.validate().is_err(), "unknown symptoms");
+        let mut d = ok.clone();
+        d.pathogens[1].disease = d.pathogens[0].disease.clone();
+        assert!(d.validate().is_err(), "one pathogen per disease");
+        let mut d = ok.clone();
+        d.pathogens[0].r0 = 0.0;
+        assert!(d.validate().is_err(), "R0 must be positive");
+        let mut d = ok.clone();
+        d.pathogens[0].fatality = 1.5;
+        assert!(d.validate().is_err(), "fatality is a share");
+        let mut d = ok.clone();
+        d.pathogens[0].origin = "magique".into();
+        assert!(d.validate().is_err(), "unknown origin");
+        let mut d = ok.clone();
+        d.pathogens[0].trigger = "lune".into();
+        assert!(d.validate().is_err(), "unknown trigger");
+        let mut d = ok.clone();
+        d.pathogens[0].prices.push(("rien".into(), 0.1));
+        assert!(d.validate().is_err(), "unknown resource");
+        let mut d = ok.clone();
+        let dup = d.pathogens[0].clone();
+        d.pathogens.push(dup);
+        assert!(d.validate().is_err(), "duplicate");
+        let vaccine = ok.resource_index("vaccine");
+        assert!(vaccine.is_some(), "vaccines exist and can be crafted");
+        assert!(ok
+            .recipes
+            .iter()
+            .any(|r| r.outputs.iter().any(|(o, _)| o == "vaccine")));
     }
 
     #[test]

@@ -15,6 +15,7 @@ mod flow_view;
 mod fpv_view;
 mod game;
 mod globe;
+mod health_view;
 mod hud;
 mod mouse;
 mod power_view;

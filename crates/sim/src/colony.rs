@@ -56,19 +56,6 @@ pub struct ColonyStats {
     pub upkeep: f64,
 }
 
-/// An epidemic running in a colony.
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct Epidemic {
-    /// Index into `GameData::diseases`.
-    pub disease: usize,
-    pub days_left: f32,
-    /// 0.5..1: how hard it hits.
-    pub strength: f32,
-}
-
-/// Chance per day of an outbreak in a colony of 100 people with no medical care.
-pub const EPIDEMIC_RATE: f64 = 0.004;
-
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Colony {
     pub id: u32,
@@ -89,8 +76,10 @@ pub struct Colony {
     pub unrest: f64,
     /// Production lost to invasive species in the colony's territory, 0..0.5 (see `ecology`).
     pub pest: f64,
-    /// An epidemic of people (see `Epidemic`), if one is running.
-    pub epidemic: Option<Epidemic>,
+    /// The epidemics of the colony, one per pathogen it has met (see `epidemic`).
+    pub outbreaks: Vec<crate::epidemic::Outbreak>,
+    /// Strikes, fêtes, births and discoveries (see `colony_life`).
+    pub life: crate::colony_life::ColonyLife,
     /// Mores of the colony on the axes of `ethos.ron`: they start as those of the people of the
     /// place and drift under the policies (see `culture_target`).
     pub culture: Vec<f64>,
@@ -479,17 +468,14 @@ impl Colony {
         let (_, quarantine_mult, _) = self.policy_level(data, "quarantine");
         let rioting = self.unrest > 0.7;
         let broke = self.treasury < 0.0;
+        let strike = self.strike_factor(data, now, days);
         let prod_mult = (staffing
             * power_sat
             * (0.35 + 0.9 * self.happiness)
             * (1.0 + work_mult + sec_mult + quarantine_mult)
             * (1.0 - self.pest.clamp(0.0, 0.5))
-            * (1.0
-                - 0.4
-                    * self
-                        .epidemic
-                        .as_ref()
-                        .map_or(0.0, |e| f64::from(e.strength)))
+            * (1.0 - self.labor_loss(data))
+            * strike
             * if rioting { 0.5 } else { 1.0 }
             * if broke { 0.3 } else { 1.0 })
         .max(0.0);
@@ -607,6 +593,8 @@ impl Colony {
             + quarantine_h
             - crowd
             - self.culture_friction(data)
+            - self.fear()
+            + self.fete_mood()
             + data.religions.get(self.faith).map_or(0.0, |r| r.morale)
             - if broke { 0.1 } else { 0.0 })
         .clamp(0.0, 1.0);
@@ -640,57 +628,20 @@ impl Colony {
         } else {
             0.0
         };
-        // Epidemics: crowding and bad care start them, medical centres and a strict quarantine
-        // hold them off and cut them short.
-        let mut epidemic_deaths = 0.0;
-        if let Some(e) = &mut self.epidemic {
-            let d = &data.diseases[e.disease];
-            epidemic_deaths =
-                self.pop * d.lethality * 0.04 * f64::from(e.strength) * (1.0 - 0.7 * med) * days;
-            e.days_left -= (days * (1.0 + 2.0 * med)) as f32;
-            if e.days_left <= 0.0 {
-                messages.push(format!("L'epidemie de {} est terminee.", d.name));
-                self.epidemic = None;
-            }
-        } else if self.pop > 20.0 {
-            let mut rng = Rng::new(hash_coord(
-                self.system_seed,
-                i64::from(self.id),
-                (now / DAY) as i64,
-                91,
-            ));
-            let quarantine = data
-                .policy_index("quarantine")
-                .map_or(0, |p| self.policies[p]) as f64;
-            let p = EPIDEMIC_RATE
-                * days
-                * (self.pop / 100.0).clamp(0.2, 6.0)
-                * (1.0 - 0.7 * med)
-                * (1.0 - 0.2 * quarantine).max(0.2);
-            if rng.f64() < p {
-                // The disease: weighted by how contagious it is.
-                let cands: Vec<usize> = (0..data.diseases.len())
-                    .filter(|&i| data.diseases[i].contagion >= 0.05)
-                    .collect();
-                let total: f64 = cands.iter().map(|&i| data.diseases[i].contagion).sum();
-                let mut pick = rng.f64() * total;
-                let mut chosen = cands[0];
-                for &i in &cands {
-                    if pick < data.diseases[i].contagion {
-                        chosen = i;
-                        break;
-                    }
-                    pick -= data.diseases[i].contagion;
-                }
-                let strength = 0.5 + 0.5 * rng.f64() as f32;
-                self.epidemic = Some(Epidemic {
-                    disease: chosen,
-                    days_left: data.diseases[chosen].duration_days as f32 * 1.5,
-                    strength,
-                });
-                messages.push(format!("Epidemie : {} !", data.diseases[chosen].name));
-            }
-        }
+        // Epidemics (see `epidemic`): crowding and bad care start them, medical centres, medicine,
+        // vaccines and a strict quarantine hold them off and cut them short.
+        let epidemic_deaths = self.epidemics_tick(
+            data,
+            now,
+            days,
+            &crate::epidemic::EpiCtx {
+                med,
+                crowd,
+                food_sat,
+                water_sat,
+            },
+            &mut messages,
+        );
         let deaths = self.pop
             * (0.00008
                 + 0.00005 * (1.0 - med)
@@ -719,6 +670,7 @@ impl Colony {
         let was = self.pop;
         self.pop = (self.pop + births + immigrants - deaths - leavers)
             .clamp(0.0, housing.max(self.pop.min(housing)));
+        self.life_events(now, days, births, rec);
         if self.pop < 1.0 && was >= 1.0 {
             messages.push("La colonie est abandonnee.".to_string());
         }
@@ -877,7 +829,8 @@ impl Sim {
             happiness: 0.7,
             unrest: 0.0,
             pest: 0.0,
-            epidemic: None,
+            outbreaks: Vec::new(),
+            life: crate::colony_life::ColonyLife::default(),
             culture: founders.clone(),
             culture_base: founders,
             faith,
@@ -1269,11 +1222,11 @@ pub(crate) mod tests {
                     ("consumer_goods", 2000.0),
                 ],
             );
-            let had = s.colonies[ci].epidemic.is_some();
+            let had = s.colonies[ci].outbreaks.iter().any(|o| o.active());
             s.time += 10.0 * DAY;
             s.update_colonies();
             s.colonies[ci].pop = s.colonies[ci].pop.max(150.0);
-            if !had && s.colonies[ci].epidemic.is_some() {
+            if !had && s.colonies[ci].outbreaks.iter().any(|o| o.active()) {
                 outbreaks += 1;
             }
         }
@@ -1286,9 +1239,9 @@ pub(crate) mod tests {
         // A running lethal epidemic costs lives that the same colony without it keeps.
         let lethal = s
             .data
-            .diseases
+            .pathogens
             .iter()
-            .position(|d| d.id == "variole_spatiale")
+            .position(|p| p.id == "variole_epidemique")
             .expect("smallpox");
         let run = |epidemic: bool| {
             let (mut t, c) = founded();
@@ -1303,13 +1256,10 @@ pub(crate) mod tests {
                 ],
             );
             if epidemic {
-                t.colonies[c].epidemic = Some(Epidemic {
-                    disease: lethal,
-                    days_left: 100.0,
-                    strength: 1.0,
-                });
+                let d = Arc::clone(&t.data);
+                t.colonies[c].expose(&d, lethal, 6.0, t.time);
             }
-            t.time += 10.0 * DAY;
+            t.time += 30.0 * DAY;
             t.update_colonies();
             t.colonies[c].pop
         };
@@ -1320,23 +1270,22 @@ pub(crate) mod tests {
             run(false)
         );
 
-        // And it ends by itself.
+        // And it ends by itself, and says so.
         let (mut t, c) = founded();
         t.colonies[c].pop = 60.0;
-        fill(&mut t, c, &[("food", 5000.0), ("water", 5000.0)]);
-        t.colonies[c].epidemic = Some(Epidemic {
-            disease: lethal,
-            days_left: 3.0,
-            strength: 0.5,
-        });
-        t.time += 10.0 * DAY;
-        t.update_colonies();
-        let ended = t.colonies[c].epidemic.is_none()
-            || t.colonies[c].epidemic.as_ref().unwrap().days_left > 3.0;
-        assert!(
-            ended,
-            "the first epidemic ended (a new one may have started)"
-        );
+        let flu = t
+            .data
+            .pathogens
+            .iter()
+            .position(|p| p.id == "rhume_soutes")
+            .unwrap();
+        let d = Arc::clone(&t.data);
+        t.colonies[c].expose(&d, flu, 3.0, t.time);
+        for _ in 0..40 {
+            fill(&mut t, c, &[("food", 500.0), ("water", 500.0)]);
+            t.time += 5.0 * DAY;
+            t.update_colonies();
+        }
         assert!(t.colonies[c]
             .log
             .iter()

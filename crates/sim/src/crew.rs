@@ -44,6 +44,9 @@ pub struct Person {
     /// Credits per day.
     pub salary: f64,
     pub disease: Option<(usize, f32)>,
+    /// Pathogens (indices into `GameData::pathogens`) this person is immune to, with the days
+    /// of immunity left (see `epidemic`).
+    pub immunity: Vec<(usize, f32)>,
     pub alive: bool,
     pub relations: Vec<(u32, i16)>,
     /// Place in the family tree (see `genealogy`) and the genes it gives.
@@ -333,6 +336,7 @@ pub fn person_from_kin(
         shift: (rng.next_u64() % 3) as u8,
         salary: (30.0 + 22.0 * best).round(),
         disease: None,
+        immunity: Vec::new(),
         alive: true,
         relations: Vec::new(),
         kin,
@@ -671,6 +675,10 @@ impl Crew {
             if self.air < 0.4 {
                 dh -= 0.1 * (0.4 - self.air) / 0.4;
             }
+            p.immunity.retain_mut(|(_, left)| {
+                *left -= days as f32;
+                *left > 0.0
+            });
             if let Some((d, left)) = &mut p.disease {
                 let def = &data.diseases[*d];
                 let treated = medic_on_duty
@@ -697,9 +705,17 @@ impl Crew {
                         &[("disease", name)],
                     );
                     log_lines.push(t);
+                    let cured = *d;
                     p.disease = None;
+                    // The recovered are immune to the pathogen for a while (see `epidemic`).
+                    if let Some(k) = data.pathogen_of_disease(cured) {
+                        let im = data.pathogens[k].immunity_days;
+                        p.immunity
+                            .push((k, if im > 0.0 { im as f32 } else { 1.0e9 }));
+                    }
                 } else if def.contagion > 0.0 {
-                    contagion.push((*d, def.contagion * days));
+                    // The infirmary isolates the sick: the more of it, the less they pass on.
+                    contagion.push((*d, def.contagion * days / (1.0 + ctx.medbay)));
                 }
             }
             if dh == 0.0 && p.hunger < 0.6 && p.thirst < 0.5 && self.air > 0.6 {
@@ -774,7 +790,10 @@ impl Crew {
             if r.f64() < chance {
                 let k = (r.next_u64() % self.members.len() as u64) as usize;
                 let p = &mut self.members[k];
-                if p.alive && p.disease.is_none() {
+                let immune = data
+                    .pathogen_of_disease(d)
+                    .is_some_and(|k| p.immunity.iter().any(|(i, _)| *i == k));
+                if p.alive && p.disease.is_none() && !immune {
                     p.disease = Some((d, data.diseases[d].duration_days as f32));
                     let t = render(
                         data,

@@ -49,3 +49,6 @@ Mœurs : data/ethos.ron (8 axes, 8 étiquettes morales, 8 profils de faction), g
 
 ## Entreprises
 `data/companies.ron` : id, nom, siège (faction), cours de base, rendement annuel, volatilité, biens (id, poids, total 1), texte.
+
+## Agents pathogènes
+`data/epidemics.ron` : id, nom, origine (natural | lab | alien), déclencheur (any | crowd | hunger | water | wild | lab | alien), maladie de symptômes (`diseases.ron`, une par agent), R0, incubation, durée infectieuse, durée d'immunité (0 = à vie), létalité, poids de tirage, efficacité du vaccin, perte de production, effets sur les prix (ressource, variation à 10 % de malades), texte. Validé au chargement (12 au moins). Ressource `vaccine` (recette `make_vaccine`, usine chimique). Entrée du codex : AGENTS PATHOGENES.

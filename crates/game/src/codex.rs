@@ -2,7 +2,7 @@
 //! weapon, faction, anomaly and condition, generated from the real data (no hand-written numbers).
 use vector_data::GameData;
 
-pub const CATEGORIES: [&str; 29] = [
+pub const CATEGORIES: [&str; 30] = [
     "RESSOURCES",
     "MODULES",
     "ARMES",
@@ -32,6 +32,7 @@ pub const CATEGORIES: [&str; 29] = [
     "LIEUX A EXPLORER",
     "CREATURES",
     "MATERIAUX",
+    "AGENTS PATHOGENES",
 ];
 
 /// Index in the source table of entry `k` of a category (modules and weapons share a table).
@@ -84,6 +85,7 @@ fn entries(data: &GameData, cat: usize) -> Vec<usize> {
         26 => (0..data.rogue_themes.len()).collect(),
         27 => (0..data.rogue_monsters.len()).collect(),
         28 => (0..data.materials.len()).collect(),
+        29 => (0..data.pathogens.len()).collect(),
         _ => Vec::new(),
     }
 }
@@ -118,6 +120,7 @@ pub fn names(data: &GameData, cat: usize) -> Vec<String> {
             26 => data.rogue_themes[i].name.clone(),
             27 => data.rogue_monsters[i].name.clone(),
             28 => data.materials[i].name.clone(),
+            29 => data.pathogens[i].name.clone(),
             18 => format!(
                 "Appeler : {}",
                 vector_data::dialogue::ROLES[i].to_lowercase()
@@ -526,6 +529,72 @@ pub fn entry(data: &GameData, cat: usize, k: usize) -> Vec<String> {
                     res_name(data, &d.cure).unwrap_or_else(|| d.cure.clone())
                 }
             ));
+            if let Some(k) = data.pathogen_of_disease(i) {
+                out.push(format!(
+                    "Cette maladie est celle d'une epidemie : voir l'agent {}",
+                    data.pathogens[k].name
+                ));
+            }
+        }
+        29 => {
+            let p = &data.pathogens[i];
+            out.push(format!(
+                "{} ({})",
+                p.name,
+                match p.origin.as_str() {
+                    "lab" => "souche de laboratoire",
+                    "alien" => "agent extraterrestre",
+                    _ => "agent naturel",
+                }
+            ));
+            out.push(p.text.clone());
+            out.push(format!(
+                "R0 {:.1} (personnes infectees par un malade, sans mesures)   incubation {:.0} j   malade {:.0} j   letalite {:.1} %",
+                p.r0,
+                p.incubation_days,
+                p.infectious_days,
+                p.fatality * 100.0
+            ));
+            out.push(format!(
+                "Immunite apres guerison : {}   vaccin : {}",
+                if p.immunity_days > 0.0 {
+                    format!("{:.0} jours", p.immunity_days)
+                } else {
+                    "a vie".to_string()
+                },
+                if p.vaccine_eff > 0.0 {
+                    format!("efficace a {:.0} %", p.vaccine_eff * 100.0)
+                } else {
+                    "aucun connu".to_string()
+                }
+            ));
+            out.push(format!(
+                "Se declare surtout : {}",
+                match p.trigger.as_str() {
+                    "crowd" => "dans les colonies surpeuplees",
+                    "hunger" => "quand les rations manquent",
+                    "water" => "quand l'eau est rare ou souillee",
+                    "wild" => "au contact de la faune et de la flore sauvages",
+                    "lab" => "dans les colonies qui font de la recherche",
+                    "alien" => "au contact de mondes inconnus",
+                    _ => "partout",
+                }
+            ));
+            if let Some(d) = data.disease_index(&p.disease) {
+                out.push(format!("Symptomes : {}", data.diseases[d].name));
+            }
+            out.push(format!(
+                "Effets : {:.0} % de production perdue quand 10 % des gens sont malades",
+                p.prod_hit * 100.0
+            ));
+            for (r, delta) in &p.prices {
+                out.push(format!(
+                    "Prix : {} {:+.0} % quand 10 % des gens sont malades",
+                    res_name(data, r).unwrap_or_else(|| r.clone()),
+                    delta * 100.0
+                ));
+            }
+            out.push("Mesures : quarantaine (politique de colonie), medicaments, centre medical, infirmerie du bord, vaccins (Culture de vaccins)".to_string());
         }
         28 => {
             let m = &data.materials[i];

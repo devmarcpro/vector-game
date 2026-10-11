@@ -1714,7 +1714,7 @@ fn draw_empire(fb: &mut Framebuffer, g: &Game) {
             "ABANDONNEE"
         } else if c.unrest > 0.7 {
             "EMEUTES"
-        } else if c.epidemic.is_some() {
+        } else if c.outbreaks.iter().any(|o| o.active()) {
             "EPIDEMIE"
         } else if c.stats.food_sat < 0.5 {
             "FAMINE"
@@ -1810,24 +1810,37 @@ fn draw_colony(fb: &mut Framebuffer, g: &Game) {
         ),
         GREEN,
     );
+    fb.text(100, 1, "[F] CHAINES  [H] SANTE", DIM);
+    g.hit_cells(100, 1, 10, 1, Act::Key(KeyCode::KeyF), None);
+    g.hit_cells(112, 1, 9, 1, Act::Key(KeyCode::KeyH), None);
     if g.col_flow {
         crate::flow_view::draw(fb, g);
         return;
     }
-    if let Some(e) = &c.epidemic {
+    if g.col_health {
+        crate::health_view::draw(fb, g);
+        return;
+    }
+    let worst = c
+        .outbreaks
+        .iter()
+        .filter(|o| o.active())
+        .max_by(|a, b| a.i.total_cmp(&b.i));
+    if let Some(o) = worst {
         fb.text(
             1,
             4,
             &format!(
-                "EPIDEMIE : {}  ({:.0} J RESTANTS, FORCE {:.0} %)  - UN CENTRE MEDICAL ET LA QUARANTAINE LA FREINENT",
-                g.data.diseases[e.disease].name.to_uppercase(),
-                e.days_left,
-                e.strength * 100.0
+                "EPIDEMIE : {}  {:.0} MALADES ({:.0} %)  R EFFECTIF {:.2}  - QUARANTAINE, MEDECINE ET VACCINS LA FREINENT  [H] SUIVI",
+                g.data.pathogens[o.pathogen].name.to_uppercase(),
+                o.i * c.pop,
+                o.i * 100.0,
+                c.r_effective(&g.data, o)
             ),
             RED,
         );
     }
-    if c.epidemic.is_none() {
+    if worst.is_none() {
         fb.text(
             1,
             4,

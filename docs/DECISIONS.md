@@ -90,3 +90,6 @@ ponderees par `ground_of`), la neige et la glace apparaissent quand il fait froi
 lave remplace l'eau selon la temperature. Les lieux construits nomment leur matiere (`floor_mat`,
 `wall_mat`). La matiere agit : `slow` multiplie le temps de marche (boue x2, neige x1,5, glace x0,8) et
 un rover la ressent 2,5 fois moins. Sauvegardes : version 35.
+
+## Epidemies : un modele, trois sortes de lieux
+Un seul modele SEIR (`epidemic::step`) sert les colonies (etat sauvegarde), les secteurs (fonction de la graine, rien de stocke, comme `politics` et `incidents`) et le vaisseau (les symptomes sont des maladies de `diseases.ron` portees par des personnes). Pas de seconde representation de la maladie : l'agent pathogene reference la maladie, la maladie d'equipage dit si une personne est porteuse. Les effets locaux (prix, nouvelles, import dans les colonies) ne dependent que du secteur de l'observateur. Limite assumee : le joueur contamine les colonies qu'il visite mais pas les secteurs (sans etat, rien a ecrire).

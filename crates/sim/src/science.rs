@@ -135,19 +135,20 @@ impl Sim {
             }
             let _ = i;
             let f = 1.0 - d / def.radius;
+            let strength = def.strength * self.hazard_scale();
             match def.hazard.as_str() {
-                "radiation" => e.radiation += def.strength * 120.0 * f * f,
+                "radiation" => e.radiation += strength * 120.0 * f * f,
                 "gravity" => {
-                    let gm = def.strength * 5.0e14;
+                    let gm = strength * 5.0e14;
                     e.gravity = e.gravity + (b.pos - p) * (gm / (d.max(1000.0).powi(3)));
                 }
                 "ion" => {
-                    e.ion += def.strength * 40.0 * f;
-                    e.sensor_mult *= 1.0 - 0.8 * def.strength * f.sqrt();
+                    e.ion += strength * 40.0 * f;
+                    e.sensor_mult *= 1.0 - 0.8 * strength * f.sqrt();
                 }
-                "sensor" => e.sensor_mult *= 1.0 - 0.85 * def.strength * f.sqrt(),
-                "magnetic" => e.agility_mult *= 1.0 - 0.7 * def.strength * f.sqrt(),
-                "rift" => e.rift += def.strength * 0.02 * f,
+                "sensor" => e.sensor_mult *= 1.0 - 0.85 * strength * f.sqrt(),
+                "magnetic" => e.agility_mult *= 1.0 - 0.7 * strength * f.sqrt(),
+                "rift" => e.rift += strength * 0.02 * f,
                 _ => {}
             }
         }
@@ -354,7 +355,7 @@ impl Sim {
             return;
         };
         let mut rng = Rng::new(hash_coord(self.system.seed, i as i64, 91, 73));
-        let research = rng.range(def.research.0, def.research.1).round();
+        let research = (rng.range(def.research.0, def.research.1) * self.research_scale()).round();
         let credits = rng.range(def.credits.0, def.credits.1).round();
         self.research_pool += research;
         self.credits += credits;

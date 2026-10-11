@@ -151,6 +151,9 @@ pub fn hint_line(g: &Game) -> String {
         Screen::Trading => {
             "GAUCHE/DROITE ONGLET  HAUT/BAS CHOIX  +/- MISE  ENTREE AGIR  ECHAP RETOUR"
         }
+        Screen::Cosmos => {
+            "ENTREE PORTAIL  A ANCRE  R REMONTER  X LEVER  HAUT/BAS CHOIX  +/- JOURS  S STASE  ECHAP RETOUR"
+        }
         Screen::Casino => {
             "GAUCHE/DROITE JEU  HAUT/BAS MISE  +/- NUMERO  ENTREE JOUER  ECHAP RETOUR"
         }
@@ -260,6 +263,10 @@ pub fn help_lines(screen: Screen) -> &'static [&'static str] {
         Screen::Trading => &[
             "Gauche/Droite : onglet (rumeurs, arbitrage, cartels, appels d'offres, assurance)",
             "Entree : agir   +/- : mise de l'offre",
+        ],
+        Screen::Cosmos => &[
+            "Entree : franchir le portail   A : poser une ancre temporelle   R : remonter",
+            "S : stase a quai (le monde avance, pas le bord)   Accueil : ouvrir cet ecran",
         ],
         Screen::Casino => &["Entree : jouer   la maison garde toujours un avantage"],
         Screen::Empire => &["Entree : detail de la colonie   F3 : flotte"],

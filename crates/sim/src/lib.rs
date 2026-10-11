@@ -21,6 +21,7 @@ pub mod genealogy;
 pub mod intrusion;
 pub mod livestock;
 pub mod market;
+pub mod multiverse;
 pub mod npc;
 pub mod planet;
 pub mod rules;
@@ -286,6 +287,8 @@ pub struct Sim {
     pub casino_round: i64,
     /// Insurance, cartel seats and tenders.
     pub trade: trading::TradeState,
+    /// Portals, dimensions and time travel.
+    pub multiverse: multiverse::Multiverse,
     pub last_livestock_day: i64,
     /// Body used as velocity reference for flight assist (within its influence radius).
     pub ref_body: Option<usize>,
@@ -421,6 +424,7 @@ impl Sim {
             herd_counter: 0,
             casino_round: 0,
             trade: Default::default(),
+            multiverse: Default::default(),
             last_livestock_day: i64::MIN,
             ref_body: None,
             target: None,
@@ -701,6 +705,7 @@ impl Sim {
         self.livestock_tick();
         self.cartel_tick();
         self.tender_tick();
+        self.multiverse_tick();
         let flux = self.solar_flux();
         let mass = self.ship.mass();
         let was_hot = self.ship.sys.overheating;
@@ -1065,10 +1070,11 @@ impl Sim {
         let Some(cls) = self.data.asteroids.iter().find(|a| a.id == class.id()) else {
             return;
         };
+        let scale = self.ore_scale();
         let mut taken = 0.0;
         for (rid, frac) in &cls.composition {
             if let Some(res) = self.data.resource_index(rid) {
-                taken += self.ship.cargo.add(&self.data, res, want * frac);
+                taken += self.ship.cargo.add(&self.data, res, want * frac * scale) / scale;
             }
         }
         if taken < want * 0.999 {

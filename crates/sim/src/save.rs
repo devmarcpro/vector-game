@@ -6,7 +6,7 @@ use vector_data::GameData;
 use vector_world::generate_system;
 
 pub const MAGIC: [u8; 4] = *b"VECT";
-pub const VERSION: u32 = 27;
+pub const VERSION: u32 = 28;
 
 #[derive(Debug)]
 pub enum SaveError {
@@ -84,6 +84,7 @@ pub struct SaveGame {
     pub herd_counter: i64,
     pub casino_round: i64,
     pub trade: crate::trading::TradeState,
+    pub multiverse: crate::multiverse::Multiverse,
     pub last_livestock_day: i64,
     pub shares: Vec<(usize, f64)>,
     pub last_dividend_month: i64,
@@ -139,6 +140,7 @@ impl Sim {
             herd_counter: self.herd_counter,
             casino_round: self.casino_round,
             trade: self.trade.clone(),
+            multiverse: self.multiverse.clone(),
             last_livestock_day: self.last_livestock_day,
             shares: self.shares.clone(),
             last_dividend_month: self.last_dividend_month,
@@ -172,7 +174,11 @@ impl Sim {
         }
         let save: SaveGame =
             postcard::from_bytes(&bytes[8..]).map_err(|e| SaveError::Corrupt(e.to_string()))?;
-        let mut sim = Sim::new(generate_system(save.system_seed), data);
+        let mut system = generate_system(save.system_seed);
+        if save.multiverse.dimension > 0 {
+            vector_world::ensure_portal(&mut system);
+        }
+        let mut sim = Sim::new(system, data);
         if save.mined.len() != sim.mined.len()
             || save.ship.cargo.kg.len() != sim.data.resources.len()
         {
@@ -220,6 +226,7 @@ impl Sim {
         sim.herd_counter = save.herd_counter;
         sim.casino_round = save.casino_round;
         sim.trade = save.trade;
+        sim.multiverse = save.multiverse;
         sim.last_livestock_day = save.last_livestock_day;
         sim.shares = save.shares;
         sim.last_dividend_month = save.last_dividend_month;

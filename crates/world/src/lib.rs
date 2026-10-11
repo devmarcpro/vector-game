@@ -104,6 +104,8 @@ pub enum AnomalyKind {
     Comet,
     MagneticAnomaly,
     SpatialRift,
+    /// Rare gate to another place or another dimension (not drawn among `ALL`).
+    Portal,
 }
 
 impl AnomalyKind {
@@ -136,6 +138,7 @@ impl AnomalyKind {
             Self::Comet => "comet",
             Self::MagneticAnomaly => "magnetic_anomaly",
             Self::SpatialRift => "spatial_rift",
+            Self::Portal => "portal",
         }
     }
     pub fn label(self) -> &'static str {
@@ -152,6 +155,7 @@ impl AnomalyKind {
             Self::Comet => "Comete",
             Self::MagneticAnomaly => "Anomalie magnetique",
             Self::SpatialRift => "Faille spatiale",
+            Self::Portal => "Portail",
         }
     }
 }
@@ -682,7 +686,7 @@ pub fn generate_system(seed: u64) -> System {
         });
     }
 
-    System {
+    let mut system = System {
         seed,
         name,
         designation,
@@ -690,7 +694,69 @@ pub fn generate_system(seed: u64) -> System {
         luminosity: lum,
         bodies,
         belts,
+    };
+    // A rare portal (1 system in 10), rolled last so everything else is unchanged.
+    if rng.f64() < PORTAL_CHANCE {
+        add_portal(&mut system);
     }
+    system
+}
+
+/// Share of systems that hold a natural portal.
+pub const PORTAL_CHANCE: f64 = 0.10;
+
+/// Seed of the version of a system seen from dimension `dim` (0 is our own).
+pub fn dimension_seed(seed: u64, dim: u32) -> u64 {
+    if dim == 0 {
+        seed
+    } else {
+        vector_core::mix64(
+            seed ^ 0xD1_0000_0000 ^ u64::from(dim).wrapping_mul(0x9E37_79B9_7F4A_7C15),
+        )
+    }
+}
+
+/// The system seen from dimension `dim`: another version of the same star, with a way back.
+pub fn generate_system_in(seed: u64, dim: u32) -> System {
+    let mut s = generate_system(dimension_seed(seed, dim));
+    if dim > 0 {
+        ensure_portal(&mut s);
+    }
+    s
+}
+
+/// Index of the portal of a system, if any.
+pub fn portal_index(system: &System) -> Option<usize> {
+    system
+        .bodies
+        .iter()
+        .position(|b| matches!(b.kind, BodyKind::Anomaly(AnomalyKind::Portal)))
+}
+
+/// Make sure the system holds a portal (the way home of a dimension).
+pub fn ensure_portal(system: &mut System) {
+    if portal_index(system).is_none() {
+        add_portal(system);
+    }
+}
+
+fn add_portal(system: &mut System) {
+    let mut rng = Rng::new(system.seed ^ 0x090B_7A15);
+    let mu_star = system.bodies[0].gm();
+    let a = AU * rng.range(0.8, 3.0) * system.luminosity.sqrt().max(0.2);
+    let orbit = random_orbit(&mut rng, 0, a, 0.05, 0.1, mu_star);
+    system.bodies.push(CelBody {
+        name: format!("Portail {}", system.name),
+        kind: BodyKind::Anomaly(AnomalyKind::Portal),
+        mass: 1.0e9,
+        radius: 400.0,
+        orbit: Some(orbit),
+        rotation_period: 600.0,
+        temp: 4.0,
+        gravity: 0.0,
+        pressure: 0.0,
+        atmosphere: vec![],
+    });
 }
 
 fn orbit_a(b: &CelBody) -> f64 {
@@ -702,7 +768,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn anomalies_exist_in_all_twelve_kinds() {
+    fn anomalies_exist_in_all_thirteen_kinds() {
         let mut kinds = std::collections::BTreeSet::new();
         let mut with = 0;
         for seed in 0..800u64 {
@@ -713,14 +779,14 @@ mod tests {
                 .filter(|b| matches!(b.kind, BodyKind::Anomaly(_)))
                 .count();
             with += usize::from(n > 0);
-            assert!(n <= 3);
+            assert!(n <= 4);
             for b in &sys.bodies {
                 if let BodyKind::Anomaly(k) = b.kind {
                     kinds.insert(k);
                 }
             }
         }
-        assert_eq!(kinds.len(), 12, "every anomaly kind must occur: {kinds:?}");
+        assert_eq!(kinds.len(), 13, "every anomaly kind must occur: {kinds:?}");
         assert!(
             (250..=550).contains(&with),
             "about 45 % of systems hold one: {with}/800"

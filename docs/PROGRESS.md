@@ -115,3 +115,5 @@
 - Elevage (`livestock.rs`) : especes domestiques, genes mendeliens a 4 traits, reproduction, abattage, rations quotidiennes (save v26). Casino (`casino.rs`) : roulette et machine a sous, avantage de la maison mesure par test.
 
 - Courtage (`trading.rs`, `data/cartels.ron`) : rumeurs (dont des fausses), arbitrage entre systemes, assurance de soute (rembourse 70 % a la destruction), cartels (majorent les prix, sieges achetables, enquete antitrust), appels d'offres (le moins cher gagne, penalite si non livre). Save v27.
+
+- Haute SF (`multiverse.rs`, `data/dimensions.ron`) : portails (1 systeme sur 10), trous de ver, 6 dimensions (autre version de l'etoile, regles et dilatation du temps), ancres temporelles + remontee (souvenirs du futur = rumeurs certaines, paradoxes), stase. Save v28.

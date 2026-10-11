@@ -1,0 +1,18 @@
+// Dimensions reachable through portals (E8). Each one is another version of the same star.
+// ore_scale: richness of mining; hazard_scale: strength of anomaly fields; research_scale: what
+// exploring anomalies teaches; instability: genetic instability gained per day by the crew;
+// time_ratio: days that pass outside for one day spent inside (applied when you come back).
+[
+ (id:"miroir", name:"Dimension Miroir", ore_scale:1.0, hazard_scale:1.0, research_scale:2.0, instability:0.0, time_ratio:1.0,
+  text:"Le même système, mais inversé : chaque planète semble un reflet défait. L'étude y rapporte double."),
+ (id:"prodigue", name:"Dimension Prodigue", ore_scale:3.0, hazard_scale:1.5, research_scale:1.0, instability:0.01, time_ratio:1.0,
+  text:"La roche y est trois fois plus riche, comme si l'univers avait oublié de compter."),
+ (id:"lente", name:"Dimension Lente", ore_scale:1.0, hazard_scale:0.5, research_scale:1.0, instability:0.0, time_ratio:8.0,
+  text:"Calme et pâle. Un jour ici en vaut huit dehors : on en ressort en retard sur tout."),
+ (id:"febrile", name:"Dimension Fébrile", ore_scale:1.0, hazard_scale:2.0, research_scale:1.0, instability:0.02, time_ratio:0.2,
+  text:"Tout y va trop vite. Dehors, presque rien ne s'est passé quand on en revient."),
+ (id:"cristal", name:"Dimension de Cristal", ore_scale:0.5, hazard_scale:3.0, research_scale:4.0, instability:0.03, time_ratio:1.0,
+  text:"Un monde de verre qui chante. Dangereux, mais chaque observation vaut une thèse."),
+ (id:"vide_rouge", name:"Le Vide rouge", ore_scale:2.0, hazard_scale:2.0, research_scale:1.5, instability:0.04, time_ratio:3.0,
+  text:"Une lueur rouge sans source. Les équipages y changent ; le temps y coule au ralenti."),
+]

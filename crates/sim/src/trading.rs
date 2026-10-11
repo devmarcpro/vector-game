@@ -42,6 +42,8 @@ pub struct Rumour {
     pub confidence: f64,
     /// Whether it will really happen (hidden from the player).
     pub real: bool,
+    /// Remembered from an abandoned timeline (time travel): certain.
+    pub remembered: bool,
 }
 
 /// Rumours heard at `pos` at time `now`: events to come within `RUMOUR_DAYS`.
@@ -58,6 +60,7 @@ pub fn rumours(data: &GameData, seed: u64, pos: [f64; 3], now: f64) -> Vec<Rumou
                 start: ev.start,
                 confidence: 0.55 + 0.35 * u,
                 real: true,
+                remembered: false,
             });
         }
     }
@@ -76,6 +79,7 @@ pub fn rumours(data: &GameData, seed: u64, pos: [f64; 3], now: f64) -> Vec<Rumou
                 start,
                 confidence: 0.25 + 0.45 * unit(h(3)),
                 real: false,
+                remembered: false,
             });
         }
     }
@@ -158,7 +162,19 @@ impl Arb {
 
 impl Sim {
     pub fn rumours(&self) -> Vec<Rumour> {
-        rumours(&self.data, self.galaxy.seed, self.here_pos, self.time)
+        let mut list = rumours(&self.data, self.galaxy.seed, self.here_pos, self.time);
+        for r in self.remembered() {
+            if let Some(k) = list
+                .iter()
+                .position(|x| x.def == r.def && (x.start - r.start).abs() < 1.0)
+            {
+                list[k] = r;
+            } else {
+                list.push(r);
+            }
+        }
+        list.sort_by(|a, b| a.start.total_cmp(&b.start));
+        list
     }
 
     /// The best price gaps between here and the systems within `radius` ly: buy here, sell there.

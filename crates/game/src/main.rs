@@ -2,6 +2,7 @@ mod audio;
 mod bourse_view;
 mod codex;
 mod console;
+mod cosmos_view;
 mod crew_net_view;
 mod dialogue_view;
 mod faction_view;

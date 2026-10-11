@@ -306,7 +306,7 @@ impl Sim {
     }
 
     /// Leave the current system (saving its changes) and enter the jump target.
-    fn arrive(&mut self) {
+    pub(crate) fn arrive(&mut self) {
         let Some(j) = self.jump.take() else { return };
         let old = SystemDelta {
             mined: std::mem::take(&mut self.mined),
@@ -315,7 +315,12 @@ impl Sim {
             scan_progress: std::mem::take(&mut self.scan_progress),
             explored: std::mem::take(&mut self.explored),
         };
-        self.deltas.insert(self.here, old);
+        // Leaving another dimension by a jump forgets it; our own system keeps its stash.
+        if self.multiverse.dimension == 0 {
+            self.deltas.insert(self.here, old);
+        } else {
+            self.multiverse.dimension = 0;
+        }
         self.visited.insert(self.here, self.here_pos);
         self.visited.insert(j.target, j.target_pos);
         self.here = j.target;
@@ -362,7 +367,12 @@ impl Sim {
             })
             .collect();
         self.system = system;
-        match self.deltas.remove(&self.here) {
+        let stash = if self.multiverse.dimension > 0 {
+            None
+        } else {
+            self.deltas.remove(&self.here)
+        };
+        match stash {
             Some(d) if d.mined.len() == n && d.scan.len() == n => {
                 self.mined = d.mined;
                 self.markets = d.markets;

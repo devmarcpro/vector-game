@@ -12,4 +12,5 @@
  (id:"comet", name:"Comète", radius:30000.0, hazard:"none", strength:0.0, research:(30.0,150.0), credits:(0.0,0.0), loot:[("water_ice",500.0,3000.0), ("ammonia",100.0,600.0)], text:"Une comète active, queue déployée dans le vent stellaire."),
  (id:"magnetic_anomaly", name:"Anomalie magnétique", radius:120000.0, hazard:"magnetic", strength:0.5, research:(70.0,260.0), credits:(0.0,0.0), loot:[("cobalt",100.0,600.0)], text:"Le compas s'affolé : un champ magnétique intense perturbe les gyroscopes."),
  (id:"spatial_rift", name:"Faille spatiale", radius:80000.0, hazard:"rift", strength:0.4, research:(300.0,1200.0), credits:(0.0,0.0), loot:[("artifacts",3.0,25.0)], text:"L'espace-temps semble déchire ; les instruments divergent."),
+ (id:"portal", name:"Portail", radius:20000.0, hazard:"none", strength:0.0, research:(400.0,1500.0), credits:(0.0,0.0), loot:[("artifacts",5.0,30.0)], text:"Un anneau de lumière froide, stable. Au-delà, autre chose : un autre endroit, ou un autre monde."),
 ]

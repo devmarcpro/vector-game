@@ -50,6 +50,7 @@ pub enum Screen {
     Livestock,
     Casino,
     Trading,
+    Cosmos,
     Empire,
     Colony,
     Fleet,
@@ -198,6 +199,7 @@ pub struct Game {
     pub comp_sel: usize,
     pub farm: crate::farm_view::FarmUi,
     pub trade_ui: crate::trade_view::TradeUi,
+    pub cosmos_ui: crate::cosmos_view::CosmosUi,
     pub comp_series: Vec<Vec<f64>>,
     pub bourse_live: Vec<f64>,
     pub bourse_news: Vec<vector_sim::bourse::ActiveEvent>,
@@ -324,6 +326,10 @@ impl Game {
             bourse_tab: 0,
             comp_sel: 0,
             farm: Default::default(),
+            cosmos_ui: crate::cosmos_view::CosmosUi {
+                stasis: 3,
+                ..Default::default()
+            },
             trade_ui: crate::trade_view::TradeUi {
                 bid: 12,
                 ..Default::default()
@@ -788,6 +794,7 @@ impl Game {
             Screen::Livestock => self.livestock_key(code),
             Screen::Casino => self.casino_key(code),
             Screen::Trading => self.trade_key(code),
+            Screen::Cosmos => self.cosmos_key(code),
             Screen::Empire => self.empire_key(code),
             Screen::Colony => self.colony_key(code),
             Screen::Fleet => self.fleet_key(code),
@@ -1316,6 +1323,10 @@ impl Game {
             }
             KeyCode::KeyE => {
                 self.screen = Screen::Bank;
+                return;
+            }
+            KeyCode::Home => {
+                self.screen = Screen::Cosmos;
                 return;
             }
             KeyCode::KeyD => {
@@ -2166,6 +2177,7 @@ impl Game {
 
     fn flight_key(&mut self, code: KeyCode) {
         match code {
+            KeyCode::Home => self.screen = Screen::Cosmos,
             KeyCode::Escape => {
                 self.screen = Screen::Pause;
                 self.menu_sel = 0;
@@ -2404,6 +2416,7 @@ mod tests {
             Screen::Livestock,
             Screen::Casino,
             Screen::Trading,
+            Screen::Cosmos,
             Screen::Empire,
             Screen::Colony,
             Screen::Fleet,
@@ -3131,9 +3144,9 @@ mod tests {
         g.key(KeyCode::Escape, None, true);
         assert_eq!(g.screen, Screen::Flight);
         // Holding a control word holds the key, and releasing the button lets go.
-        // The controls heading is at row 20, their entries from row 21.
+        // The controls heading is at row 21, their entries from row 22.
         frame(&g);
-        let brake_row = 21 + 10; // the 11th control, FREIN (MAINT.)
+        let brake_row = 22 + 10; // the 11th control, FREIN (MAINT.)
         click(&mut g, brake_row, 20_000);
         assert!(g.keys.contains(&KeyCode::KeyC), "the brake key is held");
         g.pointer_release();
@@ -3295,6 +3308,40 @@ mod tests {
         }
         g.key(KeyCode::KeyE, None, true);
         assert_eq!(g.bourse_tab, 0);
+    }
+
+    #[test]
+    fn the_cosmos_screen_sets_anchors_rewinds_and_sleeps() {
+        let mut g = Game::new(data(), 1);
+        g.key(KeyCode::Enter, None, true);
+        g.key(KeyCode::Home, None, true);
+        assert_eq!(g.screen, Screen::Cosmos);
+        frame(&g);
+        g.sim.credits = 1.0e6;
+        g.key(KeyCode::Enter, None, true);
+        assert!(g.sim.multiverse.dimension == 0, "no portal in range here");
+        g.key(KeyCode::KeyA, None, true);
+        assert_eq!(g.sim.multiverse.anchors.len(), 1);
+        let t = g.sim.time;
+        g.sim.time += 5.0 * 86_400.0;
+        g.key(KeyCode::KeyR, None, true);
+        assert!((g.sim.time - t).abs() < 1.0, "rewound");
+        assert_eq!(g.sim.multiverse.paradox, 1);
+        frame(&g);
+        g.key(KeyCode::KeyX, None, true);
+        assert!(g.sim.multiverse.anchors.is_empty());
+        g.key(KeyCode::Escape, None, true);
+        assert_eq!(g.screen, Screen::Flight);
+        let (st, _) = g.sim.nearest_station().expect("station");
+        g.sim.spawn_near(st, g.sim.bodies[st].radius + 200.0);
+        g.sim.try_dock().expect("dock");
+        g.screen = Screen::Station;
+        g.key(KeyCode::Home, None, true);
+        let t = g.sim.time;
+        g.key(KeyCode::KeyS, None, true);
+        assert!(g.sim.time > t + 20.0 * 86_400.0, "slept 30 days");
+        g.key(KeyCode::Escape, None, true);
+        assert_eq!(g.screen, Screen::Station);
     }
 
     #[test]
@@ -3472,6 +3519,7 @@ mod tests {
             Screen::Livestock,
             Screen::Casino,
             Screen::Trading,
+            Screen::Cosmos,
             Screen::Empire,
             Screen::Colony,
             Screen::Fleet,

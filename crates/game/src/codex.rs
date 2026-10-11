@@ -2,7 +2,7 @@
 //! weapon, faction, anomaly and condition, generated from the real data (no hand-written numbers).
 use vector_data::GameData;
 
-pub const CATEGORIES: [&str; 25] = [
+pub const CATEGORIES: [&str; 26] = [
     "RESSOURCES",
     "MODULES",
     "ARMES",
@@ -28,6 +28,7 @@ pub const CATEGORIES: [&str; 25] = [
     "CROYANCES",
     "ENTREPRISES",
     "CARTELS",
+    "DIMENSIONS",
 ];
 
 /// Index in the source table of entry `k` of a category (modules and weapons share a table).
@@ -76,6 +77,7 @@ fn entries(data: &GameData, cat: usize) -> Vec<usize> {
         22 => (0..data.religions.len()).collect(),
         23 => (0..data.companies.len()).collect(),
         24 => (0..data.cartels.len()).collect(),
+        25 => (0..data.dimensions.len()).collect(),
         _ => Vec::new(),
     }
 }
@@ -106,6 +108,7 @@ pub fn names(data: &GameData, cat: usize) -> Vec<String> {
             22 => data.religions[i].name.clone(),
             23 => data.companies[i].name.clone(),
             24 => data.cartels[i].name.clone(),
+            25 => data.dimensions[i].name.clone(),
             18 => format!(
                 "Appeler : {}",
                 vector_data::dialogue::ROLES[i].to_lowercase()
@@ -514,6 +517,23 @@ pub fn entry(data: &GameData, cat: usize, k: usize) -> Vec<String> {
                     res_name(data, &d.cure).unwrap_or_else(|| d.cure.clone())
                 }
             ));
+        }
+        25 => {
+            let d = &data.dimensions[i];
+            out.push(d.name.clone());
+            out.push(d.text.clone());
+            out.push(format!(
+                "Minerai x{:.1}   dangers x{:.1}   etude x{:.1}   instabilite de l'equipage +{:.0} % par jour   temps dehors x{:.1}",
+                d.ore_scale,
+                d.hazard_scale,
+                d.research_scale,
+                d.instability * 100.0,
+                d.time_ratio
+            ));
+            out.push(
+                "On y entre par un portail (anomalie rare) ; un portail y ramene toujours."
+                    .to_string(),
+            );
         }
         24 => {
             let c = &data.cartels[i];

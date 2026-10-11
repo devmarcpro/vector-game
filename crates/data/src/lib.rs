@@ -520,6 +520,19 @@ pub struct Company {
     pub text: String,
 }
 
+/// A dimension behind a portal (see `data/dimensions.ron`).
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct Dimension {
+    pub id: String,
+    pub name: String,
+    pub ore_scale: f64,
+    pub hazard_scale: f64,
+    pub research_scale: f64,
+    pub instability: f64,
+    pub time_ratio: f64,
+    pub text: String,
+}
+
 /// A cartel of the exchange (see `data/cartels.ron`).
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Cartel {
@@ -687,6 +700,7 @@ pub struct GameData {
     pub gear: Vec<Gear>,
     pub religions: Vec<Religion>,
     pub cartels: Vec<Cartel>,
+    pub dimensions: Vec<Dimension>,
     pub companies: Vec<Company>,
 }
 
@@ -729,6 +743,7 @@ impl GameData {
             gear: read(&dir.join("gear.ron"))?,
             religions: read(&dir.join("religions.ron"))?,
             cartels: read(&dir.join("cartels.ron"))?,
+            dimensions: read(&dir.join("dimensions.ron"))?,
             companies: read(&dir.join("companies.ron"))?,
         };
         // Generated extension files (tools/gen_scale.py) extend the hand-written tables.
@@ -1157,6 +1172,7 @@ impl GameData {
         self.validate_gear()?;
         self.validate_religions()?;
         self.validate_cartels()?;
+        self.validate_dimensions()?;
         self.validate_companies()
     }
 
@@ -1195,6 +1211,32 @@ impl GameData {
     }
 
     /// Beliefs: unique ids, sane ranges, and every possible faith has at least one belief.
+    /// Dimensions: unique ids, scales in sane ranges, and a portal definition for the gates.
+    fn validate_dimensions(&self) -> Result<(), DataError> {
+        let bad = |s: String| Err(DataError::Invalid(s));
+        let mut seen = std::collections::HashSet::new();
+        for d in &self.dimensions {
+            if !seen.insert(d.id.as_str()) {
+                return bad(format!("dimension {} en double", d.id));
+            }
+            let ok = (0.1..=5.0).contains(&d.ore_scale)
+                && (0.0..=5.0).contains(&d.hazard_scale)
+                && (0.1..=10.0).contains(&d.research_scale)
+                && (0.0..=0.1).contains(&d.instability)
+                && (0.1..=10.0).contains(&d.time_ratio);
+            if !ok {
+                return bad(format!("dimension {}: valeurs hors limites", d.id));
+            }
+        }
+        if self.dimensions.len() < 4 {
+            return bad("moins de 4 dimensions".into());
+        }
+        if self.anomaly_def("portal").is_none() {
+            return bad("anomalie portal absente".into());
+        }
+        Ok(())
+    }
+
     /// Cartels: unique ids, a faction as headquarters, known goods, a sane markup.
     fn validate_cartels(&self) -> Result<(), DataError> {
         let bad = |s: String| Err(DataError::Invalid(s));
@@ -2016,6 +2058,21 @@ mod tests {
         let mut d = ok;
         d.companies[0].yield_year = 0.9;
         assert!(d.validate().is_err(), "sane yield");
+    }
+
+    #[test]
+    fn dimensions_are_validated() {
+        let ok = GameData::load(&dir()).expect("data loads");
+        assert!(ok.dimensions.len() >= 4);
+        let mut d = ok.clone();
+        d.dimensions[0].time_ratio = 0.0;
+        assert!(d.validate().is_err(), "time ratio out of range");
+        let mut d = ok.clone();
+        d.dimensions[1].id = d.dimensions[0].id.clone();
+        assert!(d.validate().is_err(), "duplicate id");
+        let mut d = ok;
+        d.anomalies_def.retain(|a| a.id != "portal");
+        assert!(d.validate().is_err(), "portal needs a definition");
     }
 
     #[test]

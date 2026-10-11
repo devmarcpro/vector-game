@@ -837,8 +837,12 @@ impl Game {
             KeyCode::ArrowLeft | KeyCode::ArrowRight => {
                 self.settings
                     .adjust(self.opt_sel, code == KeyCode::ArrowRight);
-                self.settings
-                    .save(&PathBuf::from("saves").join("settings.cfg"));
+                let path = if cfg!(test) {
+                    std::env::temp_dir().join("vector_test_settings.cfg")
+                } else {
+                    PathBuf::from("saves").join("settings.cfg")
+                };
+                self.settings.save(&path);
             }
             KeyCode::Escape | KeyCode::Enter => self.screen = self.back_to,
             _ => {}
@@ -2198,7 +2202,7 @@ mod tests {
         // Main menu: a click on the first line starts a game.
         frame(&g);
         let col = 1280 / 8 / 2 - 12;
-        g.pointer_click((col * 8 + 20) as i32, 13 * 10 + 3, 1000);
+        g.pointer_click(col * 8 + 20, 13 * 10 + 3, 1000);
         assert_eq!(
             g.screen,
             Screen::Flight,
@@ -2242,7 +2246,7 @@ mod tests {
         g.key(KeyCode::KeyT, None, true);
         assert_eq!(g.screen, Screen::Bourse);
         frame(&g);
-        g.pointer_click(78 * 8 + 8, 1 * 10 + 3, 20_000);
+        g.pointer_click(78 * 8 + 8, 10 + 3, 20_000);
         assert_eq!(g.bourse_range, 2, "the third tab shows 180 days");
         assert_eq!(g.bourse_series[0].len(), BOURSE_RANGES[2]);
         frame(&g);

@@ -1527,6 +1527,8 @@ fn draw_empire(fb: &mut Framebuffer, g: &Game) {
             "ABANDONNEE"
         } else if c.unrest > 0.7 {
             "EMEUTES"
+        } else if c.epidemic.is_some() {
+            "EPIDEMIE"
         } else if c.stats.food_sat < 0.5 {
             "FAMINE"
         } else if c.stats.power_supply < c.stats.power_demand * 0.9 {
@@ -1624,6 +1626,19 @@ fn draw_colony(fb: &mut Framebuffer, g: &Game) {
     if g.col_flow {
         crate::flow_view::draw(fb, g);
         return;
+    }
+    if let Some(e) = &c.epidemic {
+        fb.text(
+            1,
+            4,
+            &format!(
+                "EPIDEMIE : {}  ({:.0} J RESTANTS, FORCE {:.0} %)  - UN CENTRE MEDICAL ET LA QUARANTAINE LA FREINENT",
+                g.data.diseases[e.disease].name.to_uppercase(),
+                e.days_left,
+                e.strength * 100.0
+            ),
+            RED,
+        );
     }
     // Buildings.
     let top = 5;

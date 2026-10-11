@@ -56,6 +56,19 @@ pub struct ColonyStats {
     pub upkeep: f64,
 }
 
+/// An epidemic running in a colony.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct Epidemic {
+    /// Index into `GameData::diseases`.
+    pub disease: usize,
+    pub days_left: f32,
+    /// 0.5..1: how hard it hits.
+    pub strength: f32,
+}
+
+/// Chance per day of an outbreak in a colony of 100 people with no medical care.
+pub const EPIDEMIC_RATE: f64 = 0.004;
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Colony {
     pub id: u32,
@@ -76,6 +89,8 @@ pub struct Colony {
     pub unrest: f64,
     /// Production lost to invasive species in the colony's territory, 0..0.5 (see `ecology`).
     pub pest: f64,
+    /// An epidemic of people (see `Epidemic`), if one is running.
+    pub epidemic: Option<Epidemic>,
     pub storage: Vec<f64>,
     pub buildings: Vec<BuildingInst>,
     /// Chosen level of each policy.
@@ -414,6 +429,12 @@ impl Colony {
             * (0.35 + 0.9 * self.happiness)
             * (1.0 + work_mult + sec_mult + quarantine_mult)
             * (1.0 - self.pest.clamp(0.0, 0.5))
+            * (1.0
+                - 0.4
+                    * self
+                        .epidemic
+                        .as_ref()
+                        .map_or(0.0, |e| f64::from(e.strength)))
             * if rioting { 0.5 } else { 1.0 }
             * if broke { 0.3 } else { 1.0 })
         .max(0.0);
@@ -553,13 +574,64 @@ impl Colony {
         } else {
             0.0
         };
-        let (_, _, _) = (0, 0, 0);
+        // Epidemics: crowding and bad care start them, medical centres and a strict quarantine
+        // hold them off and cut them short.
+        let mut epidemic_deaths = 0.0;
+        if let Some(e) = &mut self.epidemic {
+            let d = &data.diseases[e.disease];
+            epidemic_deaths =
+                self.pop * d.lethality * 0.04 * f64::from(e.strength) * (1.0 - 0.7 * med) * days;
+            e.days_left -= (days * (1.0 + 2.0 * med)) as f32;
+            if e.days_left <= 0.0 {
+                messages.push(format!("L'epidemie de {} est terminee.", d.name));
+                self.epidemic = None;
+            }
+        } else if self.pop > 20.0 {
+            let mut rng = Rng::new(hash_coord(
+                self.system_seed,
+                i64::from(self.id),
+                (now / DAY) as i64,
+                91,
+            ));
+            let quarantine = data
+                .policy_index("quarantine")
+                .map_or(0, |p| self.policies[p]) as f64;
+            let p = EPIDEMIC_RATE
+                * days
+                * (self.pop / 100.0).clamp(0.2, 6.0)
+                * (1.0 - 0.7 * med)
+                * (1.0 - 0.2 * quarantine).max(0.2);
+            if rng.f64() < p {
+                // The disease: weighted by how contagious it is.
+                let cands: Vec<usize> = (0..data.diseases.len())
+                    .filter(|&i| data.diseases[i].contagion >= 0.05)
+                    .collect();
+                let total: f64 = cands.iter().map(|&i| data.diseases[i].contagion).sum();
+                let mut pick = rng.f64() * total;
+                let mut chosen = cands[0];
+                for &i in &cands {
+                    if pick < data.diseases[i].contagion {
+                        chosen = i;
+                        break;
+                    }
+                    pick -= data.diseases[i].contagion;
+                }
+                let strength = 0.5 + 0.5 * rng.f64() as f32;
+                self.epidemic = Some(Epidemic {
+                    disease: chosen,
+                    days_left: data.diseases[chosen].duration_days as f32 * 1.5,
+                    strength,
+                });
+                messages.push(format!("Epidemie : {} !", data.diseases[chosen].name));
+            }
+        }
         let deaths = self.pop
             * (0.00008
                 + 0.00005 * (1.0 - med)
                 + 0.01 * (1.0 - food_sat).powi(2)
                 + 0.03 * (1.0 - water_sat).powi(2))
-            * days;
+            * days
+            + epidemic_deaths;
         let immigration_rate = match data
             .policy_index("immigration")
             .map_or(1, |p| self.policies[p])
@@ -718,6 +790,7 @@ impl Sim {
             happiness: 0.7,
             unrest: 0.0,
             pest: 0.0,
+            epidemic: None,
             storage: vec![0.0; data.resources.len()],
             buildings: Vec::new(),
             policies: data.policies.iter().map(|p| p.default_level).collect(),
@@ -1088,6 +1161,96 @@ mod tests {
             c.stats.power_supply > c.stats.power_demand,
             "a solar farm powers a dome"
         );
+    }
+
+    #[test]
+    fn epidemics_break_out_in_big_colonies_kill_and_end() {
+        // Outbreaks happen, and are logged, in a crowded colony left to itself.
+        let (mut s, ci) = founded();
+        s.colonies[ci].pop = 150.0;
+        let mut outbreaks = 0;
+        for _ in 0..80 {
+            fill(
+                &mut s,
+                ci,
+                &[
+                    ("food", 20000.0),
+                    ("water", 20000.0),
+                    ("consumer_goods", 2000.0),
+                ],
+            );
+            let had = s.colonies[ci].epidemic.is_some();
+            s.time += 10.0 * DAY;
+            s.update_colonies();
+            s.colonies[ci].pop = s.colonies[ci].pop.max(150.0);
+            if !had && s.colonies[ci].epidemic.is_some() {
+                outbreaks += 1;
+            }
+        }
+        assert!(outbreaks >= 1, "no outbreak in 800 days");
+        assert!(s.colonies[ci]
+            .log
+            .iter()
+            .any(|(_, l)| l.contains("Epidemie")));
+
+        // A running lethal epidemic costs lives that the same colony without it keeps.
+        let lethal = s
+            .data
+            .diseases
+            .iter()
+            .position(|d| d.id == "variole_spatiale")
+            .expect("smallpox");
+        let run = |epidemic: bool| {
+            let (mut t, c) = founded();
+            t.colonies[c].pop = 60.0;
+            fill(
+                &mut t,
+                c,
+                &[
+                    ("food", 5000.0),
+                    ("water", 5000.0),
+                    ("consumer_goods", 500.0),
+                ],
+            );
+            if epidemic {
+                t.colonies[c].epidemic = Some(Epidemic {
+                    disease: lethal,
+                    days_left: 100.0,
+                    strength: 1.0,
+                });
+            }
+            t.time += 10.0 * DAY;
+            t.update_colonies();
+            t.colonies[c].pop
+        };
+        assert!(
+            run(true) < run(false) - 0.5,
+            "{} vs {}",
+            run(true),
+            run(false)
+        );
+
+        // And it ends by itself.
+        let (mut t, c) = founded();
+        t.colonies[c].pop = 60.0;
+        fill(&mut t, c, &[("food", 5000.0), ("water", 5000.0)]);
+        t.colonies[c].epidemic = Some(Epidemic {
+            disease: lethal,
+            days_left: 3.0,
+            strength: 0.5,
+        });
+        t.time += 10.0 * DAY;
+        t.update_colonies();
+        let ended = t.colonies[c].epidemic.is_none()
+            || t.colonies[c].epidemic.as_ref().unwrap().days_left > 3.0;
+        assert!(
+            ended,
+            "the first epidemic ended (a new one may have started)"
+        );
+        assert!(t.colonies[c]
+            .log
+            .iter()
+            .any(|(_, l)| l.contains("terminee")));
     }
 
     #[test]

@@ -129,3 +129,6 @@ Un implant actif ajoute ses effets (clés de traits ou `skill:<id>`). Par jour i
 
 ## Expéditions à pied (E5)
 `walk.rs` : carte 96x52 dérivée de (graine du corps, case de surface) : rochers si bruit > 0.8, mares si humidité > 0.45 et bruit bas, plantes (producteurs du biome, densité 1 % + 6 % x fertilité) et 8 à 15 animaux hors de 8 cases du point de chute. Un tour = 60 s de jeu. Prédateurs (danger > 0, non domestiques) : poursuivent à moins de 8 cases, attaquent au contact pour danger x (0.15 à 0.4) de santé et 80 % de ce montant sur un organe tiré au hasard ; les herbivores fuient à moins de 3 cases. Attaque : 0.8 + 0.3 x compétence combat de dégâts.
+
+## Épidémies de colonie (E6)
+Sans épidémie en cours et au-delà de 20 habitants : probabilité par jour 0.004 x clamp(pop/100, 0.2, 6) x (1 - 0.7 x soins) x max(0.2, 1 - 0.2 x niveau de quarantaine). Maladie tirée au poids de sa contagion (>= 0.05), force 0.5-1, durée 1.5 x la durée de la maladie. En cours : morts = pop x létalité x 0.04 x force x (1 - 0.7 x soins) par jour, productivité x (1 - 0.4 x force), durée consommée à (1 + 2 x soins) par jour.

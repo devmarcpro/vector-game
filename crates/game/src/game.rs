@@ -61,6 +61,8 @@ pub enum Screen {
     Factions,
     Proto,
     Dialogue,
+    Expedition,
+    Walk,
 }
 
 /// Route being composed in the fleet screen.
@@ -121,6 +123,11 @@ pub struct Game {
     /// Crew screen: the organ list of the selected person has the keys.
     pub organ_mode: bool,
     pub organ_sel: usize,
+    /// Expedition: who goes (per crew index), the rover, the selected row, and the walk itself.
+    pub exp_party: Vec<bool>,
+    pub exp_vehicle: bool,
+    pub exp_sel: usize,
+    pub walk: Option<vector_sim::walk::Walk>,
     /// Radio conversation: who, where in the tree, what just happened, the lines so far.
     pub dlg_npc: usize,
     pub dlg_node: String,
@@ -245,6 +252,10 @@ impl Game {
             crew_net: false,
             organ_mode: false,
             organ_sel: 0,
+            exp_party: Vec::new(),
+            exp_vehicle: false,
+            exp_sel: 0,
+            walk: None,
             dlg_npc: 0,
             dlg_node: String::new(),
             dlg_result: String::new(),
@@ -726,6 +737,8 @@ impl Game {
             Screen::Factions => self.factions_key(code),
             Screen::Proto => self.proto_key(code),
             Screen::Dialogue => self.dialogue_key(code),
+            Screen::Expedition => self.expedition_key(code),
+            Screen::Walk => self.walk_key(code),
             Screen::Family => self.family_key(code),
             Screen::Destroyed => {
                 if code == KeyCode::Enter {
@@ -1036,6 +1049,7 @@ impl Game {
                 self.surf_layer = (self.surf_layer + 1) % crate::surface_view::LAYERS.len()
             }
             KeyCode::KeyG => self.surf_globe = !self.surf_globe,
+            KeyCode::KeyE => self.open_expedition(),
             KeyCode::KeyF => self.open_codex(Screen::Surface),
             KeyCode::Escape | KeyCode::F8 => self.screen = Screen::Flight,
             _ => {}
@@ -2187,6 +2201,8 @@ mod tests {
             Screen::Factions,
             Screen::Proto,
             Screen::Dialogue,
+            Screen::Expedition,
+            Screen::Walk,
         ] {
             g.screen = s;
             let line = crate::tutorial::hint_line(&g);
@@ -2763,6 +2779,78 @@ mod tests {
         assert!(crate::settings::Settings::default()
             .localize("WASD/QE")
             .contains("ZQSD/AE"));
+    }
+
+    #[test]
+    fn an_expedition_goes_from_the_surface_to_the_walk_and_back_with_the_loot() {
+        let mut g = Game::new(data(), 1);
+        g.key(KeyCode::Enter, None, true);
+        g.settings.tutorial = false;
+        g.sim.reveal_all();
+        let body = g
+            .sim
+            .bodies
+            .iter()
+            .position(|b| {
+                matches!(
+                    b.kind,
+                    BodyKind::Planet(
+                        vector_world::PlanetKind::Terran
+                            | vector_world::PlanetKind::Ocean
+                            | vector_world::PlanetKind::Tundra
+                            | vector_world::PlanetKind::Desert
+                    )
+                )
+            })
+            .expect("a world that can hold life");
+        g.sim.target = Some(body);
+        g.sim.ship.pos = g.sim.bodies[body].pos
+            - vector_core::Vec3::new(0.0, 0.0, g.sim.bodies[body].radius * 3.0);
+        g.sim.ship.vel = g.sim.bodies[body].vel;
+        g.sim.update_ref_pub();
+        g.open_surface();
+        assert_eq!(g.screen, Screen::Surface);
+        // A land cell with life.
+        let mut found = false;
+        'find: for cy in (6..vector_world::surface::H - 6).step_by(4) {
+            for cx in (0..vector_world::surface::W).step_by(5) {
+                if let Ok(w) = g.sim.walk_start(body, cx, cy, vec![0], false) {
+                    if w.plants.len() > 3 {
+                        g.surf_cx = cx;
+                        g.surf_cy = cy;
+                        found = true;
+                        break 'find;
+                    }
+                }
+            }
+        }
+        assert!(found, "seed 1 has a living land cell");
+        g.key(KeyCode::KeyE, None, true);
+        assert_eq!(g.screen, Screen::Expedition);
+        g.key(KeyCode::Space, None, true); // untick the first member...
+        g.key(KeyCode::Enter, None, true);
+        assert_eq!(
+            g.screen,
+            Screen::Expedition,
+            "nobody selected: no departure"
+        );
+        g.key(KeyCode::Space, None, true); // ...and tick again
+        g.key(KeyCode::Enter, None, true);
+        assert_eq!(g.screen, Screen::Walk);
+        frame(&g);
+        let t0 = g.walk.as_ref().unwrap().turn;
+        let mz = g.settings.move_keys();
+        g.key(mz[2], None, true); // right (D on both layouts)
+        assert!(g.walk.as_ref().unwrap().turn > t0, "a move takes a turn");
+        g.key(KeyCode::KeyR, None, true);
+        assert!(g.walk.as_ref().unwrap().over);
+        g.key(KeyCode::KeyG, None, true);
+        assert_eq!(
+            g.screen,
+            Screen::Surface,
+            "any key leaves the finished expedition"
+        );
+        assert!(g.walk.is_none());
     }
 
     #[test]

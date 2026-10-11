@@ -130,6 +130,8 @@ pub fn hint_line(g: &Game) -> String {
         }
         Screen::Recruit => "HAUT/BAS CANDIDAT  ENTREE EMBAUCHER  K EQUIPAGE  ECHAP RETOUR",
         Screen::Journal => "HAUT/BAS DEFILER  K EQUIPAGE  J/ECHAP RETOUR",
+        Screen::Expedition => "HAUT/BAS CHOISIR  ESPACE COCHER  ENTREE PARTIR  ECHAP RETOUR",
+        Screen::Walk => "FLECHES OU ZQSD MARCHER (FONCER = ATTAQUER)  G CUEILLIR  TAB CHANGER DE MEMBRE  R RENTRER",
         Screen::Dialogue => "1-6 OU CLIC REPONDRE  HAUT/BAS + ENTREE  ECHAP COUPER LA COMMUNICATION",
         Screen::Proto => "CLIC SUR LES ELEMENTS  GAUCHE/DROITE OU 1-2 PROTOTYPE  F12/ECHAP RETOUR",
         Screen::Factions => "GAUCHE/DROITE FACTION  CLIC : CHOISIR  X/ECHAP RETOUR",
@@ -211,6 +213,13 @@ pub fn help_lines(screen: Screen) -> &'static [&'static str] {
         ],
         Screen::Recruit => &["Haut/Bas : candidat   Entree : embaucher"],
         Screen::Journal => &["Haut/Bas ou PgUp/PgDn : defiler   Echap : retour"],
+        Screen::Expedition => &["Cochez qui descend et le rover, Entree pour partir", "Il faut une case de terre et d'etre pres de la planete"],
+        Screen::Walk => &[
+            "Fleches ou Z/Q/S/D : marcher ; foncer sur un animal l'attaque",
+            "G : cueillir a cote   Tab : l'IA passe au membre suivant",
+            "R : tout le monde rentre, le butin va en soute   Espace : attendre",
+            "Clic : un pas vers la case   clic sur un nom : prendre le controle",
+        ],
         Screen::Dialogue => &[
             "Entree en vol : appeler le vaisseau cible (Tab/T/Y/R pour cibler)",
             "Leur ton depend des moeurs de leur faction ; les reponses aussi",

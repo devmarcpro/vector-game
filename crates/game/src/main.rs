@@ -20,6 +20,7 @@ mod surface_view;
 mod tech_view;
 mod tutorial;
 mod ui;
+mod walk_view;
 
 use game::{Game, Screen, DEFAULT_SEED};
 use std::{num::NonZeroU32, rc::Rc, sync::Arc, time::Instant};
@@ -357,7 +358,7 @@ fn snapshot(path: &str, scene: &str, data: Arc<GameData>) {
             g.sim.target = Some(i);
             g.sim.update_ref_pub();
         }
-        "surface" | "globe" => {
+        "surface" | "globe" | "walk" | "expedition" => {
             g.sim.reveal_all();
             let i = g
                 .sim
@@ -384,6 +385,38 @@ fn snapshot(path: &str, scene: &str, data: Arc<GameData>) {
             g.open_surface();
             g.surf_globe = scene == "globe";
             g.surf_spin = 0.9;
+            if scene == "walk" || scene == "expedition" {
+                let body = g.surf.as_ref().map(|m| m.body).expect("map");
+                g.sim.ship.pos = g.sim.bodies[body].pos
+                    - vector_core::Vec3::new(0.0, 0.0, g.sim.bodies[body].radius * 3.0);
+                g.sim.ship.vel = g.sim.bodies[body].vel;
+                g.sim.update_ref_pub();
+                // A land cell with plants and animals.
+                'find: for cy in (6..vector_world::surface::H - 6).step_by(5) {
+                    for cx in (0..vector_world::surface::W).step_by(7) {
+                        if let Ok(w) = g.sim.walk_start(body, cx, cy, vec![0], false) {
+                            if w.plants.len() > 20 && w.creatures.len() > 6 {
+                                g.surf_cx = cx;
+                                g.surf_cy = cy;
+                                break 'find;
+                            }
+                        }
+                    }
+                }
+                g.open_expedition();
+                if scene == "walk" {
+                    g.exp_vehicle = true;
+                    g.key(KeyCode::Enter, None, true);
+                    for k in [
+                        KeyCode::ArrowRight,
+                        KeyCode::ArrowRight,
+                        KeyCode::ArrowDown,
+                        KeyCode::KeyG,
+                    ] {
+                        g.key(k, None, true);
+                    }
+                }
+            }
         }
         "speed" => {
             g.sim.ship.vel = g

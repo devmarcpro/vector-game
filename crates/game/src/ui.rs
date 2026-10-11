@@ -64,6 +64,8 @@ pub fn draw(fb: &mut Framebuffer, g: &Game) {
         Screen::Factions => crate::faction_view::draw(fb, g),
         Screen::Proto => crate::proto_view::draw(fb, g),
         Screen::Dialogue => crate::dialogue_view::draw(fb, g),
+        Screen::Expedition => crate::walk_view::draw_prep(fb, g),
+        Screen::Walk => crate::walk_view::draw_walk(fb, g),
         Screen::Family => crate::family_view::draw(fb, g),
         Screen::Destroyed => {
             let cols = fb.cols();
@@ -594,7 +596,7 @@ fn draw_inventory(fb: &mut Framebuffer, g: &Game) {
     }
 }
 
-fn bar(frac: f64, width: usize) -> String {
+pub fn bar(frac: f64, width: usize) -> String {
     let f = (frac.clamp(0.0, 1.0) * width as f64).round() as usize;
     format!("[{}{}]", "#".repeat(f), "-".repeat(width - f))
 }

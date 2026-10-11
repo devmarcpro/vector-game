@@ -23,6 +23,7 @@ pub mod scene;
 pub mod science;
 pub mod surgery;
 pub mod voyage;
+pub mod walk;
 
 use autopilot::Autopilot;
 use cargo::Cargo;

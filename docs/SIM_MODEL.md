@@ -126,3 +126,6 @@ Un implant actif ajoute ses effets (clés de traits ou `skill:<id>`). Par jour i
 
 ## Mutations (E3.4)
 `instability` de 0 à 1 : +0.03/jour avec radiation ou brûlures de rayonnement, -0.003/jour sinon. Au-dessus de 0.15, par jour : chance 0.3 x instabilité de décaler un allèle (±1), et 0.004 x instabilité de déclarer un cancer précoce. Une injection de mutagène donne +0.4 et une mutation immédiate.
+
+## Expéditions à pied (E5)
+`walk.rs` : carte 96x52 dérivée de (graine du corps, case de surface) : rochers si bruit > 0.8, mares si humidité > 0.45 et bruit bas, plantes (producteurs du biome, densité 1 % + 6 % x fertilité) et 8 à 15 animaux hors de 8 cases du point de chute. Un tour = 60 s de jeu. Prédateurs (danger > 0, non domestiques) : poursuivent à moins de 8 cases, attaquent au contact pour danger x (0.15 à 0.4) de santé et 80 % de ce montant sur un organe tiré au hasard ; les herbivores fuient à moins de 3 cases. Attaque : 0.8 + 0.3 x compétence combat de dégâts.

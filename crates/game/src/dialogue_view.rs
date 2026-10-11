@@ -126,11 +126,19 @@ pub fn draw(fb: &mut Framebuffer, g: &Game) {
             row += 1;
         }
     }
-    // The answers, as buttons.
-    let mut y = 360;
+    // The answers: clickable text, lit when the pointer is over them.
+    let row0 = 26;
     for (i, (label, ok)) in view.options.iter().enumerate() {
-        let rc = (300, y, 1100, y + 28);
-        let hover = *ok && g.hit(rc, Act::Call(Game::dlg_pick, i), None);
+        let row = row0 + i * 2;
+        let hover = *ok
+            && g.hit_cells(
+                x,
+                row,
+                label.chars().count() + 6,
+                1,
+                Act::Call(Game::dlg_pick, i),
+                None,
+            );
         let sel = i == g.dlg_sel;
         let c = if !ok {
             DIM
@@ -141,17 +149,11 @@ pub fn draw(fb: &mut Framebuffer, g: &Game) {
         } else {
             GREEN
         };
-        rect(fb, rc.0, rc.1, rc.2, rc.3, c);
-        fb.text_at(
-            rc.0 + 12,
-            rc.1 + 11,
-            &format!("{}  {}", i + 1, label.to_uppercase()),
-            c,
-        );
+        let mark = if sel || hover { ">" } else { " " };
+        fb.text(x, row, &format!("{mark} {}  {}", i + 1, label), c);
         if !ok {
-            fb.text_at(rc.2 - 140, rc.1 + 11, "(INDISPONIBLE)", DIM);
+            fb.text(x + label.chars().count() + 8, row, "(indisponible)", DIM);
         }
-        y += 36;
     }
     fb.text(
         1,

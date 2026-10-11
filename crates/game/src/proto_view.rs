@@ -43,7 +43,7 @@ fn diamond(fb: &mut Framebuffer, x: i32, y: i32, r: i32, c: u32, filled: bool) {
     }
 }
 
-/// A button: a drawn box with a label, lit when the pointer is over it. Returns whether it is.
+/// A button: just its text, lit when the pointer is over it. Returns whether it is.
 pub fn button(
     fb: &mut Framebuffer,
     g: &Game,
@@ -52,18 +52,21 @@ pub fn button(
     act: Act,
 ) -> bool {
     let hover = g.hit(rc, act, None);
-    let c = if hover { HOVER } else { GREEN };
-    rect(fb, rc.0, rc.1, rc.2, rc.3, c);
-    if hover {
-        rect(fb, rc.0 + 2, rc.1 + 2, rc.2 - 2, rc.3 - 2, DIM);
-    }
+    let c = if hover { AMBER } else { GREEN };
     let w = label.chars().count() as i32 * 8;
-    fb.text_at(
-        rc.0 + (rc.2 - rc.0 - w) / 2,
-        rc.1 + (rc.3 - rc.1 - 7) / 2,
-        label,
-        c,
-    );
+    let x = rc.0 + (rc.2 - rc.0 - w) / 2;
+    let y = rc.1 + (rc.3 - rc.1 - 7) / 2;
+    fb.text_at(x, y, label, c);
+    if hover {
+        // A thin underline under the word, nothing more.
+        fb.line(
+            x as f32,
+            (y + 10) as f32,
+            (x + w) as f32,
+            (y + 10) as f32,
+            AMBER,
+        );
+    }
     hover
 }
 
@@ -78,26 +81,24 @@ pub fn draw(fb: &mut Framebuffer, g: &Game) {
             Act::Call(Game::click_proto, i),
             None,
         );
-        rect(
-            fb,
-            x0,
-            28,
-            x0 + 208,
-            50,
-            if on {
-                AMBER
-            } else if hover {
-                HOVER
-            } else {
-                DIM
-            },
-        );
-        fb.text_at(
-            x0 + 10,
-            35,
-            &format!("{} {}", i + 1, n),
-            if on { AMBER } else { GREEN },
-        );
+        let c = if on {
+            AMBER
+        } else if hover {
+            HOVER
+        } else {
+            GREEN
+        };
+        let label = format!("{} {}", i + 1, n);
+        fb.text_at(x0 + 10, 35, &label, c);
+        if on {
+            fb.line(
+                (x0 + 10) as f32,
+                45.0,
+                (x0 + 10) as f32 + label.chars().count() as f32 * 8.0,
+                45.0,
+                AMBER,
+            );
+        }
     }
     match g.proto {
         0 => body(fb, g),
@@ -260,7 +261,6 @@ fn body(fb: &mut Framebuffer, g: &Game) {
         } else {
             color_of(v)
         };
-        rect(fb, x0, y0, x0 + 230, y0 + 52, c);
         fb.text_at(x0 + 8, y0 + 7, &def.name.to_uppercase(), c);
         let kind = match person.and_then(|p| p.organ_kind.get(i)) {
             Some(1) => "GREFFE",
@@ -447,7 +447,6 @@ fn hall(fb: &mut Framebuffer, g: &Game) {
         };
         fb.line(ex, ey, tx, ty, if hover { AMBER } else { DIM });
         let c = if hover { HOVER } else { GREEN };
-        rect(fb, rc.0, rc.1, rc.2, rc.3, c);
         fb.text_at(rc.0 + 10, rc.1 + 8, name, c);
         fb.text_at(
             rc.0 + 10,
@@ -455,9 +454,6 @@ fn hall(fb: &mut Framebuffer, g: &Game) {
             &tip.chars().take(19).collect::<String>(),
             DIM,
         );
-        if hover {
-            rect(fb, rc.0 - 3, rc.1 - 3, rc.2 + 3, rc.3 + 3, AMBER);
-        }
     }
     // Ticker with a few prices, scrolling.
     let items = [

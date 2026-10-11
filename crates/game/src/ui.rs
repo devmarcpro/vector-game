@@ -1428,6 +1428,15 @@ fn draw_bank(fb: &mut Framebuffer, g: &Game) {
         "LE PLAFOND AUGMENTE AVEC VOTRE REPUTATION AUPRES DES FACTIONS.",
         DIM,
     );
+    let acts: [(&str, KeyCode); 3] = [
+        ("[+] EMPRUNTER 1000 CR", KeyCode::ArrowUp),
+        ("[-] REMBOURSER 1000 CR", KeyCode::ArrowDown),
+        ("[ENTREE] TOUT REMBOURSER", KeyCode::Enter),
+    ];
+    for (k, (label, key)) in acts.iter().enumerate() {
+        let hover = g.hit_cells(1, top + 9 + k, label.len(), 1, Act::Key(*key), None);
+        fb.text(1, top + 9 + k, label, if hover { AMBER } else { GREEN });
+    }
     let b = fb.rows() - 4;
     fb.text(
         1,
@@ -1662,6 +1671,14 @@ fn draw_colony(fb: &mut Framebuffer, g: &Game) {
         .collect();
     for (line, &i) in items.iter().take(rows).enumerate() {
         let sel = g.col_focus == 1 && i == g.s_sel;
+        g.hit_cells(
+            x,
+            top + 1 + line,
+            32,
+            1,
+            Act::Call(Game::click_storage, i),
+            None,
+        );
         fb.text(
             x,
             top + 1 + line,
@@ -1679,6 +1696,32 @@ fn draw_colony(fb: &mut Framebuffer, g: &Game) {
     fb.text(px, top, "POLITIQUES", focus(2));
     for (i, p) in g.data.policies.iter().enumerate() {
         let sel = g.col_focus == 2 && i == g.p_sel;
+        // Name selects; the arrows around the level change it.
+        g.hit_cells(
+            px,
+            top + 1 + i,
+            20,
+            1,
+            Act::Call(Game::click_policy, i * 3 + 1),
+            None,
+        );
+        g.hit_cells(
+            px + 20,
+            top + 1 + i,
+            1,
+            1,
+            Act::Call(Game::click_policy, i * 3),
+            None,
+        );
+        let lvl_len = p.levels[c.policies[i]].0.chars().count();
+        g.hit_cells(
+            px + 23 + lvl_len,
+            top + 1 + i,
+            1,
+            1,
+            Act::Call(Game::click_policy, i * 3 + 2),
+            None,
+        );
         fb.text(
             px,
             top + 1 + i,
@@ -1693,6 +1736,14 @@ fn draw_colony(fb: &mut Framebuffer, g: &Game) {
     }
     // Build menu.
     let by = top + rows + 2;
+    g.hit_cells(
+        1,
+        by,
+        10,
+        1,
+        Act::Call(Game::click_build, g.build_sel),
+        None,
+    );
     fb.text(1, by, "CONSTRUIRE", focus(3));
     if g.col_focus == 3 {
         let n = g.data.buildings.len();
@@ -1703,6 +1754,14 @@ fn draw_colony(fb: &mut Framebuffer, g: &Game) {
             .min(n.saturating_sub(show));
         for (line, k) in (st..(st + show).min(n)).enumerate() {
             let d = &g.data.buildings[k];
+            g.hit_cells(
+                1,
+                by + 1 + line,
+                70,
+                1,
+                Act::Call(Game::click_build, k),
+                Some(Act::Key(KeyCode::Enter)),
+            );
             let ok = d.sites.iter().any(|t| c.tags.contains(t));
             let cost: Vec<String> = d
                 .cost

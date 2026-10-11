@@ -215,6 +215,28 @@ impl Game {
         self.fac_sel = i;
     }
 
+    /// Row of the policies of the colony screen: code = row x 3 + 0 "<", 1 name, 2 ">".
+    pub fn click_policy(&mut self, code: usize) {
+        self.col_focus = 2;
+        self.p_sel = code / 3;
+        match code % 3 {
+            0 => self.run_act(Act::Key(KeyCode::ArrowLeft)),
+            2 => self.run_act(Act::Key(KeyCode::ArrowRight)),
+            _ => {}
+        }
+    }
+
+    /// A building of the build menu (a double click builds it).
+    pub fn click_build(&mut self, k: usize) {
+        self.col_focus = 3;
+        self.build_sel = k;
+    }
+
+    pub fn click_storage(&mut self, i: usize) {
+        self.col_focus = 1;
+        self.s_sel = i;
+    }
+
     pub fn click_contract(&mut self, i: usize) {
         self.contract_sel = i;
     }

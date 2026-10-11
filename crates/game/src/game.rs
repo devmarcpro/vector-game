@@ -2854,6 +2854,23 @@ mod tests {
     }
 
     #[test]
+    fn the_bank_text_buttons_borrow_and_repay_by_click() {
+        let mut g = Game::new(data(), 1);
+        g.key(KeyCode::Enter, None, true);
+        let (st, _) = g.sim.nearest_station().expect("station");
+        g.sim.spawn_near(st, g.sim.bodies[st].radius + 200.0);
+        g.sim.try_dock().expect("dock");
+        g.screen = Screen::Bank;
+        frame(&g);
+        let loan0 = g.sim.bank.loan;
+        // "[+] EMPRUNTER 1000 CR" is the first text button, at text row 8 + 9.
+        g.pointer_click(20, 17 * 10 + 3, 1_000);
+        assert_eq!(g.sim.bank.loan, loan0 + 1000.0);
+        g.pointer_click(20, 18 * 10 + 3, 5_000);
+        assert_eq!(g.sim.bank.loan, loan0, "repaid by the second button");
+    }
+
+    #[test]
     fn the_mouse_selects_contract_rows() {
         let mut g = Game::new(data(), 1);
         g.key(KeyCode::Enter, None, true);

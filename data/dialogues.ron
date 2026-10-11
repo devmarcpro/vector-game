@@ -4,7 +4,7 @@
 // Conditions (joined by &): rep>x rep<x credits>x cargo:<res>>x ethos:<axis><x role:<ROLE> hostile !hostile
 // Effects: rep:+x credits:-x give:<res>:<kg> news region tip peace hostile bluff bribe
 (
- starts: [("CARGO","trader_start"),("MINEUR","miner_start"),("PIRATE","pirate_start"),("PATROUILLE","patrol_start")],
+ starts: [("CARGO","trader_start"),("MINEUR","miner_start"),("PIRATE","pirate_start"),("PATROUILLE","patrol_start"),("CIVILISATION","civ_start")],
  nodes: [
   (id:"trader_start",
    text:[
@@ -140,6 +140,74 @@
   (id:"bluff_reply",
    text:[
     ("neutre","{result}"),
+   ],
+   options:[(label:"Terminer", cond:"", effects:[], next:"end")]),
+  (id:"civ_start",
+   text:[
+    ("formel","Nous, le peuple {name}, vous saluons. Déclinez l'objet de votre visite sur notre monde."),
+    ("cordial","Voyageur des étoiles ! Les {name} sont heureux de votre visite."),
+    ("mefiant","Étrangers... les {name} ne vous ont pas invités. Parlez vite."),
+    ("neutre","Ici les {name}. Nous vous écoutons."),
+   ],
+   options:[
+    (label:"Saluer avec respect", cond:"rep<0.1", effects:["rep:+0.04"], next:"civ_talk"),
+    (label:"Étudier leurs mœurs", cond:"", effects:["mores"], next:"civ_mores"),
+    (label:"Offrir 20 kg de vivres", cond:"cargo:food>20", effects:["give:food:20","rep:+0.2"], next:"civ_thanks"),
+    (label:"Demander un présent", cond:"rep>0.15", effects:["civgift"], next:"civ_gift"),
+    (label:"Demander les nouvelles", cond:"", effects:["news"], next:"news_reply"),
+    (label:"Les menacer", cond:"", effects:["rep:-0.3"], next:"civ_threat"),
+    (label:"Terminer", cond:"", effects:[], next:"end"),
+   ]),
+  (id:"civ_talk",
+   text:[
+    ("formel","Votre déférence est notée. Que les étoiles vous guident."),
+    ("cordial","Vous parlez avec le coeur ! Revenez quand vous voulez."),
+    ("mefiant","Hm. Vous avez de bonnes manières pour un étranger."),
+    ("neutre","Nous avons entendu. Y a-t-il autre chose ?"),
+   ],
+   options:[
+    (label:"Autre chose.", cond:"", effects:[], next:"back"),
+    (label:"Terminer", cond:"", effects:[], next:"end"),
+   ]),
+  (id:"civ_mores",
+   text:[
+    ("formel","{result}"),
+    ("cordial","{result}"),
+    ("mefiant","{result}"),
+    ("neutre","{result}"),
+   ],
+   options:[
+    (label:"Autre chose.", cond:"", effects:[], next:"back"),
+    (label:"Terminer", cond:"", effects:[], next:"end"),
+   ]),
+  (id:"civ_thanks",
+   text:[
+    ("formel","Ce don sera inscrit dans nos annales. Nous vous devons une dette."),
+    ("cordial","De la nourriture pour nos enfants ! Vous êtes les bienvenus ici."),
+    ("mefiant","Pourquoi donner sans rien demander ? Enfin... nous acceptons."),
+    ("neutre","Nous acceptons votre don avec gratitude."),
+   ],
+   options:[
+    (label:"Autre chose.", cond:"", effects:[], next:"back"),
+    (label:"Terminer", cond:"", effects:[], next:"end"),
+   ]),
+  (id:"civ_gift",
+   text:[
+    ("formel","{result}"),
+    ("cordial","{result}"),
+    ("mefiant","{result}"),
+    ("neutre","{result}"),
+   ],
+   options:[
+    (label:"Autre chose.", cond:"", effects:[], next:"back"),
+    (label:"Terminer", cond:"", effects:[], next:"end"),
+   ]),
+  (id:"civ_threat",
+   text:[
+    ("formel","Vous avez insulté tout un peuple. Quittez notre ciel."),
+    ("cordial","Nous pensions que vous étiez des amis... Partez."),
+    ("mefiant","Comme nous le craignions. Ne revenez pas."),
+    ("neutre","Menacer ne sert à rien. Partez."),
    ],
    options:[(label:"Terminer", cond:"", effects:[], next:"end")]),
   (id:"pirate_angry",

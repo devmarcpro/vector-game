@@ -3,6 +3,7 @@
 pub mod autopilot;
 pub mod bourse;
 pub mod cargo;
+pub mod civ;
 pub mod colony;
 pub mod combat;
 pub mod crew;
@@ -260,6 +261,8 @@ pub struct Sim {
     pub parked: Option<(usize, Vec3)>,
     /// The autopilot's plan for this step: (target, position and velocity relative to it).
     pub ride: Option<(usize, Vec3, Vec3)>,
+    /// Goodwill of the native civilisations met, by world key (see `civ`).
+    pub civ_rep: BTreeMap<u64, f32>,
     /// Body used as velocity reference for flight assist (within its influence radius).
     pub ref_body: Option<usize>,
     pub target: Option<usize>,
@@ -384,6 +387,7 @@ impl Sim {
             jump_run: None,
             parked: None,
             ride: None,
+            civ_rep: BTreeMap::new(),
             ref_body: None,
             target: None,
             credits: START_CREDITS,

@@ -31,7 +31,7 @@ pub struct Dialogues {
 }
 
 pub const TONES: [&str; 4] = ["formel", "cordial", "mefiant", "neutre"];
-pub const ROLES: [&str; 4] = ["CARGO", "MINEUR", "PIRATE", "PATROUILLE"];
+pub const ROLES: [&str; 5] = ["CARGO", "MINEUR", "PIRATE", "PATROUILLE", "CIVILISATION"];
 
 impl Dialogues {
     pub fn node(&self, id: &str) -> Option<&DialogueNode> {
@@ -126,6 +126,10 @@ pub enum Effect {
     Bluff,
     Bribe,
     Tip,
+    /// Learn the mores of the people you talk to.
+    Mores,
+    /// A civilisation gives you something it makes.
+    CivGift,
 }
 
 pub fn parse_effect(s: &str) -> Result<Effect, String> {
@@ -138,6 +142,8 @@ pub fn parse_effect(s: &str) -> Result<Effect, String> {
         "bluff" => Effect::Bluff,
         "bribe" => Effect::Bribe,
         "tip" => Effect::Tip,
+        "mores" => Effect::Mores,
+        "civgift" => Effect::CivGift,
         _ => {
             if let Some(v) = s.strip_prefix("rep:") {
                 Effect::Rep(v.parse().map_err(|_| bad())?)

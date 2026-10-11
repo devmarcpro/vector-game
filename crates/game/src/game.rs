@@ -177,6 +177,8 @@ pub struct Game {
     pub surf_spin: f64,
     /// Cities of this world's colonies: (name, cell x, cell y), computed when the screen opens.
     pub surf_cities: Vec<(String, usize, usize)>,
+    /// The people of the surveyed world, if any (computed when the surface opens).
+    pub surf_civ: Option<vector_sim::civ::Civ>,
     /// Food web of the world on the surface screen (settled balance, or the colony's own).
     pub surf_eco: Option<vector_sim::ecology::Ecosystem>,
     /// Exchange screen: station, selected resource, range (index into `BOURSE_RANGES`), the
@@ -295,6 +297,7 @@ impl Game {
             surf_globe: false,
             surf_spin: 0.0,
             surf_cities: Vec::new(),
+            surf_civ: None,
             surf_eco: None,
             bourse_station: 0,
             bourse_sel: 0,
@@ -1036,6 +1039,7 @@ impl Game {
                     })
                     .collect();
                 self.surf_eco = Some(vector_sim::ecology::Ecosystem::new(&self.data, &map));
+                self.surf_civ = self.sim.civilisation(body);
                 self.surf = Some(map);
                 self.screen = Screen::Surface;
             }
@@ -2966,6 +2970,44 @@ mod tests {
             BodyKind::Planet(_) | BodyKind::Moon(_)
         ));
         assert_ne!(t, t2, "it cycles");
+    }
+
+    #[test]
+    fn enter_on_a_targeted_world_with_people_opens_a_conversation_with_them() {
+        let mut found = None;
+        for seed in 1..60u64 {
+            let mut g = Game::new(data(), seed);
+            g.key(KeyCode::Enter, None, true);
+            if let Some(b) = g.sim.first_civilised_world() {
+                found = Some((g, b));
+                break;
+            }
+        }
+        let (mut g, b) = found.expect("a seed with a civilised world");
+        g.settings.tutorial = false;
+        // Too far: a clear refusal and no screen change.
+        g.sim.target = Some(b);
+        g.sim.target_npc = None;
+        g.sim.ship.pos = g.sim.bodies[b].pos
+            + vector_core::Vec3::new(0.0, 0.0, g.sim.bodies[b].radius * 900.0 + 5.0e9);
+        g.key(KeyCode::Enter, None, true);
+        assert_eq!(g.screen, Screen::Flight);
+        // Near it: the conversation opens, the people speak, the answers work, Escape ends it.
+        g.sim.ship.pos =
+            g.sim.bodies[b].pos - vector_core::Vec3::new(0.0, 0.0, g.sim.bodies[b].radius * 3.0);
+        g.key(KeyCode::Enter, None, true);
+        assert_eq!(g.screen, Screen::Dialogue);
+        frame(&g);
+        let view = g
+            .sim
+            .dialogue_view(g.dlg_npc, &g.dlg_node, &g.dlg_result)
+            .expect("view");
+        assert_eq!(view.role, "CIVILISATION");
+        g.key(KeyCode::Digit2, None, true); // study their mores
+        assert_eq!(g.dlg_node, "civ_mores");
+        assert!(g.dlg_log.iter().any(|l| l.starts_with("VOUS")));
+        g.key(KeyCode::Escape, None, true);
+        assert_eq!(g.screen, Screen::Flight);
     }
 
     #[test]

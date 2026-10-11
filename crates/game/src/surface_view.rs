@@ -190,6 +190,20 @@ pub fn draw(fb: &mut Framebuffer, g: &Game) {
     };
     let body = &g.sim.system.bodies[map.body];
     fb.text(2, 1, &format!("== SURFACE : {} ==", body.name), AMBER);
+    if let Some(c) = &g.surf_civ {
+        fb.text(
+            50,
+            1,
+            &format!(
+                "CIVILISATION : {} ({}) - TECHNOLOGIE {}/4 - {:.0} HABITANTS  [ENTREE EN VOL : PARLER]",
+                c.name.to_uppercase(),
+                g.data.civilisations[c.kind].name.to_uppercase(),
+                c.tech,
+                c.population
+            ),
+            GREEN,
+        );
+    }
     // Layer tabs.
     let mut x = 2;
     for (i, l) in LAYERS.iter().enumerate() {

@@ -37,3 +37,6 @@ Mœurs : data/ethos.ron (8 axes, 8 étiquettes morales, 8 profils de faction), g
 
 ## Sites d'expédition
 `data/sites.ron` : id, nom, symbole, couleur, poids, butin, danger, soin, texte.
+
+## Civilisations
+`data/civilisations.ron` : id, nom, technologie 1-4, description, mœurs (une valeur par axe de ethos.ron), biens offerts et demandés, syllabes des noms. Dialogues : rôle CIVILISATION, effets `mores` et `civgift`.

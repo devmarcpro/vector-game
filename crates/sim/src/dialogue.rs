@@ -1,6 +1,7 @@
 //! Radio conversations with other ships (data: `data/dialogues.ron`). The ship's AI speaks, the
 //! other captain answers in a tone that follows the mores of their faction; options depend on
 //! the situation (reputation, cargo, credits, their values) and their effects touch the world.
+use crate::civ::CIV_SUBJECT;
 use crate::crew::DAY;
 use crate::Sim;
 use vector_core::{hash_coord, Rng};
@@ -11,6 +12,10 @@ use vector_data::dialogue::{parse_conds, parse_effect, Cond, Effect};
 pub struct DialogueView {
     pub speaker: String,
     pub faction: String,
+    /// Ship type or "CIVILISATION".
+    pub role: &'static str,
+    /// Their goodwill towards you.
+    pub rep: f32,
     pub tone: &'static str,
     pub text: String,
     /// (label, available).
@@ -21,24 +26,68 @@ pub struct DialogueView {
 pub const BRIBE: f64 = 200.0;
 pub const BRIBE_FINE: f64 = 300.0;
 
+/// Whoever the AI talks to, seen the same way: a ship, or the people of a world.
+struct Speaker {
+    name: String,
+    faction: String,
+    role: &'static str,
+    hostile: bool,
+    cargo: String,
+    /// Mores on the ethos axes.
+    profile: Vec<f64>,
+    rep: f32,
+}
+
 impl Sim {
-    /// Tone of voice of an NPC: the strongest of authority (formal), openness (warm) and
-    /// xenophobia (wary) in the values of their faction, or neutral.
-    pub fn npc_tone(&self, npc: usize) -> &'static str {
-        let Some(n) = self.npcs.get(npc) else {
-            return "neutre";
-        };
-        let fid = n.faction.map(|f| self.data.factions[f].id.as_str());
-        let profile = self.data.ethos.profile(fid);
-        let get = |a: &str| {
-            self.data
+    fn speaker(&self, subject: usize) -> Option<Speaker> {
+        if subject >= CIV_SUBJECT {
+            let body = subject - CIV_SUBJECT;
+            let c = self.civilisation(body)?;
+            return Some(Speaker {
+                name: c.name,
+                faction: self.data.civilisations[c.kind].name.clone(),
+                role: "CIVILISATION",
+                hostile: false,
+                cargo: "rien".to_string(),
+                profile: c.profile,
+                rep: self.civ_reputation(body),
+            });
+        }
+        let n = self.npcs.get(subject)?;
+        Some(Speaker {
+            name: n.name.clone(),
+            faction: n.faction.map_or_else(
+                || "les indépendants".to_string(),
+                |f| self.data.factions[f].name.clone(),
+            ),
+            role: n.role.label(),
+            hostile: n.hostile,
+            cargo: n.cargo.map_or_else(
+                || "rien".to_string(),
+                |(r, _)| self.data.resources[r].name.to_lowercase(),
+            ),
+            profile: self
+                .data
                 .ethos
-                .axis(a)
-                .and_then(|i| profile.get(i))
-                .copied()
-                .unwrap_or(0.0)
-        };
-        let (aut, ouv) = (get("autorite"), get("ouverture"));
+                .profile(n.faction.map(|f| self.data.factions[f].id.as_str())),
+            rep: self.reputation_with(n.faction),
+        })
+    }
+
+    fn mores_of(&self, sp: &Speaker, axis: &str) -> f64 {
+        self.data
+            .ethos
+            .axis(axis)
+            .and_then(|i| sp.profile.get(i))
+            .copied()
+            .unwrap_or(0.0)
+    }
+
+    fn tone_of(&self, sp: &Speaker) -> &'static str {
+        let (aut, ouv) = (
+            self.mores_of(sp, "autorite"),
+            self.mores_of(sp, "ouverture"),
+        );
         let cands = [("formel", aut), ("cordial", ouv), ("mefiant", -ouv)];
         cands
             .iter()
@@ -47,84 +96,67 @@ impl Sim {
             .map_or("neutre", |(t, _)| *t)
     }
 
-    /// First node of the conversation with this NPC.
-    pub fn dialogue_start(&self, npc: usize) -> Option<String> {
-        let n = self.npcs.get(npc)?;
-        self.data
-            .dialogues
-            .start_for(n.role.label())
-            .map(str::to_string)
+    /// Tone of voice of whoever is spoken to: the strongest of authority (formal), openness
+    /// (warm) and xenophobia (wary) in their mores, or neutral.
+    pub fn npc_tone(&self, subject: usize) -> &'static str {
+        self.speaker(subject)
+            .map_or("neutre", |sp| self.tone_of(&sp))
     }
 
-    fn cond_holds(&self, npc: usize, c: &Cond) -> bool {
-        let n = &self.npcs[npc];
+    /// First node of the conversation with this subject.
+    pub fn dialogue_start(&self, subject: usize) -> Option<String> {
+        let sp = self.speaker(subject)?;
+        self.data.dialogues.start_for(sp.role).map(str::to_string)
+    }
+
+    fn cond_holds(&self, sp: &Speaker, c: &Cond) -> bool {
         match c {
-            Cond::Rep(cmp, v) => cmp.test(f64::from(self.reputation_with(n.faction)), *v),
+            Cond::Rep(cmp, v) => cmp.test(f64::from(sp.rep), *v),
             Cond::Credits(cmp, v) => cmp.test(self.credits, *v),
             Cond::Cargo(r, cmp, v) => self
                 .data
                 .resource_index(r)
                 .is_some_and(|i| cmp.test(self.ship.cargo.kg[i], *v)),
-            Cond::Ethos(a, cmp, v) => {
-                let profile = self
-                    .data
-                    .ethos
-                    .profile(n.faction.map(|f| self.data.factions[f].id.as_str()));
-                cmp.test(
-                    self.data
-                        .ethos
-                        .axis(a)
-                        .and_then(|i| profile.get(i))
-                        .copied()
-                        .unwrap_or(0.0),
-                    *v,
-                )
-            }
-            Cond::Role(r) => n.role.label() == r,
-            Cond::Hostile(h) => n.hostile == *h,
+            Cond::Ethos(a, cmp, v) => cmp.test(self.mores_of(sp, a), *v),
+            Cond::Role(r) => sp.role == r,
+            Cond::Hostile(h) => sp.hostile == *h,
         }
     }
 
-    fn option_available(&self, npc: usize, cond: &str) -> bool {
+    fn option_available(&self, sp: &Speaker, cond: &str) -> bool {
         parse_conds(cond)
-            .map(|cs| cs.iter().all(|c| self.cond_holds(npc, c)))
+            .map(|cs| cs.iter().all(|c| self.cond_holds(sp, c)))
             .unwrap_or(false)
     }
 
-    /// The text and options of a node, for this NPC; `result` fills `{result}`.
-    pub fn dialogue_view(&self, npc: usize, node: &str, result: &str) -> Option<DialogueView> {
-        let n = self.npcs.get(npc)?;
+    /// The text and options of a node, for this subject; `result` fills `{result}`.
+    pub fn dialogue_view(&self, subject: usize, node: &str, result: &str) -> Option<DialogueView> {
+        let sp = self.speaker(subject)?;
         let nd = self.data.dialogues.node(node)?;
-        let tone = self.npc_tone(npc);
+        let tone = self.tone_of(&sp);
         let raw = nd
             .text
             .iter()
             .find(|(t, _)| t == tone)
             .or_else(|| nd.text.iter().find(|(t, _)| t == "neutre"))
             .map(|(_, x)| x.as_str())?;
-        let faction = n.faction.map_or_else(
-            || "les indépendants".to_string(),
-            |f| self.data.factions[f].name.clone(),
-        );
-        let cargo = n.cargo.map_or_else(
-            || "rien".to_string(),
-            |(r, _)| self.data.resources[r].name.to_lowercase(),
-        );
         let text = raw
-            .replace("{name}", &n.name)
-            .replace("{faction}", &faction)
+            .replace("{name}", &sp.name)
+            .replace("{faction}", &sp.faction)
             .replace("{system}", &self.system.name)
-            .replace("{cargo}", &cargo)
+            .replace("{cargo}", &sp.cargo)
             .replace("{result}", result);
         Some(DialogueView {
-            speaker: n.name.clone(),
-            faction,
+            speaker: sp.name.clone(),
+            faction: sp.faction.clone(),
+            role: sp.role,
+            rep: sp.rep,
             tone,
             text,
             options: nd
                 .options
                 .iter()
-                .map(|o| (o.label.clone(), self.option_available(npc, &o.cond)))
+                .map(|o| (o.label.clone(), self.option_available(&sp, &o.cond)))
                 .collect(),
         })
     }
@@ -133,13 +165,11 @@ impl Sim {
     /// conversation, the start node when the option says "back") and the text of what happened.
     pub fn dialogue_choose(
         &mut self,
-        npc: usize,
+        subject: usize,
         node: &str,
         opt: usize,
     ) -> Result<(String, String), &'static str> {
-        if npc >= self.npcs.len() {
-            return Err("plus de contact");
-        }
+        let sp = self.speaker(subject).ok_or("plus de contact")?;
         let nd = self
             .data
             .dialogues
@@ -147,32 +177,40 @@ impl Sim {
             .ok_or("noeud inconnu")?
             .clone();
         let o = nd.options.get(opt).ok_or("option inconnue")?.clone();
-        if !self.option_available(npc, &o.cond) {
+        if !self.option_available(&sp, &o.cond) {
             return Err("option indisponible");
         }
         let mut result = String::new();
         for e in &o.effects {
             let eff = parse_effect(e).map_err(|_| "effet invalide")?;
-            if let Some(text) = self.apply_dialogue_effect(npc, &eff)? {
+            if let Some(text) = self.apply_dialogue_effect(subject, &eff)? {
                 result = text;
             }
         }
         let next = match o.next.as_str() {
-            "back" => self.dialogue_start(npc).unwrap_or_else(|| "end".into()),
+            "back" => self.dialogue_start(subject).unwrap_or_else(|| "end".into()),
             other => other.to_string(),
         };
         Ok((next, result))
     }
 
-    fn apply_dialogue_effect(
+    pub(crate) fn apply_dialogue_effect(
         &mut self,
-        npc: usize,
+        subject: usize,
         eff: &Effect,
     ) -> Result<Option<String>, &'static str> {
-        let faction = self.npcs[npc].faction;
+        let civ_body = (subject >= CIV_SUBJECT).then(|| subject - CIV_SUBJECT);
+        // Ship-only effects do nothing when the people of a world are the ones talking.
+        let npc = civ_body.is_none().then_some(subject);
         Ok(match eff {
             Effect::Rep(x) => {
-                self.change_reputation(faction, *x as f32);
+                match civ_body {
+                    Some(b) => self.change_civ_reputation(b, *x as f32),
+                    None => {
+                        let faction = self.npcs[subject].faction;
+                        self.change_reputation(faction, *x as f32);
+                    }
+                }
                 None
             }
             Effect::Credits(x) => {
@@ -199,12 +237,77 @@ impl Sim {
                 Err(e) => format!("Rien à payer : {e}."),
             }),
             Effect::Hostile => {
-                self.npcs[npc].hostile = true;
+                if let Some(n) = npc {
+                    self.npcs[n].hostile = true;
+                }
                 None
             }
-            Effect::Bluff => Some(self.bluff(npc)),
-            Effect::Bribe => Some(self.bribe(npc)),
+            Effect::Bluff => npc.map(|n| self.bluff(n)),
+            Effect::Bribe => npc.map(|n| self.bribe(n)),
+            Effect::Mores => civ_body.map(|b| self.describe_mores(b)),
+            Effect::CivGift => civ_body.map(|b| self.civ_gift(b)),
         })
+    }
+
+    /// What the AI learns of the mores of a world's people: the axes on which they are extreme.
+    fn describe_mores(&self, body: usize) -> String {
+        let Some(c) = self.civilisation(body) else {
+            return "Aucune réponse.".to_string();
+        };
+        let mut words: Vec<(f64, String)> = Vec::new();
+        for (a, v) in self.data.ethos.axes.iter().zip(&c.profile) {
+            if v.abs() >= 0.4 {
+                words.push((
+                    v.abs(),
+                    if *v > 0.0 {
+                        a.high.clone()
+                    } else {
+                        a.low.clone()
+                    },
+                ));
+            }
+        }
+        words.sort_by(|a, b| b.0.total_cmp(&a.0));
+        let list: Vec<String> = words.into_iter().take(4).map(|(_, w)| w).collect();
+        format!(
+            "{} Ils sont {}.",
+            self.data.civilisations[c.kind].plan,
+            if list.is_empty() {
+                "difficiles à cerner".to_string()
+            } else {
+                list.join(", ")
+            }
+        )
+    }
+
+    /// A friendly civilisation gives a share of what it makes; it costs it some goodwill.
+    fn civ_gift(&mut self, body: usize) -> String {
+        let Some(c) = self.civilisation(body) else {
+            return "Aucune réponse.".to_string();
+        };
+        let offers = &self.data.civilisations[c.kind].offers;
+        let mut rng = Rng::new(hash_coord(
+            self.system.seed,
+            body as i64,
+            (self.time / DAY) as i64,
+            29,
+        ));
+        let pick = &offers[(rng.next_u64() % offers.len() as u64) as usize];
+        let data = std::sync::Arc::clone(&self.data);
+        let Some(r) = data.resource_index(pick) else {
+            return "Ils n'ont rien à offrir.".to_string();
+        };
+        let kg = 12.0 * f64::from(c.tech);
+        let got = self.ship.cargo.add(&data, r, kg);
+        self.change_civ_reputation(body, -0.1);
+        if got <= 0.0 {
+            "Votre soute est pleine : ils reprennent leur présent.".to_string()
+        } else {
+            format!(
+                "Ils vous offrent {got:.0} kg de {}.",
+                data.resources[r].name.to_lowercase()
+            )
+        }
     }
 
     fn radio_news(&self) -> String {
@@ -474,5 +577,98 @@ mod tests {
         let (next, text) = s.dialogue_choose(k, &start, pay).expect("pay");
         assert_eq!(next, "pirate_paid");
         assert!(text.contains("Rien à payer"), "{text}");
+    }
+
+    /// A sim parked above a world with people, and that world's subject number.
+    fn civilised() -> (Sim, usize) {
+        for seed in 1..60u64 {
+            let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../data");
+            let d = Arc::new(GameData::load(&dir).expect("data loads"));
+            let mut s = new_sim(seed, d);
+            if let Some(b) = s.first_civilised_world() {
+                s.ship.pos =
+                    s.bodies[b].pos - vector_core::Vec3::new(0.0, 0.0, s.bodies[b].radius * 3.0);
+                s.credits = 5_000.0;
+                s.ship.cargo.cap_mass = 1.0e6;
+                s.ship.cargo.cap_vol = 1.0e6;
+                return (s, crate::civ::CIV_SUBJECT + b);
+            }
+        }
+        panic!("no civilisation in the first seeds");
+    }
+
+    #[test]
+    fn the_people_of_a_world_answer_in_their_own_tone_and_remember_how_they_were_treated() {
+        let (mut s, subject) = civilised();
+        let body = subject - crate::civ::CIV_SUBJECT;
+        assert!(s.can_hail_world(body).is_ok());
+        let start = s
+            .dialogue_start(subject)
+            .expect("a civilisation has a start node");
+        assert_eq!(start, "civ_start");
+        let view = s.dialogue_view(subject, &start, "").expect("view");
+        assert_eq!(view.role, "CIVILISATION");
+        let civ = s.civilisation(body).unwrap();
+        assert!(view.text.contains(&civ.name), "{}", view.text);
+        // Learning their mores tells their plan of life.
+        let dd = Arc::clone(&s.data);
+        let idx = move |label: &str| {
+            dd.dialogues
+                .node("civ_start")
+                .unwrap()
+                .options
+                .iter()
+                .position(|o| o.label.contains(label))
+                .unwrap()
+        };
+        let (_, mores) = s
+            .dialogue_choose(subject, &start, idx("mœurs"))
+            .expect("mores");
+        assert!(
+            mores.contains(&s.data.civilisations[civ.kind].plan),
+            "{mores}"
+        );
+        // A present is refused until they like you.
+        assert!(!s.dialogue_view(subject, &start, "").unwrap().options[idx("présent")].1);
+        let d = Arc::clone(&s.data);
+        let food = d.resource_index("food").unwrap();
+        s.ship.cargo.add(&d, food, 100.0);
+        let rep0 = s.civ_reputation(body);
+        s.dialogue_choose(subject, &start, idx("Offrir"))
+            .expect("gift");
+        assert!(s.civ_reputation(body) > rep0 + 0.1);
+        assert!(s.dialogue_view(subject, &start, "").unwrap().options[idx("présent")].1);
+        let mass = s.ship.cargo.mass;
+        let (next, text) = s
+            .dialogue_choose(subject, &start, idx("présent"))
+            .expect("present");
+        assert_eq!(next, "civ_gift");
+        assert!(text.starts_with("Ils vous offrent"), "{text}");
+        assert!(s.ship.cargo.mass > mass, "they gave something");
+        // Threats cost goodwill, and goodwill is remembered.
+        let before = s.civ_reputation(body);
+        s.dialogue_choose(subject, &start, idx("menacer"))
+            .expect("threat");
+        assert!(s.civ_reputation(body) < before - 0.25);
+        // Ship-only effects do nothing to a people (no panic on a world subject).
+        assert!(s
+            .apply_dialogue_effect(subject, &vector_data::dialogue::Effect::Bribe)
+            .unwrap()
+            .is_none());
+    }
+
+    #[test]
+    fn a_world_too_far_or_without_people_does_not_answer() {
+        let (mut s, subject) = civilised();
+        let body = subject - crate::civ::CIV_SUBJECT;
+        s.ship.pos = s.bodies[body].pos
+            + vector_core::Vec3::new(0.0, 0.0, s.bodies[body].radius * 500.0 + 1.0e9);
+        assert!(s.can_hail_world(body).unwrap_err().contains("loin"));
+        let empty = (0..s.bodies.len())
+            .find(|&i| s.civilisation(i).is_none())
+            .unwrap();
+        s.ship.pos =
+            s.bodies[empty].pos - vector_core::Vec3::new(0.0, 0.0, s.bodies[empty].radius * 3.0);
+        assert!(s.can_hail_world(empty).is_err());
     }
 }

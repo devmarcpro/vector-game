@@ -507,6 +507,19 @@ pub struct Cybernetic {
     pub hackable: bool,
 }
 
+/// A kind of native civilisation (see `data/civilisations.ron`).
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct Civilisation {
+    pub id: String,
+    pub name: String,
+    pub tech: u8,
+    pub plan: String,
+    pub profile: Vec<f64>,
+    pub offers: Vec<String>,
+    pub wants: Vec<String>,
+    pub syllables: Vec<String>,
+}
+
 /// A site of interest met on expeditions (see `data/sites.ron`).
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Site {
@@ -606,6 +619,7 @@ pub struct GameData {
     pub cybernetics: Vec<Cybernetic>,
     pub dialogues: dialogue::Dialogues,
     pub sites: Vec<Site>,
+    pub civilisations: Vec<Civilisation>,
 }
 
 fn read<T: for<'a> Deserialize<'a>>(path: &Path) -> Result<T, DataError> {
@@ -643,6 +657,7 @@ impl GameData {
             cybernetics: read(&dir.join("cybernetics.ron"))?,
             dialogues: read(&dir.join("dialogues.ron"))?,
             sites: read(&dir.join("sites.ron"))?,
+            civilisations: read(&dir.join("civilisations.ron"))?,
         };
         // Generated extension files (tools/gen_scale.py) extend the hand-written tables.
         let mut extra_resources: Vec<Resource> = read(&dir.join("resources_organs.ron"))?;
@@ -1065,7 +1080,39 @@ impl GameData {
         self.validate_organs()?;
         self.validate_cybernetics()?;
         self.validate_dialogues()?;
-        self.validate_sites()
+        self.validate_sites()?;
+        self.validate_civilisations()
+    }
+
+    /// Native civilisations: mores on every ethos axis, known goods, enough syllables.
+    fn validate_civilisations(&self) -> Result<(), DataError> {
+        let bad = |s: String| Err(DataError::Invalid(s));
+        let mut seen = std::collections::HashSet::new();
+        for c in &self.civilisations {
+            if !seen.insert(c.id.as_str()) {
+                return bad(format!("civilisation {} en double", c.id));
+            }
+            if c.profile.len() != self.ethos.axes.len()
+                || c.profile.iter().any(|v| !(-1.0..=1.0).contains(v))
+            {
+                return bad(format!("civilisation {}: moeurs invalides", c.id));
+            }
+            if !(1..=4).contains(&c.tech) || c.syllables.len() < 4 {
+                return bad(format!("civilisation {}: technologie ou syllabes", c.id));
+            }
+            for r in c.offers.iter().chain(&c.wants) {
+                if self.resource_index(r).is_none() {
+                    return bad(format!("civilisation {}: bien {r} inconnu", c.id));
+                }
+            }
+            if c.offers.is_empty() || c.wants.is_empty() {
+                return bad(format!("civilisation {}: rien a echanger", c.id));
+            }
+        }
+        if self.civilisations.len() < 4 {
+            return bad("moins de 4 civilisations".into());
+        }
+        Ok(())
     }
 
     /// Sites of interest: unique ids, one-character glyphs, known loot, sane numbers.
@@ -1756,6 +1803,24 @@ mod tests {
             d.unlocking_tech("module", "fusion_mk1").is_none(),
             "tier 1 is free"
         );
+    }
+
+    #[test]
+    fn civilisations_are_validated() {
+        let ok = GameData::load(&dir()).expect("data loads");
+        assert!(ok.civilisations.len() >= 4);
+        let mut d = ok.clone();
+        d.civilisations[0].profile.pop();
+        assert!(d.validate().is_err(), "one value per axis");
+        let mut d = ok.clone();
+        d.civilisations[0].profile[0] = 2.0;
+        assert!(d.validate().is_err(), "values in [-1, 1]");
+        let mut d = ok.clone();
+        d.civilisations[0].offers.push("unobtainium".into());
+        assert!(d.validate().is_err(), "unknown good");
+        let mut d = ok;
+        d.civilisations[0].syllables.truncate(2);
+        assert!(d.validate().is_err(), "enough syllables");
     }
 
     #[test]

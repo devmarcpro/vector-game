@@ -2,7 +2,7 @@
 //! weapon, faction, anomaly and condition, generated from the real data (no hand-written numbers).
 use vector_data::GameData;
 
-pub const CATEGORIES: [&str; 20] = [
+pub const CATEGORIES: [&str; 21] = [
     "RESSOURCES",
     "MODULES",
     "ARMES",
@@ -23,6 +23,7 @@ pub const CATEGORIES: [&str; 20] = [
     "IMPLANTS",
     "COMMUNICATIONS",
     "SITES",
+    "CIVILISATIONS",
 ];
 
 /// Index in the source table of entry `k` of a category (modules and weapons share a table).
@@ -66,6 +67,7 @@ fn entries(data: &GameData, cat: usize) -> Vec<usize> {
         17 => (0..data.cybernetics.len()).collect(),
         18 => (0..vector_data::dialogue::ROLES.len()).collect(),
         19 => (0..data.sites.len()).collect(),
+        20 => (0..data.civilisations.len()).collect(),
         _ => Vec::new(),
     }
 }
@@ -91,6 +93,7 @@ pub fn names(data: &GameData, cat: usize) -> Vec<String> {
             16 => data.organs[i].name.clone(),
             17 => data.cybernetics[i].name.clone(),
             19 => data.sites[i].name.clone(),
+            20 => data.civilisations[i].name.clone(),
             18 => format!(
                 "Appeler : {}",
                 vector_data::dialogue::ROLES[i].to_lowercase()
@@ -499,6 +502,37 @@ pub fn entry(data: &GameData, cat: usize, k: usize) -> Vec<String> {
                     res_name(data, &d.cure).unwrap_or_else(|| d.cure.clone())
                 }
             ));
+        }
+        20 => {
+            let c = &data.civilisations[i];
+            out.push(format!("{}  (technologie {}/4)", c.name, c.tech));
+            out.push(c.plan.clone());
+            let mores: Vec<String> = data
+                .ethos
+                .axes
+                .iter()
+                .zip(&c.profile)
+                .filter(|(_, v)| v.abs() >= 0.4)
+                .map(|(a, v)| format!("{} ({:+.1})", if *v > 0.0 { &a.high } else { &a.low }, v))
+                .collect();
+            out.push(format!("Moeurs marquees : {}", mores.join(", ")));
+            out.push(format!(
+                "Offre : {}",
+                c.offers
+                    .iter()
+                    .filter_map(|r| res_name(data, r))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ));
+            out.push(format!(
+                "Demande : {}",
+                c.wants
+                    .iter()
+                    .filter_map(|r| res_name(data, r))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ));
+            out.push("Environ un monde habitable sur trois en abrite une. Entree en vol, planete ciblee (Maj+Tab) : leur parler ; leur ton suit leurs moeurs.".to_string());
         }
         19 => {
             let s = &data.sites[i];

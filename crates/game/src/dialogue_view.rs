@@ -42,11 +42,21 @@ pub fn draw(fb: &mut Framebuffer, g: &Game) {
         fb.text(1, 3, "(PLUS DE CONTACT)", DIM);
         return;
     };
-    let npc = &g.sim.npcs[g.dlg_npc];
     // Portrait: the ship of the other party, in wireframe, with a little signal animation.
     let (cx, cy) = (150.0f32, 190.0f32);
     rect(fb, 30, 70, 270, 310, WIRE);
-    match npc.role.label() {
+    match view.role {
+        "CIVILISATION" => {
+            // A settlement: a dome, towers and a few lights.
+            fb.circle(cx, cy + 20.0, 45.0, GREEN);
+            fb.line(cx - 45.0, cy + 20.0, cx + 45.0, cy + 20.0, GREEN);
+            for dx in [-70.0f32, 62.0] {
+                fb.line(cx + dx, cy + 20.0, cx + dx, cy - 30.0, GREEN);
+                fb.line(cx + dx - 6.0, cy - 30.0, cx + dx + 6.0, cy - 30.0, GREEN);
+                fb.circle(cx + dx, cy - 36.0, 3.0, AMBER);
+            }
+            fb.line(cx - 90.0, cy + 20.0, cx + 90.0, cy + 20.0, DIM);
+        }
         "CARGO" => {
             fb.line(cx - 70.0, cy - 25.0, cx + 50.0, cy - 25.0, GREEN);
             fb.line(cx + 50.0, cy - 25.0, cx + 80.0, cy, GREEN);
@@ -86,12 +96,7 @@ pub fn draw(fb: &mut Framebuffer, g: &Game) {
         let x = 50.0 + k as f32 * 16.0;
         fb.line(x, 296.0, x, 296.0 - h, GREEN);
     }
-    fb.text_at(
-        34,
-        56,
-        &format!("{} - {}", npc.role.label(), npc.name),
-        AMBER,
-    );
+    fb.text_at(34, 56, &format!("{} - {}", view.role, view.speaker), AMBER);
     fb.text(
         4,
         33,
@@ -99,12 +104,7 @@ pub fn draw(fb: &mut Framebuffer, g: &Game) {
         GREEN,
     );
     fb.text(4, 34, &format!("TON : {}", view.tone.to_uppercase()), DIM);
-    fb.text(
-        4,
-        35,
-        &format!("REPUTATION : {:+.2}", g.sim.reputation_with(npc.faction)),
-        GREEN,
-    );
+    fb.text(4, 35, &format!("REPUTATION : {:+.2}", view.rep), GREEN);
     // What they say.
     let x = 36;
     let mut row = 8;
@@ -166,9 +166,20 @@ pub fn draw(fb: &mut Framebuffer, g: &Game) {
 impl Game {
     /// Start a conversation with the targeted ship.
     pub fn open_dialogue(&mut self) {
-        let Some(k) = self.sim.target_npc else {
-            self.say("AUCUN VAISSEAU CIBLE (T/Y/R POUR EN CHOISIR UN)");
-            return;
+        // A ship targeted wins; otherwise the people of the targeted world, when it has some.
+        let k = match (self.sim.target_npc, self.sim.target) {
+            (Some(k), _) => k,
+            (None, Some(b)) => match self.sim.can_hail_world(b) {
+                Ok(()) => vector_sim::civ::CIV_SUBJECT + b,
+                Err(e) => {
+                    self.say(e.to_uppercase());
+                    return;
+                }
+            },
+            (None, None) => {
+                self.say("AUCUNE CIBLE : VAISSEAU (R) OU PLANETE (MAJ+TAB)");
+                return;
+            }
         };
         let Some(start) = self.sim.dialogue_start(k) else {
             self.say("PAS DE REPONSE");

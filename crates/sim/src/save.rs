@@ -6,7 +6,7 @@ use vector_data::GameData;
 use vector_world::generate_system;
 
 pub const MAGIC: [u8; 4] = *b"VECT";
-pub const VERSION: u32 = 18;
+pub const VERSION: u32 = 19;
 
 #[derive(Debug)]
 pub enum SaveError {
@@ -76,6 +76,8 @@ pub struct SaveGame {
     pub rules: crate::rules::Rules,
     /// Food web of each colony's territory: (colony id, game time, biomass in kg).
     pub ecologies: Vec<(u32, f64, Vec<f32>, Vec<bool>)>,
+    /// Goodwill of the native civilisations (world key, value).
+    pub civ_rep: Vec<(u64, f32)>,
 }
 
 impl Sim {
@@ -121,6 +123,7 @@ impl Sim {
             research_progress: self.research_progress,
             explored: self.explored.clone(),
             rules: self.rules.clone(),
+            civ_rep: self.civ_rep.iter().map(|(k, v)| (*k, *v)).collect(),
             ecologies: self
                 .ecologies
                 .iter()
@@ -192,6 +195,7 @@ impl Sim {
             sim.researched = save.researched;
         }
         sim.rules = save.rules;
+        sim.civ_rep = save.civ_rep.into_iter().collect();
         for (id, time, bio, native) in save.ecologies {
             let Some(ci) = sim.colonies.iter().position(|c| c.id == id) else {
                 continue;

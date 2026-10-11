@@ -2,7 +2,7 @@
 //! weapon, faction, anomaly and condition, generated from the real data (no hand-written numbers).
 use vector_data::GameData;
 
-pub const CATEGORIES: [&str; 24] = [
+pub const CATEGORIES: [&str; 25] = [
     "RESSOURCES",
     "MODULES",
     "ARMES",
@@ -27,6 +27,7 @@ pub const CATEGORIES: [&str; 24] = [
     "EQUIPEMENT",
     "CROYANCES",
     "ENTREPRISES",
+    "CARTELS",
 ];
 
 /// Index in the source table of entry `k` of a category (modules and weapons share a table).
@@ -74,6 +75,7 @@ fn entries(data: &GameData, cat: usize) -> Vec<usize> {
         21 => (0..data.gear.len()).collect(),
         22 => (0..data.religions.len()).collect(),
         23 => (0..data.companies.len()).collect(),
+        24 => (0..data.cartels.len()).collect(),
         _ => Vec::new(),
     }
 }
@@ -103,6 +105,7 @@ pub fn names(data: &GameData, cat: usize) -> Vec<String> {
             21 => data.gear[i].name.clone(),
             22 => data.religions[i].name.clone(),
             23 => data.companies[i].name.clone(),
+            24 => data.cartels[i].name.clone(),
             18 => format!(
                 "Appeler : {}",
                 vector_data::dialogue::ROLES[i].to_lowercase()
@@ -511,6 +514,26 @@ pub fn entry(data: &GameData, cat: usize, k: usize) -> Vec<String> {
                     res_name(data, &d.cure).unwrap_or_else(|| d.cure.clone())
                 }
             ));
+        }
+        24 => {
+            let c = &data.cartels[i];
+            out.push(c.name.clone());
+            out.push(c.text.clone());
+            let hq = data
+                .factions
+                .iter()
+                .find(|f| f.id == c.hq)
+                .map_or(c.hq.clone(), |f| f.name.clone());
+            out.push(format!(
+                "Siege : {hq}   majoration des prix : {:.0} % quand il est actif dans une region",
+                c.markup * 100.0
+            ));
+            let goods: Vec<String> = c.goods.iter().filter_map(|r| res_name(data, r)).collect();
+            out.push(format!("Biens controles : {}", goods.join(", ")));
+            out.push(
+                "Un siege s'achete au courtage (D a quai) ; il rapporte chaque mois, au risque d'une enquete antitrust."
+                    .to_string(),
+            );
         }
         23 => {
             let c = &data.companies[i];

@@ -520,6 +520,17 @@ pub struct Company {
     pub text: String,
 }
 
+/// A cartel of the exchange (see `data/cartels.ron`).
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct Cartel {
+    pub id: String,
+    pub name: String,
+    pub hq: String,
+    pub goods: Vec<String>,
+    pub markup: f64,
+    pub text: String,
+}
+
 /// A belief of the colonies (see `data/religions.ron`).
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Religion {
@@ -675,6 +686,7 @@ pub struct GameData {
     pub civilisations: Vec<Civilisation>,
     pub gear: Vec<Gear>,
     pub religions: Vec<Religion>,
+    pub cartels: Vec<Cartel>,
     pub companies: Vec<Company>,
 }
 
@@ -716,6 +728,7 @@ impl GameData {
             civilisations: read(&dir.join("civilisations.ron"))?,
             gear: read(&dir.join("gear.ron"))?,
             religions: read(&dir.join("religions.ron"))?,
+            cartels: read(&dir.join("cartels.ron"))?,
             companies: read(&dir.join("companies.ron"))?,
         };
         // Generated extension files (tools/gen_scale.py) extend the hand-written tables.
@@ -1143,6 +1156,7 @@ impl GameData {
         self.validate_civilisations()?;
         self.validate_gear()?;
         self.validate_religions()?;
+        self.validate_cartels()?;
         self.validate_companies()
     }
 
@@ -1181,6 +1195,30 @@ impl GameData {
     }
 
     /// Beliefs: unique ids, sane ranges, and every possible faith has at least one belief.
+    /// Cartels: unique ids, a faction as headquarters, known goods, a sane markup.
+    fn validate_cartels(&self) -> Result<(), DataError> {
+        let bad = |s: String| Err(DataError::Invalid(s));
+        let mut seen = std::collections::HashSet::new();
+        for c in &self.cartels {
+            if !seen.insert(c.id.as_str()) {
+                return bad(format!("cartel {} en double", c.id));
+            }
+            if !self.factions.iter().any(|f| f.id == c.hq) {
+                return bad(format!("cartel {}: siege {} inconnu", c.id, c.hq));
+            }
+            if !(0.05..=0.6).contains(&c.markup) || c.goods.is_empty() {
+                return bad(format!("cartel {}: majoration ou biens invalides", c.id));
+            }
+            if let Some(r) = c.goods.iter().find(|r| self.resource_index(r).is_none()) {
+                return bad(format!("cartel {}: bien {r} inconnu", c.id));
+            }
+        }
+        if self.cartels.len() < 4 {
+            return bad("moins de 4 cartels".into());
+        }
+        Ok(())
+    }
+
     fn validate_religions(&self) -> Result<(), DataError> {
         let bad = |s: String| Err(DataError::Invalid(s));
         let mut seen = std::collections::HashSet::new();
@@ -1978,6 +2016,21 @@ mod tests {
         let mut d = ok;
         d.companies[0].yield_year = 0.9;
         assert!(d.validate().is_err(), "sane yield");
+    }
+
+    #[test]
+    fn cartels_are_validated() {
+        let ok = GameData::load(&dir()).expect("data loads");
+        assert!(ok.cartels.len() >= 4);
+        let mut d = ok.clone();
+        d.cartels[0].hq = "nulle_part".into();
+        assert!(d.validate().is_err(), "unknown headquarters");
+        let mut d = ok.clone();
+        d.cartels[0].goods.push("unobtainium".into());
+        assert!(d.validate().is_err(), "unknown good");
+        let mut d = ok;
+        d.cartels[0].markup = 3.0;
+        assert!(d.validate().is_err(), "sane markup");
     }
 
     #[test]

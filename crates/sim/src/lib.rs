@@ -30,6 +30,7 @@ pub mod save;
 pub mod scene;
 pub mod science;
 pub mod surgery;
+pub mod trading;
 pub mod voyage;
 pub mod walk;
 
@@ -283,6 +284,8 @@ pub struct Sim {
     pub herd_counter: i64,
     /// Rounds played at the casino (feeds the draws).
     pub casino_round: i64,
+    /// Insurance, cartel seats and tenders.
+    pub trade: trading::TradeState,
     pub last_livestock_day: i64,
     /// Body used as velocity reference for flight assist (within its influence radius).
     pub ref_body: Option<usize>,
@@ -417,6 +420,7 @@ impl Sim {
             herd: Vec::new(),
             herd_counter: 0,
             casino_round: 0,
+            trade: Default::default(),
             last_livestock_day: i64::MIN,
             ref_body: None,
             target: None,
@@ -695,6 +699,8 @@ impl Sim {
 
     pub(crate) fn run_systems(&mut self, act: &Activity, dt: f64) {
         self.livestock_tick();
+        self.cartel_tick();
+        self.tender_tick();
         let flux = self.solar_flux();
         let mass = self.ship.mass();
         let was_hot = self.ship.sys.overheating;

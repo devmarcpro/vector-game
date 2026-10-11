@@ -54,6 +54,7 @@ pub fn draw(fb: &mut Framebuffer, g: &Game) {
         Screen::Bank => draw_bank(fb, g),
         Screen::Livestock => crate::farm_view::draw_livestock(fb, g),
         Screen::Casino => crate::farm_view::draw_casino(fb, g),
+        Screen::Trading => crate::trade_view::draw(fb, g),
         Screen::Empire => draw_empire(fb, g),
         Screen::Colony => draw_colony(fb, g),
         Screen::Fleet => draw_fleet(fb, g),
@@ -573,7 +574,7 @@ fn draw_station(fb: &mut Framebuffer, g: &Game) {
     fb.text(
         1,
         b + 1,
-        "L:ELEVAGE A:CASINO G/J:NOIR F:CARBURANT R:REPARER H:VAISSEAU Y:CHANTIER K:EQUIPAGE U:DECOLLER",
+        "D:COURTAGE L:ELEVAGE A:CASINO G/J:NOIR F:CARBURANT R:REPARER H:VAISSEAU Y:CHANTIER K:EQUIPAGE U:DECOLLER",
         DIM,
     );
     for (i, msg) in g.messages.iter().rev().take(2).enumerate() {

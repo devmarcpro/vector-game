@@ -20,6 +20,7 @@ mod script;
 mod settings;
 mod surface_view;
 mod tech_view;
+mod trade_view;
 mod tutorial;
 mod ui;
 mod walk_view;

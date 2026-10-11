@@ -1,0 +1,13 @@
+// Crew posts. skill: skill id that drives efficiency; the first role is the default (no post).
+[
+ (id:"idle", name:"Sans poste", skill:""),
+ (id:"pilot", name:"Pilote", skill:"pilotage"),
+ (id:"engineer", name:"Ingénieur", skill:"ingenierie"),
+ (id:"miner", name:"Mineur", skill:"minage"),
+ (id:"medic", name:"Médecin", skill:"medecine"),
+ (id:"scientist", name:"Scientifique", skill:"science"),
+ (id:"gunner", name:"Artilleur", skill:"combat"),
+ (id:"cook", name:"Cuisinier", skill:"cuisine"),
+ (id:"mechanic", name:"Mécanicien", skill:"reparation"),
+ (id:"botanist", name:"Botaniste", skill:"botanique"),
+]

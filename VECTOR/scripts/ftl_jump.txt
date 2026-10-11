@@ -1,0 +1,12 @@
+# Jump to another star with the starter ship's FTL drive, then come back to normal flight.
+new 11
+tutorial off
+deepspace
+mark
+key l
+expect screen galaxy
+key enter
+expect screen flight
+wait 30
+print
+expect jumped yes

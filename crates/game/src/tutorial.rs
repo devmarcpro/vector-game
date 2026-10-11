@@ -110,7 +110,7 @@ pub fn hint_line(g: &Game) -> String {
             "WASD/QE ROT  ESP/X POUSSEE  MAJ BOOST  C FREIN  F ASSIST  TAB CIBLE  G AUTO  D AMARRER  V LASER  CTRL TIR  M CARTE  F1 AIDE"
         }
         Screen::Station => {
-            "HAUT/BAS CHOIX  ENTREE VENDRE  F PLEIN  R REPARER  H NAVIRE  Y CHANTIER  C CONTRATS  T BOURSE  L ELEVAGE  A CASINO  U DECOLLER"
+            "ENTREE VENDRE  F PLEIN  R REPARER  H NAVIRE  Y CHANTIER  C CONTRATS  T BOURSE  D COURTAGE  L ELEVAGE  A CASINO  U DECOLLER"
         }
         Screen::Inventory => "HAUT/BAS CHOISIR  J JETER  I/ECHAP RETOUR",
         Screen::Pause => "HAUT/BAS CHOISIR  ENTREE VALIDER  ECHAP REPRENDRE",
@@ -147,6 +147,9 @@ pub fn hint_line(g: &Game) -> String {
         }
         Screen::Livestock => {
             "HAUT/BAS ANIMAL  GAUCHE/DROITE ESPECE  B ACHETER  P REPRODUIRE  H ABATTRE  ECHAP RETOUR"
+        }
+        Screen::Trading => {
+            "GAUCHE/DROITE ONGLET  HAUT/BAS CHOIX  +/- MISE  ENTREE AGIR  ECHAP RETOUR"
         }
         Screen::Casino => {
             "GAUCHE/DROITE JEU  HAUT/BAS MISE  +/- NUMERO  ENTREE JOUER  ECHAP RETOUR"
@@ -253,6 +256,10 @@ pub fn help_lines(screen: Screen) -> &'static [&'static str] {
         Screen::Livestock => &[
             "B : acheter un animal   P : reproduire avec le meilleur partenaire",
             "H : abattre (rendement selon les genes)   les animaux mangent des rations",
+        ],
+        Screen::Trading => &[
+            "Gauche/Droite : onglet (rumeurs, arbitrage, cartels, appels d'offres, assurance)",
+            "Entree : agir   +/- : mise de l'offre",
         ],
         Screen::Casino => &["Entree : jouer   la maison garde toujours un avantage"],
         Screen::Empire => &["Entree : detail de la colonie   F3 : flotte"],

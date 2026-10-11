@@ -1,0 +1,11 @@
+// Station industries: they overproduce (stock x3, cheap) and underconsume (stock x0.15, expensive) these resources.
+[
+ (id:"mining_colony", name:"Colonie minière", produces:["iron","nickel","copper","aluminium","cobalt"], consumes:["food","water","spare_parts","fuel","medicine"]),
+ (id:"refinery", name:"Raffinerie", produces:["titanium","chromium","manganese","zinc","silicon"], consumes:["iron","nickel","carbon","fuel","spare_parts"]),
+ (id:"agri_dome", name:"Dôme agricole", produces:["food","water","oxygen","organics","nitrogen"], consumes:["spare_parts","fuel","phosphorus","medicine","aluminium"]),
+ (id:"industrial", name:"Complexe industriel", produces:["spare_parts","aluminium","silica","graphite","magnesium"], consumes:["iron","copper","carbon","titanium","fuel"]),
+ (id:"tech_hub", name:"Pôle technologique", produces:["medicine","rare_earths","deuterium","lithium","silver"], consumes:["silicon","copper","gold","platinum","food"]),
+ (id:"fuel_depot", name:"Dépôt de carburant", produces:["fuel","hydrogen","deuterium","helium3","helium"], consumes:["food","water","spare_parts","medicine","iron"]),
+ (id:"trade_hub", name:"Plaque tournante", produces:["salts","argon","sulfur"], consumes:["tungsten","uranium","thorium","diamond","palladium"]),
+ (id:"military_base", name:"Base militaire", produces:["ammo_slugs","missiles","mines"], consumes:["fuel","spare_parts","food","medicine","titanium","tungsten"]),
+]

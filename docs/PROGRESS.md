@@ -113,3 +113,5 @@
 - Marche noir (`blackmarket.rs`) : biens interdits negociables a prime, risque de descente de police. Touches G/J a quai.
 
 - Elevage (`livestock.rs`) : especes domestiques, genes mendeliens a 4 traits, reproduction, abattage, rations quotidiennes (save v26). Casino (`casino.rs`) : roulette et machine a sous, avantage de la maison mesure par test.
+
+- Courtage (`trading.rs`, `data/cartels.ron`) : rumeurs (dont des fausses), arbitrage entre systemes, assurance de soute (rembourse 70 % a la destruction), cartels (majorent les prix, sieges achetables, enquete antitrust), appels d'offres (le moins cher gagne, penalite si non livre). Save v27.

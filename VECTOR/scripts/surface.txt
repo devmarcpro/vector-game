@@ -1,0 +1,13 @@
+# Surface screen: open it on a surveyed planet, change layer, show the globe, come back.
+new 24263
+tutorial off
+reveal
+near planet
+key f8
+expect screen surface
+key tab
+key tab
+key g
+key right
+key escape
+expect screen flight

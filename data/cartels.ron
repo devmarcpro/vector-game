@@ -1,0 +1,17 @@
+// Cartels of the exchange (E7). A cartel of a region holds the price of its goods up for a month
+// at a time (markup: share added to the price while it is active); the player can buy a seat,
+// get a share of the profits each month and risk an antitrust fine. hq: faction behind it.
+[
+ (id:"metaux_unis", name:"Consortium des Métaux unis", hq:"concorde", goods:["iron", "nickel", "copper", "titanium"], markup:0.22,
+  text:"Les grandes fonderies de la Concorde fixent ensemble le prix du métal."),
+ (id:"fraternite_eau", name:"Fraternité de l'Eau", hq:"ceintures", goods:["water_ice", "water", "ammonia"], markup:0.30,
+  text:"Qui contrôle l'eau des ceintures contrôle les ceintures."),
+ (id:"compagnie_vivres", name:"Compagnie des Vivres", hq:"verdant", goods:["food", "organics", "medicine"], markup:0.20,
+  text:"Les récoltants s'entendent pour ne jamais vendre sous un certain prix."),
+ (id:"cercle_or", name:"Cercle de l'Or", hq:"ligue", goods:["gold", "silver", "platinum", "palladium"], markup:0.25,
+  text:"Quelques maisons de la Ligue règlent le cours des métaux précieux."),
+ (id:"pacte_atomique", name:"Pacte atomique", hq:"hegemonie", goods:["uranium", "thorium", "deuterium", "helium3"], markup:0.28,
+  text:"Le combustible nucléaire se vend à prix d'accord, jamais de marché."),
+ (id:"ordre_helios", name:"Ordre d'Hélios", hq:"helios", goods:["hydrogen", "fuel", "lithium"], markup:0.24,
+  text:"Le soleil appartient à ceux qui en vendent l'énergie."),
+]

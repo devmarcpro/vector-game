@@ -49,6 +49,7 @@ pub enum Screen {
     Bank,
     Livestock,
     Casino,
+    Trading,
     Empire,
     Colony,
     Fleet,
@@ -196,6 +197,7 @@ pub struct Game {
     pub bourse_tab: u8,
     pub comp_sel: usize,
     pub farm: crate::farm_view::FarmUi,
+    pub trade_ui: crate::trade_view::TradeUi,
     pub comp_series: Vec<Vec<f64>>,
     pub bourse_live: Vec<f64>,
     pub bourse_news: Vec<vector_sim::bourse::ActiveEvent>,
@@ -322,6 +324,10 @@ impl Game {
             bourse_tab: 0,
             comp_sel: 0,
             farm: Default::default(),
+            trade_ui: crate::trade_view::TradeUi {
+                bid: 12,
+                ..Default::default()
+            },
             comp_series: Vec::new(),
             bourse_live: Vec::new(),
             bourse_news: Vec::new(),
@@ -781,6 +787,7 @@ impl Game {
             Screen::Bank => self.bank_key(code),
             Screen::Livestock => self.livestock_key(code),
             Screen::Casino => self.casino_key(code),
+            Screen::Trading => self.trade_key(code),
             Screen::Empire => self.empire_key(code),
             Screen::Colony => self.colony_key(code),
             Screen::Fleet => self.fleet_key(code),
@@ -1309,6 +1316,10 @@ impl Game {
             }
             KeyCode::KeyE => {
                 self.screen = Screen::Bank;
+                return;
+            }
+            KeyCode::KeyD => {
+                self.screen = Screen::Trading;
                 return;
             }
             KeyCode::KeyL => {
@@ -2392,6 +2403,7 @@ mod tests {
             Screen::Bank,
             Screen::Livestock,
             Screen::Casino,
+            Screen::Trading,
             Screen::Empire,
             Screen::Colony,
             Screen::Fleet,
@@ -3286,6 +3298,42 @@ mod tests {
     }
 
     #[test]
+    fn the_brokerage_tabs_work_from_the_station() {
+        let mut g = Game::new(data(), 1);
+        g.key(KeyCode::Enter, None, true);
+        let (st, _) = g.sim.nearest_station().expect("station");
+        g.sim.spawn_near(st, g.sim.bodies[st].radius + 200.0);
+        g.sim.try_dock().expect("dock");
+        g.sim.credits = 1.0e6;
+        g.screen = Screen::Station;
+        g.key(KeyCode::KeyD, None, true);
+        assert_eq!(g.screen, Screen::Trading);
+        for tab in 0..5 {
+            assert_eq!(g.trade_ui.tab, tab);
+            frame(&g);
+            g.key(KeyCode::ArrowRight, None, true);
+        }
+        assert_eq!(g.trade_ui.tab, 0);
+        // Cartels: a seat is bought and ceded with the same key.
+        g.key(KeyCode::ArrowRight, None, true);
+        g.key(KeyCode::ArrowRight, None, true);
+        g.key(KeyCode::Enter, None, true);
+        assert_eq!(g.sim.trade.seats, vec![0]);
+        g.key(KeyCode::Enter, None, true);
+        assert!(g.sim.trade.seats.is_empty());
+        // Tenders: a bid at 60 % of the ceiling may be beaten, 5 % always wins.
+        g.key(KeyCode::ArrowRight, None, true);
+        for _ in 0..15 {
+            g.key(KeyCode::Minus, None, true);
+        }
+        g.key(KeyCode::Enter, None, true);
+        assert_eq!(g.sim.trade.tenders.len(), 1);
+        frame(&g);
+        g.key(KeyCode::Escape, None, true);
+        assert_eq!(g.screen, Screen::Station);
+    }
+
+    #[test]
     fn the_pens_and_the_casino_work_from_the_station() {
         let mut g = Game::new(data(), 1);
         g.key(KeyCode::Enter, None, true);
@@ -3423,6 +3471,7 @@ mod tests {
             Screen::Bank,
             Screen::Livestock,
             Screen::Casino,
+            Screen::Trading,
             Screen::Empire,
             Screen::Colony,
             Screen::Fleet,
@@ -3472,6 +3521,7 @@ mod tests {
             (KeyCode::KeyC, Screen::Contracts),
             (KeyCode::KeyE, Screen::Bank),
             (KeyCode::KeyL, Screen::Livestock),
+            (KeyCode::KeyD, Screen::Trading),
             (KeyCode::KeyA, Screen::Casino),
             (KeyCode::F2, Screen::Empire),
             (KeyCode::F3, Screen::Fleet),

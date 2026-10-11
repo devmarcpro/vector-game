@@ -1,0 +1,12 @@
+// Factions. culture: id in cultures_names.ron. contraband: resource ids forbidden in their space.
+// tax: share withheld on sales. aggression 0..1. allies/enemies: faction ids.
+[
+ (id:"concorde", name:"Concorde Terrienne", culture:"terrane", ideology:"Federation democratique", color:0x4090FF, tax:0.04, contraband:["uranium","thorium"], aggression:0.2, allies:["helios","verdant"], enemies:["hegemonie"]),
+ (id:"ceintures", name:"Union des Ceintures", culture:"belter", ideology:"Guildes minieres libertaires", color:0xE0A030, tax:0.02, contraband:[], aggression:0.35, allies:["errants"], enemies:["helios"]),
+ (id:"mars", name:"République de Mars", culture:"martien", ideology:"Technocratie scientifique", color:0xE05030, tax:0.06, contraband:["deuterium"], aggression:0.25, allies:["concorde"], enemies:["errants"]),
+ (id:"ligue", name:"Ligue Jovienne", culture:"jovien", ideology:"Ligue marchande des geantes gazeuses", color:0xA0C0FF, tax:0.05, contraband:["rare_earths"], aggression:0.15, allies:["verdant"], enemies:[]),
+ (id:"hegemonie", name:"Hégémonie Stellaire", culture:"stellaire", ideology:"Empire militariste", color:0xC030E0, tax:0.10, contraband:["gold","platinum","palladium"], aggression:0.7, allies:[], enemies:["concorde","ceintures"]),
+ (id:"errants", name:"Clans Errants", culture:"errant", ideology:"Clans nomades", color:0x30D090, tax:0.0, contraband:["medicine"], aggression:0.45, allies:["ceintures"], enemies:["mars","hegemonie"]),
+ (id:"helios", name:"Corporation Helios", culture:"terrane", ideology:"Etat-entreprise", color:0xF0F060, tax:0.08, contraband:["rare_earths","diamond"], aggression:0.3, allies:["concorde"], enemies:["ceintures"]),
+ (id:"verdant", name:"Collectif Verdant", culture:"martien", ideology:"Ecologistes communautaires", color:0x60E060, tax:0.03, contraband:["methane","sulfur"], aggression:0.1, allies:["concorde","ligue"], enemies:[]),
+]

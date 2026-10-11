@@ -8,7 +8,7 @@ use vector_core::hash_coord;
 use vector_data::GameData;
 
 pub const DAY: f64 = 86_400.0;
-const WEEK: f64 = 7.0 * DAY;
+pub(crate) const WEEK: f64 = 7.0 * DAY;
 /// Events last at most 90 days, so only the previous 14 weeks can still be running.
 const LOOKBACK_WEEKS: i64 = 14;
 /// Chance that a week brings an event to a region / to the whole galaxy.
@@ -151,7 +151,7 @@ pub fn world_factors(data: &GameData, galaxy_seed: u64, pos: [f64; 3], t: f64) -
             let key = region_key ^ (r as i64).wrapping_mul(0x9E37_79B9);
             let n = 0.65 * smooth_noise(galaxy_seed, key, 9.0, t)
                 + 0.35 * smooth_noise(galaxy_seed ^ 1, key, 31.0, t);
-            f * (1.0 + vol * 2.0 * n)
+            f * (1.0 + vol * 2.0 * n) * crate::trading::cartel_factor(data, galaxy_seed, pos, t, r)
         })
         .collect()
 }
@@ -330,7 +330,8 @@ mod tests {
             .cloned()
             .collect();
         let expect = at_peak * event_factor(&d, &other, res, peak);
-        let got = world_factors(&d, 7, pos, peak)[res];
+        let got = world_factors(&d, 7, pos, peak)[res]
+            / crate::trading::cartel_factor(&d, 7, pos, peak, res);
         assert!((got / expect - 1.0).abs() < 0.12, "{got} vs {expect}");
     }
     /// A point of space inside a faction's territory.

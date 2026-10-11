@@ -1,0 +1,7 @@
+// Asteroid classes: weight in belts, density, composition (mass fractions, sum = 1).
+[
+ (id:"C", name:"Carbone", weight:0.45, density:1400.0, composition:[("carbon",0.12),("water_ice",0.08),("organics",0.05),("iron",0.15),("silica",0.25),("sulfur",0.05),("ammonia",0.02),("magnesium",0.06),("nickel",0.01),("regolith",0.21)]),
+ (id:"S", name:"Silicate", weight:0.30, density:2700.0, composition:[("silica",0.35),("silicon",0.10),("iron",0.20),("magnesium",0.12),("aluminium",0.05),("nickel",0.02),("titanium",0.01),("regolith",0.15)]),
+ (id:"M", name:"Métallique", weight:0.15, density:5300.0, composition:[("iron",0.55),("nickel",0.20),("cobalt",0.04),("platinum",0.004),("gold",0.001),("copper",0.01),("palladium",0.002),("tungsten",0.003),("regolith",0.19)]),
+ (id:"I", name:"Glace", weight:0.10, density:1000.0, composition:[("water_ice",0.60),("co2_ice",0.10),("ammonia",0.08),("methane",0.06),("nitrogen",0.03),("regolith",0.13)]),
+]

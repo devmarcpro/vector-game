@@ -1,0 +1,15 @@
+// Skills: id, name (0..10 scale, 5 = competent professional)
+[
+ (id:"pilotage", name:"Pilotage"),
+ (id:"ingenierie", name:"Ingénierie"),
+ (id:"minage", name:"Minage"),
+ (id:"medecine", name:"Médecine"),
+ (id:"science", name:"Science"),
+ (id:"combat", name:"Combat"),
+ (id:"commerce", name:"Commerce"),
+ (id:"commandement", name:"Commandement"),
+ (id:"cuisine", name:"Cuisine"),
+ (id:"botanique", name:"Botanique"),
+ (id:"reparation", name:"Réparation"),
+ (id:"navigation", name:"Navigation"),
+]

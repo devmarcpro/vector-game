@@ -110,3 +110,5 @@ Ecran de préparation : Haut/Bas, Espace coche un équipier ou le rover, Entrée
 - Station : G achete 50 kg, J vend 50 kg de la ressource choisie au marche noir (seulement pour les biens interdits du territoire ; prime ~x1,9 a l'achat, x1,35 a la vente, 12 % de descente de police : amende 600 CR, saisie, reputation -0,25).
 
 - Station : L elevage (B acheter, P reproduire avec le meilleur partenaire, H abattre, Gauche/Droite espece), A casino (Gauche/Droite jeu, Haut/Bas mise, +/- numero, Entree jouer).
+
+- Station : D courtage (Gauche/Droite onglet : rumeurs, arbitrage, cartels, appels d'offres, assurance ; Haut/Bas choix ; +/- mise ; Entree agir).

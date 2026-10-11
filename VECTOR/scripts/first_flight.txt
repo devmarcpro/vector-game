@@ -1,0 +1,14 @@
+# Takes off from the start position, flies to the station and docks.
+new 7
+expect screen flight
+hold w 0.5
+hold space 1.0
+expect speed > 1
+key f
+key y
+expect target yes
+key g
+scale 100
+wait 3
+scale 1
+print

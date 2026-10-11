@@ -888,6 +888,7 @@ impl Sim {
     }
 
     pub fn insurance_respawn(&mut self) {
+        self.claim_before_wipe();
         self.destroyed = false;
         self.ship.cargo = crate::cargo::Cargo::new(self.data.resources.len());
         self.ship.sys.health.fill(1.0);

@@ -1,0 +1,14 @@
+# Exchange: dock at the station, open the bourse, change the period, come back.
+new 24263
+tutorial off
+near station
+key d
+expect docked yes
+key t
+expect screen bourse
+key tab
+key down
+key down
+key left
+key escape
+expect screen station

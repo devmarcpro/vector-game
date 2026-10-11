@@ -1,0 +1,7 @@
+# Combat: a warship shoots a hostile pirate down (manual aim; its shield goes first).
+new 24263
+tutorial off
+pirate
+engage 120
+print
+expect wrecks > 0

@@ -51,3 +51,5 @@
 - 2026-10-11 : Passe visuelle : diagramme des chaînes de production d'une colonie (touche F dans l'écran colonie) : stocks consommés -> bâtiments/recettes -> stocks produits, fils rouges si un intrant manque.
 
 - 2026-10-11 : Passe visuelle : écran des factions (X en vol) : graphe en anneau des alliances/ennemis, moeurs sur 8 axes, interdits moraux, contrebande, réputation ; cliquable.
+
+- 2026-10-11 : Plan de soute visuel (écran I) : une case = un volume égal, remplissage de la case selon la densité, couleur par catégorie, jauges volume/masse, blocs cliquables.

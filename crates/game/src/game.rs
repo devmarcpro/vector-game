@@ -2399,6 +2399,32 @@ mod tests {
     }
 
     #[test]
+    fn the_hold_plan_blocks_are_clickable_and_sized_by_volume() {
+        let mut g = Game::new(data(), 1);
+        g.key(KeyCode::Enter, None, true);
+        let d = Arc::clone(&g.data);
+        let iron = d.resource_index("iron").expect("iron");
+        let water = d.resource_index("water").expect("water");
+        g.sim.ship.cargo.cap_vol = 40.0;
+        g.sim.ship.cargo.cap_mass = 1.0e6;
+        g.sim.ship.cargo.add(&d, iron, 5_000.0);
+        g.sim.ship.cargo.add(&d, water, 5_000.0);
+        g.sel_res = water;
+        g.screen = Screen::Inventory;
+        frame(&g);
+        let zones = g.pointer.hits.borrow().len();
+        assert!(zones >= 2, "each block declares zones, got {zones}");
+        // The first block (iron, listed first) is under the grid's top-left cell.
+        g.pointer_click(20, 104, 1_000);
+        assert_eq!(g.sel_res, iron);
+        // Water is far more voluminous than the same mass of iron: it has more zone rows.
+        let c = &g.sim.ship.cargo;
+        assert!(
+            c.kg[water] / d.resources[water].density > 5.0 * c.kg[iron] / d.resources[iron].density
+        );
+    }
+
+    #[test]
     fn the_mouse_selects_contract_rows() {
         let mut g = Game::new(data(), 1);
         g.key(KeyCode::Enter, None, true);

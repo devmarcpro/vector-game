@@ -44,3 +44,9 @@ Remplacer les listes par des schémas là où l'information a une structure : (1
 Quand TOUT ce qui a été demandé dans cette liste sera fait (étape 0, E1 à E6, la passe d'interfaces visuelles, la souris partout, les idées en attente), publier une release sur le dépôt GitHub : étiquette de version, notes de version rédigées depuis PROGRESS.md, paquet `dist/VECTOR.zip` régénéré (tools/package.ps1) en pièce jointe. Ne pas la faire avant.
 ## Tres tard : high sci-fi a la Rick et Morty (a rediscuter avec le joueur)
 Voyage dans le temps, voyage entre dimensions, portails, concepts completement dingues. Idee notee, rien a concevoir avant d'en reparler. Contrainte a garder en tete : la simulation reste deterministe (seed + deltas), donc tout cela devra s'exprimer comme des seeds/branches derivees et non comme une horloge reelle.
+
+## Entreprises (note du joueur)
+Ajouter les entreprises : sociétés privées avec nom, siège, activité, flotte, cours en bourse, rachats, concurrence, mœurs de l'entreprise (cartels, lobbies), employés (généalogie), contrats entre entreprises et factions. À relier à la bourse (actions) et au marché noir.
+
+## Stockage visuel (fait en partie)
+Plan de soute à cases de volume égal (densité = remplissage de la case), jauges volume/masse. Reste : même plan pour les stocks de colonie et les entrepôts, formes de conteneurs, empilement 3D fil de fer.

@@ -305,6 +305,15 @@ fn snapshot(path: &str, scene: &str, data: Arc<GameData>) {
             let iron = g.data.resource_index("iron").expect("iron");
             let data = Arc::clone(&g.data);
             g.sim.ship.cargo.add(&data, iron, 5_000.0);
+            for (id, kg) in [
+                ("water", 3_000.0),
+                ("hydrogen", 400.0),
+                ("electronics", 300.0),
+            ] {
+                if let Some(r) = data.resource_index(id) {
+                    g.sim.ship.cargo.add(&data, r, kg);
+                }
+            }
             g.sel_res = iron;
             g.screen = Screen::Inventory;
         }

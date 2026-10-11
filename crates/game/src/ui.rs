@@ -536,6 +536,7 @@ fn draw_inventory(fb: &mut Framebuffer, g: &Game) {
             col,
         );
     }
+    draw_hold(fb, g, &items);
     fb.text(
         1,
         fb.rows() - 3,
@@ -1817,5 +1818,122 @@ fn draw_ship_schematic(fb: &mut Framebuffer, g: &Game) {
                 col,
             );
         }
+    }
+}
+
+/// Colour of a resource category in the hold diagram.
+fn category_color(category: &str) -> u32 {
+    const PALETTE: [u32; 8] = [
+        0x0060_E080,
+        0x0050_C0E0,
+        0x00E0_C060,
+        0x00E0_7050,
+        0x00C0_70E0,
+        0x0090_E050,
+        0x00E0_90B0,
+        0x0080_A0E0,
+    ];
+    let h = category
+        .bytes()
+        .fold(7u32, |h, b| h.wrapping_mul(31).wrapping_add(b as u32));
+    PALETTE[h as usize % PALETTE.len()]
+}
+
+/// The hold drawn as a grid whose cells are equal volumes: each resource fills as many cells as
+/// its volume (mass / density) takes, so a dense ore is a small block and a gas a big one. A
+/// cell is hatched with more lines the denser the resource. Two bars below tell which of volume
+/// and mass is the limit.
+fn draw_hold(fb: &mut Framebuffer, g: &Game, items: &[usize]) {
+    const CELL: i32 = 8;
+    const COLS: usize = 34;
+    const ROWS: usize = 22;
+    let c = &g.sim.ship.cargo;
+    let (x0, y0) = (16, 100);
+    fb.text_at(x0, y0 - 12, "PLAN DE SOUTE (1 CASE = VOLUME EGAL)", DIM);
+    let total = COLS * ROWS;
+    let (w, h) = (COLS as i32 * CELL, ROWS as i32 * CELL);
+    let (fx, fy) = (x0 as f32, y0 as f32);
+    for (a, b, c2, d) in [
+        (fx, fy, fx + w as f32, fy),
+        (fx + w as f32, fy, fx + w as f32, fy + h as f32),
+        (fx + w as f32, fy + h as f32, fx, fy + h as f32),
+        (fx, fy + h as f32, fx, fy),
+    ] {
+        fb.line(a, b, c2, d, DIM);
+    }
+    let cap = c.cap_vol.max(1e-9);
+    let mut cell = 0usize;
+    for &i in items {
+        let r = &g.data.resources[i];
+        let n = ((c.kg[i] / r.density / cap) * total as f64).ceil().max(1.0) as usize;
+        let col = if i == g.sel_res {
+            AMBER
+        } else {
+            category_color(&r.category)
+        };
+        // Hatching: 1 line for a light resource, up to 4 for a dense one.
+        let lines = ((r.density.max(1.0)).log10().floor() as i32).clamp(0, 3) + 1;
+        let first = cell;
+        for k in first..(first + n).min(total) {
+            let (cx, cy) = (x0 + (k % COLS) as i32 * CELL, y0 + (k / COLS) as i32 * CELL);
+            // A small box, filled from the bottom as much as the resource is dense.
+            let (l, t, r, bt) = (
+                (cx + 1) as f32,
+                (cy + 1) as f32,
+                (cx + 6) as f32,
+                (cy + 6) as f32,
+            );
+            fb.line(l, t, r, t, col);
+            fb.line(r, t, r, bt, col);
+            fb.line(r, bt, l, bt, col);
+            fb.line(l, bt, l, t, col);
+            for f in 0..lines {
+                let yy = (cy + 5 - f) as f32;
+                fb.line(l, yy, r, yy, col);
+            }
+        }
+        // One zone per row of the block, so a click anywhere on it selects the resource.
+        let mut k = first;
+        let end = (first + n).min(total);
+        while k < end {
+            let row_end = ((k / COLS + 1) * COLS).min(end);
+            let (cx, cy) = (x0 + (k % COLS) as i32 * CELL, y0 + (k / COLS) as i32 * CELL);
+            g.hit(
+                (cx, cy, cx + (row_end - k) as i32 * CELL, cy + CELL),
+                Act::Call(Game::click_sel_res, i),
+                None,
+            );
+            k = row_end;
+        }
+        cell += n;
+    }
+    // Volume and mass gauges.
+    let rows = (y0 + h) as usize / 10 + 2;
+    fb.gauge(2, rows, "VOLUME", c.volume / cap, 20, GREEN);
+    fb.gauge(
+        2,
+        rows + 1,
+        "MASSE ",
+        c.mass / c.cap_mass.max(1e-9),
+        20,
+        GREEN,
+    );
+    fb.text(
+        2,
+        rows + 2,
+        &format!(
+            "{:.1}/{:.1} M3   {:.0}/{:.0} KG",
+            c.volume, c.cap_vol, c.mass, c.cap_mass
+        ),
+        DIM,
+    );
+    if let Some(&i) = items.iter().find(|&&i| i == g.sel_res) {
+        let r = &g.data.resources[i];
+        fb.text(
+            2,
+            rows + 3,
+            &format!("{} : DENSITE {:.0} KG/M3", r.name.to_uppercase(), r.density),
+            AMBER,
+        );
     }
 }

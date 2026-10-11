@@ -95,6 +95,8 @@ pub struct Colony {
     /// place and drift under the policies (see `culture_target`).
     pub culture: Vec<f64>,
     pub culture_base: Vec<f64>,
+    /// Belief of the people (index into `GameData::religions`).
+    pub faith: usize,
     pub storage: Vec<f64>,
     pub buildings: Vec<BuildingInst>,
     /// Chosen level of each policy.
@@ -551,7 +553,8 @@ impl Colony {
                 }
             }
         }
-        self.research += research_gain;
+        self.research +=
+            research_gain * (1.0 + data.religions.get(self.faith).map_or(0.0, |r| r.research));
 
         // Culture drifts slowly towards what the policies push it to.
         if self.culture.len() == self.culture_base.len() && !self.culture.is_empty() {
@@ -604,6 +607,7 @@ impl Colony {
             + quarantine_h
             - crowd
             - self.culture_friction(data)
+            + data.religions.get(self.faith).map_or(0.0, |r| r.morale)
             - if broke { 0.1 } else { 0.0 })
         .clamp(0.0, 1.0);
         self.happiness += (target - self.happiness) * (1.0 - (-days / 8.0).exp());
@@ -840,6 +844,23 @@ impl Sim {
             .data
             .ethos
             .profile(self.faction.map(|f| self.data.factions[f].id.as_str()));
+        // The belief: among those that fit the faith of the founders, by the hash of the place.
+        let foi = self
+            .data
+            .ethos
+            .axis("foi")
+            .and_then(|a| founders.get(a))
+            .copied()
+            .unwrap_or(0.0);
+        let fitting: Vec<usize> = (0..self.data.religions.len())
+            .filter(|&r| self.data.religions[r].fits(foi))
+            .collect();
+        let faith = if fitting.is_empty() {
+            0
+        } else {
+            fitting[(hash_coord(self.system.seed, i as i64, id as i64, 53) % fitting.len() as u64)
+                as usize]
+        };
         let mut c = Colony {
             id,
             name: name.unwrap_or_else(|| format!("{} Colonie", cb.name)),
@@ -859,6 +880,7 @@ impl Sim {
             epidemic: None,
             culture: founders.clone(),
             culture_base: founders,
+            faith,
             storage: vec![0.0; data.resources.len()],
             buildings: Vec::new(),
             policies: data.policies.iter().map(|p| p.default_level).collect(),
@@ -1369,6 +1391,44 @@ mod tests {
         let mut free = s.colonies[ci].clone();
         free.policies = d.policies.iter().map(|p| p.default_level).collect();
         assert_eq!(free.culture_target(&d), free.culture_base);
+    }
+
+    #[test]
+    fn a_colony_has_a_belief_that_fits_its_people_and_it_changes_morale() {
+        let (mut s, ci) = founded();
+        let d = Arc::clone(&s.data);
+        let c = &s.colonies[ci];
+        let foi = d.ethos.axis("foi").map_or(0.0, |a| c.culture_base[a]);
+        assert!(
+            d.religions[c.faith].fits(foi),
+            "{foi} vs {}",
+            d.religions[c.faith].name
+        );
+        let cheerful = (0..d.religions.len())
+            .max_by(|&a, &b| d.religions[a].morale.total_cmp(&d.religions[b].morale))
+            .unwrap();
+        let dry = (0..d.religions.len())
+            .min_by(|&a, &b| d.religions[a].morale.total_cmp(&d.religions[b].morale))
+            .unwrap();
+        let run = |s: &mut Sim, faith: usize| {
+            s.colonies[ci].faith = faith;
+            s.colonies[ci].happiness = 0.5;
+            fill(
+                s,
+                ci,
+                &[
+                    ("food", 50000.0),
+                    ("water", 50000.0),
+                    ("consumer_goods", 5000.0),
+                ],
+            );
+            s.time += 30.0 * DAY;
+            s.update_colonies();
+            s.colonies[ci].happiness
+        };
+        let a = run(&mut s, cheerful);
+        let b = run(&mut s, dry);
+        assert!(a > b + 0.02, "{a} vs {b}");
     }
 
     #[test]

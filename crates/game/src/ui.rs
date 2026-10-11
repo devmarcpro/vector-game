@@ -1723,8 +1723,12 @@ fn draw_colony(fb: &mut Framebuffer, g: &Game) {
             1,
             4,
             &format!(
-                "MOEURS : {}",
-                g.data.ethos.traits(&c.culture, 4).join(", ").to_uppercase()
+                "MOEURS : {}   CROYANCE : {}",
+                g.data.ethos.traits(&c.culture, 4).join(", ").to_uppercase(),
+                g.data
+                    .religions
+                    .get(c.faith)
+                    .map_or("-".to_string(), |r| r.name.to_uppercase())
             ),
             DIM,
         );

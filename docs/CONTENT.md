@@ -43,3 +43,6 @@ Mœurs : data/ethos.ron (8 axes, 8 étiquettes morales, 8 profils de faction), g
 
 ## Équipement
 `data/gear.ron` : id, nom, emplacement (weapon, armor, tool), attaque, défense (0 à 0.9), récolte, valeur, texte. Chaque objet est aussi une marchandise `gear_<id>` générée par `tools/gen_organs.py`.
+
+## Croyances
+`data/religions.ron` : id, nom, intervalle de foi (axe foi des mœurs), bonus de moral, bonus de recherche, texte.

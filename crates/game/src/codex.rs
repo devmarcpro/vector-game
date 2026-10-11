@@ -2,7 +2,7 @@
 //! weapon, faction, anomaly and condition, generated from the real data (no hand-written numbers).
 use vector_data::GameData;
 
-pub const CATEGORIES: [&str; 22] = [
+pub const CATEGORIES: [&str; 23] = [
     "RESSOURCES",
     "MODULES",
     "ARMES",
@@ -25,6 +25,7 @@ pub const CATEGORIES: [&str; 22] = [
     "SITES",
     "CIVILISATIONS",
     "EQUIPEMENT",
+    "CROYANCES",
 ];
 
 /// Index in the source table of entry `k` of a category (modules and weapons share a table).
@@ -70,6 +71,7 @@ fn entries(data: &GameData, cat: usize) -> Vec<usize> {
         19 => (0..data.sites.len()).collect(),
         20 => (0..data.civilisations.len()).collect(),
         21 => (0..data.gear.len()).collect(),
+        22 => (0..data.religions.len()).collect(),
         _ => Vec::new(),
     }
 }
@@ -97,6 +99,7 @@ pub fn names(data: &GameData, cat: usize) -> Vec<String> {
             19 => data.sites[i].name.clone(),
             20 => data.civilisations[i].name.clone(),
             21 => data.gear[i].name.clone(),
+            22 => data.religions[i].name.clone(),
             18 => format!(
                 "Appeler : {}",
                 vector_data::dialogue::ROLES[i].to_lowercase()
@@ -504,6 +507,20 @@ pub fn entry(data: &GameData, cat: usize, k: usize) -> Vec<String> {
                 } else {
                     res_name(data, &d.cure).unwrap_or_else(|| d.cure.clone())
                 }
+            ));
+        }
+        22 => {
+            let r = &data.religions[i];
+            out.push(r.name.clone());
+            out.push(r.text.clone());
+            out.push(format!(
+                "Se developpe chez les peuples dont la foi (axe des moeurs) va de {:+.1} a {:+.1}.",
+                r.foi_min, r.foi_max
+            ));
+            out.push(format!(
+                "Effets sur la colonie : moral {:+.0} %, recherche {:+.0} %.",
+                r.morale * 100.0,
+                r.research * 100.0
             ));
         }
         21 => {

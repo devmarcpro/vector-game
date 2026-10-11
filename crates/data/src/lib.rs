@@ -507,6 +507,24 @@ pub struct Cybernetic {
     pub hackable: bool,
 }
 
+/// A belief of the colonies (see `data/religions.ron`).
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct Religion {
+    pub id: String,
+    pub name: String,
+    pub foi_min: f64,
+    pub foi_max: f64,
+    pub morale: f64,
+    pub research: f64,
+    pub text: String,
+}
+
+impl Religion {
+    pub fn fits(&self, foi: f64) -> bool {
+        foi >= self.foi_min && foi <= self.foi_max
+    }
+}
+
 /// Slots of personal equipment, in the order of `Person::gear`.
 pub const GEAR_SLOTS: [&str; 3] = ["weapon", "armor", "tool"];
 
@@ -643,6 +661,7 @@ pub struct GameData {
     pub sites: Vec<Site>,
     pub civilisations: Vec<Civilisation>,
     pub gear: Vec<Gear>,
+    pub religions: Vec<Religion>,
 }
 
 fn read<T: for<'a> Deserialize<'a>>(path: &Path) -> Result<T, DataError> {
@@ -682,6 +701,7 @@ impl GameData {
             sites: read(&dir.join("sites.ron"))?,
             civilisations: read(&dir.join("civilisations.ron"))?,
             gear: read(&dir.join("gear.ron"))?,
+            religions: read(&dir.join("religions.ron"))?,
         };
         // Generated extension files (tools/gen_scale.py) extend the hand-written tables.
         let mut extra_resources: Vec<Resource> = read(&dir.join("resources_organs.ron"))?;
@@ -1106,7 +1126,34 @@ impl GameData {
         self.validate_dialogues()?;
         self.validate_sites()?;
         self.validate_civilisations()?;
-        self.validate_gear()
+        self.validate_gear()?;
+        self.validate_religions()
+    }
+
+    /// Beliefs: unique ids, sane ranges, and every possible faith has at least one belief.
+    fn validate_religions(&self) -> Result<(), DataError> {
+        let bad = |s: String| Err(DataError::Invalid(s));
+        let mut seen = std::collections::HashSet::new();
+        for r in &self.religions {
+            if !seen.insert(r.id.as_str()) {
+                return bad(format!("croyance {} en double", r.id));
+            }
+            if !(-1.0..=1.0).contains(&r.foi_min)
+                || !(-1.0..=1.0).contains(&r.foi_max)
+                || r.foi_min >= r.foi_max
+                || r.morale.abs() > 0.2
+                || r.research.abs() > 0.5
+            {
+                return bad(format!("croyance {}: valeurs invalides", r.id));
+            }
+        }
+        for k in 0..=40 {
+            let foi = -1.0 + 0.05 * f64::from(k);
+            if !self.religions.iter().any(|r| r.fits(foi)) {
+                return bad(format!("aucune croyance pour une foi de {foi:.2}"));
+            }
+        }
+        Ok(())
     }
 
     pub fn gear_index(&self, id: &str) -> Option<usize> {
@@ -1863,6 +1910,24 @@ mod tests {
             d.unlocking_tech("module", "fusion_mk1").is_none(),
             "tier 1 is free"
         );
+    }
+
+    #[test]
+    fn religions_cover_every_faith_and_are_validated() {
+        let ok = GameData::load(&dir()).expect("data loads");
+        let mut d = ok.clone();
+        d.religions.retain(|r| r.foi_max < 0.9);
+        assert!(
+            d.validate().is_err(),
+            "a very faithful people needs a belief"
+        );
+        let mut d = ok.clone();
+        d.religions[0].morale = 0.9;
+        assert!(d.validate().is_err(), "sane morale");
+        let mut d = ok;
+        d.religions[0].foi_min = 0.5;
+        d.religions[0].foi_max = 0.2;
+        assert!(d.validate().is_err(), "ordered range");
     }
 
     #[test]

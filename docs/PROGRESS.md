@@ -105,3 +105,5 @@
 - 2026-10-11 (lot) : Dialogues : les mineurs savent où est le meilleur rocher du système (effet `ore`). README réécrit (l'ancien était en mojibake) avec le contenu et les touches à jour.
 
 - 2026-10-11 (lot) : Expéditions : l'air et le climat comptent. Sans combinaison, un air trop mince (< 0,05 bar) coûte 0,03 de santé par tour, le froid (< 250 K) et la chaleur (> 330 K) jusqu'à 0,04 ; toute armure réduit ces dégâts de 1,5 x sa défense (l'exosquelette les arrête presque). L'écran de préparation affiche l'air, la température et un conseil.
+
+- 2026-10-11 (lot) : Croyances des colonies (`data/religions.ron`, validées : toute foi possible a une croyance) : chaque colonie prend à sa fondation une croyance qui correspond à la foi de son peuple ; elle donne du moral à la colonie et modifie sa recherche ; ligne CROYANCE de l'écran colonie, catégorie CROYANCES du codex. Les rendus fil de fer tournent aussi dans l'inventaire, à la station et pour le module choisi sur l'écran du vaisseau. Sauvegarde v24.

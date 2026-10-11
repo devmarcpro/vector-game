@@ -171,6 +171,37 @@ fn snapshot(path: &str, scene: &str, data: Arc<GameData>) {
             g.advance(0.1);
         }
         "pause" => g.screen = Screen::Pause,
+        "combat" => {
+            let k = console::run("warship", &mut g.sim, &mut g.timescale);
+            assert_eq!(k, vec!["warship ready".to_string()]);
+            g.sim.ship.pos = vector_core::Vec3::new(4.0e11, 0.0, 0.0);
+            g.sim.ship.vel = vector_core::Vec3::ZERO;
+            g.sim.ship.rot = vector_core::Mat3::IDENTITY;
+            g.sim.ship.assist = false;
+            g.sim.update_ref_pub();
+            g.sim.reveal_all();
+            g.sim.advance(0.5, &ShipInput::default());
+            let pir = g
+                .sim
+                .npcs
+                .iter()
+                .position(|n| n.role == vector_sim::npc::NpcRole::Pirate)
+                .expect("pirate");
+            let pos = g.sim.ship.pos;
+            let n = &mut g.sim.npcs[pir];
+            n.pos = pos + vector_core::Vec3::new(120.0, 30.0, 2500.0);
+            n.vel = g.sim.ship.vel;
+            n.hostile = true;
+            n.state = vector_sim::npc::NpcState::Combat {
+                mode: vector_sim::npc::AiMode::Pursue,
+            };
+            g.sim.target_npc = Some(pir);
+            g.keys.insert(KeyCode::ControlLeft);
+            g.keys.insert(KeyCode::KeyB);
+            for _ in 0..40 {
+                g.advance(1.0 / 30.0);
+            }
+        }
         "empire" | "colony" | "fleet" => {
             let data = Arc::clone(&g.data);
             let planet = g

@@ -40,6 +40,7 @@ pub enum Screen {
     Empire,
     Colony,
     Fleet,
+    Destroyed,
 }
 
 /// Route being composed in the fleet screen.
@@ -205,6 +206,10 @@ impl Game {
             lat: ax(KeyCode::ArrowRight, KeyCode::ArrowLeft),
             vert: ax(KeyCode::ArrowUp, KeyCode::ArrowDown),
             mine: self.keys.contains(&KeyCode::KeyV),
+            fire: self.keys.contains(&KeyCode::ControlLeft)
+                || self.keys.contains(&KeyCode::ControlRight)
+                || self.keys.contains(&KeyCode::Enter),
+            fire_missile: self.keys.contains(&KeyCode::KeyB),
         }
     }
 
@@ -242,6 +247,9 @@ impl Game {
     pub fn advance(&mut self, seconds: f64) {
         if self.sim.in_transit() {
             self.timescale = self.timescale.max(10_000.0);
+        }
+        if self.sim.combat_active() {
+            self.timescale = 1.0;
         }
         let input = if self.timescale > 2.0 {
             ShipInput::default()
@@ -343,6 +351,19 @@ impl Game {
                         .map_or(String::new(), |f| f.name.to_uppercase());
                     self.say(format!("{n}: LIVRAISON +{revenue:.0} CR"));
                 }
+                Event::PlayerDestroyed => {
+                    self.screen = Screen::Destroyed;
+                    self.timescale = 1.0;
+                }
+                Event::PirateDemand { amount } => {
+                    self.say(format!("PIRATES : PAYEZ {amount:.0} CR [Z] OU COMBATTEZ !"));
+                    self.timescale = 1.0;
+                }
+                Event::NpcDestroyed => self.say("VAISSEAU DETRUIT"),
+                Event::BountyPaid { amount } => self.say(format!("PRIME RECUE : +{amount:.0} CR")),
+                Event::CrimeCommitted => self.say("CRIME : VOUS ETES RECHERCHE DANS CE TERRITOIRE"),
+                Event::PatrolHostile => self.say("LA PATROUILLE VOUS CONSIDERE COMME HOSTILE !"),
+                Event::Respawned => self.say("VOTRE VAISSEAU A ETE RECONSTRUIT PAR L ASSUREUR"),
                 Event::PirateAlert => self.say("ALERTE: PIRATES A PROXIMITE !"),
                 Event::Overheat => self.say("ALERTE: SURCHAUFFE !"),
                 Event::ModuleLost { slot } => {
@@ -499,6 +520,13 @@ impl Game {
             Screen::Empire => self.empire_key(code),
             Screen::Colony => self.colony_key(code),
             Screen::Fleet => self.fleet_key(code),
+            Screen::Destroyed => {
+                if code == KeyCode::Enter {
+                    self.sim.insurance_respawn();
+                    self.handle_events();
+                    self.screen = Screen::Flight;
+                }
+            }
             Screen::Flight => self.flight_key(code),
         }
     }
@@ -702,16 +730,6 @@ impl Game {
                 )),
             },
             KeyCode::KeyJ => self.screen = Screen::Journal,
-            KeyCode::KeyL => self.open_galaxy(),
-            KeyCode::F2 => self.open_empire(),
-            KeyCode::F3 => self.open_fleet(),
-            KeyCode::KeyO => self.found_colony_at_target(),
-            KeyCode::Backspace => {
-                if self.sim.is_charging_jump() {
-                    self.sim.cancel_jump();
-                    self.handle_events();
-                }
-            }
             KeyCode::KeyN if docked => {
                 self.screen = Screen::Recruit;
                 self.recruit_sel = 0;
@@ -1343,6 +1361,31 @@ impl Game {
                     "F2:EMPIRE F3:FLOTTE O:COLONISER LA CIBLE L:GALAXIE K:EQUIPAGE H:VAISSEAU",
                 );
             }
+            KeyCode::KeyL => self.open_galaxy(),
+            KeyCode::F2 => self.open_empire(),
+            KeyCode::F3 => self.open_fleet(),
+            KeyCode::KeyZ => match self.sim.pay_tribute() {
+                Ok(a) => self.say(format!("TRIBUT PAYE: {a:.0} CR")),
+                Err(e) => self.say(e.to_uppercase()),
+            },
+            KeyCode::KeyN => match self.sim.salvage() {
+                Ok(kg) => self.say(format!("EPAVE RECUPEREE: {kg:.0} KG")),
+                Err(e) => self.say(e.to_uppercase()),
+            },
+            KeyCode::KeyU => match self.sim.board() {
+                Ok(vector_sim::combat::BoardOutcome::Captured { loot_kg }) => {
+                    self.say(format!("ABORDAGE REUSSI: {loot_kg:.0} KG DE BUTIN"))
+                }
+                Ok(vector_sim::combat::BoardOutcome::Repelled { casualties }) => {
+                    self.say(format!("ABORDAGE REPOUSSE: {casualties} PERTE(S)"))
+                }
+                Err(e) => self.say(e.to_uppercase()),
+            },
+            KeyCode::KeyO => self.found_colony_at_target(),
+            KeyCode::Backspace if self.sim.is_charging_jump() => {
+                self.sim.cancel_jump();
+                self.handle_events();
+            }
             _ => {}
         }
     }
@@ -1380,6 +1423,99 @@ mod tests {
         assert!(g.load_game());
         assert_eq!(g.sim.credits, 4242.0);
         let _ = std::fs::remove_file(&g.save_path);
+    }
+
+    /// Every documented flight hotkey must lead somewhere (guards against mis-wired match arms).
+    #[test]
+    fn flight_hotkeys_open_their_screens() {
+        let cases = [
+            (KeyCode::KeyL, Screen::Galaxy),
+            (KeyCode::F2, Screen::Empire),
+            (KeyCode::F3, Screen::Fleet),
+            (KeyCode::KeyK, Screen::Crew),
+            (KeyCode::KeyJ, Screen::Journal),
+            (KeyCode::KeyH, Screen::Ship),
+            (KeyCode::KeyI, Screen::Inventory),
+            (KeyCode::Escape, Screen::Pause),
+        ];
+        for (key, expected) in cases {
+            let mut g = Game::new(data(), 1);
+            g.key(KeyCode::Enter, None, true);
+            assert_eq!(g.screen, Screen::Flight);
+            g.key(key, None, true);
+            assert_eq!(g.screen, expected, "{key:?}");
+        }
+        let mut g = Game::new(data(), 1);
+        g.key(KeyCode::Enter, None, true);
+        g.key(KeyCode::KeyM, None, true);
+        assert!(g.map, "M toggles the system map");
+        g.key(KeyCode::KeyF, None, true);
+        assert!(!g.sim.ship.assist, "F toggles flight assist");
+        g.key(KeyCode::Tab, None, true);
+        assert!(g.sim.target.is_some(), "Tab selects a target");
+        g.key(KeyCode::KeyG, None, true);
+        assert!(
+            g.sim.autopilot.is_some() || g.messages.last().is_some_and(|m| m.contains("REFUSE")),
+            "G engages or explains"
+        );
+        g.key(KeyCode::PageUp, None, true);
+        assert!(g.timescale > 1.0, "PageUp speeds time up");
+    }
+
+    #[test]
+    fn station_hotkeys_open_their_screens() {
+        let cases = [
+            (KeyCode::KeyH, Screen::Ship),
+            (KeyCode::KeyY, Screen::Shipyard),
+            (KeyCode::KeyN, Screen::Recruit),
+            (KeyCode::KeyK, Screen::Crew),
+            (KeyCode::KeyC, Screen::Contracts),
+            (KeyCode::KeyE, Screen::Bank),
+            (KeyCode::F2, Screen::Empire),
+            (KeyCode::F3, Screen::Fleet),
+        ];
+        for (key, expected) in cases {
+            let mut g = Game::new(data(), 1);
+            g.key(KeyCode::Enter, None, true);
+            let (st, _) = g.sim.nearest_station().expect("station");
+            g.sim.spawn_near(st, g.sim.bodies[st].radius + 200.0);
+            g.key(KeyCode::KeyD, None, true);
+            assert_eq!(g.screen, Screen::Station);
+            g.key(key, None, true);
+            assert_eq!(g.screen, expected, "{key:?}");
+        }
+    }
+
+    #[test]
+    fn firing_and_utility_keys_reach_the_simulation() {
+        let mut g = Game::new(data(), 1);
+        g.key(KeyCode::Enter, None, true);
+        g.key(KeyCode::ControlLeft, None, true);
+        assert!(g.input().fire);
+        g.key(KeyCode::ControlLeft, None, false);
+        assert!(!g.input().fire);
+        g.key(KeyCode::KeyB, None, true);
+        assert!(g.input().fire_missile);
+        g.key(KeyCode::KeyB, None, false);
+        g.key(KeyCode::KeyZ, None, true);
+        assert!(
+            g.messages
+                .last()
+                .is_some_and(|m| m.contains("TRIBUT") || m.contains("PERSONNE")),
+            "Z reports on tribute"
+        );
+        g.key(KeyCode::KeyN, None, true);
+        assert!(
+            g.messages.last().is_some_and(|m| m.contains("EPAVE")),
+            "N reports on salvage"
+        );
+        g.key(KeyCode::KeyU, None, true);
+        assert!(
+            g.messages
+                .last()
+                .is_some_and(|m| m.contains("CIBLE") || m.contains("ABORDAGE")),
+            "U reports on boarding"
+        );
     }
 
     #[test]

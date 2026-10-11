@@ -132,6 +132,31 @@ fn draw_cockpit(fb: &mut Framebuffer, v: &View) {
         }
     }
 
+    let down = ship.rot.col(1) * -6.0;
+    for (a, b, mine) in &v.sim.beams {
+        cam.draw_line(fb, *a + down, *b, if *mine { RED } else { AMBER });
+    }
+    for (a, b) in &v.sim.enemy_beams {
+        cam.draw_line(fb, *a, *b, RED);
+    }
+    for p in &v.sim.projectiles {
+        let tail = p.pos - p.vel.normalized() * 40.0;
+        let col = match p.kind {
+            vector_sim::combat::ProjKind::Kinetic => AMBER,
+            vector_sim::combat::ProjKind::Missile { .. } => 0x00FF_8040,
+            vector_sim::combat::ProjKind::Mine { .. } => 0x00A0_A0A0,
+        };
+        cam.draw_line(fb, tail, p.pos, col);
+    }
+    for w in &v.sim.wrecks {
+        if let Some((x, y)) = cam.project_world(w.pos, fb) {
+            fb.line(x - 4.0, y - 4.0, x + 4.0, y + 4.0, MINER);
+            fb.line(x - 4.0, y + 4.0, x + 4.0, y - 4.0, MINER);
+            if (w.pos - ship.pos).length() < 2.0e5 {
+                fb.text_at(x as i32 + 8, y as i32 + 6, &w.name, MINER);
+            }
+        }
+    }
     let see = 1.0e6 + 0.01 * v.sim.effective.scan_range;
     let ship_wire = Wireframe::ship();
     for (k, n) in v.sim.npcs.iter().enumerate() {
@@ -391,6 +416,17 @@ fn draw_status(fb: &mut Framebuffer, v: &View) {
             GREEN
         },
     );
+    if v.sim.effective.shield_cap > 0.0 {
+        let frac = ship.sys.shield_pts / v.sim.effective.shield_cap;
+        fb.gauge(
+            1,
+            rows - 7,
+            "BOUCLIER ",
+            frac,
+            20,
+            if frac < 0.25 { RED } else { PATROL },
+        );
+    }
     let batt = ship.sys.battery_mj / ship.stats.battery_cap.max(1.0);
     fb.gauge(
         1,
@@ -469,6 +505,31 @@ fn draw_status(fb: &mut Framebuffer, v: &View) {
         &terr,
         sim.faction.map_or(DIM, |f| sim.data.factions[f].color),
     );
+    if sim.is_wanted() {
+        fb.text(1, 11, "RECHERCHE DANS CE TERRITOIRE !", RED);
+    }
+    let ammo = |id: &str| {
+        sim.data
+            .resource_index(id)
+            .map_or(0.0, |r| ship.cargo.kg[r])
+    };
+    if ship
+        .design
+        .modules(&sim.data)
+        .any(|(_, m)| !m.weapon.is_empty())
+    {
+        fb.text(
+            1,
+            12,
+            &format!(
+                "MUNITIONS  OBUS {:.0}  MISSILES {:.0}  MINES {:.0}",
+                ammo("ammo_slugs"),
+                ammo("missiles"),
+                ammo("mines")
+            ),
+            DIM,
+        );
+    }
     draw_target_panel(fb, v, rows, cols);
     if let Some(j) = &sim.jump {
         let line = if j.in_transit {
@@ -516,6 +577,15 @@ fn draw_target_panel(fb: &mut Framebuffer, v: &View, rows: usize, cols: usize) {
             vector_sim::npc::NpcState::Lurk { .. } => "EN EMBUSCADE",
             vector_sim::npc::NpcState::Orbit { .. } => "EN PATROUILLE",
             vector_sim::npc::NpcState::Away { .. } => "ABSENT",
+            vector_sim::npc::NpcState::Combat { .. } => {
+                if n.disabled {
+                    "NEUTRALISE (ABORDABLE)"
+                } else if n.hostile {
+                    "HOSTILE !"
+                } else {
+                    "EN ALERTE"
+                }
+            }
         };
         fb.text(x, rows - 8, &format!("CIBLE {}", n.name), AMBER);
         fb.text(
@@ -531,7 +601,17 @@ fn draw_target_panel(fb: &mut Framebuffer, v: &View, rows: usize, cols: usize) {
             AMBER,
         );
         fb.text(x, rows - 5, &format!("APPR  {closing:+.1} M/S"), AMBER);
-        fb.text(x, rows - 4, status, DIM);
+        fb.text(x, rows - 4, status, if n.hostile { RED } else { DIM });
+        fb.text(
+            x,
+            rows - 2,
+            &format!(
+                "COQUE {:.0}%  BOUCLIER {:.0}%",
+                100.0 * n.hull / n.hull_max.max(1.0),
+                100.0 * n.shield / n.shield_max.max(1.0)
+            ),
+            if n.hostile { RED } else { DIM },
+        );
         if let Some((res, kg)) = n.cargo {
             fb.text(
                 x,

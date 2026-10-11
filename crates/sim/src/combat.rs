@@ -607,7 +607,7 @@ impl Sim {
         }
         self.projectiles = keep;
         // Apply hits from the highest index down so removals do not shift pending targets.
-        hits_npc.sort_by(|a, b| b.0.cmp(&a.0));
+        hits_npc.sort_by_key(|h| std::cmp::Reverse(h.0));
         for (k, d) in hits_npc {
             self.damage_npc(k, d);
         }

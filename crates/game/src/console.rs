@@ -83,6 +83,48 @@ pub fn run(cmd: &str, sim: &mut Sim, timescale: &mut f64) -> Vec<String> {
             sim.ship.assist = !sim.ship.assist;
             vec![format!("assist {}", sim.ship.assist)]
         }
+        Some("refit") => {
+            let ids: Vec<&str> = parts.iter().skip(2).copied().collect();
+            match parts.get(1).map(|h| sim.refit(h, &ids)) {
+                Some(Ok(())) => vec!["ship refitted".into()],
+                Some(Err(e)) => vec![e],
+                None => vec!["usage: refit HULL MODULE...".into()],
+            }
+        }
+        Some("warship") => match sim.refit(
+            "frigate",
+            &[
+                "fusion_mk3",
+                "torch_mk3",
+                "battery_mk3",
+                "radiator_mk4",
+                "lifesup_mk1",
+                "cargo_mk3",
+                "tank_mk3",
+                "shield_mk2",
+                "habitat_mk2",
+                "pulselaser_mk2",
+                "massdriver_mk1",
+                "missilerack_mk2",
+                "pointdefense_mk1",
+            ],
+        ) {
+            Ok(()) => {
+                let data = std::sync::Arc::clone(&sim.data);
+                for (id, kg) in [
+                    ("ammo_slugs", 600.0),
+                    ("missiles", 30.0),
+                    ("food", 100.0),
+                    ("water", 200.0),
+                ] {
+                    if let Some(r) = data.resource_index(id) {
+                        sim.ship.cargo.add(&data, r, kg);
+                    }
+                }
+                vec!["warship ready".into()]
+            }
+            Err(e) => vec![e],
+        },
         Some("time") => match num(1) {
             Some(t) if (0.0..=1000.0).contains(&t) => {
                 *timescale = t;

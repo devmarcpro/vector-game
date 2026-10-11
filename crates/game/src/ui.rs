@@ -38,6 +38,23 @@ pub fn draw(fb: &mut Framebuffer, g: &Game) {
         Screen::Empire => draw_empire(fb, g),
         Screen::Colony => draw_colony(fb, g),
         Screen::Fleet => draw_fleet(fb, g),
+        Screen::Destroyed => {
+            let cols = fb.cols();
+            fb.text_big((fb.w as i32 - 15 * 8 * 4) / 2, 140, "DETRUIT", 8, RED);
+            fb.text(
+                cols / 2 - 22,
+                22,
+                "VOTRE VAISSEAU A ETE DETRUIT. L ASSUREUR LE RECONSTRUIT A LA STATION",
+                RED,
+            );
+            fb.text(
+                cols / 2 - 22,
+                24,
+                "LA PLUS PROCHE : SOUTE PERDUE, 20 % DES CREDITS RETENUS.",
+                DIM,
+            );
+            fb.text(cols / 2 - 10, 28, "ENTREE : CONTINUER", AMBER);
+        }
         Screen::Flight => {}
     }
 }

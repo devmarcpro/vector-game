@@ -412,6 +412,29 @@ impl Sim {
         self.ref_body = best.map(|(i, _)| i);
     }
 
+    /// Replace the ship's design outright (creative mode, tests): `hull` id and module ids in fit order.
+    pub fn refit(&mut self, hull: &str, modules: &[&str]) -> Result<(), String> {
+        let data = Arc::clone(&self.data);
+        let hi = data
+            .hull_index(hull)
+            .ok_or_else(|| format!("coque inconnue: {hull}"))?;
+        let mut design = ShipDesign::empty(&data, hi);
+        for id in modules {
+            design
+                .install_first_fit(&data, id)
+                .map_err(|e| format!("{id}: {e}"))?;
+        }
+        self.ship.design = design;
+        self.ship.sys = Systems::new(&self.ship.design, 0.0);
+        self.ship.cargo.cap_mass = 0.0;
+        self.ship.refresh_stats(&data);
+        self.ship.hull = self.ship.stats.hull_max;
+        self.ship.fuel = self.ship.stats.fuel_cap;
+        self.ship.sys.battery_mj = self.ship.stats.battery_cap;
+        self.weapon_cd = vec![0.0; self.ship.design.slots.len()];
+        Ok(())
+    }
+
     /// Advance the colonies to the current time (tools, console, tests).
     pub fn update_colonies_pub(&mut self) {
         self.update_colonies();

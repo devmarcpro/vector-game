@@ -1256,7 +1256,8 @@ impl Game {
                 self.surf_layer = (self.surf_layer + 1) % crate::surface_view::LAYERS.len()
             }
             KeyCode::KeyG => self.surf_globe = !self.surf_globe,
-            KeyCode::KeyE => self.open_expedition(),
+            // Zoom in: from the map of the region to the grid of the ground, on foot.
+            KeyCode::KeyE | KeyCode::Equal | KeyCode::NumpadAdd => self.open_expedition(),
             KeyCode::KeyF => self.open_codex(Screen::Surface),
             KeyCode::Escape | KeyCode::F8 => self.screen = Screen::Flight,
             _ => {}

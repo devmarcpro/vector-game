@@ -125,6 +125,26 @@ impl Game {
             }
             return;
         }
+        // Zoom out: from the grid of the ground back up to the map of the region.
+        if matches!(code, KeyCode::Minus | KeyCode::NumpadSubtract)
+            && self.rogue_from_surface
+            && self
+                .sim
+                .rogue
+                .as_ref()
+                .is_some_and(|r| r.on_surface() && r.parent.is_none())
+        {
+            match self.sim.rogue_recall() {
+                Ok(m) => {
+                    self.say(m.to_uppercase());
+                    self.sim.rogue_close();
+                    self.rogue_from_surface = false;
+                    self.screen = Screen::Surface;
+                }
+                Err(e) => self.say(e.to_uppercase()),
+            }
+            return;
+        }
         if code == KeyCode::KeyF {
             self.fpv = !self.fpv;
             if self.fpv {
@@ -563,6 +583,9 @@ fn draw_run(fb: &mut Framebuffer, g: &Game, r: &Rogue) {
     ];
     if r.on_surface() && r.parent.is_none() {
         cmds.push(("[R] RAPPELER L'EQUIPE", KeyCode::KeyR));
+        if g.rogue_from_surface {
+            cmds.push(("[-] DEZOOMER : CARTE DE LA REGION", KeyCode::Minus));
+        }
     }
     for (label, key) in cmds {
         word(fb, g, sx, y, label, key);

@@ -179,7 +179,7 @@ pub fn hint_line(g: &Game) -> String {
             "GLOBE  GAUCHE/DROITE TOURNER  TAB COUCHE  G CARTE  F CODEX  F8/ECHAP RETOUR"
         }
         Screen::Surface => {
-            "FLECHES CURSEUR (MAJ x4)  TAB COUCHE  G GLOBE  F CODEX  F8/ECHAP RETOUR"
+            "FLECHES CURSEUR (MAJ x4)  TAB COUCHE  G GLOBE  + ZOOM (A PIED)  F CODEX  F8/ECHAP RETOUR"
         }
     };
     s.to_string()

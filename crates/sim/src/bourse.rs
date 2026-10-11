@@ -112,7 +112,7 @@ pub fn events_between(
 }
 
 /// Smooth noise in [-1, 1] with the given period (days), different for every key.
-fn smooth_noise(seed: u64, key: i64, days: f64, t: f64) -> f64 {
+pub(crate) fn smooth_noise(seed: u64, key: i64, days: f64, t: f64) -> f64 {
     let x = t / DAY / days;
     let (i, f) = (x.floor() as i64, x - x.floor());
     let s = f * f * (3.0 - 2.0 * f);

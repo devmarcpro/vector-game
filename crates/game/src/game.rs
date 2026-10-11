@@ -190,6 +190,10 @@ pub struct Game {
     pub bourse_sel: usize,
     pub bourse_range: usize,
     pub bourse_series: Vec<Vec<f64>>,
+    /// Exchange tab (0 goods, 1 companies), the company chosen, and their price series.
+    pub bourse_tab: u8,
+    pub comp_sel: usize,
+    pub comp_series: Vec<Vec<f64>>,
     pub bourse_live: Vec<f64>,
     pub bourse_news: Vec<vector_sim::bourse::ActiveEvent>,
     /// Family screen: the crew member shown and their pedigree.
@@ -312,6 +316,9 @@ impl Game {
             bourse_sel: 0,
             bourse_range: 1,
             bourse_series: Vec::new(),
+            bourse_tab: 0,
+            comp_sel: 0,
+            comp_series: Vec::new(),
             bourse_live: Vec::new(),
             bourse_news: Vec::new(),
             family_member: 0,
@@ -1004,6 +1011,9 @@ impl Game {
         let days = BOURSE_RANGES[self.bourse_range];
         self.bourse_series = self.sim.price_series(self.bourse_station, days);
         self.bourse_news = self.sim.market_news(days as f64);
+        self.comp_series = (0..self.data.companies.len())
+            .map(|c| self.sim.company_series(c, days))
+            .collect();
         let data = std::sync::Arc::clone(&self.data);
         let market = self.sim.market(self.bourse_station);
         self.bourse_live = (0..data.resources.len())
@@ -1011,7 +1021,42 @@ impl Game {
             .collect();
     }
 
+    pub fn click_company(&mut self, c: usize) {
+        self.comp_sel = c;
+    }
+
     fn bourse_key(&mut self, code: KeyCode) {
+        if code == KeyCode::KeyE {
+            self.bourse_tab = 1 - self.bourse_tab;
+            return;
+        }
+        if self.bourse_tab == 1 {
+            let nc = self.data.companies.len().max(1);
+            match code {
+                KeyCode::ArrowUp => self.comp_sel = (self.comp_sel + nc - 1) % nc,
+                KeyCode::ArrowDown => self.comp_sel = (self.comp_sel + 1) % nc,
+                KeyCode::Tab | KeyCode::ArrowRight => {
+                    self.bourse_range = (self.bourse_range + 1) % BOURSE_RANGES.len();
+                    self.refresh_bourse();
+                }
+                KeyCode::ArrowLeft => {
+                    self.bourse_range =
+                        (self.bourse_range + BOURSE_RANGES.len() - 1) % BOURSE_RANGES.len();
+                    self.refresh_bourse();
+                }
+                KeyCode::KeyB => match self.sim.buy_shares(self.comp_sel, 10.0) {
+                    Ok(c) => self.say(format!("10 ACTIONS ACHETEES POUR {c:.0} CR")),
+                    Err(e) => self.say(e.to_uppercase()),
+                },
+                KeyCode::KeyN => match self.sim.sell_shares(self.comp_sel, 10.0) {
+                    Ok(c) => self.say(format!("ACTIONS VENDUES POUR {c:.0} CR")),
+                    Err(e) => self.say(e.to_uppercase()),
+                },
+                KeyCode::Escape | KeyCode::KeyT => self.screen = Screen::Station,
+                _ => {}
+            }
+            return;
+        }
         let n = self.data.resources.len();
         match code {
             KeyCode::ArrowUp => self.bourse_sel = (self.bourse_sel + n - 1) % n,
@@ -3176,6 +3221,44 @@ mod tests {
         g.key(KeyCode::Escape, None, true);
         assert!(!g.gear_mode);
         assert_eq!(g.screen, Screen::Crew);
+    }
+
+    #[test]
+    fn the_exchange_has_a_companies_tab_where_shares_are_bought_and_sold() {
+        let mut g = Game::new(data(), 1);
+        g.key(KeyCode::Enter, None, true);
+        let (st, _) = g.sim.nearest_station().expect("station");
+        g.sim.spawn_near(st, g.sim.bodies[st].radius + 200.0);
+        g.sim.try_dock().expect("dock");
+        g.sim.credits = 1.0e6;
+        g.screen = Screen::Station;
+        g.open_bourse();
+        assert_eq!(g.bourse_tab, 0);
+        g.key(KeyCode::KeyE, None, true);
+        assert_eq!(g.bourse_tab, 1);
+        assert_eq!(g.comp_series.len(), g.data.companies.len());
+        frame(&g);
+        g.key(KeyCode::ArrowDown, None, true);
+        assert_eq!(g.comp_sel, 1);
+        let credits = g.sim.credits;
+        g.key(KeyCode::KeyB, None, true);
+        assert_eq!(g.sim.shares_of(1), 10.0);
+        assert!(g.sim.credits < credits);
+        g.key(KeyCode::KeyN, None, true);
+        assert_eq!(g.sim.shares_of(1), 0.0);
+        // Clicking a company selects it; E goes back to the goods.
+        let hit = g
+            .pointer
+            .hits
+            .borrow()
+            .iter()
+            .copied()
+            .find(|h| h.rect.1 > 40 && h.rect.1 < 60);
+        if let Some(h) = hit {
+            g.pointer_click((h.rect.0 + h.rect.2) / 2, (h.rect.1 + h.rect.3) / 2, 1_000);
+        }
+        g.key(KeyCode::KeyE, None, true);
+        assert_eq!(g.bourse_tab, 0);
     }
 
     #[test]

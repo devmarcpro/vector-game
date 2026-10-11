@@ -2,7 +2,7 @@
 //! weapon, faction, anomaly and condition, generated from the real data (no hand-written numbers).
 use vector_data::GameData;
 
-pub const CATEGORIES: [&str; 23] = [
+pub const CATEGORIES: [&str; 24] = [
     "RESSOURCES",
     "MODULES",
     "ARMES",
@@ -26,6 +26,7 @@ pub const CATEGORIES: [&str; 23] = [
     "CIVILISATIONS",
     "EQUIPEMENT",
     "CROYANCES",
+    "ENTREPRISES",
 ];
 
 /// Index in the source table of entry `k` of a category (modules and weapons share a table).
@@ -72,6 +73,7 @@ fn entries(data: &GameData, cat: usize) -> Vec<usize> {
         20 => (0..data.civilisations.len()).collect(),
         21 => (0..data.gear.len()).collect(),
         22 => (0..data.religions.len()).collect(),
+        23 => (0..data.companies.len()).collect(),
         _ => Vec::new(),
     }
 }
@@ -100,6 +102,7 @@ pub fn names(data: &GameData, cat: usize) -> Vec<String> {
             20 => data.civilisations[i].name.clone(),
             21 => data.gear[i].name.clone(),
             22 => data.religions[i].name.clone(),
+            23 => data.companies[i].name.clone(),
             18 => format!(
                 "Appeler : {}",
                 vector_data::dialogue::ROLES[i].to_lowercase()
@@ -508,6 +511,32 @@ pub fn entry(data: &GameData, cat: usize, k: usize) -> Vec<String> {
                     res_name(data, &d.cure).unwrap_or_else(|| d.cure.clone())
                 }
             ));
+        }
+        23 => {
+            let c = &data.companies[i];
+            out.push(c.name.clone());
+            out.push(c.text.clone());
+            let hq = data
+                .factions
+                .iter()
+                .find(|f| f.id == c.hq)
+                .map_or(c.hq.clone(), |f| f.name.clone());
+            out.push(format!(
+                "Siege : {hq}   cours de reference {:.0} cr   dividende {:.1} % par an   agitation {:.0} %",
+                c.base,
+                c.yield_year * 100.0,
+                c.vol * 100.0
+            ));
+            let sells: Vec<String> = c
+                .goods
+                .iter()
+                .filter_map(|(r, w)| res_name(data, r).map(|n| format!("{n} {:.0} %", w * 100.0)))
+                .collect();
+            out.push(format!("Son cours suit les prix de : {}", sells.join(", ")));
+            out.push(
+                "Actions : bourse (T a quai), touche E, B achete 10 actions, N en vend 10."
+                    .to_string(),
+            );
         }
         22 => {
             let r = &data.religions[i];

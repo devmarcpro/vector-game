@@ -46,3 +46,6 @@ Mœurs : data/ethos.ron (8 axes, 8 étiquettes morales, 8 profils de faction), g
 
 ## Croyances
 `data/religions.ron` : id, nom, intervalle de foi (axe foi des mœurs), bonus de moral, bonus de recherche, texte.
+
+## Entreprises
+`data/companies.ron` : id, nom, siège (faction), cours de base, rendement annuel, volatilité, biens (id, poids, total 1), texte.

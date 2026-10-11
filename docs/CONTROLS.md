@@ -104,3 +104,5 @@ Ecran de préparation : Haut/Bas, Espace coche un équipier ou le rover, Entrée
 - **Bourse** : B / N contrat à terme à la hausse / à la baisse sur la ressource choisie (100 kg, 30 j, marge 25 %), C clôt un contrat.
 
 - **Equipage, E** : liste de l'équipement (flèches pour choisir, Entrée équipe depuis la soute, U retire, E ou Echap revient). Clic sur une ligne ARME / ARMURE / OUTIL.
+
+- **Bourse, E** : bascule entre marchandises et entreprises ; sur les entreprises, B achète 10 actions et N en vend 10 (il faut être à quai).

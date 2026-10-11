@@ -283,7 +283,7 @@ fn snapshot(path: &str, scene: &str, data: Arc<GameData>) {
             g.key(KeyCode::KeyX, None, true);
             g.fac_sel = 4;
         }
-        "bourse" => {
+        "bourse" | "bourse2" => {
             let (st, _) = g.sim.nearest_station().expect("station");
             g.sim.spawn_near(st, g.sim.bodies[st].radius + 200.0);
             g.key(KeyCode::KeyD, None, true);
@@ -305,6 +305,12 @@ fn snapshot(path: &str, scene: &str, data: Arc<GameData>) {
             g.bourse_sel = pick;
             g.bourse_range = 1;
             g.key(KeyCode::KeyT, None, true);
+            if scene == "bourse2" {
+                g.sim.credits = 90_000.0;
+                g.comp_sel = 2;
+                let _ = g.sim.buy_shares(2, 40.0);
+                g.key(KeyCode::KeyE, None, true);
+            }
         }
         "family" => {
             use vector_sim::{crew, genealogy};

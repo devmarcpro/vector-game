@@ -141,3 +141,6 @@ Prix de référence = valeur de la ressource x facteur mondial de la région à 
 
 ## Environnement des expéditions
 `environment_damage(pression, température, défense)` : 0.03 si pression < 0.05 bar ; + 0.004 x min(écart/10, 10) si T < 250 K ou T > 330 K ; multiplié par 1 - min(1.5 x défense, 0.95). Appliqué chaque tour à chaque membre debout (pas d'armure de plus : les dégâts sont déjà nets).
+
+## Entreprises cotées
+Cours = base x exp(somme des poids x ln(facteur mondial du bien)) x (1 + volatilité x bruit lent), les facteurs étant ceux de la région fixe de l'entreprise (`world_factors`) : fonction pure de la date. Frais de 1 % à l'achat et à la vente ; dividende tous les 30 jours = actions x cours x rendement annuel / 12 (jusqu'à 3 mois de retard rattrapés).

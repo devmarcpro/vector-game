@@ -6,6 +6,7 @@ pub mod cargo;
 pub mod civ;
 pub mod colony;
 pub mod combat;
+pub mod companies;
 pub mod crew;
 pub mod design;
 pub mod dialogue;
@@ -269,6 +270,9 @@ pub struct Sim {
     /// Futures signed at the exchange.
     pub futures: Vec<futures::Future>,
     pub next_future: u32,
+    /// Shares held: (company index, number).
+    pub shares: Vec<(usize, f64)>,
+    pub last_dividend_month: i64,
     /// Day of the last intrusion roll (not saved).
     pub intrusion_day: i64,
     /// Body used as velocity reference for flight assist (within its influence radius).
@@ -398,6 +402,8 @@ impl Sim {
             civ_rep: BTreeMap::new(),
             futures: Vec::new(),
             next_future: 0,
+            shares: Vec::new(),
+            last_dividend_month: i64::MIN,
             intrusion_day: i64::MIN,
             ref_body: None,
             target: None,
@@ -750,6 +756,7 @@ impl Sim {
             self.bank_tick();
             self.market_news_tick();
             self.futures_tick();
+            self.dividend_tick();
             self.intrusion_tick();
             self.refresh_bodies();
             self.update_npcs();

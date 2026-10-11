@@ -48,6 +48,10 @@ fn change(series: &[f64], back: usize) -> f64 {
 }
 
 pub fn draw(fb: &mut Framebuffer, g: &Game) {
+    if g.bourse_tab == 1 {
+        draw_companies(fb, g);
+        return;
+    }
     let data = &g.data;
     if g.bourse_series.is_empty() {
         fb.text(2, 2, "BOURSE : PAS DE DONNEES", RED);
@@ -168,6 +172,146 @@ pub fn draw(fb: &mut Framebuffer, g: &Game) {
     draw_chart(fb, g, sel, x0);
     draw_futures(fb, g, sel, x0);
     draw_news(fb, g, sel, x0);
+}
+
+/// The companies tab: the list with price, change and shares held; the selected one's chart,
+/// what it sells and where it is from; clickable words to buy and sell.
+fn draw_companies(fb: &mut Framebuffer, g: &Game) {
+    let data = &g.data;
+    fb.text(2, 1, "== BOURSE : ENTREPRISES ==", AMBER);
+    fb.text(30, 1, &format!("CREDITS {:.0}", g.sim.credits), DIM);
+    let hover = g.hit_cells(48, 1, 18, 1, Act::Key(KeyCode::KeyE), None);
+    fb.text(48, 1, "[E] MARCHANDISES", if hover { AMBER } else { GREEN });
+    fb.text(2, 3, "ENTREPRISE                PRIX    7J  ACTIONS", DIM);
+    for (c, k) in data.companies.iter().enumerate() {
+        let series = &g.comp_series[c];
+        let now = series.last().copied().unwrap_or(0.0);
+        let ch7 = change(series, 7);
+        let held = g.sim.shares_of(c);
+        let sel = c == g.comp_sel;
+        let hov = g.hit_cells(2, 4 + c, 56, 1, Act::Call(Game::click_company, c), None);
+        fb.text(
+            2,
+            4 + c,
+            &format!(
+                "{}{:<24.24}{:>8.2}",
+                if sel { ">" } else { " " },
+                k.name.to_uppercase(),
+                now
+            ),
+            if sel {
+                AMBER
+            } else if hov {
+                WHITE
+            } else {
+                GREEN
+            },
+        );
+        fb.text(
+            36,
+            4 + c,
+            &format!("{ch7:+5.0}%"),
+            if ch7 >= 0.0 { UP } else { DOWN },
+        );
+        fb.text(
+            44,
+            4 + c,
+            &format!("{held:>6.0}"),
+            if held > 0.0 { AMBER } else { DIM },
+        );
+    }
+    let Some(k) = data.companies.get(g.comp_sel) else {
+        return;
+    };
+    let series = &g.comp_series[g.comp_sel];
+    let n = series.len();
+    let (lo, hi) = series
+        .iter()
+        .fold((f64::MAX, f64::MIN), |(l, h), &v| (l.min(v), h.max(v)));
+    let now = series[n - 1];
+    let col = 62usize;
+    fb.text(col, 3, &k.name.to_uppercase(), AMBER);
+    let hq = data
+        .factions
+        .iter()
+        .find(|f| f.id == k.hq)
+        .map_or(k.hq.clone(), |f| f.name.to_uppercase());
+    fb.text(
+        col,
+        4,
+        &format!(
+            "SIEGE : {hq}   DIVIDENDE {:.1} %/AN   {now:.2} CR   BAS {lo:.2}  HAUT {hi:.2}",
+            k.yield_year * 100.0
+        ),
+        GREEN,
+    );
+    let mut sells: Vec<String> = k
+        .goods
+        .iter()
+        .filter_map(|(r, w)| {
+            data.resource_index(r).map(|i| {
+                format!(
+                    "{} {:.0}%",
+                    data.resources[i].name.to_uppercase(),
+                    w * 100.0
+                )
+            })
+        })
+        .collect();
+    sells.truncate(4);
+    fb.text(col, 5, &format!("VEND : {}", sells.join(", ")), DIM);
+    // The chart.
+    let (px0, py0) = (((col + 7) * 8) as i32, 8 * 10);
+    let w = ((fb.cols() - col - 9) * 8) as i32;
+    let h = 14 * 10;
+    let pad = ((hi - lo) * 0.1).max(hi * 0.01);
+    let (span_lo, span_hi) = (lo - pad, hi + pad);
+    let x_of = |i: usize| px0 + (i as f64 / (n - 1).max(1) as f64 * f64::from(w)) as i32;
+    let y_of = |v: f64| py0 + h - ((v - span_lo) / (span_hi - span_lo) * f64::from(h)) as i32;
+    for q in 0..=4 {
+        let v = span_lo + (span_hi - span_lo) * f64::from(q) / 4.0;
+        let y = y_of(v);
+        for x in (px0..px0 + w).step_by(6) {
+            fb.plot(x, y, 0x0018_3028);
+        }
+        fb.text(col, (y / 10).max(0) as usize, &format!("{v:>6.1}"), DIM);
+    }
+    for i in 1..n {
+        let up = series[i] >= series[i - 1];
+        fb.line(
+            x_of(i - 1) as f32,
+            y_of(series[i - 1]) as f32,
+            x_of(i) as f32,
+            y_of(series[i]) as f32,
+            if up { UP } else { DOWN },
+        );
+    }
+    // Trading words and what the position is worth.
+    let held = g.sim.shares_of(g.comp_sel);
+    let acts: [(&str, KeyCode); 2] = [
+        ("[B] ACHETER 10 ACTIONS (FRAIS 1 %)", KeyCode::KeyB),
+        ("[N] VENDRE 10 ACTIONS", KeyCode::KeyN),
+    ];
+    let mut x = col;
+    for (label, key) in acts {
+        let hov = g.hit_cells(x, 24, label.len(), 1, Act::Key(key), None);
+        fb.text(x, 24, label, if hov { AMBER } else { GREEN });
+        x += label.len() + 3;
+    }
+    fb.text(
+        col,
+        26,
+        &format!(
+            "VOUS DETENEZ {held:.0} ACTIONS : {:.0} CR  (DIVIDENDE MENSUEL {:.0} CR)",
+            held * now,
+            held * now * k.yield_year / 12.0
+        ),
+        if held > 0.0 { AMBER } else { DIM },
+    );
+    fb.text(col, 28, &k.text, DIM);
+    for (i, w) in g.messages.iter().rev().take(1).enumerate() {
+        fb.text(col, 30 + i, w, AMBER);
+    }
 }
 
 /// Futures: three clickable words and the list of open contracts with what each would pay now.

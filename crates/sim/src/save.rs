@@ -6,7 +6,7 @@ use vector_data::GameData;
 use vector_world::generate_system;
 
 pub const MAGIC: [u8; 4] = *b"VECT";
-pub const VERSION: u32 = 24;
+pub const VERSION: u32 = 25;
 
 #[derive(Debug)]
 pub enum SaveError {
@@ -80,6 +80,8 @@ pub struct SaveGame {
     pub civ_rep: Vec<(u64, f32)>,
     pub futures: Vec<crate::futures::Future>,
     pub next_future: u32,
+    pub shares: Vec<(usize, f64)>,
+    pub last_dividend_month: i64,
 }
 
 impl Sim {
@@ -128,6 +130,8 @@ impl Sim {
             civ_rep: self.civ_rep.iter().map(|(k, v)| (*k, *v)).collect(),
             futures: self.futures.clone(),
             next_future: self.next_future,
+            shares: self.shares.clone(),
+            last_dividend_month: self.last_dividend_month,
             ecologies: self
                 .ecologies
                 .iter()
@@ -202,6 +206,8 @@ impl Sim {
         sim.civ_rep = save.civ_rep.into_iter().collect();
         sim.futures = save.futures;
         sim.next_future = save.next_future;
+        sim.shares = save.shares;
+        sim.last_dividend_month = save.last_dividend_month;
         for (id, time, bio, native) in save.ecologies {
             let Some(ci) = sim.colonies.iter().position(|c| c.id == id) else {
                 continue;

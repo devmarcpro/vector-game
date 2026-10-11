@@ -507,6 +507,19 @@ pub struct Cybernetic {
     pub hackable: bool,
 }
 
+/// A company listed on the exchange (see `data/companies.ron`).
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct Company {
+    pub id: String,
+    pub name: String,
+    pub hq: String,
+    pub base: f64,
+    pub yield_year: f64,
+    pub vol: f64,
+    pub goods: Vec<(String, f64)>,
+    pub text: String,
+}
+
 /// A belief of the colonies (see `data/religions.ron`).
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Religion {
@@ -662,6 +675,7 @@ pub struct GameData {
     pub civilisations: Vec<Civilisation>,
     pub gear: Vec<Gear>,
     pub religions: Vec<Religion>,
+    pub companies: Vec<Company>,
 }
 
 fn read<T: for<'a> Deserialize<'a>>(path: &Path) -> Result<T, DataError> {
@@ -702,6 +716,7 @@ impl GameData {
             civilisations: read(&dir.join("civilisations.ron"))?,
             gear: read(&dir.join("gear.ron"))?,
             religions: read(&dir.join("religions.ron"))?,
+            companies: read(&dir.join("companies.ron"))?,
         };
         // Generated extension files (tools/gen_scale.py) extend the hand-written tables.
         let mut extra_resources: Vec<Resource> = read(&dir.join("resources_organs.ron"))?;
@@ -1127,7 +1142,42 @@ impl GameData {
         self.validate_sites()?;
         self.validate_civilisations()?;
         self.validate_gear()?;
-        self.validate_religions()
+        self.validate_religions()?;
+        self.validate_companies()
+    }
+
+    /// Companies: unique ids, a faction as headquarters, known goods with weights adding up to
+    /// one, sane price level, yield and volatility.
+    fn validate_companies(&self) -> Result<(), DataError> {
+        let bad = |s: String| Err(DataError::Invalid(s));
+        let mut seen = std::collections::HashSet::new();
+        for c in &self.companies {
+            if !seen.insert(c.id.as_str()) {
+                return bad(format!("entreprise {} en double", c.id));
+            }
+            if !self.factions.iter().any(|f| f.id == c.hq) {
+                return bad(format!("entreprise {}: siege {} inconnu", c.id, c.hq));
+            }
+            if c.base <= 0.0
+                || !(0.0..=0.2).contains(&c.yield_year)
+                || !(0.0..=0.5).contains(&c.vol)
+            {
+                return bad(format!("entreprise {}: valeurs invalides", c.id));
+            }
+            let total: f64 = c.goods.iter().map(|(_, w)| w).sum();
+            if c.goods.is_empty() || (total - 1.0).abs() > 0.05 {
+                return bad(format!("entreprise {}: poids des biens = {total}", c.id));
+            }
+            for (r, _) in &c.goods {
+                if self.resource_index(r).is_none() {
+                    return bad(format!("entreprise {}: bien {r} inconnu", c.id));
+                }
+            }
+        }
+        if self.companies.len() < 6 {
+            return bad("moins de 6 entreprises".into());
+        }
+        Ok(())
     }
 
     /// Beliefs: unique ids, sane ranges, and every possible faith has at least one belief.
@@ -1910,6 +1960,24 @@ mod tests {
             d.unlocking_tech("module", "fusion_mk1").is_none(),
             "tier 1 is free"
         );
+    }
+
+    #[test]
+    fn companies_are_validated() {
+        let ok = GameData::load(&dir()).expect("data loads");
+        assert!(ok.companies.len() >= 6);
+        let mut d = ok.clone();
+        d.companies[0].hq = "nulle_part".into();
+        assert!(d.validate().is_err(), "unknown headquarters");
+        let mut d = ok.clone();
+        d.companies[0].goods[0].1 = 0.9;
+        assert!(d.validate().is_err(), "weights add up to one");
+        let mut d = ok.clone();
+        d.companies[0].goods.push(("unobtainium".into(), 0.0));
+        assert!(d.validate().is_err(), "unknown good");
+        let mut d = ok;
+        d.companies[0].yield_year = 0.9;
+        assert!(d.validate().is_err(), "sane yield");
     }
 
     #[test]

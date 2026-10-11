@@ -190,7 +190,7 @@ def add(b, *ids):
 M = [
     ("refine_nickel_steel", "Acier au nickel", [("iron", 850), ("nickel", 120)], [("steel", 940)], 24, 3200),
     ("refine_chrome_steel", "Acier inoxydable", [("iron", 800), ("chromium", 150), ("nickel", 40)], [("steel", 960)], 24, 3600),
-    ("alloy_tungsten", "Alliage de tungstene", [("tungsten", 600), ("nickel", 80), ("iron", 40)], [("steel", 700)], 24, 6000),
+    ("alloy_tungsten", "Alliage de tungstene", [("tungsten", 40), ("nickel", 80), ("iron", 580)], [("steel", 700)], 24, 3000),
     ("alloy_magnesium", "Alliage de magnesium", [("magnesium", 800), ("aluminium", 100), ("zinc", 30)], [("aluminium_alloy", 900)], 24, 2200),
     ("alloy_cobalt", "Superalliage de cobalt", [("cobalt", 500), ("chromium", 200), ("tungsten", 60)], [("titanium_alloy", 740)], 24, 5200),
     ("galvanize_steel", "Galvanisation", [("steel", 500), ("zinc", 40)], [("steel", 530)], 12, 700),
@@ -217,21 +217,21 @@ add("recycler", "recycle_circuits", "recycle_batteries", "recycle_hull_plates", 
 
 # Chemistry and fuel
 C = [
-    ("make_methane", "Methanisation", [("hydrogen", 100), ("carbon", 300)], [("methane", 380)], 24, 1800),
+    ("make_methane", "Methanisation", [("hydrogen", 100), ("carbon", 300)], [("methane", 380)], 24, 600),
     ("make_ammonia", "Synthese de l'ammoniac", [("nitrogen", 800), ("hydrogen", 170)], [("ammonia", 960)], 24, 2400),
     ("refine_helium3", "Raffinage d'helium 3", [("hydrogen", 1500), ("helium", 600)], [("helium3", 1.5), ("helium", 590), ("hydrogen", 1400)], 24, 4000),
-    ("distill_deuterium", "Distillation du deuterium", [("water", 3000)], [("deuterium", 0.5), ("hydrogen", 330)], 24, 6000),
+    ("distill_deuterium", "Distillation du deuterium", [("water", 3000)], [("deuterium", 1.3), ("hydrogen", 330)], 24, 900),
     ("crack_co2", "Craquage du CO2", [("co2_ice", 1000)], [("oxygen", 700), ("carbon", 270)], 12, 1800),
     ("sabatier", "Reaction de Sabatier", [("co2_ice", 400), ("hydrogen", 40)], [("methane", 150), ("water", 250)], 12, 900),
     ("make_pharma", "Chimie pharmaceutique", [("organics", 300), ("salts", 50), ("water", 100)], [("medicine", 160)], 24, 1500),
     ("make_synthetic_food", "Alimentation synthetique", [("organics", 400), ("water", 200), ("nitrogen", 20)], [("food", 450)], 24, 1600),
-    ("brew_biofuel", "Biocarburant", [("organics", 500), ("water", 200)], [("fuel", 450)], 24, 1000),
-    ("make_fuel_rods_2", "Barres de combustible", [("uranium", 100), ("steel", 60), ("ceramics", 30)], [("fuel_rods", 180)], 24, 3000),
-    ("enrich_thorium", "Cycle du thorium", [("thorium", 200), ("steel", 40)], [("fuel_rods", 220)], 24, 2800),
+    ("brew_biofuel", "Biocarburant", [("organics", 400), ("water", 100)], [("fuel", 480)], 24, 300),
+    ("make_fuel_rods_2", "Barres de combustible", [("uranium", 100), ("steel", 60), ("ceramics", 30)], [("fuel_rods", 180)], 48, 3000),
+    ("enrich_thorium", "Cycle du thorium", [("thorium", 200), ("steel", 40)], [("fuel_rods", 220)], 48, 2800),
     ("process_salts", "Traitement des sels", [("salts", 800)], [("magnesium", 120), ("sulfur", 60), ("phosphorus", 20)], 24, 1700),
-    ("refine_sulfur", "Soufre industriel", [("regolith", 2000)], [("sulfur", 80), ("silica", 600)], 24, 1400),
+    ("refine_sulfur", "Soufre industriel", [("regolith", 2000)], [("sulfur", 80), ("silica", 600)], 24, 500),
     ("make_graphite_fiber", "Fibres de carbone", [("carbon", 300), ("polymers", 100)], [("polymers", 380)], 24, 2500),
-    ("make_nanomaterials_2", "Nanomateriaux", [("carbon", 200), ("silicon", 60), ("rare_earths", 20)], [("nanomaterials", 270)], 48, 8000),
+    ("make_nanomaterials_2", "Nanomateriaux", [("carbon", 200), ("silicon", 60), ("rare_earths", 20)], [("nanomaterials", 270)], 96, 8000),
     ("extract_rare_earths", "Separation des terres rares", [("regolith", 4000)], [("rare_earths", 120), ("iron", 1500), ("silica", 1200)], 24, 6000),
 ]
 for id, n, i, o, h, e in C:

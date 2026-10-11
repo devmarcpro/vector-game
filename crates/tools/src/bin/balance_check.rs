@@ -8,24 +8,38 @@ fn main() {
     let mut bad = 0;
     println!("== recipes: output value / (input value + energy) ==");
     let mut ratios = Vec::new();
+    // Two thresholds. Value added per batch is only a problem if one building can farm it: what
+    // caps an exploit is throughput, so the profit per building-day is what gets flagged.
+    // Recycling loses value on purpose (disposal, not trade) and is listed apart.
+    const MAX_PROFIT_PER_DAY: f64 = 20_000.0;
+    const MIN_RATIO: f64 = 0.5;
+    let mut recycling = Vec::new();
     for r in d.recipes.iter().filter(|r| r.kind == "process") {
         let vin: f64 = r.inputs.iter().map(|(i, k)| value(i) * k).sum();
         let vout: f64 = r.outputs.iter().map(|(i, k)| value(i) * k).sum();
         let energy = r.energy_kwh * 0.1;
         let ratio = vout / (vin + energy).max(1e-9);
+        let per_day = (vout - vin - energy) / (r.hours / 24.0).max(1e-9);
         ratios.push((ratio, r.id.as_str()));
-        if ratio < 0.9 {
+        if r.id.starts_with("recycle_") {
+            recycling.push((ratio, r.id.as_str()));
+        } else if ratio < MIN_RATIO {
             bad += 1;
             println!(
                 "  LOSS     {:<28} in {vin:>9.1} out {vout:>9.1} energy {energy:>7.1} ratio {ratio:.2}",
                 r.id
             );
-        } else if ratio > 6.0 {
+        } else if ratio > 6.0 && per_day > MAX_PROFIT_PER_DAY {
             bad += 1;
-            println!("  EXPLOIT? {:<28} ratio {ratio:.2}", r.id);
+            println!(
+                "  EXPLOIT? {:<28} ratio {ratio:.2}, {per_day:.0} cr per building-day",
+                r.id
+            );
         }
     }
-    ratios.sort_by(|a, b| a.0.total_cmp(&b.0));
+    for (ratio, id) in &recycling {
+        println!("  recycling (loss by design) {id:<24} ratio {ratio:.2}");
+    }    ratios.sort_by(|a, b| a.0.total_cmp(&b.0));
     if let (Some(lo), Some(hi)) = (ratios.first(), ratios.last()) {
         println!("  range {:.2} ({}) .. {:.2} ({})", lo.0, lo.1, hi.0, hi.1);
     }

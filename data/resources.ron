@@ -42,7 +42,7 @@
  (id:"salts", name:"Sels", category:"mineral", density:2160.0, value:0.2),
  (id:"fuel", name:"Carburant fusion", category:"fuel", density:150.0, value:0.6),
  (id:"food", name:"Rations", category:"consumable", density:600.0, value:2.0),
- (id:"water", name:"Eau potable", category:"consumable", density:1000.0, value:0.05),
+ (id:"water", name:"Eau potable", category:"consumable", density:1000.0, value:0.12),
  (id:"medicine", name:"Medicaments", category:"consumable", density:900.0, value:25.0),
  (id:"spare_parts", name:"Pieces detachees", category:"consumable", density:2500.0, value:12.0),
  (id:"steel", name:"Acier", category:"alloy", density:7850.0, value:1.2),

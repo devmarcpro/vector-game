@@ -109,3 +109,5 @@
 - 2026-10-11 (lot) : Croyances des colonies (`data/religions.ron`, validées : toute foi possible a une croyance) : chaque colonie prend à sa fondation une croyance qui correspond à la foi de son peuple ; elle donne du moral à la colonie et modifie sa recherche ; ligne CROYANCE de l'écran colonie, catégorie CROYANCES du codex. Les rendus fil de fer tournent aussi dans l'inventaire, à la station et pour le module choisi sur l'écran du vaisseau. Sauvegarde v24.
 
 - 2026-10-11 (lot) : Entreprises (note du joueur) : 8 sociétés cotées (`data/companies.ron`, validées : siège dans une faction, biens et poids, rendement, volatilité). Le cours d'une action suit les prix mondiaux de ce que l'entreprise fabrique (événements, dérive de sa région) plus un mouvement propre ; onglet ENTREPRISES de la bourse (E) : liste, graphique, B achète 10 actions, N en vend 10 (frais 1 %), dividende mensuel sur la valeur détenue ; catégorie ENTREPRISES du codex. Sauvegarde v25.
+
+- Marche noir (`blackmarket.rs`) : biens interdits negociables a prime, risque de descente de police. Touches G/J a quai.

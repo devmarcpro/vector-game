@@ -1305,6 +1305,14 @@ impl Game {
                 self.screen = Screen::Bank;
                 return;
             }
+            KeyCode::KeyG => self
+                .sim
+                .black_buy(res, 50.0)
+                .map(|c| format!("MARCHE NOIR : ACHAT POUR {c:.0} CR")),
+            KeyCode::KeyJ => self
+                .sim
+                .black_sell(res, 50.0)
+                .map(|c| format!("MARCHE NOIR : VENTE POUR {c:.0} CR")),
             KeyCode::KeyR => self.sim.repair().map(|c| format!("REPARATIONS: {c:.0} CR")),
             KeyCode::KeyU | KeyCode::Escape => {
                 self.sim.undock();

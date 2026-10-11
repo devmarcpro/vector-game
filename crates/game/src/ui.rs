@@ -571,7 +571,7 @@ fn draw_station(fb: &mut Framebuffer, g: &Game) {
     fb.text(
         1,
         b + 1,
-        "F:CARBURANT R:REPARER H:VAISSEAU Y:CHANTIER K:EQUIPAGE N:RECRUTER U:DECOLLER",
+        "G/J:MARCHE NOIR F:CARBURANT R:REPARER H:VAISSEAU Y:CHANTIER K:EQUIPAGE N:RECRUTER U:DECOLLER",
         DIM,
     );
     for (i, msg) in g.messages.iter().rev().take(2).enumerate() {

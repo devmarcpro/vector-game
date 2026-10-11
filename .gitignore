@@ -4,3 +4,4 @@ saves/
 *.png
 
 bench_tmp/
+dist/VECTOR/

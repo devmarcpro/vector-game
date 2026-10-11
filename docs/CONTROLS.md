@@ -33,9 +33,11 @@
 | P | Pause |
 | PgUp / PgDn | Temps x0.25 .. x100000 (pas adaptatifs ; poussee manuelle coupee au-dela de x2) |
 | ~ (Backquote) | Console de debug : help, list, tp, tpbody, stop, speed, fuel, repair, assist, time |
-| F1 | Aide rapide |
+| F1 | Aide contextuelle de l'ecran courant (re-appuyer pour fermer) |
+| F6 | Codex (Gauche/Droite categorie, Haut/Bas entree) |
+| F10 | Ignorer le tutoriel |
 
-Options de ligne de commande : `--snapshot fichier.png` (rendu headless), `--bench`.
+Options de ligne de commande : `--snapshot fichier.png [scene]` (rendu headless), `--bench`, `--script fichier.txt` (jeu scripte sans fenetre, voir `crates/game/src/script.rs`).
 
 ## Station
 Haut/Bas : ressource ; Entree : vendre tout ; S : vendre 100 kg ; B : acheter 100 kg ; F : plein de carburant ; R : reparer ; U : decoller.
@@ -47,3 +49,9 @@ Station : C = contrats (Entrée accepter/livrer, X abandonner), E = banque (Haut
 
 Ecran colonie : Tab zone (bâtiments / stocks / politiques / construction), Haut/Bas, Espace on/off, R recette, X démolir, D déposer / W retirer (stocks, amarré), Gauche/Droite politique, Entrée construire, T récupérer la caisse, U décoller.
 Ecran flotte : Tab liste, N nouvelle route (Gauche/Droite valeur, Tab champ, Entrée), A affecter, U retirer, X supprimer/vendre, B acheter (à quai).
+
+## Menus
+Menu principal : Nouvelle partie / Continuer / Regles de partie / Options / Codex-Aide / Quitter. Menu pause : Reprendre / Sauvegarder / Charger / Regles / Options / Codex-Aide / Menu principal / Quitter.
+Regles : Haut/Bas, Gauche/Droite modifier, R valeurs par defaut ; depuis la pause elles s'appliquent immediatement.
+Options : lignes de balayage, halo, palette (couleur, vert, ambre, blanc, bleu), volume, tutoriel ; sauvegardees dans saves/settings.cfg.
+

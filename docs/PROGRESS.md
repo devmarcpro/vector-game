@@ -11,7 +11,7 @@
 - [x] M7 Économie vivante (reste : escortes/convois de la flotte joueur en M8, combat pirates en M9)
 - [x] M8 Colonies et empire (reste : individus détaillés des colonies, convois armés en M9)
 - [x] M9 Combat, menaces, science (reste : IA tactique plus riche, escorte de flotte)
-- [ ] M10 Contenu et finition
+- [~] M10 Contenu et finition (fait : contenu aux seuils, règles, options, codex, aide/tutoriel, outils, audio, --script ; reste : paquet dist/, README, rapport final)
 
 ## Journal
 - 2026-10-11 : rustup installé (rustc 1.99, cargo 1.99), git init. Build Tools MSVC en cours d'installation (winget, en arrière-plan).
@@ -26,3 +26,6 @@
 - 2026-10-11 : M7 : factions + territoires, industries et prix régionaux, réputation/douane/contrebande, contrats émergents, banque, trafic PNJ (traders/mineurs/patrouilles/pirates) agissant sur les marchés, stations multiples. 57 tests sim verts.
 - 2026-10-11 : M8 : 40 recettes + 32 bâtiments + 5 politiques (data générée, masse conservée), colonies (pop/moral/stocks/énergie/construction/émeutes), astroports, flotte déléguée avec routes inter-systèmes, écrans Empire/Colonie/Flotte, sauvegarde v8. 71 tests sim verts.
 - 2026-10-11 : M9 : 21 armes/défenses, combat complet (faisceaux, balistique, missiles, mines, boucliers/blindage, IA pirates/patrouilles, épaves, abordage, assurance), arbre de 73 technologies avec verrouillage, 12 anomalies, éruptions/météoroïdes/radiations, 38 maladies. Tests de raccourcis clavier ajoutés (ils ont révélé des raccourcis L/F2/F3/O mal câblés depuis M6, corrigés). 88 tests sim verts.
+- 2026-10-11 : M10 (a) : règles de partie (13 options testées), menus principal/pause étendus, écrans Règles/Options/Codex, console réservée au mode créatif, accélération max, mort permanente, marqueur PARTIE MODIFIEE.
+- 2026-10-11 : M10 (b) : montée en charge du contenu (`tools/gen_scale.py`) : 155 événements, 106 recettes, 300+ gabarits de texte, classe stellaire D ; codex F6 (11 catégories, 350+ entrées générées) ; options graphiques (CRT, halo, palettes) ; outils `data_check`, `sim_bench`, `balance_check` (crate `tools`).
+- 2026-10-11 : M10 (c) : tutoriel guidé de 15 étapes, aide contextuelle F1 sur tous les écrans, audio procédural (cpal), mode `--script` avec scripts de régression rejoués par `cargo test`.

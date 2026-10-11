@@ -24,89 +24,45 @@ pub const TILE_M: f64 = 3.0;
 const UNIT_M: f64 = 2.4;
 const EYE_M: f64 = 1.7;
 
-type Art = &'static [&'static str];
-
-// ---- the billboards: ASCII drawings, one string per row (spaces are transparent) ---------------
-
-const HUMAN: Art = &["  _  ", " (o) ", "/|#|\\", " | | ", " / \\ "];
-const HUMAN_ARMED: Art = &["  _   ", " (o)  ", "/|#|-+", " | |  ", " / \\  "];
-const ROBOT: Art = &[" [=] ", "[o_o]", " |#| ", "_| |_"];
-const RAT: Art = &["      ", " ,--.o", "(____>", " ^  ^ "];
-const INSECT: Art = &["\\ _ /", " (o) ", "/|#|\\", " ' ' "];
-const QUEEN: Art = &[
-    "  \\ | /  ",
-    " .-(O)-. ",
-    "(  |#|  )",
-    " '-|#|-' ",
-    "   / \\   ",
-];
-const GOLEM: Art = &[" ____ ", "|o  o|", "|_##_|", " |  | ", "_|__|_"];
-const GHOUL: Art = &[" .-. ", "(o_o)", "/|~|\\", " | | ", " ' ' "];
-const SENTINEL: Art = &["  /\\  ", " /OO\\ ", "|=##=|", " |  | ", " |__| "];
-const MUTANT: Art = &[" ,-. ", "(o.O)", "/|#|\\\\", " / \\ "];
-const WISP: Art = &["  .  ", " (*) ", "  '  "];
-const CHEST: Art = &[" _____ ", "|=====|", "|_[#]_|"];
-const CRAWLER: Art = &["\\\\ // ", " (oo) ", "/ || \\", "  /\\  "];
-const WOLF: Art = &[" /\\_/\\  ", "( o.o ) ", " > ^ <__", " |_||_| "];
-const TURRET: Art = &["  _|_  ", " [O-O] ", "  |#|  ", " _|_|_ "];
-const HORROR: Art = &["  \\|/  ", " (@@@) ", "\\/|#|\\/", "  / \\  ", " ~/ \\~ "];
-const AI_CORE: Art = &[" _____ ", "|[o o]|", "|=###=|", "|_____|"];
-const BEAST: Art = &["  /\\_/\\_", " ( o  O>", " /|##|\\ ", " ^^  ^^ "];
-const PREY: Art = &["   ,_ ", " _/o\\>", "(____)", " ^  ^ "];
-const TREE: Art = &[
-    "  ###  ", " ##### ", "#######", " ##### ", "   |   ", "   |   ",
-];
-const PINE: Art = &["   ^   ", "  /^\\  ", " /^^^\\ ", "/^^^^^\\", "   |   "];
-const BUSH: Art = &[" .~~. ", "(~~~~)", " '||' "];
-const FLOWER: Art = &[" \\|/ ", " -*- ", "  |  "];
-const REED: Art = &["| | |", "|\\|/|", " \\|/ "];
-const PILE: Art = &["  *  ", " *** ", "*****"];
-const CONSOLE: Art = &[" _____ ", "|[X X]|", "|_____|", "  | |  ", "_|___|_"];
-const STAIRS_UP: Art = &["  /\\  ", " /  \\ ", "/_  _\\", "  ||  "];
-const STAIRS_DOWN: Art = &["  ||  ", "\\_  _/", " \\  / ", "  \\/  "];
-const RUIN: Art = &[" _  _ ", "| \\/ |", "|    |", "|_/\\_|"];
-const ALTAR: Art = &["  *  ", " /_\\ ", "|___|"];
-const FEATURE: Art = &[" .-. ", "( & )", " '-' "];
-const ROCK: Art = &["  _.-._ ", " /#####\\", "/#######\\"];
-const POND: Art = &["~~~~~~~", " ~~~~~ "];
+use crate::sprites::{self, Kind};
 
 /// The drawing of a creature, a machine or a person by what it is.
-fn art_of(m: &Mon) -> Art {
+fn art_of(m: &Mon) -> Kind {
     if m.friendly {
-        return HUMAN;
+        return Kind::Human;
     }
     match m.glyph {
-        'r' => RAT,
-        'g' => ROBOT,
-        'p' | 'P' => HUMAN_ARMED,
-        'd' => INSECT,
-        'Q' => QUEEN,
-        'G' => GOLEM,
-        'h' => GHOUL,
-        'S' => SENTINEL,
-        'm' => MUTANT,
-        'w' => WISP,
-        '$' => CHEST,
-        'c' => CRAWLER,
-        'l' => WOLF,
-        'T' => TURRET,
-        '@' => HUMAN,
-        'X' => HORROR,
-        'A' => AI_CORE,
-        c if c.is_ascii_uppercase() => BEAST,
-        _ => PREY,
+        'r' => Kind::Rat,
+        'g' => Kind::Robot,
+        'p' | 'P' => Kind::Armed,
+        'd' => Kind::Insect,
+        'Q' => Kind::Queen,
+        'G' => Kind::Golem,
+        'h' => Kind::Ghoul,
+        'S' => Kind::Sentinel,
+        'm' => Kind::Mutant,
+        'w' => Kind::Wisp,
+        '$' => Kind::Chest,
+        'c' => Kind::Crawler,
+        'l' => Kind::Wolf,
+        'T' => Kind::Turret,
+        '@' => Kind::Human,
+        'X' => Kind::Horror,
+        'A' => Kind::AiCore,
+        c if c.is_ascii_uppercase() => Kind::Beast,
+        _ => Kind::Prey,
     }
 }
 
 /// A plant of the ground (a tree, a bush, a flower, a reed) by where it grows.
-fn plant_art(x: i32, y: i32) -> Art {
+fn plant_art(x: i32, y: i32) -> Kind {
     let h = vector_core::hash_coord(5, i64::from(x), i64::from(y), 2) % 8;
     match h {
-        0..=2 => TREE,
-        3 => PINE,
-        4 | 5 => BUSH,
-        6 => FLOWER,
-        _ => REED,
+        0..=2 => Kind::Tree,
+        3 => Kind::Pine,
+        4 | 5 => Kind::Bush,
+        6 => Kind::Flower,
+        _ => Kind::Reed,
     }
 }
 
@@ -145,7 +101,7 @@ pub fn open_direction(r: &Rogue) -> i32 {
 struct Sprite {
     x: f64,
     y: f64,
-    art: Art,
+    kind: Kind,
     color: u32,
     /// Height of the drawing as a share of the height of a wall (a unit of 2.4 m outdoors).
     size: f64,
@@ -162,7 +118,7 @@ fn collect_sprites(r: &Rogue, px: f64, py: f64, reach: f64) -> Vec<Sprite> {
         sprites.push(Sprite {
             x: f64::from(m.x) + 0.5,
             y: f64::from(m.y) + 0.5,
-            art: art_of(m),
+            kind: art_of(m),
             color: if m.boss {
                 0x00FF_40FF
             } else if m.friendly {
@@ -179,15 +135,15 @@ fn collect_sprites(r: &Rogue, px: f64, py: f64, reach: f64) -> Vec<Sprite> {
     for it in &f.items {
         let (art, color, size) = if it.plant {
             let art = plant_art(it.x, it.y);
-            let tall = art.len() >= 5;
+            let tall = matches!(art, Kind::Tree | Kind::Pine);
             (art, 0x0050_D070, if tall { 1.15 } else { 0.55 })
         } else {
-            (PILE, AMBER, 0.3)
+            (Kind::Pile, AMBER, 0.3)
         };
         sprites.push(Sprite {
             x: f64::from(it.x) + 0.5,
             y: f64::from(it.y) + 0.5,
-            art,
+            kind: art,
             color,
             size,
             mark: None,
@@ -200,27 +156,31 @@ fn collect_sprites(r: &Rogue, px: f64, py: f64, reach: f64) -> Vec<Sprite> {
                 continue;
             }
             let t = r.tile(tx, ty);
-            let g: Option<(Art, u32, f64, Option<char>)> = if t == T_UP {
-                Some((STAIRS_UP, AMBER, 0.9, None))
+            let g: Option<(Kind, u32, f64, Option<char>)> = if t == T_UP {
+                Some((Kind::StairsUp, AMBER, 0.9, None))
             } else if t == T_DOWN {
-                Some((STAIRS_DOWN, AMBER, 0.9, None))
+                Some((Kind::StairsDown, AMBER, 0.9, None))
             } else if t == T_SITE {
-                Some((RUIN, AMBER, 1.0, None))
+                Some((Kind::Ruin, AMBER, 1.0, None))
             } else if t >= T_TERMINAL {
                 ROGUE_TERMINALS
                     .get((t - T_TERMINAL) as usize)
-                    .map(|d| (CONSOLE, AMBER, 0.9, Some(d.2)))
+                    .map(|d| (Kind::Console, AMBER, 0.9, Some(d.2)))
             } else if t >= T_FEATURE {
                 Some((
-                    if t.is_multiple_of(2) { ALTAR } else { FEATURE },
+                    if t.is_multiple_of(2) {
+                        Kind::Altar
+                    } else {
+                        Kind::Feature
+                    },
                     0x0060_C0FF,
                     0.6,
                     None,
                 ))
             } else if r.on_surface() && t == T_WALL {
-                Some((ROCK, 0x0090_8880, 0.7, None))
+                Some((Kind::Rock, 0x0090_8880, 0.7, None))
             } else if r.on_surface() && t == T_WATER {
-                Some((POND, 0x0040_80E0, 0.12, None))
+                Some((Kind::Pond, 0x0040_80E0, 0.12, None))
             } else {
                 None
             };
@@ -229,7 +189,7 @@ fn collect_sprites(r: &Rogue, px: f64, py: f64, reach: f64) -> Vec<Sprite> {
                     sprites.push(Sprite {
                         x: f64::from(tx) + 0.5,
                         y: f64::from(ty) + 0.5,
-                        art,
+                        kind: art,
                         color,
                         size,
                         mark,
@@ -272,23 +232,17 @@ fn draw_sprites(
             continue;
         }
         let height_px = (p.unit_px * s.size).min(f64::from(H) * 2.0);
-        let rows = s.art.len() as f64;
-        let scale = ((height_px / rows / 8.0).round() as i32).clamp(1, 16);
-        let cols = s.art.iter().map(|l| l.chars().count()).max().unwrap_or(1) as i32;
-        let (w_px, h_px) = (cols * 6 * scale, s.art.len() as i32 * 8 * scale);
-        let (gx, gy) = (
-            X0 + p.screen_x as i32 - w_px / 2,
-            Y0 + p.feet_y as i32 - h_px,
-        );
         let fade = (1.0 / (1.0 + (p.depth / far).powi(2) * 4.0)).max(0.3);
         let color = shade(s.color, fade);
-        for (k, line) in s.art.iter().enumerate() {
-            let line: String = match (s.mark, line.contains('X')) {
-                (Some(m), true) => line.replace('X', &m.to_string()),
-                _ => (*line).to_string(),
-            };
-            fb.text_big(gx, gy + k as i32 * 8 * scale, &line, scale, color);
-        }
+        sprites::draw(
+            fb,
+            s.kind,
+            X0 + p.screen_x as i32,
+            Y0 + p.feet_y as i32,
+            height_px,
+            color,
+            s.mark,
+        );
     }
 }
 

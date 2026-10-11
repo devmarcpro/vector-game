@@ -23,6 +23,7 @@ mod rogue_view;
 mod scene;
 mod script;
 mod settings;
+mod sprites;
 mod surface_view;
 mod tech_view;
 mod terrain;

@@ -70,3 +70,6 @@ Le jeu reçoit des touches physiques (winit). Plutôt que de dupliquer chaque co
 
 ## Pilote automatique : plan analytique plutôt que contrôleur (2026-10-11)
 Le contrôleur en vitesse réagissait mal aux planètes qui bougent, aux grands pas de temps et aux puits de gravité (réservoirs vidés, traversée de planètes). Le pilote suit désormais un plan calculé (le vaisseau est placé selon le profil, la poussée brûle le vrai carburant). Compromis : pas de collisions pendant le transfert lui-même, et la physique reprend à l'arrivée (vaisseau garé). Un obstacle sur la ligne droite n'est pas évité : choix assumé pour un bac à sable.
+
+## Un seul moteur d'exploration (E9)
+La marche planétaire (E5) et l'exploration roguelike des lieux (E9) faisaient double emploi (deux écrans, deux boucles de tour, deux butins). Elles sont fusionnées dans `rogue.rs` : une surface est un étage particulier (carte du monde, air, climat, faune, plantes, sites), les lieux sont des étages générés, les sites de surface sont des entrées de lieux. Conséquences : plus de touche G (le butin se ramasse en marchant), équipe groupée au lieu de positions séparées (l'équipier de tête compte à plein dans le combat), tout lieu a la même interface, la même sauvegarde et les mêmes règles de portage. Principe pour la suite : avant d'ajouter un système, chercher s'il existe déjà un équivalent à étendre.

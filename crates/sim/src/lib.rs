@@ -35,7 +35,6 @@ pub mod science;
 pub mod surgery;
 pub mod trading;
 pub mod voyage;
-pub mod walk;
 
 use autopilot::Autopilot;
 use cargo::Cargo;

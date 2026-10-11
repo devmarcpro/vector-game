@@ -93,7 +93,7 @@ impl Sim {
     /// Whether the ship is near enough to a world to talk to its people.
     pub fn can_hail_world(&self, body: usize) -> Result<(), &'static str> {
         let b = self.bodies.get(body).ok_or("corps inconnu")?;
-        if (self.ship.pos - b.pos).length() > b.radius * crate::walk::MAX_RANGE_RADII + 1.0e6 {
+        if (self.ship.pos - b.pos).length() > b.radius * crate::rogue::MAX_RANGE_RADII + 1.0e6 {
             return Err("trop loin pour une transmission");
         }
         if self.civilisation(body).is_none() {

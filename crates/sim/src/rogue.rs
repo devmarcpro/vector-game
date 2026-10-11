@@ -1,40 +1,73 @@
-//! Roguelike exploration (E9): every place of the game can be explored on foot, turn by turn, on
-//! floors drawn as characters. Floors are a pure function of (place seed, visit number, depth):
-//! rooms and corridors, creatures from the place's table, loot, and features (terminals, medbays,
-//! altars, mutagen pools, traps, portals, vaults...). The AI sends a squad of the crew; they move
-//! and fight together, whatever they carry out is added to the hold, and whoever falls stays down.
-//! See `data/rogue_themes.ron` and `data/rogue_monsters.ron`.
+//! Exploration on foot (E5 + E9, one system): every place of the game, a planet's surface as much
+//! as a station, a wreck or a cave, is explored turn by turn on floors drawn as characters. The
+//! ship's AI sends a squad of the crew (and a rover on open ground); the squad moves, fights and
+//! carries together. A *surface* floor is the ground of a planet cell (rocks, ponds, plants, the
+//! animals and the sites of its biome, under its air and climate); a *dungeon* floor is a place
+//! drawn from `data/rogue_themes.ron`: rooms and corridors, creatures, loot and features. A site of
+//! a surface leads down into a dungeon, and stairs lead back up: the run is a stack of places.
+//! Floors are a pure function of (place seed, visit number, depth). Whatever is carried out is
+//! added to the hold; whoever falls stays down.
 use crate::{ShipInput, Sim};
 use serde::{Deserialize, Serialize};
 use vector_core::{hash_coord, Rng};
 use vector_data::{GameData, ROGUE_FEATURES};
-use vector_world::{AnomalyKind, BodyKind, PlanetKind};
+use vector_world::surface::{Surface, H as SURF_H, W as SURF_W};
+use vector_world::{AnomalyKind, BodyKind};
 
 pub const T_WALL: u8 = 0;
 pub const T_FLOOR: u8 = 1;
+/// Stairs up (on a surface: where the ship set the squad down).
 pub const T_UP: u8 = 2;
 pub const T_DOWN: u8 = 3;
+/// Water: cannot be crossed, does not hide anything.
+pub const T_WATER: u8 = 4;
+/// A site of a surface (a ruin, a wreck, a cave...): searched once, and a way down.
+pub const T_SITE: u8 = 5;
 /// First feature tile; feature `k` of `ROGUE_FEATURES` is `T_FEATURE + k`.
-pub const T_FEATURE: u8 = 4;
+pub const T_FEATURE: u8 = 6;
 
-/// How far the squad sees, and seconds the ship's clock advances per turn.
+/// How far the squad sees, and seconds one turn takes in a dungeon and on a surface.
 pub const VIEW_RADIUS: i32 = 9;
 pub const TURN_SECONDS: f64 = 5.0;
+pub const SURFACE_TURN_SECONDS: f64 = 60.0;
 pub const MAX_PARTY: usize = 4;
 /// Distance within which a body can be entered (m): stations, anomalies, wrecks.
 pub const ENTER_RANGE: f64 = 150_000.0;
+/// What one person and the rover can carry, kg; tiles per move with the rover.
+pub const LOOT_PER_MEMBER: f64 = 60.0;
+pub const LOOT_VEHICLE: f64 = 250.0;
+pub const VEHICLE_SPEED: i32 = 2;
+/// How far from a planet the ship may be to land a squad, in body radii.
+pub const MAX_RANGE_RADII: f64 = 30.0;
+/// The drone costs one unit of robotics, flies this many turns and reaches this far (cells).
+pub const DRONE_COST: f64 = 1.0;
+pub const DRONE_TURNS: u32 = 30;
+pub const DRONE_REACH: i32 = 3;
 /// Monsters that never move, and the one that plays dead until you touch it.
 const STATIONARY: [&str; 2] = ["tourelle", "reine_ruche"];
 const SLEEPER: &str = "mimique";
 
+/// A creature or machine on a floor, with everything it needs to act (so that the animals of a
+/// planet and the guardians of a ruin are the same thing to the engine).
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Mon {
-    pub kind: usize,
+    pub name: String,
+    pub glyph: char,
     pub x: i32,
     pub y: i32,
     pub hp: f64,
+    pub attack: f64,
+    pub defense: f64,
+    pub sight: i32,
+    /// Attacks on sight; otherwise it wanders and flees.
+    pub hunts: bool,
+    pub stationary: bool,
+    /// Plays dead until touched.
+    pub sleeper: bool,
     pub awake: bool,
     pub boss: bool,
+    /// (resource, min kg, max kg) dropped when it dies.
+    pub drops: Vec<(usize, f64, f64)>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -43,6 +76,17 @@ pub struct Item {
     pub y: i32,
     pub res: usize,
     pub kg: f64,
+    /// Gathered (plants): the tools of the squad find more.
+    pub plant: bool,
+}
+
+/// A site of interest on a surface.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct SiteInst {
+    pub def: usize,
+    pub x: i32,
+    pub y: i32,
+    pub used: bool,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -51,6 +95,7 @@ pub struct Floor {
     pub seen: Vec<bool>,
     pub monsters: Vec<Mon>,
     pub items: Vec<Item>,
+    pub sites: Vec<SiteInst>,
     pub start: (i32, i32),
 }
 
@@ -73,9 +118,19 @@ pub struct Rogue {
     pub log: Vec<String>,
     pub over: bool,
     pub kills: u32,
-    /// Turns left of a blessing (damage x1.5).
+    /// Turns left of a blessing (damage x1.5) and of the drone sent ahead.
     pub buff: u32,
+    pub drone_turns: u32,
     pub boss_dead: bool,
+    /// A planet surface: the body, the name of the place, the rover, air (bar) and temperature (K).
+    pub body: Option<usize>,
+    pub place: String,
+    pub vehicle: bool,
+    pub env: Option<(f64, f64)>,
+    /// Seconds one turn takes.
+    pub turn_seconds: f64,
+    /// The place this one was entered from (a surface above a dungeon).
+    pub parent: Option<Box<Rogue>>,
 }
 
 impl Rogue {
@@ -103,11 +158,21 @@ impl Rogue {
         }
     }
 
+    /// Whether the squad could stand on this tile (ignoring who is there).
+    pub fn walkable(&self, x: i32, y: i32) -> bool {
+        !matches!(self.tile(x, y), T_WALL | T_WATER)
+    }
+
     fn say(&mut self, s: impl Into<String>) {
         self.log.push(s.into());
         if self.log.len() > 60 {
             self.log.remove(0);
         }
+    }
+
+    /// A surface floor of a landing (the root of a run, on a planet).
+    pub fn on_surface(&self) -> bool {
+        self.body.is_some() && self.cur == 0
     }
 
     /// Whether a straight line from (x0, y0) to (x1, y1) is open.
@@ -169,6 +234,37 @@ impl Rogue {
     pub fn depth(&self) -> u32 {
         self.cur as u32
     }
+
+    /// What this place carries so far, kg (the places above hold their own).
+    pub fn loot_mass(&self) -> f64 {
+        self.loot.iter().map(|l| l.1).sum::<f64>() + 0.0
+    }
+
+    /// Kg of loot the squad can carry here: a pack each, and the rover on open ground.
+    pub fn carry_cap(&self, members_up: usize) -> f64 {
+        members_up as f64 * LOOT_PER_MEMBER
+            + if self.vehicle && self.on_surface() {
+                LOOT_VEHICLE
+            } else {
+                0.0
+            }
+    }
+
+    /// Everything carried in the places above this one too.
+    fn loot_above(&self) -> f64 {
+        self.parent
+            .as_ref()
+            .map_or(0.0, |p| p.loot_mass() + p.loot_above())
+    }
+}
+
+/// What kind of entry a target is.
+#[derive(Clone, Debug, PartialEq)]
+pub enum TargetKind {
+    /// A dungeon of a theme.
+    Place,
+    /// A landing on the surface of this body.
+    Landing(usize),
 }
 
 /// Where a place can be entered from: a label, the theme and the seed of the place.
@@ -177,6 +273,128 @@ pub struct RogueTarget {
     pub label: String,
     pub theme: usize,
     pub seed: u64,
+    pub kind: TargetKind,
+}
+
+/// A monster of the table, placed.
+fn mon_from_def(
+    data: &GameData,
+    k: usize,
+    x: i32,
+    y: i32,
+    scale: f64,
+    awake: bool,
+    boss: bool,
+) -> Mon {
+    let d = &data.rogue_monsters[k];
+    let drops = data
+        .resource_index(&d.loot.0)
+        .map(|r| (r, d.loot.1, d.loot.2))
+        .into_iter()
+        .collect();
+    Mon {
+        name: d.name.clone(),
+        glyph: d.glyph.chars().next().unwrap_or('?'),
+        x,
+        y,
+        hp: d.hp * scale,
+        attack: d.attack,
+        defense: d.defense,
+        sight: d.sight,
+        hunts: true,
+        stationary: STATIONARY.contains(&d.id.as_str()),
+        sleeper: d.id == SLEEPER,
+        awake,
+        boss,
+        drops,
+    }
+}
+
+/// An animal of a planet, placed.
+fn mon_from_species(data: &GameData, sp: usize, x: i32, y: i32) -> Mon {
+    let s = &data.species[sp];
+    let hunts = s.danger > 0.0 && !s.domestic;
+    let letter = s
+        .name
+        .chars()
+        .find(char::is_ascii_alphabetic)
+        .unwrap_or('a');
+    Mon {
+        name: s.name.clone(),
+        glyph: if hunts {
+            letter.to_ascii_uppercase()
+        } else {
+            letter.to_ascii_lowercase()
+        },
+        x,
+        y,
+        hp: 1.0 + s.body.cbrt() * 1.5,
+        attack: 0.275 * s.danger,
+        defense: 0.0,
+        sight: 8,
+        hunts,
+        stationary: false,
+        sleeper: false,
+        awake: !hunts,
+        boss: false,
+        drops: s
+            .yields
+            .iter()
+            .filter_map(|(r, kg)| data.resource_index(r).map(|i| (i, *kg, *kg)))
+            .collect(),
+    }
+}
+
+fn vnoise(seed: u64, x: f64, y: f64) -> f64 {
+    let (ix, iy) = (x.floor(), y.floor());
+    let (fx, fy) = (x - ix, y - iy);
+    let (fx, fy) = (fx * fx * (3.0 - 2.0 * fx), fy * fy * (3.0 - 2.0 * fy));
+    let c = |dx: i64, dy: i64| {
+        (hash_coord(seed, ix as i64 + dx, iy as i64 + dy, 5) >> 11) as f64 / (1u64 << 53) as f64
+    };
+    let a = c(0, 0) + (c(1, 0) - c(0, 0)) * fx;
+    let b = c(0, 1) + (c(1, 1) - c(0, 1)) * fx;
+    a + (b - a) * fy
+}
+
+/// Damage per turn of a place without a suit's protection: (damage after armour, reason). A
+/// thin atmosphere (below 0.05 bar) and extreme temperatures hurt; armour cuts it by 1.5 x its
+/// defence (a full exosuit stops almost everything).
+pub fn environment_damage(pressure: f64, temp: f64, defense: f64) -> (f64, &'static str) {
+    let mut dmg: f64 = 0.0;
+    let mut why = "";
+    if pressure < 0.05 {
+        dmg += 0.03;
+        why = "L'air manque";
+    }
+    let excess = if temp < 250.0 {
+        250.0 - temp
+    } else if temp > 330.0 {
+        temp - 330.0
+    } else {
+        0.0
+    };
+    if excess > 0.0 {
+        dmg += 0.004 * (excess / 10.0).min(10.0);
+        why = if temp < 250.0 {
+            "Le froid mord"
+        } else {
+            "La chaleur brule"
+        };
+    }
+    (dmg * (1.0 - (1.5 * defense).min(0.95)), why)
+}
+
+/// The theme a site of a surface leads down into.
+pub fn site_theme(site_id: &str) -> &'static str {
+    match site_id {
+        "epave" => "epave",
+        "ruine" => "ruines",
+        "grotte" => "grotte",
+        "campement" => "depot",
+        "source" => "grotte_cristal",
+        _ => "laboratoire",
+    }
 }
 
 fn pick_weighted<T: Clone>(list: &[(T, f64)], rng: &mut Rng) -> T {
@@ -311,14 +529,8 @@ pub fn generate_floor(data: &GameData, theme: usize, seed: u64, depth: u32) -> F
             continue;
         }
         let k = pick_weighted(&pool, &mut rng);
-        monsters.push(Mon {
-            kind: k,
-            x: c.0,
-            y: c.1,
-            hp: data.rogue_monsters[k].hp * scale,
-            awake: rng.f64() < 0.35,
-            boss: false,
-        });
+        let awake = rng.f64() < 0.35;
+        monsters.push(mon_from_def(data, k, c.0, c.1, scale, awake, false));
     }
     // Vault guardians.
     for c in vaults {
@@ -328,14 +540,7 @@ pub fn generate_floor(data: &GameData, theme: usize, seed: u64, depth: u32) -> F
             .map(|d| (c.0 + d.0, c.1 + d.1))
             .find(|s| free(&tiles, *s) && !monsters.iter().any(|m| (m.x, m.y) == *s));
         if let Some(s) = spot {
-            monsters.push(Mon {
-                kind: k,
-                x: s.0,
-                y: s.1,
-                hp: data.rogue_monsters[k].hp * scale * 1.5,
-                awake: false,
-                boss: false,
-            });
+            monsters.push(mon_from_def(data, k, s.0, s.1, scale * 1.5, false, false));
         }
     }
     // The boss of the last floor, in the last room.
@@ -355,14 +560,15 @@ pub fn generate_floor(data: &GameData, theme: usize, seed: u64, depth: u32) -> F
             c = (room.0, room.1);
         }
         monsters.retain(|m| (m.x, m.y) != c);
-        monsters.push(Mon {
-            kind: strongest,
-            x: c.0,
-            y: c.1,
-            hp: data.rogue_monsters[strongest].hp * scale * 2.5,
-            awake: false,
-            boss: true,
-        });
+        monsters.push(mon_from_def(
+            data,
+            strongest,
+            c.0,
+            c.1,
+            scale * 2.5,
+            false,
+            true,
+        ));
     }
     monsters.retain(|m| (m.x, m.y) != start);
     // Loot piles.
@@ -379,6 +585,7 @@ pub fn generate_floor(data: &GameData, theme: usize, seed: u64, depth: u32) -> F
                         y: c.1,
                         res,
                         kg: (lo + (hi - lo) * rng.f64()) * (1.0 + 0.3 * f64::from(depth)),
+                        plant: false,
                     });
                 }
             }
@@ -389,23 +596,35 @@ pub fn generate_floor(data: &GameData, theme: usize, seed: u64, depth: u32) -> F
         tiles,
         monsters,
         items,
+        sites: Vec::new(),
         start,
     }
 }
 
+/// Size of a surface floor (cells).
+pub const MAP_W: usize = 96;
+pub const MAP_H: usize = 52;
+
 impl Sim {
+    // ---- where to go ---------------------------------------------------------------------
+
     /// Places that can be entered from where the ship is.
     pub fn rogue_targets(&self) -> Vec<RogueTarget> {
         let d = &self.data;
         let theme = |id: &str| d.rogue_theme_index(id).unwrap_or(0);
         let dim = self.multiverse.dimension > 0;
         let mut out = Vec::new();
-        let mut add = |label: String, id: &str, seed: u64, portal: bool| {
-            let id = if dim && !portal { "reve" } else { id };
+        let mut add = |label: String, id: &str, seed: u64, portal: bool, kind: TargetKind| {
+            let id = if dim && !portal && kind == TargetKind::Place {
+                "reve"
+            } else {
+                id
+            };
             out.push(RogueTarget {
                 label,
                 theme: theme(id),
                 seed,
+                kind,
             });
         };
         for (i, b) in self.bodies.iter().enumerate() {
@@ -419,12 +638,24 @@ impl Sim {
             let name = b.name.clone();
             match b.kind {
                 BodyKind::Station if self.docked == Some(i) || dist <= ENTER_RANGE => {
-                    add(format!("Station : {name}"), "station", seed, false);
+                    add(
+                        format!("Station : {name}"),
+                        "station",
+                        seed,
+                        false,
+                        TargetKind::Place,
+                    );
                 }
                 BodyKind::Anomaly(AnomalyKind::Portal)
                     if dist <= crate::multiverse::PORTAL_RANGE =>
                 {
-                    add(format!("Coeur du portail : {name}"), "portail", seed, true);
+                    add(
+                        format!("Coeur du portail : {name}"),
+                        "portail",
+                        seed,
+                        true,
+                        TargetKind::Place,
+                    );
                 }
                 BodyKind::Anomaly(k) if dist <= ENTER_RANGE => {
                     let id = match k {
@@ -439,21 +670,33 @@ impl Sim {
                         AnomalyKind::SpatialRift => "reve",
                         AnomalyKind::Portal => "portail",
                     };
-                    add(format!("{} : {name}", k.label()), id, seed, false);
+                    add(
+                        format!("{} : {name}", k.label()),
+                        id,
+                        seed,
+                        false,
+                        TargetKind::Place,
+                    );
                 }
                 BodyKind::Asteroid(_) if dist <= b.radius * 3.0 + 30_000.0 => {
-                    add(format!("Galeries : {name}"), "grotte", seed, false);
+                    add(
+                        format!("Galeries : {name}"),
+                        "grotte",
+                        seed,
+                        false,
+                        TargetKind::Place,
+                    );
                 }
                 BodyKind::Planet(k) | BodyKind::Moon(k)
-                    if !k.is_giant() && dist <= b.radius * 3.0 + 1.0e6 =>
+                    if !k.is_giant() && dist <= b.radius * MAX_RANGE_RADII + 1.0e6 =>
                 {
-                    let id = match k {
-                        PlanetKind::Ice | PlanetKind::Tundra => "glace",
-                        PlanetKind::Lava | PlanetKind::Venusian => "reacteur",
-                        _ if seed.is_multiple_of(3) => "ruines",
-                        _ => "grotte",
-                    };
-                    add(format!("Sous la surface : {name}"), id, seed, false);
+                    add(
+                        format!("Atterrir : {name}"),
+                        "surface",
+                        seed,
+                        true,
+                        TargetKind::Landing(i),
+                    );
                 }
                 _ => {}
             }
@@ -461,55 +704,16 @@ impl Sim {
         for w in &self.wrecks {
             if (self.ship.pos - w.pos).length() <= 30_000.0 {
                 let seed = hash_coord(self.system.seed, i64::from(w.id), 77, 5);
-                add(format!("Epave : {}", w.name), "epave", seed, false);
+                add(
+                    format!("Epave : {}", w.name),
+                    "epave",
+                    seed,
+                    false,
+                    TargetKind::Place,
+                );
             }
         }
         out
-    }
-
-    /// Go down into a site met on the walk over a planet (X): the walking party descends into a
-    /// ruin, a cave, a wreck... The same site always has the same layout on a given visit.
-    pub fn rogue_from_walk(&mut self, w: &crate::walk::Walk) -> Result<(), &'static str> {
-        if self.rogue.is_some() {
-            return Err("une exploration est deja en cours");
-        }
-        let (x, y) = w.pos[w.active];
-        let k = w
-            .sites
-            .iter()
-            .position(|s| (s.x - x).abs() <= 1 && (s.y - y).abs() <= 1)
-            .ok_or("aucun site a portee")?;
-        let id = self.data.sites[w.sites[k].def].id.as_str();
-        let theme = self
-            .data
-            .rogue_theme_index(match id {
-                "epave" => "epave",
-                "ruine" => "ruines",
-                "grotte" => "grotte",
-                "campement" => "depot",
-                "source" => "grotte_cristal",
-                _ => "laboratoire",
-            })
-            .ok_or("lieu inconnu")?;
-        let party: Vec<usize> = (0..w.party.len())
-            .filter(|&i| w.up(self, i))
-            .map(|i| w.party[i])
-            .collect();
-        if party.is_empty() {
-            return Err("personne n'est en etat de descendre");
-        }
-        let base = hash_coord(w.seed, k as i64, 91, 17);
-        let visits = self
-            .rogue_visits
-            .iter()
-            .find(|(s, _)| *s == base)
-            .map_or(0, |(_, n)| *n);
-        match self.rogue_visits.iter_mut().find(|(s, _)| *s == base) {
-            Some((_, n)) => *n += 1,
-            None => self.rogue_visits.push((base, 1)),
-        }
-        self.rogue_begin(theme, hash_coord(base, i64::from(visits), 3, 3), party);
-        Ok(())
     }
 
     /// Crew fit to go: alive and healthy enough, the best fighters first.
@@ -529,6 +733,44 @@ impl Sim {
         v
     }
 
+    /// Whether a squad can land on `body` now.
+    pub fn expedition_possible(&self, body: usize) -> Result<(), &'static str> {
+        let b = self.bodies.get(body).ok_or("corps inconnu")?;
+        self.planet_map(body).ok_or("pas de surface solide")?;
+        if (self.ship.pos - b.pos).length() > b.radius * MAX_RANGE_RADII + 1.0e6 {
+            return Err("approchez-vous de la planete");
+        }
+        if self.crew.alive().count() == 0 {
+            return Err("personne a bord");
+        }
+        Ok(())
+    }
+
+    /// A land cell of `body` near the middle of its map (None for worlds with no surface).
+    pub fn default_landing(&self, body: usize) -> Option<(usize, usize)> {
+        let map = self.planet_map(body)?;
+        let (mx, my) = (SURF_W as i32 / 2, SURF_H as i32 / 2);
+        let mut cells: Vec<(usize, usize)> = (0..SURF_H)
+            .flat_map(|y| (0..SURF_W).map(move |x| (x, y)))
+            .filter(|&(x, y)| !map.surface.is_sea(x, y))
+            .collect();
+        cells.sort_by_key(|&(x, y)| (x as i32 - mx).abs() + 2 * (y as i32 - my).abs());
+        cells.first().copied()
+    }
+
+    fn next_visit_seed(&mut self, base: u64) -> u64 {
+        let visits = self
+            .rogue_visits
+            .iter()
+            .find(|(s, _)| *s == base)
+            .map_or(0, |(_, n)| *n);
+        match self.rogue_visits.iter_mut().find(|(s, _)| *s == base) {
+            Some((_, n)) => *n += 1,
+            None => self.rogue_visits.push((base, 1)),
+        }
+        hash_coord(base, i64::from(visits), 3, 3)
+    }
+
     /// Set out on target `i` of `rogue_targets` with `party` (the default squad if empty).
     pub fn rogue_enter(&mut self, i: usize, party: Vec<usize>) -> Result<(), &'static str> {
         if self.rogue.is_some() {
@@ -542,43 +784,40 @@ impl Sim {
             .into_iter()
             .nth(i)
             .ok_or("rien a explorer ici")?;
-        let party: Vec<usize> = if party.is_empty() {
+        let party = if party.is_empty() {
             self.rogue_squad()
         } else {
             party
-                .into_iter()
-                .filter(|&k| {
-                    self.crew
-                        .members
-                        .get(k)
-                        .is_some_and(|p| p.alive && p.health > 0.0)
-                })
-                .take(MAX_PARTY)
-                .collect()
         };
+        if let TargetKind::Landing(body) = target.kind {
+            let (cx, cy) = self.default_landing(body).ok_or("pas de terre ferme")?;
+            return self.rogue_land(body, cx, cy, party, false);
+        }
+        let party = self.able(party);
         if party.is_empty() {
             return Err("personne n'est en etat de partir");
         }
-        let visits = self
-            .rogue_visits
-            .iter()
-            .find(|(s, _)| *s == target.seed)
-            .map_or(0, |(_, n)| *n);
-        match self
-            .rogue_visits
-            .iter_mut()
-            .find(|(s, _)| *s == target.seed)
-        {
-            Some((_, n)) => *n += 1,
-            None => self.rogue_visits.push((target.seed, 1)),
-        }
-        let seed = hash_coord(target.seed, i64::from(visits), 3, 3);
+        let seed = self.next_visit_seed(target.seed);
         self.rogue_begin(target.theme, seed, party);
         Ok(())
     }
 
-    /// Start a run on `theme` with this seed and squad (the squad must not be empty).
-    pub fn rogue_begin(&mut self, theme: usize, seed: u64, party: Vec<usize>) {
+    /// The members of `party` still able to go.
+    fn able(&self, party: Vec<usize>) -> Vec<usize> {
+        party
+            .into_iter()
+            .filter(|&k| {
+                self.crew
+                    .members
+                    .get(k)
+                    .is_some_and(|p| p.alive && p.health > 0.0)
+            })
+            .take(MAX_PARTY)
+            .collect()
+    }
+
+    /// A dungeon run on `theme` with this seed and squad (the squad must not be empty).
+    fn new_run(&self, theme: usize, seed: u64, party: Vec<usize>) -> Rogue {
         let t = &self.data.rogue_themes[theme];
         let floor = generate_floor(&self.data, theme, seed, 0);
         let (x, y) = floor.start;
@@ -599,12 +838,219 @@ impl Sim {
             over: false,
             kills: 0,
             buff: 0,
+            drone_turns: 0,
             boss_dead: false,
+            body: None,
+            place: t.name.clone(),
+            vehicle: false,
+            env: None,
+            turn_seconds: TURN_SECONDS,
+            parent: None,
         };
         r.say(format!("{} : {}", t.name, t.text));
         r.reveal();
+        r
+    }
+
+    /// Start a dungeon run from the ship.
+    pub fn rogue_begin(&mut self, theme: usize, seed: u64, party: Vec<usize>) {
+        let r = self.new_run(theme, seed, party);
         self.rogue = Some(r);
     }
+
+    /// Land `party` (crew indices) on the cell (`cx`, `cy`) of `body`, with or without the rover.
+    pub fn rogue_land(
+        &mut self,
+        body: usize,
+        cx: usize,
+        cy: usize,
+        party: Vec<usize>,
+        vehicle: bool,
+    ) -> Result<(), &'static str> {
+        if self.rogue.is_some() {
+            return Err("une exploration est deja en cours");
+        }
+        self.expedition_possible(body)?;
+        let map = self.planet_map(body).ok_or("pas de surface solide")?;
+        if map.surface.is_sea(cx, cy) {
+            return Err("pas de terre ferme ici");
+        }
+        let party = self.able(party);
+        if party.is_empty() {
+            return Err("aucun equipier valide");
+        }
+        let biome = map.biome_at(cx, cy);
+        let seed = hash_coord(map.seed, cx as i64, cy as i64, 77);
+        let b = self.data.biomes[biome].clone();
+        let hum = f64::from(map.surface.hum[Surface::idx(cx, cy)]);
+        let (w, h) = (MAP_W as i32, MAP_H as i32);
+        let at = |x: i32, y: i32| (y * w + x) as usize;
+        // Ground: rocks and, in wet places, ponds.
+        let mut tiles = vec![T_FLOOR; MAP_W * MAP_H];
+        for y in 0..h {
+            for x in 0..w {
+                let n = vnoise(seed, f64::from(x) / 6.0, f64::from(y) / 6.0);
+                let wv = vnoise(seed ^ 0xA5A5, f64::from(x) / 9.0, f64::from(y) / 9.0);
+                tiles[at(x, y)] = if n > 0.80 {
+                    T_WALL
+                } else if hum > 0.45 && wv < 0.22 {
+                    T_WATER
+                } else {
+                    T_FLOOR
+                };
+            }
+        }
+        let (lx, ly) = (w / 2, h / 2);
+        for dy in -2..=2 {
+            for dx in -2..=2 {
+                tiles[at(lx + dx, ly + dy)] = T_FLOOR;
+            }
+        }
+        tiles[at(lx, ly)] = T_UP;
+        let mut monsters: Vec<Mon> = Vec::new();
+        let mut items: Vec<Item> = Vec::new();
+        let mut sites: Vec<SiteInst> = Vec::new();
+        let busy = |tiles: &Vec<u8>, monsters: &Vec<Mon>, items: &Vec<Item>, x: i32, y: i32| {
+            tiles[at(x, y)] != T_FLOOR
+                || monsters.iter().any(|m| (m.x, m.y) == (x, y))
+                || items.iter().any(|i| (i.x, i.y) == (x, y))
+        };
+        // Life: the producers and animals of the biome.
+        let mut rng = Rng::new(seed ^ 0x11FE);
+        let flora: Vec<usize> = (0..self.data.species.len())
+            .filter(|&i| {
+                let s = &self.data.species[i];
+                s.is_producer() && s.body >= 0.04 && s.habitat.contains(&b.id)
+            })
+            .collect();
+        let fauna: Vec<usize> = (0..self.data.species.len())
+            .filter(|&i| {
+                let s = &self.data.species[i];
+                !s.is_producer() && s.body >= 0.01 && s.habitat.contains(&b.id)
+            })
+            .collect();
+        let n_plants = if flora.is_empty() {
+            0
+        } else {
+            ((MAP_W * MAP_H) as f64 * (0.01 + 0.06 * b.fertility)) as usize
+        };
+        for _ in 0..n_plants {
+            let (x, y) = (
+                (rng.next_u64() % MAP_W as u64) as i32,
+                (rng.next_u64() % MAP_H as u64) as i32,
+            );
+            if !busy(&tiles, &monsters, &items, x, y) {
+                let sp = flora[(rng.next_u64() % flora.len() as u64) as usize];
+                for (res, kg) in &self.data.species[sp].yields {
+                    if let Some(r) = self.data.resource_index(res) {
+                        items.push(Item {
+                            x,
+                            y,
+                            res: r,
+                            kg: *kg,
+                            plant: true,
+                        });
+                    }
+                }
+            }
+        }
+        let n_fauna = if fauna.is_empty() {
+            0
+        } else {
+            8 + (rng.next_u64() % 8) as usize
+        };
+        for _ in 0..n_fauna {
+            let (x, y) = (
+                (rng.next_u64() % MAP_W as u64) as i32,
+                (rng.next_u64() % MAP_H as u64) as i32,
+            );
+            // Not on top of the landing party.
+            if !busy(&tiles, &monsters, &items, x, y) && (x - lx).abs() + (y - ly).abs() > 8 {
+                let sp = fauna[(rng.next_u64() % fauna.len() as u64) as usize];
+                monsters.push(mon_from_species(&self.data, sp, x, y));
+            }
+        }
+        // Sites of interest: 2 to 4, by weight, away from the landing.
+        let total: f64 = self.data.sites.iter().map(|s| s.weight).sum();
+        for _ in 0..(2 + rng.next_u64() % 3) {
+            let (x, y) = (
+                (rng.next_u64() % MAP_W as u64) as i32,
+                (rng.next_u64() % MAP_H as u64) as i32,
+            );
+            if busy(&tiles, &monsters, &items, x, y) || (x - lx).abs() + (y - ly).abs() < 10 {
+                continue;
+            }
+            if sites.iter().any(|s| s.x == x && s.y == y) {
+                continue;
+            }
+            let mut pick = rng.f64() * total;
+            let mut def = 0;
+            for (i, s) in self.data.sites.iter().enumerate() {
+                if pick < s.weight {
+                    def = i;
+                    break;
+                }
+                pick -= s.weight;
+            }
+            tiles[at(x, y)] = T_SITE;
+            sites.push(SiteInst {
+                def,
+                x,
+                y,
+                used: false,
+            });
+        }
+        let floor = Floor {
+            seen: vec![false; MAP_W * MAP_H],
+            tiles,
+            monsters,
+            items,
+            sites,
+            start: (lx, ly),
+        };
+        let surface = self.data.rogue_theme_index("surface").unwrap_or(0);
+        let names: Vec<String> = party
+            .iter()
+            .map(|&i| self.crew.members[i].name.clone())
+            .collect();
+        let mut r = Rogue {
+            theme: surface,
+            seed,
+            w: MAP_W,
+            h: MAP_H,
+            floors: vec![floor],
+            cur: 0,
+            party,
+            x: lx,
+            y: ly,
+            active: 0,
+            loot: Vec::new(),
+            turn: 0,
+            log: Vec::new(),
+            over: false,
+            kills: 0,
+            buff: 0,
+            drone_turns: 0,
+            boss_dead: false,
+            body: Some(body),
+            place: b.name.clone(),
+            vehicle,
+            env: Some((map.pressure, self.temp_now(&map, cx, cy))),
+            turn_seconds: SURFACE_TURN_SECONDS,
+            parent: None,
+        };
+        r.say(format!(
+            "Debarquement en {} : {}{}.",
+            b.name.to_lowercase(),
+            names.join(", "),
+            if vehicle { ", avec le rover" } else { "" }
+        ));
+        r.reveal();
+        self.rogue = Some(r);
+        Ok(())
+    }
+
+    // ---- the squad -------------------------------------------------------------------------
 
     fn party_up(&self, r: &Rogue) -> Vec<usize> {
         r.party
@@ -617,6 +1063,38 @@ impl Sim {
                     .is_some_and(|p| p.alive && p.health > 0.0)
             })
             .collect()
+    }
+
+    /// Kg more the squad can pick up: the hold and the packs both have a limit.
+    fn loot_room(&self, r: &Rogue) -> f64 {
+        let carried = r.loot_mass();
+        let hold = self.ship.cargo.cap_mass - self.ship.cargo.mass - carried - r.loot_above();
+        let pack = r.carry_cap(self.party_up(r).len()) - carried;
+        hold.min(pack).max(0.0)
+    }
+
+    /// Put `kg` of `res` in the pack as far as there is room; returns what was taken.
+    fn rogue_gain(&mut self, r: &mut Rogue, res: usize, kg: f64) -> f64 {
+        let take = kg.min(self.loot_room(r));
+        if take < kg - 1e-9 {
+            r.say("Trop lourd : une partie est abandonnee sur place.");
+        }
+        if take > 0.0 {
+            match r.loot.iter_mut().find(|l| l.0 == res) {
+                Some(l) => l.1 += take,
+                None => r.loot.push((res, take)),
+            }
+        }
+        take
+    }
+
+    /// What the tools of the lead add to a harvest.
+    fn gather_bonus(&self, r: &Rogue) -> f64 {
+        let up = self.party_up(r);
+        let lead = up.get(r.active.min(up.len().saturating_sub(1)));
+        1.0 + lead.map_or(0.0, |&i| {
+            self.crew.members[i].gear_stat(&self.data, "gather")
+        })
     }
 
     /// Hurt one member of the squad: health and one organ.
@@ -662,7 +1140,10 @@ impl Sim {
         (0.8 + 0.22 * combat + 2.0 * p.gear_stat(&self.data, "attack")) * (0.7 + 0.6 * rng.f64())
     }
 
-    /// One move of the squad: a step, or an attack when something stands there.
+    // ---- moving ----------------------------------------------------------------------------
+
+    /// One move of the squad: a step (two with the rover on open ground), or an attack when
+    /// something stands there.
     pub fn rogue_step(&mut self, dx: i32, dy: i32) -> Result<(), &'static str> {
         let mut r = self.rogue.take().ok_or("pas d'exploration en cours")?;
         let res = self.rogue_step_inner(&mut r, dx.signum(), dy.signum());
@@ -678,13 +1159,27 @@ impl Sim {
             self.rogue_end_turn(r);
             return Ok(());
         }
-        let (nx, ny) = (r.x + dx, r.y + dy);
-        if r.tile(nx, ny) == T_WALL {
-            return Err("un mur");
+        if !r.walkable(r.x + dx, r.y + dy) {
+            return Err(if r.tile(r.x + dx, r.y + dy) == T_WATER {
+                "de l'eau"
+            } else {
+                "un mur"
+            });
         }
-        if let Some(k) = r.monster_at(nx, ny) {
-            self.rogue_attack(r, k);
+        let steps = if r.vehicle && r.on_surface() {
+            VEHICLE_SPEED
         } else {
+            1
+        };
+        for _ in 0..steps {
+            let (nx, ny) = (r.x + dx, r.y + dy);
+            if let Some(k) = r.monster_at(nx, ny) {
+                self.rogue_attack(r, k);
+                break;
+            }
+            if !r.walkable(nx, ny) {
+                break;
+            }
             r.x = nx;
             r.y = ny;
             self.rogue_arrive(r);
@@ -706,31 +1201,28 @@ impl Sim {
         if r.buff > 0 {
             total *= 1.5;
         }
-        let kind = r.floor().monsters[k].kind;
-        let def = self.data.rogue_monsters[kind].clone();
-        let dmg = total * (1.0 - def.defense);
+        let defense = r.floor().monsters[k].defense;
+        let name = r.floor().monsters[k].name.clone();
+        let dmg = total * (1.0 - defense);
         let m = &mut r.floor_mut().monsters[k];
         m.hp -= dmg;
         m.awake = true;
         if m.hp > 0.0 {
-            r.say(format!(
-                "Vous frappez {} ({dmg:.1}).",
-                def.name.to_lowercase()
-            ));
+            r.say(format!("Vous frappez {} ({dmg:.1}).", name.to_lowercase()));
             return;
         }
         let m = r.floor_mut().monsters.remove(k);
         r.kills += 1;
-        r.say(format!("{} est abattu.", def.name));
-        let (res, lo, hi) = &def.loot;
-        if let Some(ri) = self.data.resource_index(res) {
-            let mult = if m.boss { 3.0 } else { 1.0 } * (1.0 + 0.3 * r.depth() as f64);
+        r.say(format!("{name} est abattu."));
+        let mult = if m.boss { 3.0 } else { 1.0 } * (1.0 + 0.3 * r.depth() as f64);
+        for (res, lo, hi) in &m.drops {
             let kg = (lo + (hi - lo) * rng.f64()) * mult;
             r.floor_mut().items.push(Item {
                 x: m.x,
                 y: m.y,
-                res: ri,
+                res: *res,
                 kg,
+                plant: false,
             });
         }
         if m.boss {
@@ -740,29 +1232,35 @@ impl Sim {
         }
     }
 
-    /// The squad is on a new tile: pick up what lies there, trip what lies there.
+    /// The squad is on a new tile: pick up what lies there, search what lies there, trip what
+    /// lies there.
     fn rogue_arrive(&mut self, r: &mut Rogue) {
         let (x, y) = (r.x, r.y);
-        if let Some(k) = r.floor().items.iter().position(|i| i.x == x && i.y == y) {
+        while let Some(k) = r.floor().items.iter().position(|i| i.x == x && i.y == y) {
             let it = r.floor().items[k].clone();
-            let carried: f64 = r.loot.iter().map(|l| l.1).sum();
-            let room = (self.ship.cargo.cap_mass - self.ship.cargo.mass - carried).max(0.0);
-            if room <= 0.01 {
-                r.say("La soute est pleine : vous laissez le butin.");
-            } else {
-                let kg = it.kg.min(room);
-                match r.loot.iter_mut().find(|l| l.0 == it.res) {
-                    Some(l) => l.1 += kg,
-                    None => r.loot.push((it.res, kg)),
-                }
-                let name = self.data.resources[it.res].name.to_lowercase();
-                r.say(format!("Vous ramassez {kg:.1} kg de {name}."));
-                if kg < it.kg {
-                    r.floor_mut().items[k].kg -= kg;
-                } else {
-                    r.floor_mut().items.remove(k);
-                }
+            if self.loot_room(r) <= 0.01 {
+                r.say("Vous ne pouvez plus rien porter : vous laissez le butin.");
+                break;
             }
+            let bonus = if it.plant { self.gather_bonus(r) } else { 1.0 };
+            let taken = self.rogue_gain(r, it.res, it.kg * bonus) / bonus;
+            let name = self.data.resources[it.res].name.to_lowercase();
+            if taken > 0.0 {
+                r.say(format!("Vous ramassez {taken:.1} kg de {name}."));
+            }
+            if taken < it.kg - 1e-9 {
+                r.floor_mut().items[k].kg -= taken;
+                break;
+            }
+            r.floor_mut().items.remove(k);
+        }
+        if let Some(k) = r
+            .floor()
+            .sites
+            .iter()
+            .position(|s| s.x == x && s.y == y && !s.used)
+        {
+            self.rogue_search_site(r, k);
         }
         let t = r.tile(x, y);
         if t >= T_FEATURE {
@@ -771,6 +1269,41 @@ impl Sim {
                 self.rogue_feature(r, ROGUE_FEATURES[f]);
                 let i = r.idx(x, y);
                 r.floor_mut().tiles[i] = T_FLOOR;
+            }
+        }
+    }
+
+    /// Search a site of a surface once: loot, a rest, sometimes a mishap.
+    fn rogue_search_site(&mut self, r: &mut Rogue, k: usize) {
+        r.floor_mut().sites[k].used = true;
+        let data = std::sync::Arc::clone(&self.data);
+        let site = &data.sites[r.floor().sites[k].def];
+        r.say(format!("{} : {}", site.name, site.text));
+        let bonus = self.gather_bonus(r);
+        for (res, kg) in &site.loot {
+            if let Some(i) = data.resource_index(res) {
+                self.rogue_gain(r, i, *kg * bonus);
+            }
+        }
+        if site.heal {
+            for m in self.party_up(r) {
+                let p = &mut self.crew.members[m];
+                p.health = (p.health + 0.3).min(1.0);
+                p.fatigue = (p.fatigue - 0.5).max(0.0);
+                for o in p.organs.iter_mut() {
+                    if *o > 0.0 {
+                        *o = (*o + 0.2).min(1.0);
+                    }
+                }
+            }
+            r.say("Toute l'equipe se repose et se soigne.");
+        }
+        let mut rng = Rng::new(hash_coord(r.seed, i64::from(r.turn), k as i64, 63));
+        if site.danger > 0.0 && rng.f64() < site.danger {
+            let up = self.party_up(r);
+            if let Some(&who) = up.get(r.active.min(up.len().saturating_sub(1))) {
+                let dmg = 0.2 + 0.3 * rng.f64();
+                self.rogue_hurt(r, who, dmg, "Un eboulement ou une embuscade");
             }
         }
     }
@@ -815,16 +1348,7 @@ impl Sim {
                     let (res, lo, hi, _) = &t.loot[pick_weighted(&table, &mut rng)];
                     if let Some(ri) = self.data.resource_index(res) {
                         let kg = (lo + (hi - lo) * rng.f64()) * depth_mult;
-                        let carried: f64 = r.loot.iter().map(|l| l.1).sum();
-                        let room =
-                            (self.ship.cargo.cap_mass - self.ship.cargo.mass - carried).max(0.0);
-                        let kg = kg.min(room);
-                        if kg > 0.01 {
-                            match r.loot.iter_mut().find(|l| l.0 == ri) {
-                                Some(l) => l.1 += kg,
-                                None => r.loot.push((ri, kg)),
-                            }
-                        }
+                        self.rogue_gain(r, ri, kg);
                     }
                 }
                 r.say(if feature == "vault" {
@@ -883,11 +1407,66 @@ impl Sim {
         }
     }
 
-    /// Monsters move and strike, hazards bite, the clock runs.
+    /// The AI sends a drone (one unit of robotics): for DRONE_TURNS turns it picks up, on its own
+    /// and at half yield, what lies within DRONE_REACH cells of the squad.
+    pub fn rogue_deploy_drone(&mut self) -> Result<(), &'static str> {
+        let mut r = self.rogue.take().ok_or("pas d'exploration en cours")?;
+        let res = self.rogue_drone_inner(&mut r);
+        self.rogue = Some(r);
+        res
+    }
+
+    fn rogue_drone_inner(&mut self, r: &mut Rogue) -> Result<(), &'static str> {
+        if r.over {
+            return Err("l'exploration est terminee");
+        }
+        if r.drone_turns > 0 {
+            return Err("un drone est deja en vol");
+        }
+        let res = self
+            .data
+            .resource_index("robotics")
+            .ok_or("pas de robotique")?;
+        if self.ship.cargo.kg[res] < DRONE_COST {
+            return Err("il faut une unite de robotique dans la soute");
+        }
+        let data = std::sync::Arc::clone(&self.data);
+        self.ship.cargo.remove(&data, res, DRONE_COST);
+        r.drone_turns = DRONE_TURNS;
+        r.say("Un drone est lance : il ramasse autour de l'equipe.");
+        self.rogue_end_turn(r);
+        Ok(())
+    }
+
+    fn rogue_drone_gather(&mut self, r: &mut Rogue) {
+        let (x, y) = (r.x, r.y);
+        let Some(k) = r
+            .floor()
+            .items
+            .iter()
+            .position(|i| (i.x - x).abs() <= DRONE_REACH && (i.y - y).abs() <= DRONE_REACH)
+        else {
+            return;
+        };
+        let it = r.floor_mut().items.remove(k);
+        let bonus = if it.plant { self.gather_bonus(r) } else { 1.0 };
+        self.rogue_gain(r, it.res, it.kg * 0.5 * bonus);
+    }
+
+    // ---- the world answers -----------------------------------------------------------------
+
+    /// Monsters move and strike, hazards and the air bite, the clock runs.
     fn rogue_end_turn(&mut self, r: &mut Rogue) {
         r.turn += 1;
         r.buff = r.buff.saturating_sub(1);
-        self.advance(TURN_SECONDS, &ShipInput::default());
+        if r.drone_turns > 0 {
+            r.drone_turns -= 1;
+            self.rogue_drone_gather(r);
+            if r.drone_turns == 0 {
+                r.say("Le drone rentre, batteries a plat.");
+            }
+        }
+        self.advance(r.turn_seconds, &ShipInput::default());
         let theme = self.data.rogue_themes[r.theme].clone();
         // Hazard of the place, every fifth turn.
         if theme.hazard > 0.0 && r.turn.is_multiple_of(5) {
@@ -904,58 +1483,104 @@ impl Sim {
                 r.say(format!("{} vous ronge.", theme.hazard_name));
             }
         }
-        let mut rng = Rng::new(hash_coord(r.seed, i64::from(r.turn), r.cur as i64, 41));
-        let (px, py) = (r.x, r.y);
-        for k in 0..r.floor().monsters.len() {
-            let m = r.floor().monsters[k].clone();
-            let def = self.data.rogue_monsters[m.kind].clone();
-            let dist = (m.x - px).abs().max((m.y - py).abs());
-            let sees = dist <= def.sight && r.line_clear(m.x, m.y, px, py);
-            if !m.awake {
-                // Sleepers wake when you come close; the mimic only when touched.
-                let wake = if def.id == SLEEPER {
-                    dist <= 1
-                } else {
-                    sees && dist <= def.sight / 2 + 1
-                };
-                if wake {
-                    r.floor_mut().monsters[k].awake = true;
-                    if sees {
-                        r.say(format!("{} vous remarque.", def.name));
-                    }
-                }
-                continue;
-            }
-            if dist <= 1 {
-                let up = self.party_up(r);
-                if up.is_empty() {
-                    break;
-                }
-                let who = up[(rng.f64() * up.len() as f64) as usize % up.len()];
-                let dmg = def.attack * (0.6 + 0.8 * rng.f64()) * (1.0 + 0.1 * r.depth() as f64);
-                let name = def.name.clone();
-                self.rogue_hurt(r, who, dmg, &name);
-            } else if sees && !STATIONARY.contains(&def.id.as_str()) {
-                let (sx, sy) = ((px - m.x).signum(), (py - m.y).signum());
-                for (ax, ay) in [(sx, sy), (sx, 0), (0, sy)] {
-                    let (tx, ty) = (m.x + ax, m.y + ay);
-                    if (ax, ay) != (0, 0)
-                        && r.tile(tx, ty) != T_WALL
-                        && (tx, ty) != (px, py)
-                        && r.monster_at(tx, ty).is_none()
-                    {
-                        let mm = &mut r.floor_mut().monsters[k];
-                        mm.x = tx;
-                        mm.y = ty;
-                        break;
+        // The air and the climate of a surface: a suit protects in proportion to its defence.
+        if let (Some((pressure, temp)), true) = (r.env, r.on_surface()) {
+            for who in self.party_up(r) {
+                let defense = self.crew.members[who].gear_stat(&self.data, "defense");
+                let (dmg, why) = environment_damage(pressure, temp, defense);
+                if dmg > 0.0 {
+                    let p = &mut self.crew.members[who];
+                    p.health = (p.health - (dmg * r.turn_seconds / 60.0) as f32).max(0.0);
+                    if r.turn.is_multiple_of(10) {
+                        r.say(format!("{why}."));
                     }
                 }
             }
         }
-        if self.party_up(r).is_empty() {
+        let mut rng = Rng::new(hash_coord(r.seed, i64::from(r.turn), r.cur as i64, 41));
+        let (px, py) = (r.x, r.y);
+        for k in 0..r.floor().monsters.len() {
+            let (mx, my, hunts, attack, sight, awake, stationary, sleeper) = {
+                let m = &r.floor().monsters[k];
+                (
+                    m.x,
+                    m.y,
+                    m.hunts,
+                    m.attack,
+                    m.sight,
+                    m.awake,
+                    m.stationary,
+                    m.sleeper,
+                )
+            };
+            let name = r.floor().monsters[k].name.clone();
+            let dist = (mx - px).abs().max((my - py).abs());
+            let sees = dist <= sight && r.line_clear(mx, my, px, py);
+            if !awake {
+                // Sleepers wake when you come close; the mimic only when touched.
+                let wake = if sleeper {
+                    dist <= 1
+                } else {
+                    sees && dist <= sight / 2 + 1
+                };
+                if wake {
+                    r.floor_mut().monsters[k].awake = true;
+                    if sees {
+                        r.say(format!("{name} vous remarque."));
+                    }
+                }
+                continue;
+            }
+            let free = |r: &Rogue, x: i32, y: i32| {
+                r.walkable(x, y) && r.monster_at(x, y).is_none() && (x, y) != (px, py)
+            };
+            if hunts {
+                if dist <= 1 {
+                    let up = self.party_up(r);
+                    if up.is_empty() {
+                        break;
+                    }
+                    let who = up[(rng.f64() * up.len() as f64) as usize % up.len()];
+                    let dmg = attack * (0.6 + 0.8 * rng.f64()) * (1.0 + 0.1 * r.depth() as f64);
+                    self.rogue_hurt(r, who, dmg, &name);
+                } else if sees && !stationary {
+                    let (sx, sy) = ((px - mx).signum(), (py - my).signum());
+                    for (ax, ay) in [(sx, sy), (sx, 0), (0, sy)] {
+                        let (tx, ty) = (mx + ax, my + ay);
+                        if (ax, ay) != (0, 0) && free(r, tx, ty) {
+                            let mm = &mut r.floor_mut().monsters[k];
+                            mm.x = tx;
+                            mm.y = ty;
+                            break;
+                        }
+                    }
+                }
+            } else if !stationary {
+                // Prey flees from the squad and otherwise wanders a little.
+                let target = if dist <= 3 {
+                    (mx - (px - mx).signum(), my - (py - my).signum())
+                } else if rng.f64() < 0.3 {
+                    (
+                        mx + (rng.next_u64() % 3) as i32 - 1,
+                        my + (rng.next_u64() % 3) as i32 - 1,
+                    )
+                } else {
+                    (mx, my)
+                };
+                if target != (mx, my) && free(r, target.0, target.1) {
+                    let mm = &mut r.floor_mut().monsters[k];
+                    mm.x = target.0;
+                    mm.y = target.1;
+                }
+            }
+        }
+        let up = self.party_up(r);
+        if up.is_empty() {
             r.over = true;
             r.loot.clear();
             r.say("Plus personne ne se releve. L'exploration est perdue.");
+        } else if r.active >= up.len() {
+            r.active = 0;
         }
         r.reveal();
     }
@@ -974,16 +1599,14 @@ impl Sim {
         }
     }
 
-    /// Use the stairs under the squad: down, or up (and out, from the first floor).
+    // ---- stairs and the way out --------------------------------------------------------------
+
+    /// Use what is under the squad: stairs down or up, a site (down into its dungeon), the
+    /// entrance (back to the place above, or to the ship).
     pub fn rogue_stairs(&mut self) -> Result<String, &'static str> {
         let mut r = self.rogue.take().ok_or("pas d'exploration en cours")?;
-        let res = self.rogue_stairs_inner(&mut r);
-        self.rogue = Some(r);
-        res
-    }
-
-    fn rogue_stairs_inner(&mut self, r: &mut Rogue) -> Result<String, &'static str> {
         if r.over {
+            self.rogue = Some(r);
             return Err("l'exploration est terminee");
         }
         match r.tile(r.x, r.y) {
@@ -999,6 +1622,7 @@ impl Sim {
                 r.reveal();
                 let msg = format!("Etage {}.", r.cur + 1);
                 r.say(msg.clone());
+                self.rogue = Some(r);
                 Ok(msg)
             }
             T_UP if r.cur > 0 => {
@@ -1017,18 +1641,64 @@ impl Sim {
                 r.reveal();
                 let msg = format!("Etage {}.", r.cur + 1);
                 r.say(msg.clone());
+                self.rogue = Some(r);
                 Ok(msg)
             }
-            T_UP => {
-                let n = self.rogue_leave_inner(r);
-                Ok(n)
+            T_UP if r.parent.is_some() => {
+                // Back up to the surface, with what was found.
+                let mut parent = *r.parent.take().expect("checked");
+                for (res, kg) in std::mem::take(&mut r.loot) {
+                    match parent.loot.iter_mut().find(|l| l.0 == res) {
+                        Some(l) => l.1 += kg,
+                        None => parent.loot.push((res, kg)),
+                    }
+                }
+                parent.kills += r.kills;
+                parent.turn += r.turn;
+                parent.boss_dead |= r.boss_dead;
+                parent.say("Retour a la surface.");
+                parent.reveal();
+                self.rogue = Some(parent);
+                Ok("RETOUR A LA SURFACE".to_string())
             }
-            _ => Err("pas d'escalier ici"),
+            T_UP => {
+                let msg = self.rogue_leave(&mut r);
+                self.rogue = Some(r);
+                Ok(msg)
+            }
+            T_SITE => {
+                let k = r
+                    .floor()
+                    .sites
+                    .iter()
+                    .position(|s| (s.x, s.y) == (r.x, r.y))
+                    .ok_or("aucun site ici");
+                let Ok(k) = k else {
+                    self.rogue = Some(r);
+                    return Err("aucun site ici");
+                };
+                let id = self.data.sites[r.floor().sites[k].def].id.clone();
+                let Some(theme) = self.data.rogue_theme_index(site_theme(&id)) else {
+                    self.rogue = Some(r);
+                    return Err("lieu inconnu");
+                };
+                let seed = self.next_visit_seed(hash_coord(r.seed, k as i64, 91, 17));
+                let mut child = self.new_run(theme, seed, r.party.clone());
+                child.active = r.active;
+                let name = child.place.clone();
+                child.parent = Some(Box::new(r));
+                self.rogue = Some(child);
+                Ok(format!("VOUS DESCENDEZ : {}", name.to_uppercase()))
+            }
+            _ => {
+                self.rogue = Some(r);
+                Err("pas d'escalier ici")
+            }
         }
     }
 
-    /// Back to the ship with the loot (needs the entrance stairs under the squad).
-    fn rogue_leave_inner(&mut self, r: &mut Rogue) -> String {
+    /// Back to the ship with the loot (the squad stands on the entrance).
+    fn rogue_leave(&mut self, r: &mut Rogue) -> String {
         let data = std::sync::Arc::clone(&self.data);
         let mut left = Vec::new();
         let mut kg_total = 0.0;
@@ -1048,6 +1718,22 @@ impl Sim {
         msg
     }
 
+    /// Call everybody back to the ship from anywhere on a surface: the time of the walk back
+    /// passes, the loot goes into the hold, the exploration ends.
+    pub fn rogue_recall(&mut self) -> Result<String, &'static str> {
+        let mut r = self.rogue.take().ok_or("pas d'exploration en cours")?;
+        if r.over || !r.on_surface() || r.parent.is_some() {
+            self.rogue = Some(r);
+            return Err("on ne rappelle l'equipe que depuis la surface");
+        }
+        let (lx, ly) = r.floor().start;
+        let far = (r.x - lx).abs().max((r.y - ly).abs());
+        self.advance(f64::from(far) * r.turn_seconds, &ShipInput::default());
+        let msg = self.rogue_leave(&mut r);
+        self.rogue = Some(r);
+        Ok(msg)
+    }
+
     /// Close the exploration screen once it is over.
     pub fn rogue_close(&mut self) {
         if self.rogue.as_ref().is_some_and(|r| r.over) {
@@ -1058,31 +1744,28 @@ impl Sim {
     /// Walk toward (tx, ty) over the cells already seen, up to `max` steps, stopping when an
     /// awake monster comes into view or something happens.
     pub fn rogue_travel(&mut self, tx: i32, ty: i32, max: usize) -> Result<usize, &'static str> {
-        let (path, w) = {
+        let path = {
             let r = self.rogue.as_ref().ok_or("pas d'exploration en cours")?;
-            if !r.inside(tx, ty) || !r.floor().seen[r.idx(tx, ty)] || r.tile(tx, ty) == T_WALL {
+            if !r.inside(tx, ty) || !r.floor().seen[r.idx(tx, ty)] || !r.walkable(tx, ty) {
                 return Err("destination inconnue");
             }
-            (shortest_path(r, (r.x, r.y), (tx, ty)), r.w)
+            shortest_path(r, (r.x, r.y), (tx, ty))
         };
-        let _ = w;
         let path = path.ok_or("pas de chemin")?;
         let mut done = 0;
         for (nx, ny) in path.into_iter().take(max) {
-            let (dx, dy) = {
+            let (dx, dy, before) = {
                 let r = self.rogue.as_ref().unwrap();
-                (nx - r.x, ny - r.y)
-            };
-            let before = {
-                let r = self.rogue.as_ref().unwrap();
-                (r.log.len(), self.party_up(r).len())
+                (nx - r.x, ny - r.y, (r.log.len(), self.party_up(r).len()))
             };
             self.rogue_step(dx, dy)?;
             done += 1;
             let r = self.rogue.as_ref().unwrap();
             let vis = r.visible();
             let danger = r.floor().monsters.iter().any(|m| {
-                vis[r.idx(m.x, m.y)] && (m.awake || (m.x - r.x).abs().max((m.y - r.y).abs()) <= 3)
+                m.hunts
+                    && vis[r.idx(m.x, m.y)]
+                    && (m.awake || (m.x - r.x).abs().max((m.y - r.y).abs()) <= 3)
             });
             if danger || r.over || r.log.len() != before.0 || self.party_up(r).len() != before.1 {
                 break;
@@ -1121,7 +1804,7 @@ pub fn shortest_path(r: &Rogue, from: (i32, i32), to: (i32, i32)) -> Option<Vec<
                     continue;
                 }
                 let i = r.idx(nx, ny);
-                if seen[i] || r.tile(nx, ny) == T_WALL || !r.floor().seen[i] {
+                if seen[i] || !r.walkable(nx, ny) || !r.floor().seen[i] {
                     continue;
                 }
                 seen[i] = true;
@@ -1147,7 +1830,7 @@ mod tests {
         )
     }
 
-    /// Cells reachable from `start` over non-wall tiles.
+    /// Cells reachable from `start` over walkable tiles (sites and features included).
     fn reachable(f: &Floor, w: usize, h: usize, start: (i32, i32)) -> Vec<bool> {
         let mut seen = vec![false; w * h];
         let mut q = VecDeque::new();
@@ -1161,7 +1844,7 @@ mod tests {
                         continue;
                     }
                     let i = ny as usize * w + nx as usize;
-                    if !seen[i] && f.tiles[i] != T_WALL {
+                    if !seen[i] && !matches!(f.tiles[i], T_WALL | T_WATER) {
                         seen[i] = true;
                         q.push_back((nx, ny));
                     }
@@ -1171,43 +1854,68 @@ mod tests {
         seen
     }
 
-    /// A run on `theme` with a fresh squad and a roomy hold.
-    fn run_on(theme: &str, seed: u64) -> (Sim, ()) {
+    /// A dungeon run on `theme` with a fresh squad and a roomy hold.
+    fn run_on(theme: &str, seed: u64) -> Sim {
         let mut s = new_sim(5, data());
         s.ship.cargo.cap_mass = 1.0e7;
         let t = s.data.rogue_theme_index(theme).unwrap();
         let party = s.rogue_squad();
         assert!(!party.is_empty());
-        let floor = generate_floor(&s.data, t, seed, 0);
-        let (x, y) = floor.start;
-        let th = &s.data.rogue_themes[t];
-        s.rogue = Some(Rogue {
-            theme: t,
-            seed,
-            w: th.size.0,
-            h: th.size.1,
-            floors: vec![floor],
-            cur: 0,
-            party,
-            x,
-            y,
-            active: 0,
-            loot: vec![],
-            turn: 0,
-            log: vec![],
-            over: false,
-            kills: 0,
-            buff: 0,
-            boss_dead: false,
-        });
-        s.rogue.as_mut().unwrap().reveal();
-        (s, ())
+        s.rogue_begin(t, seed, party);
+        s
+    }
+
+    fn mon(s: &Sim, id: &str, x: i32, y: i32, hp: f64, awake: bool) -> Mon {
+        let k = s.data.rogue_monster_index(id).unwrap();
+        mon_from_def(&s.data, k, x, y, 1.0, awake, false).with_hp(hp)
+    }
+
+    impl Mon {
+        fn with_hp(mut self, hp: f64) -> Mon {
+            self.hp = hp;
+            self
+        }
+    }
+
+    /// A sim parked above a land cell with plants and animals: (sim, body, cx, cy).
+    fn landing_site() -> (Sim, usize, usize, usize) {
+        for seed in 1..60u64 {
+            let mut s = new_sim(seed, data());
+            for body in 0..s.bodies.len() {
+                let Some(map) = s.planet_map(body) else {
+                    continue;
+                };
+                for cy in (4..SURF_H).step_by(6) {
+                    for cx in (0..SURF_W).step_by(9) {
+                        if map.surface.is_sea(cx, cy) {
+                            continue;
+                        }
+                        s.ship.pos = s.bodies[body].pos
+                            - vector_core::Vec3::new(0.0, 0.0, s.bodies[body].radius * 3.0);
+                        s.ship.vel = s.bodies[body].vel;
+                        s.update_ref();
+                        if s.rogue_land(body, cx, cy, vec![0], false).is_ok() {
+                            let r = s.rogue.take().unwrap();
+                            let plants = r.floor().items.iter().filter(|i| i.plant).count();
+                            if plants > 5 && r.floor().monsters.len() > 3 {
+                                s.ship.cargo.cap_mass = 1.0e7;
+                                return (s, body, cx, cy);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        panic!("no living world found in the first seeds");
     }
 
     #[test]
     fn every_floor_of_every_place_is_connected_deterministic_and_populated() {
         let d = data();
         for (t, th) in d.rogue_themes.iter().enumerate() {
+            if th.id == "surface" {
+                continue;
+            }
             for depth in 0..th.floors {
                 for seed in 0..6u64 {
                     let f = generate_floor(&d, t, seed * 7 + 1, depth);
@@ -1231,14 +1939,14 @@ mod tests {
                     for m in &f.monsters {
                         assert!(f.tiles[at(m.x, m.y)] != T_WALL, "monster in a wall");
                         assert!((m.x, m.y) != f.start);
-                        assert!(m.hp > 0.0);
+                        assert!(m.hp > 0.0 && !m.drops.is_empty());
                     }
                     let mut spots: Vec<_> = f.monsters.iter().map(|m| (m.x, m.y)).collect();
                     spots.sort_unstable();
                     spots.dedup();
                     assert_eq!(spots.len(), f.monsters.len(), "monsters stack");
                     for it in &f.items {
-                        assert!(f.tiles[at(it.x, it.y)] != T_WALL && it.kg > 0.0);
+                        assert!(f.tiles[at(it.x, it.y)] != T_WALL && it.kg > 0.0 && !it.plant);
                     }
                     let bosses = f.monsters.iter().filter(|m| m.boss).count();
                     assert_eq!(bosses, usize::from(last), "{} boss only below", th.id);
@@ -1267,7 +1975,7 @@ mod tests {
 
     #[test]
     fn walls_block_sight_and_the_view_is_remembered() {
-        let (mut s, _) = run_on("station", 4);
+        let mut s = run_on("station", 4);
         let r = s.rogue.as_mut().unwrap();
         let v = r.visible();
         assert!(v[r.idx(r.x, r.y)]);
@@ -1282,7 +1990,6 @@ mod tests {
                 }
             }
         }
-        // A wall right next to the squad hides what is behind it.
         let (wx, wy) = (0..r.w as i32)
             .flat_map(|x| (0..r.h as i32).map(move |y| (x, y)))
             .find(|&(x, y)| {
@@ -1295,38 +2002,27 @@ mod tests {
 
     #[test]
     fn bumping_into_a_monster_fights_and_a_kill_drops_loot_that_can_be_carried() {
-        let (mut s, _) = run_on("station", 4);
+        let mut s = run_on("station", 4);
         s.crew.members[0].health = 1.0;
-        let (x, y, kind_hp) = {
-            let r = s.rogue.as_mut().unwrap();
-            // A rat right next to the squad.
-            let rat = s.data.rogue_monster_index("rat").unwrap();
-            let (nx, ny) = [(1, 0), (-1, 0), (0, 1), (0, -1)]
-                .into_iter()
-                .map(|d| (r.x + d.0, r.y + d.1))
-                .find(|&(x, y)| r.tile(x, y) != T_WALL)
-                .unwrap();
-            r.floors[0].monsters.clear();
-            r.floors[0].monsters.push(Mon {
-                kind: rat,
-                x: nx,
-                y: ny,
-                hp: 0.5,
-                awake: true,
-                boss: false,
-            });
-            (nx, ny, 3.0)
-        };
         let (px, py) = {
             let r = s.rogue.as_ref().unwrap();
             (r.x, r.y)
         };
+        let (x, y) = [(1, 0), (-1, 0), (0, 1), (0, -1)]
+            .into_iter()
+            .map(|d| (px + d.0, py + d.1))
+            .find(|&(x, y)| s.rogue.as_ref().unwrap().walkable(x, y))
+            .unwrap();
+        let rat = mon(&s, "rat", x, y, 0.5, true);
+        {
+            let r = s.rogue.as_mut().unwrap();
+            r.floors[0].monsters.clear();
+            r.floors[0].monsters.push(rat);
+        }
         s.rogue_step(x - px, y - py).expect("attacks");
         let r = s.rogue.as_ref().unwrap();
         assert_eq!((r.x, r.y), (px, py), "the squad stays put when it strikes");
-        assert!(r.floor().monsters.is_empty() || r.floor().monsters[0].hp < kind_hp);
         assert_eq!(r.kills, 1, "a rat does not survive a squad");
-        // The drop lies where it fell; stepping there carries it.
         assert_eq!(
             r.floor()
                 .items
@@ -1342,15 +2038,15 @@ mod tests {
     }
 
     #[test]
-    fn a_full_hold_leaves_the_loot_behind() {
-        let (mut s, _) = run_on("station", 4);
-        s.ship.cargo.cap_mass = s.ship.cargo.mass; // no room
+    fn a_full_hold_or_full_packs_leave_the_loot_behind() {
+        let mut s = run_on("station", 4);
+        s.ship.cargo.cap_mass = s.ship.cargo.mass; // no room in the hold
         let r = s.rogue.as_mut().unwrap();
         let (x, y) = (r.x + 1, r.y);
-        let (x, y) = if r.tile(x, y) == T_WALL {
-            (r.x - 1, r.y)
-        } else {
+        let (x, y) = if r.walkable(x, y) {
             (x, y)
+        } else {
+            (r.x - 1, r.y)
         };
         r.floors[0].monsters.clear();
         r.floors[0].items.clear();
@@ -1359,38 +2055,58 @@ mod tests {
             y,
             res: 0,
             kg: 50.0,
+            plant: false,
         });
         let (dx, dy) = (x - r.x, y - r.y);
-        if r.tile(x, y) != T_WALL {
-            s.rogue_step(dx, dy).unwrap();
-            let r = s.rogue.as_ref().unwrap();
-            assert!(r.loot.is_empty(), "nothing taken");
-            assert_eq!(r.floor().items.len(), 1, "the pile stays");
-        }
+        s.rogue_step(dx, dy).unwrap();
+        let r = s.rogue.as_ref().unwrap();
+        assert!(r.loot.is_empty(), "nothing taken");
+        assert_eq!(r.floor().items.len(), 1, "the pile stays");
+        // Roomy hold, but a pack holds only so much.
+        let mut s = run_on("station", 4);
+        let members = s.rogue.as_ref().unwrap().party.len();
+        let r = s.rogue.as_mut().unwrap();
+        r.floors[0].monsters.clear();
+        r.floors[0].items.clear();
+        let (x, y) = if r.walkable(r.x + 1, r.y) {
+            (r.x + 1, r.y)
+        } else {
+            (r.x - 1, r.y)
+        };
+        r.floors[0].items.push(Item {
+            x,
+            y,
+            res: 0,
+            kg: 1.0e6,
+            plant: false,
+        });
+        let (dx, dy) = (x - r.x, y - r.y);
+        s.rogue_step(dx, dy).unwrap();
+        let r = s.rogue.as_ref().unwrap();
+        assert!(
+            (r.loot_mass() - LOOT_PER_MEMBER * members as f64).abs() < 1e-6,
+            "{} kg in {members} packs",
+            r.loot_mass()
+        );
     }
 
     #[test]
     fn monsters_hunt_the_squad_and_hurt_it_until_it_falls() {
-        let (mut s, _) = run_on("base_pirate", 9);
-        let chef = s.data.rogue_monster_index("chef_pirate").unwrap();
+        let mut s = run_on("base_pirate", 9);
         let (cx, cy) = {
-            let r = s.rogue.as_mut().unwrap();
-            let c = [(2, 0), (-2, 0), (0, 2), (0, -2)]
+            let r = s.rogue.as_ref().unwrap();
+            [(2, 0), (-2, 0), (0, 2), (0, -2)]
                 .into_iter()
                 .map(|d| (r.x + d.0, r.y + d.1))
-                .find(|&(x, y)| r.tile(x, y) != T_WALL && r.line_clear(r.x, r.y, x, y))
-                .expect("a free cell near the start");
-            r.floors[0].monsters.clear();
-            r.floors[0].monsters.push(Mon {
-                kind: chef,
-                x: c.0,
-                y: c.1,
-                hp: 1.0e6,
-                awake: true,
-                boss: false,
-            });
-            c
+                .find(|&(x, y)| r.walkable(x, y) && r.line_clear(r.x, r.y, x, y))
+                .expect("a free cell near the start")
         };
+        let chef = mon(&s, "chef_pirate", cx, cy, 1.0e6, true);
+        {
+            let r = s.rogue.as_mut().unwrap();
+            r.floors[0].monsters.clear();
+            r.floors[0].monsters.push(chef);
+        }
         let before: f32 = s.crew.members.iter().map(|p| p.health).sum();
         for _ in 0..4 {
             s.rogue_wait().unwrap();
@@ -1399,23 +2115,16 @@ mod tests {
         let m = &r.floor().monsters[0];
         assert!(
             (m.x - r.x).abs().max((m.y - r.y).abs()) <= 1,
-            "it closed in ({cx},{cy}) -> ({},{})",
-            m.x,
-            m.y
+            "it closed in"
         );
         let after: f32 = s.crew.members.iter().map(|p| p.health).sum();
         assert!(after < before, "and struck");
-        // Keep waiting under its blows: the squad dies, the loot is lost, the run is over.
-        {
-            let r = s.rogue.as_mut().unwrap();
-            r.loot.push((0, 10.0));
-        }
+        s.rogue.as_mut().unwrap().loot.push((0, 10.0));
         for _ in 0..400 {
             if s.rogue.as_ref().unwrap().over {
                 break;
             }
             let _ = s.rogue_wait();
-            // Keep the chef alive and adjacent.
         }
         let r = s.rogue.as_ref().unwrap();
         assert!(r.over, "the squad fell");
@@ -1428,7 +2137,7 @@ mod tests {
 
     #[test]
     fn features_do_what_they_say() {
-        let (mut s, _) = run_on("laboratoire", 3);
+        let mut s = run_on("laboratoire", 3);
         let mut r = s.rogue.take().unwrap();
         for p in &mut s.crew.members {
             p.health = 0.5;
@@ -1455,15 +2164,14 @@ mod tests {
             s.crew.members.iter().map(|p| p.health).sum::<f32>() < hp,
             "a trap hurts"
         );
-        let loot0: f64 = r.loot.iter().map(|l| l.1).sum();
+        r.loot.clear();
+        // Several caches: some of the table's goods always make it into the packs.
+        let loot0 = r.loot_mass();
         s.rogue_feature(&mut r, "cache");
-        let loot1: f64 = r.loot.iter().map(|l| l.1).sum();
+        let loot1 = r.loot_mass();
         assert!(loot1 > loot0);
         s.rogue_feature(&mut r, "vault");
-        assert!(
-            r.loot.iter().map(|l| l.1).sum::<f64>() > loot1 * 1.5,
-            "a vault pays more"
-        );
+        assert!(r.loot_mass() > loot1, "a vault pays more");
         let (ox, oy) = (r.x, r.y);
         let mut moved = false;
         for turn in 0..30 {
@@ -1472,8 +2180,7 @@ mod tests {
             moved |= (r.x, r.y) != (ox, oy);
         }
         assert!(moved, "portals teleport");
-        assert!(r.tile(r.x, r.y) != T_WALL);
-        // An altar blesses or burns.
+        assert!(r.walkable(r.x, r.y));
         let (mut blessed, mut burnt) = (0, 0);
         for turn in 0..40 {
             r.turn = turn;
@@ -1497,32 +2204,27 @@ mod tests {
 
     #[test]
     fn stairs_keep_the_floors_and_only_the_entrance_leads_out() {
-        let (mut s, _) = run_on("epave", 6);
+        let mut s = run_on("epave", 6);
         let food = s.data.resource_index("food").unwrap();
         s.rogue.as_mut().unwrap().loot.push((food, 12.0));
-        // On the entrance: leaving needs to stand on the stairs (we do).
         assert!(
             s.rogue_stairs().unwrap().starts_with("RETOUR"),
             "out at the entrance"
         );
         assert!(s.rogue.as_ref().unwrap().over);
-        // Fresh run: go down and up again.
-        let (s, _) = run_on("epave", 6);
+        let mut s = run_on("epave", 6);
         let (dx, dy) = {
             let r = s.rogue.as_ref().unwrap();
-            let f = r.floor();
-            let i = f.tiles.iter().position(|t| *t == T_DOWN).unwrap();
+            let i = r.floor().tiles.iter().position(|t| *t == T_DOWN).unwrap();
             ((i % r.w) as i32, (i / r.w) as i32)
         };
-        let (mut s, _) = run_on("epave", 6);
         {
             let r = s.rogue.as_mut().unwrap();
             r.floors[0].monsters.clear();
             r.x = dx;
             r.y = dy;
         }
-        let msg = s.rogue_stairs().expect("down");
-        assert_eq!(msg, "Etage 2.");
+        assert_eq!(s.rogue_stairs().expect("down"), "Etage 2.");
         {
             let r = s.rogue.as_ref().unwrap();
             assert_eq!(r.cur, 1);
@@ -1530,17 +2232,14 @@ mod tests {
             assert_eq!(r.tile(r.x, r.y), T_UP);
         }
         s.rogue.as_mut().unwrap().floors[0].items.clear();
-        let msg = s.rogue_stairs().expect("up");
-        assert_eq!(msg, "Etage 1.");
+        assert_eq!(s.rogue_stairs().expect("up"), "Etage 1.");
         let r = s.rogue.as_ref().unwrap();
         assert_eq!((r.x, r.y), (dx, dy), "back on the stairs down");
         assert!(
             r.floors[0].items.is_empty(),
             "the floor above is as it was left"
         );
-        assert!(s.rogue_stairs().is_ok(), "down again");
-        // Nothing under the squad elsewhere.
-        let (mut s, _) = run_on("epave", 6);
+        let mut s = run_on("epave", 6);
         {
             let r = s.rogue.as_mut().unwrap();
             let (x, y) = (0..r.w as i32)
@@ -1554,8 +2253,8 @@ mod tests {
     }
 
     #[test]
-    fn leaving_brings_the_loot_aboard_and_a_dead_end_loses_it() {
-        let (mut s, _) = run_on("depot", 2);
+    fn leaving_brings_the_loot_aboard() {
+        let mut s = run_on("depot", 2);
         let steel = s.data.resource_index("steel").unwrap();
         let before = s.ship.cargo.kg[steel];
         s.rogue.as_mut().unwrap().loot.push((steel, 25.0));
@@ -1565,8 +2264,8 @@ mod tests {
     }
 
     #[test]
-    fn a_hazardous_place_hurts_and_armour_stops_it() {
-        let (mut s, _) = run_on("reacteur", 5);
+    fn a_hazardous_place_hurts_and_a_clean_one_does_not() {
+        let mut s = run_on("reacteur", 5);
         s.rogue.as_mut().unwrap().floors[0].monsters.clear();
         for p in &mut s.crew.members {
             p.health = 1.0;
@@ -1576,7 +2275,7 @@ mod tests {
         }
         let hurt: f32 = s.crew.members.iter().map(|p| 1.0 - p.health).sum();
         assert!(hurt > 0.0, "radiation burns");
-        let (mut t, _) = run_on("station", 5);
+        let mut t = run_on("station", 5);
         t.rogue.as_mut().unwrap().floors[0].monsters.clear();
         for _ in 0..40 {
             t.rogue_wait().unwrap();
@@ -1587,16 +2286,15 @@ mod tests {
 
     #[test]
     fn travel_walks_the_known_map_and_stops_when_danger_shows() {
-        let (mut s, _) = run_on("station", 4);
+        let mut s = run_on("station", 4);
         s.rogue.as_mut().unwrap().floors[0].monsters.clear();
-        // Aim at the farthest seen floor cell.
-        let (tx, ty) = {
+        let far = |s: &Sim| {
             let r = s.rogue.as_ref().unwrap();
             let mut best = (r.x, r.y);
             let mut d = 0;
             for y in 0..r.h as i32 {
                 for x in 0..r.w as i32 {
-                    if r.floor().seen[r.idx(x, y)] && r.tile(x, y) != T_WALL {
+                    if r.floor().seen[r.idx(x, y)] && r.walkable(x, y) {
                         let dd = (x - r.x).abs().max((y - r.y).abs());
                         if dd > d {
                             d = dd;
@@ -1607,9 +2305,8 @@ mod tests {
             }
             best
         };
-        let n = s.rogue_travel(tx, ty, 50).expect("travels");
-        assert!(n >= 1);
-        // Unknown cells are refused.
+        let (tx, ty) = far(&s);
+        assert!(s.rogue_travel(tx, ty, 50).expect("travels") >= 1);
         let (ux, uy) = {
             let r = s.rogue.as_ref().unwrap();
             (0..r.w as i32)
@@ -1617,31 +2314,27 @@ mod tests {
                 .find(|&(x, y)| !r.floor().seen[r.idx(x, y)])
                 .unwrap()
         };
-        assert!(s.rogue_travel(ux, uy, 5).is_err());
-        // A hunter in view stops the walk after the first step.
-        let (mut s, _) = run_on("base_pirate", 9);
-        let pirate = s.data.rogue_monster_index("pirate").unwrap();
+        assert!(
+            s.rogue_travel(ux, uy, 5).is_err(),
+            "unknown cells are refused"
+        );
+        // A hunter in view stops the walk quickly.
+        let mut s = run_on("base_pirate", 9);
         let (px, py) = {
-            let r = s.rogue.as_mut().unwrap();
-            r.floors[0].monsters.clear();
-            let c = (0..r.w as i32)
+            let r = s.rogue.as_ref().unwrap();
+            (0..r.w as i32)
                 .flat_map(|x| (0..r.h as i32).map(move |y| (x, y)))
                 .filter(|&(x, y)| r.tile(x, y) == T_FLOOR && r.floor().seen[r.idx(x, y)])
                 .max_by_key(|&(x, y)| (x - r.x).abs().max((y - r.y).abs()))
-                .unwrap();
-            r.floors[0].monsters.push(Mon {
-                kind: pirate,
-                x: c.0,
-                y: c.1,
-                hp: 7.0,
-                awake: true,
-                boss: false,
-            });
-            c
+                .unwrap()
         };
-        let _ = (px, py);
-        let steps = s.rogue_travel(px, py, 30);
-        if let Ok(n) = steps {
+        let pirate = mon(&s, "pirate", px, py, 7.0, true);
+        {
+            let r = s.rogue.as_mut().unwrap();
+            r.floors[0].monsters.clear();
+            r.floors[0].monsters.push(pirate);
+        }
+        if let Ok(n) = s.rogue_travel(px, py, 30) {
             assert!(n <= 30);
         }
     }
@@ -1658,7 +2351,6 @@ mod tests {
                 .any(|t| s.data.rogue_themes[t.theme].id == "station"),
             "{targets:?}"
         );
-        // The theme of an anomaly follows its kind.
         let d = data();
         for (kind, id) in [
             (AnomalyKind::DerelictShip, "epave"),
@@ -1680,7 +2372,7 @@ mod tests {
             let last = ts.last().unwrap();
             assert_eq!(d.rogue_themes[last.theme].id, id, "{kind:?}");
         }
-        // In a dimension every place turns to a dream.
+        // In a dimension every place turns to a dream (a landing stays a landing).
         let mut t = new_sim(5, Arc::clone(&d));
         t.multiverse.dimension = 1;
         let (st, _) = t.nearest_station().unwrap();
@@ -1688,17 +2380,23 @@ mod tests {
         assert!(t
             .rogue_targets()
             .iter()
+            .filter(|x| x.kind == TargetKind::Place)
             .all(|x| d.rogue_themes[x.theme].id == "reve"));
-        // Entering: needs something to explore and a squad; a place changes between visits.
+        // Entering: one at a time, and a place changes between visits.
         let mut s = new_sim(5, data());
         let (st, _) = s.nearest_station().unwrap();
         s.spawn_near(st, s.bodies[st].radius + 200.0);
-        s.rogue_enter(0, vec![]).expect("goes");
-        assert!(s.rogue_enter(0, vec![]).is_err(), "one at a time");
+        let i = s
+            .rogue_targets()
+            .iter()
+            .position(|t| t.kind == TargetKind::Place)
+            .unwrap();
+        s.rogue_enter(i, vec![]).expect("goes");
+        assert!(s.rogue_enter(i, vec![]).is_err(), "one at a time");
         let first = s.rogue.as_ref().unwrap().floors[0].tiles.clone();
         s.rogue.as_mut().unwrap().over = true;
         s.rogue_close();
-        s.rogue_enter(0, vec![]).unwrap();
+        s.rogue_enter(i, vec![]).unwrap();
         assert_ne!(
             s.rogue.as_ref().unwrap().floors[0].tiles,
             first,
@@ -1708,7 +2406,7 @@ mod tests {
 
     #[test]
     fn a_run_survives_a_save() {
-        let (mut s, _) = run_on("ruines", 8);
+        let mut s = run_on("ruines", 8);
         s.rogue_wait().unwrap();
         let bytes = s.save_bytes().unwrap();
         let t = Sim::load_bytes(&bytes, Arc::clone(&s.data)).unwrap();
@@ -1719,48 +2417,486 @@ mod tests {
         assert_eq!(a.floors[0].monsters, b.floors[0].monsters);
     }
 
+    // ---- surfaces ---------------------------------------------------------------------------
+
     #[test]
-    fn a_site_met_on_the_walk_leads_down_into_the_roguelike() {
-        let mut s = new_sim(5, data());
-        s.reveal_all();
-        let body = s
-            .bodies
-            .iter()
-            .position(|b| matches!(b.kind, BodyKind::Planet(k) if !k.is_giant()))
-            .expect("a solid planet");
-        s.ship.pos =
-            s.bodies[body].pos - vector_core::Vec3::new(0.0, 0.0, s.bodies[body].radius * 3.0);
-        s.ship.vel = s.bodies[body].vel;
-        s.update_ref_pub();
-        let mut found = None;
-        'find: for cy in (6..vector_world::surface::H - 6).step_by(3) {
-            for cx in (0..vector_world::surface::W).step_by(5) {
-                if let Ok(w) = s.walk_start(body, cx, cy, vec![0], false) {
-                    if !w.sites.is_empty() {
-                        found = Some(w);
-                        break 'find;
-                    }
-                }
+    fn the_same_cell_always_gives_the_same_place_and_the_party_lands_together() {
+        let (mut s, body, cx, cy) = landing_site();
+        s.rogue_land(body, cx, cy, vec![0], false).unwrap();
+        let a = s.rogue.take().unwrap();
+        s.rogue_land(body, cx, cy, vec![0], false).unwrap();
+        let b = s.rogue.take().unwrap();
+        assert_eq!(a.floors[0].tiles, b.floors[0].tiles);
+        assert_eq!(a.floors[0].items, b.floors[0].items);
+        assert_eq!(
+            a.floors[0]
+                .monsters
+                .iter()
+                .map(|m| (m.x, m.y))
+                .collect::<Vec<_>>(),
+            b.floors[0]
+                .monsters
+                .iter()
+                .map(|m| (m.x, m.y))
+                .collect::<Vec<_>>()
+        );
+        assert_eq!((a.x, a.y), (MAP_W as i32 / 2, MAP_H as i32 / 2));
+        assert_eq!(a.tile(a.x, a.y), T_UP);
+        assert_eq!(a.turn_seconds, SURFACE_TURN_SECONDS);
+        assert!(a.env.is_some() && a.on_surface());
+        s.rogue_land(body, (cx + 1) % 64, cy, vec![0], false).ok();
+        if let Some(c) = s.rogue.take() {
+            assert_ne!(a.seed, c.seed, "another cell, another place");
+        }
+    }
+
+    #[test]
+    fn rocks_and_water_block_time_passes_and_the_rover_goes_twice_as_far() {
+        let (mut s, body, cx, cy) = landing_site();
+        s.rogue_land(body, cx, cy, vec![0], false).unwrap();
+        let (lx, ly) = {
+            let r = s.rogue.as_ref().unwrap();
+            (r.x, r.y)
+        };
+        {
+            let r = s.rogue.as_mut().unwrap();
+            r.floors[0].monsters.clear();
+            let i = r.idx(lx + 1, ly);
+            r.floors[0].tiles[i] = T_WALL;
+            let i = r.idx(lx, ly + 1);
+            r.floors[0].tiles[i] = T_WATER;
+        }
+        let t0 = s.time;
+        assert!(s.rogue_step(1, 0).is_err(), "a rock blocks");
+        assert!(s.rogue_step(0, 1).is_err(), "water blocks");
+        assert_eq!(s.time, t0, "a refused move costs nothing");
+        s.rogue_step(-1, 0).unwrap();
+        assert_eq!(s.rogue.as_ref().unwrap().x, lx - 1);
+        assert!(s.time > t0, "a step takes a turn of the clock");
+        // The rover goes twice as far.
+        s.rogue = None;
+        s.rogue_land(body, cx, cy, vec![0], true).unwrap();
+        {
+            let r = s.rogue.as_mut().unwrap();
+            r.floors[0].monsters.clear();
+            r.floors[0].items.clear();
+            for dx in 1..=2 {
+                let i = r.idx(lx + dx, ly);
+                r.floors[0].tiles[i] = T_FLOOR;
             }
         }
-        let mut w = found.expect("a landing with a site");
-        // Far from any site: nothing to descend into.
-        w.pos[w.active] = (-50, -50);
-        assert!(s.rogue_from_walk(&w).is_err());
-        let (sx, sy) = (w.sites[0].x, w.sites[0].y);
-        w.pos[w.active] = (sx, sy);
-        s.rogue_from_walk(&w).expect("descends");
+        s.rogue_step(1, 0).unwrap();
+        assert_eq!(
+            s.rogue.as_ref().unwrap().x,
+            lx + 2,
+            "two tiles with the rover"
+        );
+    }
+
+    #[test]
+    fn plants_are_gathered_on_the_way_up_to_the_packs_limit_and_recall_fills_the_hold() {
+        let (mut s, body, cx, cy) = landing_site();
+        s.rogue_land(body, cx, cy, vec![0], false).unwrap();
+        let (lx, ly) = {
+            let r = s.rogue.as_mut().unwrap();
+            r.floors[0].monsters.clear();
+            r.floors[0].items.clear();
+            let (x, y) = (r.x, r.y);
+            let i = r.idx(x + 1, y);
+            r.floors[0].tiles[i] = T_FLOOR;
+            (x, y)
+        };
+        let food = s.data.resource_index("food").unwrap();
+        s.rogue.as_mut().unwrap().floors[0].items.push(Item {
+            x: lx + 1,
+            y: ly,
+            res: food,
+            kg: 5.0,
+            plant: true,
+        });
+        s.rogue_step(1, 0).unwrap();
         let r = s.rogue.as_ref().unwrap();
-        assert_eq!(r.party, vec![w.party[0]]);
-        let first = r.floors[0].tiles.clone();
-        assert!(s.rogue_from_walk(&w).is_err(), "one run at a time");
-        s.rogue.as_mut().unwrap().over = true;
-        s.rogue_close();
-        s.rogue_from_walk(&w).unwrap();
-        assert_ne!(
-            s.rogue.as_ref().unwrap().floors[0].tiles,
-            first,
-            "another visit, another layout"
+        assert!((r.loot_mass() - 5.0).abs() < 1e-9, "{}", r.loot_mass());
+        // The pack never holds more than the capacity.
+        let mut rr = s.rogue.take().unwrap();
+        s.rogue_gain(&mut rr, food, 1.0e6);
+        assert!(rr.loot_mass() <= rr.carry_cap(1) + 1e-9);
+        s.rogue = Some(rr);
+        let carried = s.rogue.as_ref().unwrap().loot_mass();
+        let (before_mass, before_t) = (s.ship.cargo.mass, s.time);
+        let msg = s.rogue_recall().unwrap();
+        assert!(msg.starts_with("RETOUR"), "{msg}");
+        assert!(s.rogue.as_ref().unwrap().over && s.rogue.as_ref().unwrap().loot.is_empty());
+        assert!(
+            s.ship.cargo.mass >= before_mass + carried - 1e-6,
+            "the loot is in the hold"
+        );
+        assert!(s.time > before_t, "the walk back takes time");
+    }
+
+    #[test]
+    fn animals_are_fought_for_their_yields_and_predators_hurt_organs() {
+        let (mut s, body, cx, cy) = landing_site();
+        s.rogue_land(body, cx, cy, vec![0], false).unwrap();
+        let (lx, ly) = {
+            let r = s.rogue.as_ref().unwrap();
+            (r.x, r.y)
+        };
+        // A weak animal on the east: bumping kills it and it drops its yields.
+        let weak = (0..s.data.species.len())
+            .find(|&i| {
+                !s.data.species[i].is_producer()
+                    && !s.data.species[i].yields.is_empty()
+                    && s.data.species[i].danger == 0.0
+            })
+            .unwrap();
+        let mut a = mon_from_species(&s.data, weak, lx + 1, ly);
+        a.hp = 0.5;
+        {
+            let r = s.rogue.as_mut().unwrap();
+            r.floors[0].monsters.clear();
+            r.floors[0].items.clear();
+            let i = r.idx(lx + 1, ly);
+            r.floors[0].tiles[i] = T_FLOOR;
+            r.floors[0].monsters.push(a);
+        }
+        s.rogue_step(1, 0).unwrap();
+        let r = s.rogue.as_ref().unwrap();
+        assert_eq!(r.kills, 1);
+        assert!(!r.floor().items.is_empty(), "its yields lie where it fell");
+        // A terrible predator wounds a member and an organ.
+        let fierce = (0..s.data.species.len())
+            .find(|&i| {
+                !s.data.species[i].is_producer()
+                    && s.data.species[i].danger > 0.0
+                    && !s.data.species[i].domestic
+            })
+            .expect("a dangerous species");
+        let victim = s.rogue.as_ref().unwrap().party[0];
+        let before: Vec<f32> = s.crew.members[victim].organs.clone();
+        let h0 = s.crew.members[victim].health;
+        let mut p = mon_from_species(&s.data, fierce, lx + 1, ly + 1);
+        p.hp = 1.0e6;
+        p.awake = true;
+        {
+            let r = s.rogue.as_mut().unwrap();
+            r.floors[0].monsters.clear();
+            r.floors[0].monsters.push(p);
+        }
+        for _ in 0..40 {
+            if s.rogue.as_ref().unwrap().over {
+                break;
+            }
+            let _ = s.rogue_wait();
+        }
+        let hurt = s.crew.members[victim].health < h0;
+        let organ_lost = s.crew.members[victim]
+            .organs
+            .iter()
+            .zip(&before)
+            .any(|(a, b)| a < b);
+        assert!(
+            hurt && organ_lost,
+            "the predator wounds the member and an organ"
+        );
+        assert!(s
+            .rogue
+            .as_ref()
+            .unwrap()
+            .log
+            .iter()
+            .any(|l| l.contains("blesse")));
+    }
+
+    #[test]
+    fn sites_are_far_from_the_landing_searched_once_and_lead_down() {
+        let (mut s, body, cx, cy) = landing_site();
+        s.rogue_land(body, cx, cy, vec![0], false).unwrap();
+        let (lx, ly) = {
+            let r = s.rogue.as_ref().unwrap();
+            (r.x, r.y)
+        };
+        {
+            let r = s.rogue.as_ref().unwrap();
+            assert!(r.floor().sites.len() <= 4);
+            assert!(r
+                .floor()
+                .sites
+                .iter()
+                .all(|t| (t.x - lx).abs() + (t.y - ly).abs() >= 10));
+        }
+        let loot = s
+            .data
+            .sites
+            .iter()
+            .position(|d| !d.loot.is_empty() && !d.heal && d.danger < 0.1)
+            .unwrap();
+        let spring = s.data.sites.iter().position(|d| d.heal).unwrap();
+        {
+            let r = s.rogue.as_mut().unwrap();
+            r.floors[0].monsters.clear();
+            r.floors[0].items.clear();
+            r.floors[0].sites.clear();
+            for (k, dx) in [(loot, 1), (spring, -1)] {
+                let i = r.idx(lx + dx, ly);
+                r.floors[0].tiles[i] = T_SITE;
+                r.floors[0].sites.push(SiteInst {
+                    def: k,
+                    x: lx + dx,
+                    y: ly,
+                    used: false,
+                });
+            }
+        }
+        s.rogue_step(1, 0).unwrap();
+        let r = s.rogue.as_ref().unwrap();
+        assert!(r.floor().sites[0].used);
+        assert!(r.loot_mass() > 0.0, "the site gave something");
+        let after = r.loot_mass();
+        s.rogue_step(-1, 0).unwrap();
+        s.rogue_step(1, 0).unwrap();
+        assert_eq!(
+            s.rogue.as_ref().unwrap().loot_mass(),
+            after,
+            "a site is searched once"
+        );
+        // The spring mends wounds.
+        let me = s.rogue.as_ref().unwrap().party[0];
+        s.crew.members[me].health = 0.3;
+        let lungs = s.data.organ_index("poumons").unwrap();
+        s.crew.members[me].organs[lungs] = 0.4;
+        s.rogue_step(-1, 0).unwrap();
+        s.rogue_step(-1, 0).unwrap();
+        assert!(s.crew.members[me].health > 0.5);
+        assert!(s.crew.members[me].organs[lungs] > 0.55);
+        // A site is also a way down into a dungeon, and the stairs lead back up with the loot.
+        {
+            let r = s.rogue.as_mut().unwrap();
+            let k = r.floor().sites.iter().position(|t| t.def == loot).unwrap();
+            let (x, y) = (r.floor().sites[k].x, r.floor().sites[k].y);
+            r.x = x;
+            r.y = y;
+        }
+        let msg = s.rogue_stairs().expect("descends");
+        assert!(msg.starts_with("VOUS DESCENDEZ"), "{msg}");
+        {
+            let r = s.rogue.as_ref().unwrap();
+            assert!(r.parent.is_some() && !r.on_surface());
+            assert_eq!(r.turn_seconds, TURN_SECONDS);
+        }
+        s.rogue.as_mut().unwrap().loot.push((0, 7.0));
+        let msg = s.rogue_stairs().expect("climbs back");
+        assert_eq!(msg, "RETOUR A LA SURFACE");
+        let r = s.rogue.as_ref().unwrap();
+        assert!(r.on_surface() && r.parent.is_none());
+        assert!(
+            r.loot.iter().any(|l| l.0 == 0 && l.1 >= 7.0),
+            "what was found comes up"
+        );
+    }
+
+    #[test]
+    fn weapons_hit_harder_armour_stops_damage_and_tools_find_more() {
+        let (mut s, body, cx, cy) = landing_site();
+        let d = Arc::clone(&s.data);
+        let rifle = d.gear_index("fusil_plasma").unwrap();
+        let suit = d.gear_index("exosquelette").unwrap();
+        let pick = d.gear_index("pioche").unwrap();
+        let food = d.resource_index("food").unwrap();
+        // A blow: the damage done to the same animal depends on the weapon.
+        let blow = |s: &mut Sim, armed: bool| -> f64 {
+            s.rogue = None;
+            s.rogue_land(body, cx, cy, vec![0], false).unwrap();
+            s.crew.members[0].gear = vec![None; 3];
+            if armed {
+                s.crew.members[0].gear[0] = Some(rifle);
+            }
+            let (lx, ly) = {
+                let r = s.rogue.as_ref().unwrap();
+                (r.x, r.y)
+            };
+            let prey = (0..s.data.species.len())
+                .find(|&i| !s.data.species[i].is_producer())
+                .unwrap();
+            let mut a = mon_from_species(&s.data, prey, lx + 1, ly);
+            a.hp = 1000.0;
+            let mut r = s.rogue.take().unwrap();
+            r.floors[0].monsters.clear();
+            r.floors[0].monsters.push(a);
+            s.rogue_attack(&mut r, 0);
+            let done = 1000.0 - r.floors[0].monsters[0].hp;
+            s.rogue = Some(r);
+            done
+        };
+        let bare = blow(&mut s, false);
+        let armed = blow(&mut s, true);
+        assert!(
+            armed > bare + d.gear[rifle].attack - 1e-9,
+            "{armed} vs {bare}"
+        );
+        // A wound: the same hit costs less health in armour.
+        let wound = |s: &mut Sim, armoured: bool| -> f32 {
+            s.rogue = None;
+            s.rogue_land(body, cx, cy, vec![0], false).unwrap();
+            s.crew.members[0].gear = vec![None; 3];
+            s.crew.members[0].health = 1.0;
+            if armoured {
+                s.crew.members[0].gear[1] = Some(suit);
+            }
+            let mut r = s.rogue.take().unwrap();
+            s.rogue_hurt(&mut r, 0, 0.4, "test");
+            s.rogue = Some(r);
+            1.0 - s.crew.members[0].health
+        };
+        let naked = wound(&mut s, false);
+        let dressed = wound(&mut s, true);
+        assert!((naked - 0.4).abs() < 1e-3);
+        assert!(dressed < naked * 0.6, "{dressed} vs {naked}");
+        // A harvest: the tool adds its share.
+        let harvest = |s: &mut Sim, tool: bool| -> f64 {
+            s.rogue = None;
+            s.rogue_land(body, cx, cy, vec![0], false).unwrap();
+            s.crew.members[0].gear = vec![None; 3];
+            if tool {
+                s.crew.members[0].gear[2] = Some(pick);
+            }
+            let (lx, ly) = {
+                let r = s.rogue.as_mut().unwrap();
+                r.floors[0].monsters.clear();
+                r.floors[0].items.clear();
+                r.floors[0].sites.clear();
+                (r.x, r.y)
+            };
+            s.rogue.as_mut().unwrap().floors[0].items.push(Item {
+                x: lx + 1,
+                y: ly,
+                res: food,
+                kg: 2.0,
+                plant: true,
+            });
+            let mut r = s.rogue.take().unwrap();
+            let i = r.idx(lx + 1, ly);
+            r.floors[0].tiles[i] = T_FLOOR;
+            s.rogue = Some(r);
+            s.rogue_step(1, 0).unwrap();
+            s.rogue.as_ref().unwrap().loot_mass()
+        };
+        let plain = harvest(&mut s, false);
+        let tooled = harvest(&mut s, true);
+        assert!(plain > 0.0);
+        assert!(
+            (tooled / plain - (1.0 + d.gear[pick].gather)).abs() < 1e-6,
+            "{tooled} / {plain}"
+        );
+    }
+
+    #[test]
+    fn leadership_changes_among_the_standing_and_a_fallen_squad_ends_the_run() {
+        let (mut s, body, cx, cy) = landing_site();
+        let d = Arc::clone(&s.data);
+        let sib = {
+            let me = s.crew.members[0].kin;
+            let sib = crate::genealogy::siblings(&s.crew.families, me)[0];
+            crate::crew::person_from_kin(&d, &s.crew.families, sib, 99, None, None)
+        };
+        s.crew.hire(&d, sib, 2, 0.0);
+        s.rogue_land(body, cx, cy, vec![0, 1], false).unwrap();
+        assert_eq!(s.rogue.as_ref().unwrap().active, 0);
+        s.rogue_switch();
+        assert_eq!(
+            s.rogue.as_ref().unwrap().active,
+            1,
+            "the AI moves to the other one"
+        );
+        s.crew.members[0].health = 0.0;
+        s.rogue_wait().unwrap();
+        assert!(
+            s.rogue.as_ref().unwrap().active < 1,
+            "only one is left standing"
+        );
+        s.crew.members[1].health = 0.0;
+        s.rogue_wait().unwrap();
+        assert!(
+            s.rogue.as_ref().unwrap().over,
+            "everybody down ends the expedition"
+        );
+    }
+
+    #[test]
+    fn thin_air_and_extreme_temperatures_hurt_unless_a_suit_is_worn() {
+        assert_eq!(environment_damage(1.0, 290.0, 0.0).0, 0.0);
+        let bare = environment_damage(0.0, 290.0, 0.0).0;
+        let suited = environment_damage(0.0, 290.0, 0.35).0;
+        assert!(bare > 0.0 && suited < bare * 0.6);
+        assert!(
+            environment_damage(0.0, 290.0, 0.6).0 < bare * 0.15,
+            "an exosuit nearly stops it"
+        );
+        assert!(environment_damage(1.0, 150.0, 0.0).0 > 0.0, "cold hurts");
+        assert!(environment_damage(1.0, 420.0, 0.0).0 > 0.0, "heat hurts");
+        let (mut s, body, cx, cy) = landing_site();
+        let turns = |s: &mut Sim, suit: bool| -> f32 {
+            s.rogue = None;
+            s.rogue_land(body, cx, cy, vec![0], false).unwrap();
+            s.rogue.as_mut().unwrap().env = Some((0.0, 290.0));
+            s.rogue.as_mut().unwrap().floors[0].monsters.clear();
+            s.crew.members[0].gear = vec![None; 3];
+            if suit {
+                s.crew.members[0].gear[1] = s.data.gear_index("exosquelette");
+            }
+            s.crew.members[0].health = 1.0;
+            for _ in 0..5 {
+                s.rogue_wait().unwrap();
+            }
+            s.crew.members[0].health
+        };
+        let bare = turns(&mut s, false);
+        assert!(bare < 0.95, "{bare}");
+        let suited = turns(&mut s, true);
+        assert!(suited > bare + 0.05, "{suited} vs {bare}");
+    }
+
+    #[test]
+    fn a_drone_picks_things_up_on_its_own_for_a_while() {
+        let (mut s, body, cx, cy) = landing_site();
+        s.rogue_land(body, cx, cy, vec![0], false).unwrap();
+        let r = s.data.resource_index("robotics").unwrap();
+        s.ship.cargo.kg[r] = 0.0;
+        assert!(s.rogue_deploy_drone().is_err(), "no robotics, no drone");
+        s.ship.cargo.kg[r] = 3.0;
+        let food = s.data.resource_index("food").unwrap();
+        let (x, y) = {
+            let rr = s.rogue.as_mut().unwrap();
+            rr.floors[0].monsters.clear();
+            (rr.x, rr.y)
+        };
+        for k in 0..12 {
+            s.rogue.as_mut().unwrap().floors[0].items.push(Item {
+                x: x + k % 3 - 1,
+                y: y + 1 + k / 3 % 2,
+                res: food,
+                kg: 2.0,
+                plant: true,
+            });
+        }
+        let before = s.rogue.as_ref().unwrap().floor().items.len();
+        s.rogue_deploy_drone().expect("launched");
+        assert!(s.rogue.as_ref().unwrap().drone_turns >= DRONE_TURNS - 1);
+        assert!(s.ship.cargo.kg[r] < 3.0, "a unit of robotics is spent");
+        assert!(s.rogue_deploy_drone().is_err(), "one at a time");
+        for _ in 0..8 {
+            s.rogue_wait().unwrap();
+        }
+        let rr = s.rogue.as_ref().unwrap();
+        assert!(rr.floor().items.len() + 5 <= before, "it picked up");
+        assert!(rr.loot_mass() > 0.0);
+        for _ in 0..40 {
+            s.rogue_wait().unwrap();
+        }
+        assert_eq!(
+            s.rogue.as_ref().unwrap().drone_turns,
+            0,
+            "its batteries ran out"
         );
     }
 }

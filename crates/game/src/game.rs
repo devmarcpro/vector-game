@@ -67,7 +67,6 @@ pub enum Screen {
     Proto,
     Dialogue,
     Expedition,
-    Walk,
 }
 
 /// Route being composed in the fleet screen.
@@ -137,7 +136,8 @@ pub struct Game {
     pub exp_party: Vec<bool>,
     pub exp_vehicle: bool,
     pub exp_sel: usize,
-    pub walk: Option<vector_sim::walk::Walk>,
+    /// An exploration started from the surface map: closing it goes back there.
+    pub rogue_from_surface: bool,
     /// Radio conversation: who, where in the tree, what just happened, the lines so far.
     pub dlg_npc: usize,
     pub dlg_node: String,
@@ -202,8 +202,6 @@ pub struct Game {
     pub trade_ui: crate::trade_view::TradeUi,
     pub cosmos_ui: crate::cosmos_view::CosmosUi,
     pub rogue_ui: crate::rogue_view::RogueUi,
-    /// Where to go back to when an exploration entered from elsewhere is closed.
-    pub rogue_return: Option<Screen>,
     pub comp_series: Vec<Vec<f64>>,
     pub bourse_live: Vec<f64>,
     pub bourse_news: Vec<vector_sim::bourse::ActiveEvent>,
@@ -284,7 +282,7 @@ impl Game {
             exp_party: Vec::new(),
             exp_vehicle: false,
             exp_sel: 0,
-            walk: None,
+            rogue_from_surface: false,
             dlg_npc: 0,
             dlg_node: String::new(),
             dlg_result: String::new(),
@@ -331,7 +329,6 @@ impl Game {
             comp_sel: 0,
             farm: Default::default(),
             rogue_ui: Default::default(),
-            rogue_return: None,
             cosmos_ui: crate::cosmos_view::CosmosUi {
                 stasis: 3,
                 ..Default::default()
@@ -815,7 +812,6 @@ impl Game {
             Screen::Proto => self.proto_key(code),
             Screen::Dialogue => self.dialogue_key(code),
             Screen::Expedition => self.expedition_key(code),
-            Screen::Walk => self.walk_key(code),
             Screen::Family => self.family_key(code),
             Screen::Destroyed => {
                 if code == KeyCode::Enter {
@@ -2445,7 +2441,6 @@ mod tests {
             Screen::Proto,
             Screen::Dialogue,
             Screen::Expedition,
-            Screen::Walk,
         ] {
             g.screen = s;
             let line = crate::tutorial::hint_line(&g);
@@ -3025,7 +3020,7 @@ mod tests {
     }
 
     #[test]
-    fn an_expedition_goes_from_the_surface_to_the_walk_and_back_with_the_loot() {
+    fn an_expedition_goes_from_the_surface_map_to_the_exploration_and_back_with_the_loot() {
         let mut g = Game::new(data(), 1);
         g.key(KeyCode::Enter, None, true);
         g.settings.tutorial = false;
@@ -3057,8 +3052,14 @@ mod tests {
         let mut found = false;
         'find: for cy in (6..vector_world::surface::H - 6).step_by(4) {
             for cx in (0..vector_world::surface::W).step_by(5) {
-                if let Ok(w) = g.sim.walk_start(body, cx, cy, vec![0], false) {
-                    if w.plants.len() > 3 {
+                if g.sim.rogue_land(body, cx, cy, vec![0], false).is_ok() {
+                    let plants = g
+                        .sim
+                        .rogue
+                        .as_ref()
+                        .map_or(0, |r| r.floor().items.iter().filter(|i| i.plant).count());
+                    g.sim.rogue = None;
+                    if plants > 3 {
                         g.surf_cx = cx;
                         g.surf_cy = cy;
                         found = true;
@@ -3079,21 +3080,33 @@ mod tests {
         );
         g.key(KeyCode::Space, None, true); // ...and tick again
         g.key(KeyCode::Enter, None, true);
-        assert_eq!(g.screen, Screen::Walk);
+        assert_eq!(g.screen, Screen::Rogue);
+        assert!(g.sim.rogue.as_ref().unwrap().on_surface());
         frame(&g);
-        let t0 = g.walk.as_ref().unwrap().turn;
-        let mz = g.settings.move_keys();
-        g.key(mz[2], None, true); // right (D on both layouts)
-        assert!(g.walk.as_ref().unwrap().turn > t0, "a move takes a turn");
+        let t0 = g.sim.rogue.as_ref().unwrap().turn;
+        // Some step is open around the landing.
+        for k in [
+            KeyCode::ArrowRight,
+            KeyCode::ArrowLeft,
+            KeyCode::ArrowDown,
+            KeyCode::ArrowUp,
+        ] {
+            g.key(k, None, true);
+        }
+        assert!(
+            g.sim.rogue.as_ref().unwrap().turn > t0,
+            "a move takes a turn"
+        );
         g.key(KeyCode::KeyR, None, true);
-        assert!(g.walk.as_ref().unwrap().over);
-        g.key(KeyCode::KeyG, None, true);
+        assert!(g.sim.rogue.as_ref().unwrap().over);
+        frame(&g);
+        g.key(KeyCode::Enter, None, true);
         assert_eq!(
             g.screen,
             Screen::Surface,
-            "any key leaves the finished expedition"
+            "closing the finished expedition goes back to the map"
         );
-        assert!(g.walk.is_none());
+        assert!(g.sim.rogue.is_none());
     }
 
     #[test]
@@ -3332,6 +3345,13 @@ mod tests {
         g.key(KeyCode::End, None, true);
         assert_eq!(g.screen, Screen::Rogue);
         frame(&g);
+        // The station, not one of the worlds that may also be in reach.
+        g.rogue_ui.sel = g
+            .sim
+            .rogue_targets()
+            .iter()
+            .position(|t| g.data.rogue_themes[t.theme].id == "station")
+            .expect("the station is a target");
         g.key(KeyCode::Enter, None, true);
         assert!(g.sim.rogue.is_some(), "set out");
         frame(&g);
@@ -3371,7 +3391,8 @@ mod tests {
         };
         frame(&g);
         let before = g.sim.rogue.as_ref().unwrap().turn;
-        g.pointer_click(8 + 16 * cx + 3, 30 + 20 * cy + 3, 1_000);
+        let (camx, camy) = crate::rogue_view::camera(g.sim.rogue.as_ref().unwrap());
+        g.pointer_click(8 + 16 * (cx - camx) + 3, 30 + 20 * (cy - camy) + 3, 1_000);
         assert!(g.sim.rogue.as_ref().unwrap().turn > before, "walked");
         frame(&g);
         g.sim.rogue.as_mut().unwrap().over = true;

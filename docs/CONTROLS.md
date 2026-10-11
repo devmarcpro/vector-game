@@ -91,7 +91,7 @@ Tout se fait aussi à la souris (hors visée F7, où la souris pilote le vaissea
 Par défaut AZERTY : tangage Z/S, lacet Q/D, roulis A/E. Options > Clavier bascule en QWERTY (W/S, A/D, Q/E). Les autres commandes se nomment par la lettre imprimée sur la touche, quelle que soit la disposition. Le tribut des pirates se paie avec la touche Z en QWERTY, par la radio (Entrée) en AZERTY. Options > Langue : FRANCAIS (les traductions viendront plus tard).
 
 ## Expédition (surface, touche E)
-Ecran de préparation : Haut/Bas, Espace coche un équipier ou le rover, Entrée part. En marche : flèches ou Z/Q/S/D (W/A/S/D en QWERTY) pour marcher, foncer sur un animal l'attaque, G cueille à côté, Tab passe au membre suivant, Espace attend un tour, R rentre au vaisseau (le butin va en soute), clic sur la carte = un pas vers la case, clic sur un nom = prendre le contrôle.
+Écran de préparation : Haut/Bas, Espace coche un équipier ou le rover, Entrée part. Ensuite c'est l'exploration commune (voir « Exploration à pied ») : flèches, pavé numérique ou Z/Q/S/D pour avancer (foncer sur un animal ou un monstre l'attaque), les plantes et le butin se ramassent en marchant, Entrée sur un site (ruine, grotte, épave…) y descend et sur < remonte, V lance un drone, R rappelle l'équipe depuis la surface, Tab change de chef, clic = marcher jusqu'à la case.
 
 - **Globe de surface** : glisser avec le bouton gauche pour le faire tourner.
 
@@ -118,3 +118,4 @@ Ecran de préparation : Haut/Bas, Espace coche un équipier ou le rover, Entrée
 - Ecran Portail/Temps (Accueil) : 1/2/3 echo, B briser une boucle, O avant-poste, Gauche/Droite + J relais.
 
 - Fin (vol ou quai) : explorer a pied (fleches / pave numerique, Entree escalier, Espace attendre, Tab chef, clic = marcher).
+- Exploration à pied (un seul système pour les mondes, stations, épaves, ruines, grottes, portails, dimensions) : touche Fin en vol ou à quai, ou E sur la carte de surface (F8). Mondes : « Atterrir » ; la surface a ses sites qui mènent aux étages des lieux.

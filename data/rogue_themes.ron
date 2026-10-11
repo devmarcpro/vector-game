@@ -94,4 +94,8 @@
   features:[("terminal",3.0), ("medbay",2.0), ("mutagen",2.0), ("cache",1.5), ("vault",1.0)],
   hazard:0.08, hazard_name:"les vapeurs",
   text:"Des éprouvettes brisées, des dossiers, et quelque chose dans la chambre froide."),
+ (id:"surface", name:"Surface", floors:1, size:(96,52), rooms:(3,3),
+  monsters:[("rat",1.0)], loot:[("food",1.0,2.0,1.0)], features:[("cache",1.0)],
+  hazard:0.0, hazard_name:"",
+  text:"Le sol d'un monde : rochers, mares, plantes et bêtes de son biome. (Généré depuis la carte de la planète ; les listes ci-dessus ne servent pas.)"),
 ]

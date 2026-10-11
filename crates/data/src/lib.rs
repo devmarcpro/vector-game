@@ -1283,7 +1283,7 @@ impl GameData {
             }
             let ok = (1..=6).contains(&t.floors)
                 && (40..=100).contains(&t.size.0)
-                && (20..=50).contains(&t.size.1)
+                && (20..=60).contains(&t.size.1)
                 && t.rooms.0 >= 3
                 && t.rooms.0 <= t.rooms.1
                 && t.rooms.1 <= 20
@@ -1326,6 +1326,7 @@ impl GameData {
             "base_pirate",
             "reacteur",
             "laboratoire",
+            "surface",
         ] {
             if self.rogue_theme_index(needed).is_none() {
                 return bad(format!("lieu {needed} manquant"));

@@ -5,6 +5,7 @@ mod console;
 mod cosmos_view;
 mod crew_net_view;
 mod dialogue_view;
+mod expedition_view;
 mod faction_view;
 mod family_view;
 mod farm_view;
@@ -25,7 +26,6 @@ mod tech_view;
 mod trade_view;
 mod tutorial;
 mod ui;
-mod walk_view;
 mod wire_shape;
 
 use game::{Game, Screen, DEFAULT_SEED};
@@ -490,8 +490,10 @@ fn snapshot(path: &str, scene: &str, data: Arc<GameData>) {
                 // A land cell with plants and animals.
                 'find: for cy in (6..vector_world::surface::H - 6).step_by(5) {
                     for cx in (0..vector_world::surface::W).step_by(7) {
-                        if let Ok(w) = g.sim.walk_start(body, cx, cy, vec![0], false) {
-                            if w.plants.len() > 20 && w.creatures.len() > 6 {
+                        if g.sim.rogue_land(body, cx, cy, vec![0], false).is_ok() {
+                            let r = g.sim.rogue.take().expect("a run");
+                            let plants = r.floor().items.iter().filter(|i| i.plant).count();
+                            if plants > 20 && r.floor().monsters.len() > 6 {
                                 g.surf_cx = cx;
                                 g.surf_cy = cy;
                                 break 'find;
@@ -503,12 +505,7 @@ fn snapshot(path: &str, scene: &str, data: Arc<GameData>) {
                 if scene == "walk" {
                     g.exp_vehicle = true;
                     g.key(KeyCode::Enter, None, true);
-                    for k in [
-                        KeyCode::ArrowRight,
-                        KeyCode::ArrowRight,
-                        KeyCode::ArrowDown,
-                        KeyCode::KeyG,
-                    ] {
+                    for k in [KeyCode::ArrowRight, KeyCode::ArrowRight, KeyCode::ArrowDown] {
                         g.key(k, None, true);
                     }
                 }

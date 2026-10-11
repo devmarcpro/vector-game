@@ -1,0 +1,18 @@
+# Colony: found one, let a month pass at high time scale, the colony must still exist and the
+# game must stay playable.
+new 11
+tutorial off
+give credits 100000
+give cargo construction_materials 3000
+give cargo colonists 400
+give cargo food 300
+give cargo water 600
+near planet
+key o
+expect colonies > 0
+deepspace
+scale 10000
+wait 20
+scale 1
+print
+expect colonies > 0

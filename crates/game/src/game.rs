@@ -1451,13 +1451,7 @@ impl Game {
                 KeyCode::Escape => self.picker = false,
                 KeyCode::Enter => {
                     if let Some(&mi) = list.get(self.pick_sel) {
-                        let res = if self.sim.module_stock[mi] > 0 {
-                            Ok(())
-                        } else {
-                            self.sim.shop_buy_module(mi).map(|_| ())
-                        }
-                        .and_then(|()| self.sim.install_module(self.ship_sel, mi));
-                        match res {
+                        match self.sim.swap_module(self.ship_sel, mi) {
                             Ok(()) => {
                                 let name = self.data.modules[mi].name.clone();
                                 self.say(format!("INSTALLE: {name}"));
@@ -1475,12 +1469,8 @@ impl Game {
             KeyCode::ArrowUp => self.ship_sel = (self.ship_sel + n - 1) % n,
             KeyCode::ArrowDown => self.ship_sel = (self.ship_sel + 1) % n,
             KeyCode::Enter if docked => {
-                if self.sim.ship.design.slots[self.ship_sel].is_some() {
-                    self.say("EMPLACEMENT OCCUPE - [X] RETIRER D ABORD");
-                } else {
-                    self.picker = true;
-                    self.pick_sel = 0;
-                }
+                self.picker = true;
+                self.pick_sel = 0;
             }
             KeyCode::KeyX if docked => match self.sim.uninstall_module(self.ship_sel) {
                 Ok(()) => self.say("MODULE RETIRE (STOCK)"),

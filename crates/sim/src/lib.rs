@@ -1264,6 +1264,32 @@ impl Sim {
         Ok(())
     }
 
+    /// Replace the module in `slot` by `mi` in one go: buy `mi` if none is in stock, send the old
+    /// module to stock, install the new one. Everything is rolled back if any step fails.
+    pub fn swap_module(&mut self, slot: usize, mi: usize) -> Result<(), &'static str> {
+        self.docked.ok_or("non amarre")?;
+        let saved = (
+            self.ship.design.clone(),
+            self.module_stock.clone(),
+            self.credits,
+        );
+        let go = |s: &mut Sim| -> Result<(), &'static str> {
+            if s.module_stock[mi] == 0 {
+                s.shop_buy_module(mi)?;
+            }
+            if s.ship.design.slots[slot].is_some() {
+                s.uninstall_module(slot)?;
+            }
+            s.install_module(slot, mi)
+        };
+        let res = go(self);
+        if res.is_err() {
+            (self.ship.design, self.module_stock, self.credits) = saved;
+            self.ship.refresh_stats(&self.data);
+        }
+        res
+    }
+
     /// Trade the current hull in for a new (empty) one; modules go to stock.
     pub fn buy_hull(&mut self, hi: usize) -> Result<f64, &'static str> {
         self.docked.ok_or("non amarre")?;
@@ -1742,6 +1768,33 @@ mod tests {
         assert!(s.uninstall_module(cargo_slot).is_err());
         let sold = s.shop_sell_module(radiator).expect("sell back");
         assert!((sold - s.data.modules[radiator].cost * RESALE).abs() < 1e-9);
+    }
+
+    #[test]
+    fn swap_replaces_in_one_step_and_rolls_back_on_failure() {
+        let mut s = docked_sim();
+        let find = |s: &Sim, id: &str| s.data.module_index(id).expect("module");
+        let (mk1, mk3) = (find(&s, "radiator_mk1"), find(&s, "radiator_mk3"));
+        let slot = s
+            .ship
+            .design
+            .modules(&s.data)
+            .find(|(_, m)| m.category == "radiator")
+            .map(|(i, _)| i)
+            .expect("radiator slot");
+        let old = s.ship.design.slots[slot].expect("occupied");
+        let c0 = s.credits;
+        s.swap_module(slot, mk1)
+            .expect("swap into an occupied slot");
+        assert_eq!(s.ship.design.slots[slot], Some(mk1));
+        assert_eq!(s.module_stock[old], 1, "the old module goes to stock");
+        assert!((c0 - s.credits - s.data.modules[mk1].cost).abs() < 1e-6);
+        // Too big for the slot: refused, and nothing changes (no credits lost, stock intact).
+        let (design, stock, credits) = (s.ship.design.clone(), s.module_stock.clone(), s.credits);
+        assert!(s.swap_module(slot, mk3).is_err());
+        assert_eq!(s.ship.design.slots, design.slots);
+        assert_eq!(s.module_stock, stock);
+        assert_eq!(s.credits, credits);
     }
 
     #[test]

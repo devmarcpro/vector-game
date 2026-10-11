@@ -7,6 +7,7 @@ pub mod autopilot;
 pub mod biosphere;
 pub mod births;
 pub mod blackmarket;
+pub mod body;
 pub mod bourse;
 pub mod cargo;
 pub mod casino;
@@ -53,6 +54,7 @@ pub mod science;
 pub mod surgery;
 pub mod surprises;
 pub mod trading;
+pub mod treat;
 pub mod voyage;
 
 use autopilot::Autopilot;
@@ -797,6 +799,34 @@ impl Sim {
     fn update_crew(&mut self) {
         let data = Arc::clone(&self.data);
         let eff = &self.effective;
+        // What the cabin exposes the crew to: air, heat, the weight of the ship (a spun habitat
+        // gives half a g, the thrust adds to it).
+        let docked = self.docked.is_some() || self.parked.is_some();
+        let spun = self
+            .ship
+            .design
+            .modules(&data)
+            .any(|(_, m)| m.category == "habitat");
+        let accel = self.crew.env.accel_g;
+        self.crew.env = crate::body::Exposure {
+            temp_k: if self.ship.sys.overheating {
+                313.0
+            } else {
+                294.0
+            },
+            gravity_g: f64::max(
+                if docked {
+                    1.0
+                } else if spun {
+                    0.5
+                } else {
+                    0.0
+                },
+                accel,
+            ),
+            accel_g: accel,
+            ..crate::body::Exposure::CABIN
+        };
         let mut ctx = CrewCtx {
             data: &data,
             cargo: &mut self.ship.cargo,
@@ -1034,6 +1064,10 @@ impl Sim {
         s.vel = s.vel + (s.rot.mul_vec(acc_b) + grav) * dt;
         s.pos = s.pos + s.vel * dt;
         self.g_load = acc_b.length() / G0;
+        // The crew feels the thrust (a slow average: a burst of a second is not a sustained load).
+        let felt = acc_b.length() / crate::body::G0;
+        let env = &mut self.crew.env;
+        env.accel_g += (felt - env.accel_g) * (dt / 20.0).min(1.0);
         self.time += dt;
         self.refresh_bodies();
         self.atmosphere_drag(dt);

@@ -974,6 +974,10 @@ fn draw_crew(fb: &mut Framebuffer, g: &Game) {
         crate::crew_net_view::draw(fb, g);
         return;
     }
+    if g.med_mode {
+        crate::medicine_view::draw(fb, g);
+        return;
+    }
     let top = 8;
     fb.text(
         1,
@@ -1215,7 +1219,7 @@ fn draw_crew(fb: &mut Framebuffer, g: &Game) {
         );
     }
     let b = fb.rows() - 4;
-    fb.text(1, b, "HAUT/BAS:CHOISIR  GAUCHE/DROITE:POSTE  T:QUART  X:DEBARQUER (A QUAI)  J:JOURNAL  N:RECRUTER  K/ECHAP:RETOUR", DIM);
+    fb.text(1, b, "HAUT/BAS:CHOISIR  GAUCHE/DROITE:POSTE  T:QUART  M:MEDECINE  X:DEBARQUER (A QUAI)  J:JOURNAL  N:RECRUTER  K/ECHAP:RETOUR", DIM);
     for (i, msg) in g.messages.iter().rev().take(2).enumerate() {
         fb.text(1, b + 1 + i, msg, if i == 0 { AMBER } else { DIM });
     }

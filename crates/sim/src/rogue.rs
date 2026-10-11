@@ -1615,6 +1615,60 @@ impl Sim {
 
     // ---- the squad -------------------------------------------------------------------------
 
+    /// The squad on a planet breathes its air and feels its cold: tell the body model what each
+    /// member is exposed to during the next turn (a sealed suit gives its own air and pressure).
+    fn expose_party(&mut self, r: &mut Rogue, seconds: f64) {
+        let (Some((pressure, temp)), true) = (r.env, r.on_surface()) else {
+            return;
+        };
+        let (o2, co2, grav) =
+            r.body
+                .and_then(|b| self.system.bodies.get(b))
+                .map_or((0.21, 0.0, 1.0), |b| {
+                    let f = |gas: &str| {
+                        b.atmosphere
+                            .iter()
+                            .find(|(n, _)| *n == gas)
+                            .map_or(0.0, |(_, v)| f64::from(*v))
+                    };
+                    (f("O2"), f("CO2"), b.gravity / crate::body::G0)
+                });
+        let mut list = Vec::new();
+        for who in self.party_up(r) {
+            let p = &self.crew.members[who];
+            let defense = p.gear_stat(&self.data, "defense");
+            let mut e = crate::body::Exposure {
+                pressure_kpa: pressure * 100.0,
+                o2_frac: o2,
+                co2_kpa: co2 * pressure * 100.0,
+                temp_k: temp,
+                gravity_g: grav,
+                accel_g: 0.0,
+                rad_sv_day: 0.0,
+                insulation: defense.clamp(0.0, 0.95),
+            };
+            if defense >= 0.15 {
+                // A sealed suit: its own pressure and oxygen, whatever the air outside.
+                e.pressure_kpa = e.pressure_kpa.max(40.0);
+                e.o2_frac = if e.pressure_kpa > 100.0 {
+                    o2.max(0.21)
+                } else {
+                    1.0
+                };
+                e.co2_kpa = 0.0;
+            }
+            if e.pressure_kpa * e.o2_frac < 16.0 && r.turn.is_multiple_of(10) {
+                let name = p.name.clone();
+                r.say(format!(
+                    "{name} suffoque : l'air d'ici ne se respire pas (il faut une combinaison etanche)."
+                ));
+            }
+            list.push((p.id, e));
+        }
+        self.crew.away = list;
+        self.crew.away_until = self.time + seconds + 2.0 * crate::crew::TICK;
+    }
+
     fn party_up(&self, r: &Rogue) -> Vec<usize> {
         r.party
             .iter()
@@ -1676,6 +1730,22 @@ impl Sim {
                 - self.crew.members[who]
                     .gear_stat(&self.data, "defense")
                     .min(0.9));
+        // The blow leaves a localised wound: cut, bruise, break, burn or head injury.
+        if dmg >= 0.04 {
+            let roll = hash_coord(r.seed, i64::from(r.turn), who as i64, 59) % 100;
+            let kind = match roll {
+                0..=44 => "coupure",
+                45..=69 => "contusion",
+                70..=84 => "fracture_os",
+                85..=94 => "brulure_plaie",
+                _ => "traumatisme_crane",
+            };
+            let hd = std::sync::Arc::clone(&self.data);
+            let pick = hash_coord(r.seed, i64::from(r.turn), who as i64, 61);
+            self.crew.members[who]
+                .body
+                .strike(&hd, kind, (dmg * 1.5).clamp(0.1, 1.0) as f32, pick);
+        }
         let p = &mut self.crew.members[who];
         p.organs.resize(n_org, 1.0);
         p.health = (p.health - dmg as f32).max(0.0);
@@ -2368,6 +2438,7 @@ impl Sim {
         } else {
             slow
         };
+        self.expose_party(r, r.turn_seconds * slow);
         self.advance(r.turn_seconds * slow, &ShipInput::default());
         let theme = self.data.rogue_themes[r.theme].clone();
         // Hazard of the place, every fifth turn.
@@ -4138,6 +4209,8 @@ mod tests {
     fn a_drone_picks_things_up_on_its_own_for_a_while() {
         let (mut s, body, cx, cy) = landing_site();
         s.rogue_land(body, cx, cy, vec![0], false).unwrap();
+        // The squad is suited: the air of a world is rarely breathable.
+        s.crew.members[0].gear[1] = s.data.gear_index("exosquelette");
         let r = s.data.resource_index("robotics").unwrap();
         s.ship.cargo.kg[r] = 0.0;
         assert!(s.rogue_deploy_drone().is_err(), "no robotics, no drone");

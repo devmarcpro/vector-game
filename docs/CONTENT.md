@@ -79,3 +79,5 @@ Xenobiologie : 13 especes dans data/species_xeno.ron (ecrit a la main, ajoute a 
 
 ## Histoire et artefacts
 `data/history.ron` : `ages` (6 ages fixes), `causes` (id, nom, poids, texte) et `artefacts` (texte, carte, technologie, relique, outil : valeur de base, jours de traduction, texte). Codex : AGES DE L'HISTOIRE, CAUSES D'EFFONDREMENT, ARTEFACTS.
+## Corps, blessures, medicaments
+`data/body.ron` : id, nom, chance d'etre touchee (`hit`), extremite, organes abrites, effets du handicap total. `data/wounds.ron` : id, nom, saignement par heure, douleur, jours de guerison, risque d'infection, interne (invisible sans medecin competent ou infirmerie), demande un pansement, parties possibles, cause. `data/drugs.ron` : id, nom, ressource et dose, demi-vie, effets (pain, clot, infection, stress, fatigue, rad, heal, blood_now, resp, liver), tolerance et dependance par dose, interactions, texte. Valides au chargement (`medical.rs`) ; une entree de codex est generee pour chacun.

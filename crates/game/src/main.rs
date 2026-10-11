@@ -19,6 +19,7 @@ mod globe;
 mod health_view;
 mod hud;
 mod mind_view;
+mod medicine_view;
 mod mouse;
 mod power_view;
 mod proto_view;
@@ -918,7 +919,7 @@ fn snapshot(path: &str, scene: &str, data: Arc<GameData>) {
             g.sim.update_ref_pub();
             g.open_galaxy();
         }
-        "crew" | "crewnet" | "recruit" | "journal" => {
+        "crew" | "crewnet" | "recruit" | "journal" | "medicine" => {
             let (st, _) = g.sim.nearest_station().expect("station");
             g.sim.spawn_near(st, g.sim.bodies[st].radius + 200.0);
             g.key(KeyCode::KeyD, None, true);
@@ -931,10 +932,23 @@ fn snapshot(path: &str, scene: &str, data: Arc<GameData>) {
                     .cargo
                     .add(&data, data.resource_index(id).expect("res"), kg);
             }
-            g.sim.advance(40.0 * 86_400.0, &ShipInput::default());
+            let days = if scene == "medicine" { 2.0 } else { 40.0 };
+            g.sim.advance(days * 86_400.0, &ShipInput::default());
             g.screen = match scene {
-                "crew" | "crewnet" => {
+                "crew" | "crewnet" | "medicine" => {
                     g.crew_net = scene == "crewnet";
+                    g.med_mode = scene == "medicine";
+                    if g.med_mode {
+                        // A few injuries to look at.
+                        let d = Arc::clone(&g.data);
+                        let b = &mut g.sim.crew.members[0].body;
+                        b.add_wound(&d, "fracture_os", 4, 0.7);
+                        b.add_wound(&d, "coupure", 2, 0.4);
+                        b.add_wound(&d, "hemorragie_interne", 1, 0.3);
+                        b.dress_wounds(&d, 3.0);
+                        b.take_drug(&d, 1);
+                        b.disability[5] = 0.3;
+                    }
                     Screen::Crew
                 }
                 "recruit" => Screen::Recruit,

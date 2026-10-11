@@ -1,0 +1,12 @@
+// Body parts (medical model, see docs/SIM_MODEL.md). A wound lands on one part, picked by `hit`
+// (relative chance of being struck). organs: organs of organs.ron housed in the part (a wound
+// there also hurts them). limb: an extremity, first to freeze. effects: what the permanent
+// disability of the part (0..1) takes off a trait key (same keys as organs.ron).
+[
+ (id:"tete", name:"Tete", hit:0.10, limb:false, organs:["cerveau","yeux"], effects:[("work_speed",-0.1)]),
+ (id:"torse", name:"Torse", hit:0.32, limb:false, organs:["coeur","poumons","foie","reins","estomac"], effects:[("health_base",-0.1)]),
+ (id:"bras_g", name:"Bras gauche", hit:0.14, limb:true, organs:["muscles"], effects:[("work_speed",-0.12)]),
+ (id:"bras_d", name:"Bras droit", hit:0.14, limb:true, organs:["muscles"], effects:[("work_speed",-0.12)]),
+ (id:"jambe_g", name:"Jambe gauche", hit:0.15, limb:true, organs:["os"], effects:[("work_speed",-0.1),("stress_resist",-0.05)]),
+ (id:"jambe_d", name:"Jambe droite", hit:0.15, limb:true, organs:["os"], effects:[("work_speed",-0.1),("stress_resist",-0.05)]),
+]

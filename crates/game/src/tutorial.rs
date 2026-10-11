@@ -125,11 +125,14 @@ pub fn hint_line(g: &Game) -> String {
         Screen::Crew if g.gear_mode => {
             "FLECHES CHOISIR UN EQUIPEMENT  ENTREE EQUIPER (IL FAUT L'OBJET EN SOUTE)  U RETIRER  E/ECHAP RETOUR A LA LISTE"
         }
+        Screen::Crew if g.med_mode => {
+            "HAUT/BAS PERSONNE  </> MEDICAMENT  ENTREE DONNER  TAB PLAIE  A PREMIERS SOINS  S OPERER  R CHOC  C CRYOSTASE  M/ECHAP RETOUR"
+        }
         Screen::Crew if g.organ_mode => {
             "HAUT/BAS ORGANE  ENTREE GREFFE  P PROTHESE  H PRELEVER  </> IMPLANT  I POSER  U RETIRER  K CLONER  M MUTAGENE  O/ECHAP"
         }
         Screen::Crew => {
-            "HAUT/BAS PERSONNE  </> POSTE  T QUART  X DEBARQUER  N RECRUTER  J JOURNAL  G ARBRE  V RESEAU  O ORGANES  E EQUIP.  K RETOUR"
+            "HAUT/BAS CHOIX  </> POSTE  T QUART  X DEBARQ.  N RECRUT.  J JOURNAL  G ARBRE  V RESEAU  O ORGANES  M MEDECINE  E EQUIP."
         }
         Screen::Recruit => "HAUT/BAS CANDIDAT  ENTREE EMBAUCHER  K EQUIPAGE  ECHAP RETOUR",
         Screen::Journal => "HAUT/BAS DEFILER  1-3 SURPRISE  K EQUIPAGE  J/ECHAP RETOUR  TAB NOUVELLES/ARCHIVES (D C M R T)",
@@ -229,6 +232,7 @@ pub fn help_lines(screen: Screen) -> &'static [&'static str] {
             "V : reseau des relations (amis, rivaux, famille)",
             "E : equipement (arme, armure, outil pris en soute ; Entree equipe, U retire)",
             "O : organes (Entree greffe, P prothese, H prelever, </> choisir un implant, I poser, U retirer, K cloner l'organe a l'hopital, M mutagene ; piece en soute)",
+            "M : medecine (silhouette, plaies, medicaments ; A premiers soins, S operer, Entree donner le medicament, </> choisir, R choc electrique, C cryostase)",
         ],
         Screen::Recruit => &["Haut/Bas : candidat   Entree : embaucher"],
         Screen::Journal => &[

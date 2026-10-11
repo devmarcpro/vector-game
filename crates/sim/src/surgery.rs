@@ -32,7 +32,7 @@ impl Sim {
 
     /// Who may operate: the hospital of a docked station, or a living medic aboard with a
     /// working infirmary. Returns the surgeon's medicine skill (0..10).
-    fn surgeon_skill(&self, patient: usize) -> Result<f64, &'static str> {
+    pub(crate) fn surgeon_skill(&self, patient: usize) -> Result<f64, &'static str> {
         if self.docked.is_some() {
             return Ok(4.0);
         }

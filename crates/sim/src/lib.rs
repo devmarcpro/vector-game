@@ -1241,7 +1241,7 @@ impl Sim {
         self.docked.ok_or("non amarre")?;
         let module = self.data.modules.get(mi).ok_or("module inconnu")?;
         if !self.is_unlocked("module", &module.id) {
-            return Err("technologie non recherchee");
+            return Err("technologie non recherchee (F4, ou regle: technologies)");
         }
         let cost = if self.rules.infinite_resources {
             0.0
@@ -1333,7 +1333,7 @@ impl Sim {
         self.docked.ok_or("non amarre")?;
         let new = self.data.hulls.get(hi).ok_or("coque inconnue")?;
         if !self.is_unlocked("hull", &new.id) {
-            return Err("technologie non recherchee");
+            return Err("technologie non recherchee (F4, ou regle: technologies)");
         }
         if hi == self.ship.design.hull {
             return Err("deja cette coque");

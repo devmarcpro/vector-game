@@ -282,6 +282,25 @@ fn revealing_the_map_removes_fog_of_war() {
 }
 
 #[test]
+fn turning_tech_locks_off_unlocks_every_hull() {
+    let locked = |s: &Sim| {
+        s.data
+            .hulls
+            .iter()
+            .filter(|h| !s.is_unlocked("hull", &h.id))
+            .count()
+    };
+    let mut strict = with(|r| r.tech_locks = true);
+    strict.researched.iter_mut().for_each(|r| *r = false);
+    assert!(
+        locked(&strict) > 0,
+        "some hull needs a technology when locks are on"
+    );
+    let free = with(|_| {});
+    assert_eq!(locked(&free), 0);
+}
+
+#[test]
 fn infinite_resources_make_ammunition_free() {
     let shots = |infinite: bool| {
         let mut s = with(|r| r.infinite_resources = infinite);

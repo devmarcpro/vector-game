@@ -50,3 +50,6 @@ Ajouter les entreprises : sociétés privées avec nom, siège, activité, flott
 
 ## Stockage visuel (fait en partie)
 Plan de soute à cases de volume égal (densité = remplissage de la case), jauges volume/masse. Reste : même plan pour les stocks de colonie et les entrepôts, formes de conteneurs, empilement 3D fil de fer.
+
+## Technologies (note du joueur)
+Sandbox totalement libre : la recherche ne doit jamais bloquer. A terme, les technologies donnent des bonus ou des variantes, pas des verrous.

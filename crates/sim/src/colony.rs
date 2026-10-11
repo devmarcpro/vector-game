@@ -803,7 +803,7 @@ impl Sim {
         let data = std::sync::Arc::clone(&self.data);
         let d = data.buildings.get(def).ok_or("batiment inconnu")?;
         if !self.is_unlocked("building", &d.id) {
-            return Err("technologie non recherchee");
+            return Err("technologie non recherchee (F4, ou regle: technologies)");
         }
         let (mult, free) = (self.rules.build_cost, self.rules.infinite_resources);
         let c = self.colonies.get_mut(ci).ok_or("colonie inconnue")?;

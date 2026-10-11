@@ -149,7 +149,7 @@ impl Sim {
         self.docked_station()?;
         let h = self.data.hulls.get(hull).ok_or("coque inconnue")?;
         if !self.is_unlocked("hull", &h.id) {
-            return Err("technologie non recherchee");
+            return Err("technologie non recherchee (F4, ou regle: technologies)");
         }
         let price = if self.rules.infinite_resources {
             0.0

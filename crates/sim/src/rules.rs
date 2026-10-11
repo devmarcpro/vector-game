@@ -29,6 +29,8 @@ pub struct Rules {
     pub creative: bool,
     /// Highest time acceleration available.
     pub max_timescale: f64,
+    /// Hulls, modules and buildings need their technology (off by default: a free sandbox, everything is available).
+    pub tech_locks: bool,
 }
 
 impl Default for Rules {
@@ -47,6 +49,7 @@ impl Default for Rules {
             invulnerable: false,
             creative: false,
             max_timescale: 100_000.0,
+            tech_locks: false,
         }
     }
 }
@@ -92,10 +95,11 @@ impl Rules {
             ("Invulnerabilite", yn(self.invulnerable)),
             ("Mode creatif (console)", yn(self.creative)),
             ("Acceleration max", format!("x{:.0}", self.max_timescale)),
+            ("Technologies requises pour construire", yn(self.tech_locks)),
         ]
     }
 
-    pub const OPTION_COUNT: usize = 13;
+    pub const OPTION_COUNT: usize = 14;
 
     /// Change option `i` one step up or down.
     pub fn adjust(&mut self, i: usize, up: bool) {
@@ -131,6 +135,7 @@ impl Rules {
                 };
                 self.max_timescale = ladder[next];
             }
+            13 => self.tech_locks = up,
             _ => {}
         }
     }

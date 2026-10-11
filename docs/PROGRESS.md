@@ -57,3 +57,5 @@
 - 2026-10-11 : Passe visuelle : réseau des relations de l'équipage (V dans l'écran équipage) : anneau de boîtes, fils verts/rouges selon l'amitié, pointillés ambre pour la parenté, liens détaillés de la personne choisie.
 
 - 2026-10-11 : Passe visuelle : carte de la flotte (M dans l'écran flotte) : systèmes à leur vraie position, colonies, routes (vert actif, gris arrêté, ambre choisie).
+
+- 2026-10-11 : Sandbox libre : plus besoin de rechercher des technologies pour acheter coques, modules et bâtiments (règle `tech_locks` désactivée par défaut, activable dans les règles). Sauvegarde v14.

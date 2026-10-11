@@ -43,9 +43,11 @@ impl Sim {
     // ---- technology -------------------------------------------------------
 
     pub fn is_unlocked(&self, kind: &str, id: &str) -> bool {
-        self.data
-            .unlocking_tech(kind, id)
-            .is_none_or(|t| self.researched[t])
+        !self.rules.tech_locks
+            || self
+                .data
+                .unlocking_tech(kind, id)
+                .is_none_or(|t| self.researched[t])
     }
 
     /// Whether every prerequisite of tech `t` is researched.
@@ -456,6 +458,7 @@ mod tests {
     #[test]
     fn locked_content_requires_research_and_prerequisites() {
         let (mut s, _) = sim_with_anomaly(None);
+        s.rules.tech_locks = true;
         assert!(s.is_unlocked("module", "fusion_mk1"), "tier 1 is free");
         assert!(!s.is_unlocked("module", "fusion_mk3"));
         let t = s.data.tech_index("fusion_mk3").expect("tech");
@@ -484,6 +487,7 @@ mod tests {
             .iter()
             .position(|b| b.kind == BodyKind::Station);
         if let Some(st) = st {
+            s2.rules.tech_locks = true;
             s2.spawn_near(st, s2.bodies[st].radius + 200.0);
             s2.try_dock().expect("dock");
             s2.credits = 1.0e9;

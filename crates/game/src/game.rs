@@ -270,6 +270,7 @@ impl Game {
             map: self.map,
             map_scale: self.map_scale,
             map_on_ship: self.map_on_ship,
+            boost: self.input().boost,
         }
     }
 

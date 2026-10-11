@@ -37,6 +37,56 @@ pub struct View<'a> {
     /// Metres per pixel on the system map.
     pub map_scale: f64,
     pub map_on_ship: bool,
+    /// Overdrive held: wider field of view and brighter dust streaks.
+    pub boost: bool,
+}
+
+/// Local dust: a stationary lattice of points in the reference frame, drawn as streaks along the
+/// relative velocity. The stars are at infinity and never shift, so this is what shows speed.
+fn draw_dust(fb: &mut Framebuffer, cam: &Camera, v: &View) {
+    const CELL: f64 = 1500.0;
+    const REACH: i64 = 4;
+    let rel = v.sim.rel_velocity();
+    let speed = rel.length();
+    if v.sim.docked.is_some() || speed < 0.5 {
+        return;
+    }
+    // Streaks strobe under time acceleration: keep dots only.
+    let streak = if v.timescale > 20.0 {
+        Vec3::ZERO
+    } else {
+        let len = (speed * 0.05).min(3.0 * CELL);
+        rel.normalized() * len
+    };
+    let col = if v.boost { GREEN } else { DIM };
+    let p = v.sim.ship.pos;
+    let (cx, cy, cz) = (
+        (p.x / CELL).floor() as i64,
+        (p.y / CELL).floor() as i64,
+        (p.z / CELL).floor() as i64,
+    );
+    for dx in -REACH..=REACH {
+        for dy in -REACH..=REACH {
+            for dz in -REACH..=REACH {
+                let (x, y, z) = (cx + dx, cy + dy, cz + dz);
+                let h = vector_core::hash_coord(0xD057, x, y, z);
+                let f = |s: u32| ((h >> s) & 0xFFFF) as f64 / 65535.0;
+                let q = Vec3::new(
+                    (x as f64 + f(0)) * CELL,
+                    (y as f64 + f(16)) * CELL,
+                    (z as f64 + f(32)) * CELL,
+                );
+                if (q - p).length() > REACH as f64 * CELL {
+                    continue;
+                }
+                if streak.length() > 1.0 {
+                    cam.draw_line(fb, q, q + streak, col);
+                } else if let Some((sx, sy)) = cam.project_world(q, fb) {
+                    fb.plot(sx as i32, sy as i32, col);
+                }
+            }
+        }
+    }
 }
 
 pub fn fmt_dist(m: f64) -> String {
@@ -86,7 +136,7 @@ fn draw_cockpit(fb: &mut Framebuffer, v: &View) {
     let cam = Camera {
         pos: ship.pos,
         rot: ship.rot.transpose(),
-        fov_y: 1.2,
+        fov_y: if v.boost { 1.4 } else { 1.2 },
     };
     let focal = fb.h as f64 * 0.5 / (cam.fov_y * 0.5).tan();
 
@@ -95,6 +145,7 @@ fn draw_cockpit(fb: &mut Framebuffer, v: &View) {
             fb.plot(x as i32, y as i32, STAR);
         }
     }
+    draw_dust(fb, &cam, v);
     for (i, b) in v.sim.bodies.iter().enumerate() {
         if v.sim.scan[i] == 0 {
             continue;

@@ -176,6 +176,14 @@ fn snapshot(path: &str, scene: &str, data: Arc<GameData>) {
             g.sel_res = iron;
             g.screen = Screen::Inventory;
         }
+        "speed" => {
+            g.sim.ship.vel = g
+                .sim
+                .ship
+                .rot
+                .mul_vec(vector_core::Vec3::new(0.0, 0.0, 3000.0));
+            g.keys.insert(KeyCode::ShiftLeft);
+        }
         "mine" => {
             g.cycle_target(|k| matches!(k, vector_world::BodyKind::Asteroid(_)));
             let t = g.sim.target.expect("asteroid");

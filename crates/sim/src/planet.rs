@@ -1,4 +1,4 @@
-//! Detailed planets (E1): the surface map with its biomes, the seasons, the weather and the
+﻿//! Detailed planets (E1): the surface map with its biomes, the seasons, the weather and the
 //! catastrophes of a solid world. Nothing here is stored: the map comes from the body's seed and
 //! the weather from (seed, day, region), so a save only needs the game time.
 use crate::Sim;
@@ -88,7 +88,7 @@ const SEASON_K: f64 = 22.0;
 /// Cells per weather region (weather is the same across a region on a given day).
 const REGION: usize = 8;
 
-fn unit(h: u64) -> f64 {
+pub(crate) fn unit(h: u64) -> f64 {
     (h >> 11) as f64 / (1u64 << 53) as f64
 }
 

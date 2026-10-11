@@ -27,3 +27,4 @@ Régénération : `python tools/gen_content.py && python tools/gen_colony.py && 
 Régénération complète : python tools/gen_content.py ; python tools/gen_colony.py ; python tools/gen_science.py ; python tools/gen_scale.py ; python tools/accents.py (le résultat est identique octet pour octet à data/).
 
 Biomes : 20 entrées dans data/biomes.ron (catégorie BIOMES du codex, entièrement générée depuis les données ; la table est validée par couverture complète).
+Espèces : 58 dans data/species.ron (python tools/gen_life.py, à lancer avec les autres générateurs ; catégories FLORE et FAUNE du codex). Politiques de colonie : 7 (cueillette et élevage, quarantaine biologique ajoutées).

@@ -6,7 +6,7 @@ use vector_data::GameData;
 use vector_world::generate_system;
 
 pub const MAGIC: [u8; 4] = *b"VECT";
-pub const VERSION: u32 = 11;
+pub const VERSION: u32 = 12;
 
 #[derive(Debug)]
 pub enum SaveError {
@@ -74,6 +74,8 @@ pub struct SaveGame {
     pub research_progress: f64,
     pub explored: Vec<bool>,
     pub rules: crate::rules::Rules,
+    /// Food web of each colony's territory: (colony id, game time, biomass in kg).
+    pub ecologies: Vec<(u32, f64, Vec<f32>, Vec<bool>)>,
 }
 
 impl Sim {
@@ -119,6 +121,18 @@ impl Sim {
             research_progress: self.research_progress,
             explored: self.explored.clone(),
             rules: self.rules.clone(),
+            ecologies: self
+                .ecologies
+                .iter()
+                .map(|(k, e)| {
+                    (
+                        *k,
+                        e.time,
+                        e.bio.iter().map(|&v| v as f32).collect(),
+                        e.native.clone(),
+                    )
+                })
+                .collect(),
         };
         let mut out = MAGIC.to_vec();
         out.extend_from_slice(&VERSION.to_le_bytes());
@@ -178,6 +192,22 @@ impl Sim {
             sim.researched = save.researched;
         }
         sim.rules = save.rules;
+        for (id, time, bio, native) in save.ecologies {
+            let Some(ci) = sim.colonies.iter().position(|c| c.id == id) else {
+                continue;
+            };
+            let Some((map, city)) = sim.colony_world(ci) else {
+                continue;
+            };
+            let b = map.biome_at(city.0, city.1);
+            let mut eco = crate::ecology::Ecosystem::region(&sim.data, &map, b, false);
+            if eco.bio.len() == bio.len() {
+                eco.bio = bio.iter().map(|&v| f64::from(v)).collect();
+                eco.time = time;
+                eco.native = native;
+                sim.ecologies.insert(id, eco);
+            }
+        }
         sim.research_pool = save.research_pool;
         sim.current_research = save.current_research;
         sim.research_progress = save.research_progress;

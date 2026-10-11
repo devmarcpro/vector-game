@@ -74,6 +74,8 @@ pub struct Colony {
     pub pop: f64,
     pub happiness: f64,
     pub unrest: f64,
+    /// Production lost to invasive species in the colony's territory, 0..0.5 (see `ecology`).
+    pub pest: f64,
     pub storage: Vec<f64>,
     pub buildings: Vec<BuildingInst>,
     /// Chosen level of each policy.
@@ -229,7 +231,7 @@ impl Colony {
         self.storage.iter().sum()
     }
 
-    fn free_space(&self) -> f64 {
+    pub(crate) fn free_space(&self) -> f64 {
         (self.stats.storage_cap.max(BASE_STORAGE) - self.total_stored()).max(0.0)
     }
 
@@ -404,12 +406,14 @@ impl Colony {
         // Productivity.
         let (_, work_mult, _) = self.policy_level(data, "work");
         let (_, sec_mult, _) = self.policy_level(data, "security");
+        let (_, quarantine_mult, _) = self.policy_level(data, "quarantine");
         let rioting = self.unrest > 0.7;
         let broke = self.treasury < 0.0;
         let prod_mult = (staffing
             * power_sat
             * (0.35 + 0.9 * self.happiness)
-            * (1.0 + work_mult + sec_mult)
+            * (1.0 + work_mult + sec_mult + quarantine_mult)
+            * (1.0 - self.pest.clamp(0.0, 0.5))
             * if rioting { 0.5 } else { 1.0 }
             * if broke { 0.3 } else { 1.0 })
         .max(0.0);
@@ -493,6 +497,8 @@ impl Colony {
         let (_, _, work_h) = self.policy_level(data, "work");
         let (_, _, sec_h) = self.policy_level(data, "security");
         let (_, _, imm_h) = self.policy_level(data, "immigration");
+        let (_, _, gather_h) = self.policy_level(data, "gather");
+        let (_, _, quarantine_h) = self.policy_level(data, "quarantine");
         let crowd = if self.pop > housing + 1.0 {
             (0.4 * (self.pop / housing.max(1.0) - 1.0)).min(0.5)
         } else {
@@ -512,6 +518,8 @@ impl Colony {
             + rations_h
             + sec_h
             + imm_h
+            + gather_h
+            + quarantine_h
             - crowd
             - if broke { 0.1 } else { 0.0 })
         .clamp(0.0, 1.0);
@@ -709,6 +717,7 @@ impl Sim {
             pop: KIT_COLONISTS_KG / COLONIST_KG,
             happiness: 0.7,
             unrest: 0.0,
+            pest: 0.0,
             storage: vec![0.0; data.resources.len()],
             buildings: Vec::new(),
             policies: data.policies.iter().map(|p| p.default_level).collect(),
@@ -906,6 +915,7 @@ impl Sim {
         for (ci, t0, t1) in advanced {
             let before = self.colonies[ci].log.len();
             self.apply_catastrophes(ci, t0, t1);
+            self.apply_ecology(ci, t1);
             let c = &self.colonies[ci];
             if c.log.len() > before && c.star == self.here {
                 if let Some((_, text)) = c.log.last() {

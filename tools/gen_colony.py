@@ -185,6 +185,8 @@ POLICIES = """// Colony policies: each offers levels with effects (tax: credits/
  (id:"rations", name:"Rationnement", levels:[("Genereux",0.0,0.0,0.05),("Normal",0.0,0.0,0.0),("Strict",0.0,0.0,-0.06)], default_level:1),
  (id:"immigration", name:"Immigration", levels:[("Fermee",0.0,0.0,0.0),("Selective",0.0,0.0,0.0),("Ouverte",0.0,0.0,-0.02)], default_level:1),
  (id:"security", name:"Maintien de l'ordre", levels:[("Libre",0.0,0.0,0.04),("Normal",0.0,0.0,0.0),("Loi martiale",0.0,0.05,-0.15)], default_level:1),
+ (id:"gather", name:"Cueillette et élevage", levels:[("Aucune",0.0,0.0,0.0),("Mesurée",0.0,0.0,0.01),("Intensive",0.0,0.0,0.0),("Surexploitation",0.0,0.0,-0.02)], default_level:0),
+ (id:"quarantine", name:"Quarantaine biologique", levels:[("Aucune",0.0,0.0,0.0),("Contrôles",0.0,0.0,-0.01),("Stricte",0.0,0.0,-0.03),("Totale",0.0,-0.05,-0.05)], default_level:1),
 ]
 """
 

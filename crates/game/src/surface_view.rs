@@ -1,4 +1,4 @@
-﻿//! Surface screen (F8): a coloured character map of a solid planet with five layers, an info
+//! Surface screen (F8): a coloured character map of a solid planet with five layers, an info
 //! panel for the cursor cell, and a wireframe globe with contour lines.
 use crate::game::Game;
 use crate::hud::{AMBER, DIM, GREEN, RED};
@@ -7,7 +7,14 @@ use vector_render::Framebuffer;
 use vector_sim::planet::{PlanetMap, Weather};
 use vector_world::surface::{Surface, H, W};
 
-pub const LAYERS: [&str; 5] = ["BIOMES", "ALTITUDE", "TEMPERATURE", "HUMIDITE", "METEO"];
+pub const LAYERS: [&str; 6] = [
+    "BIOMES",
+    "ALTITUDE",
+    "TEMPERATURE",
+    "HUMIDITE",
+    "METEO",
+    "VIE",
+];
 
 /// Metres per unit of relative elevation (peaks and trenches of a living world).
 const RELIEF_M: f64 = 8000.0;
@@ -109,7 +116,44 @@ fn cell(g: &Game, map: &PlanetMap, x: usize, y: usize) -> (char, u32) {
         }
         2 => ('#', temp_color(g.sim.temp_now(map, x, y))),
         3 => ('#', hum_color(f64::from(s.hum[i]))),
-        _ => weather_glyph(g.sim.weather_at(map, x, y).0),
+        4 => weather_glyph(g.sim.weather_at(map, x, y).0),
+        _ => ('#', life_color(g, map.biome_at(x, y))),
+    }
+}
+
+/// Density of living biomass of a biome (kg per km2), on a log scale from dead rock to jungle.
+fn life_color(g: &Game, biome: usize) -> u32 {
+    let density = g.surf_eco.as_ref().map_or(0.0, |e| {
+        if e.area[biome] <= 0.0 {
+            0.0
+        } else {
+            (0..e.ns).map(|s| e.at(s, biome)).sum::<f64>() / e.area[biome]
+        }
+    });
+    let v = (1.0 + density).log10() / 6.5;
+    lerp3(
+        &[
+            (0.0, [0.12, 0.12, 0.14]),
+            (0.4, [0.55, 0.45, 0.20]),
+            (0.7, [0.30, 0.75, 0.30]),
+            (1.0, [0.60, 1.0, 0.40]),
+        ],
+        v,
+    )
+}
+
+/// A mass in kg as a short string (kg, t, kt, Mt, Gt).
+pub fn fmt_mass(kg: f64) -> String {
+    if kg < 1.0e3 {
+        format!("{kg:.0} kg")
+    } else if kg < 1.0e6 {
+        format!("{:.0} t", kg / 1.0e3)
+    } else if kg < 1.0e9 {
+        format!("{:.0} kt", kg / 1.0e6)
+    } else if kg < 1.0e12 {
+        format!("{:.0} Mt", kg / 1.0e9)
+    } else {
+        format!("{:.0} Gt", kg / 1.0e12)
     }
 }
 
@@ -294,6 +338,29 @@ fn draw_panel(fb: &mut Framebuffer, g: &Game, map: &PlanetMap, col: usize, row: 
         ),
         GREEN,
     );
+    line(fb, String::new(), DIM);
+    match &g.surf_eco {
+        Some(eco) if !eco.life => line(fb, "MONDE STÉRILE : AUCUNE VIE".into(), DIM),
+        Some(eco) => {
+            let here = eco.present_in(map.biome_at(cx, cy));
+            line(fb, format!("VIE ICI : {} ESPÈCES", here.len()), AMBER);
+            for &(s, m) in here.iter().take(5) {
+                let sp = &g.data.species[s];
+                let tag = match sp.trophic.as_str() {
+                    "producer" => 'P',
+                    "herbivore" => 'H',
+                    "carnivore" => 'C',
+                    _ => 'O',
+                };
+                line(
+                    fb,
+                    format!("[{tag}] {:<22}{:>9}", sp.name.to_uppercase(), fmt_mass(m)),
+                    GREEN,
+                );
+            }
+        }
+        None => {}
+    }
     line(fb, String::new(), DIM);
     match sim.catastrophe_on(map, sim.day_number()) {
         Some(c) => line(

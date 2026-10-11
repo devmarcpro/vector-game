@@ -2,7 +2,7 @@
 //! weapon, faction, anomaly and condition, generated from the real data (no hand-written numbers).
 use vector_data::GameData;
 
-pub const CATEGORIES: [&str; 12] = [
+pub const CATEGORIES: [&str; 14] = [
     "RESSOURCES",
     "MODULES",
     "ARMES",
@@ -15,6 +15,8 @@ pub const CATEGORIES: [&str; 12] = [
     "MALADIES",
     "INDUSTRIES",
     "BIOMES",
+    "FLORE",
+    "FAUNE",
 ];
 
 /// Number of entries in a category.
@@ -41,6 +43,12 @@ fn entries(data: &GameData, cat: usize) -> Vec<usize> {
         9 => (0..data.diseases.len()).collect(),
         10 => (0..data.industries.len()).collect(),
         11 => (0..data.biomes.len()).collect(),
+        12 => (0..data.species.len())
+            .filter(|&i| data.species[i].is_producer())
+            .collect(),
+        13 => (0..data.species.len())
+            .filter(|&i| !data.species[i].is_producer())
+            .collect(),
         _ => Vec::new(),
     }
 }
@@ -60,7 +68,8 @@ pub fn names(data: &GameData, cat: usize) -> Vec<String> {
             8 => data.anomalies_def[i].name.clone(),
             9 => data.diseases[i].name.clone(),
             10 => data.industries[i].name.clone(),
-            _ => data.biomes[i].name.clone(),
+            11 => data.biomes[i].name.clone(),
+            _ => data.species[i].name.clone(),
         })
         .collect()
 }
@@ -411,6 +420,48 @@ pub fn entry(data: &GameData, cat: usize, k: usize) -> Vec<String> {
                     res_name(data, &d.cure).unwrap_or_else(|| d.cure.clone())
                 }
             ));
+        }
+        12 | 13 => {
+            let s = &data.species[i];
+            let biome_names = |ids: &[String]| {
+                ids.iter()
+                    .map(|b| {
+                        data.biome_index(b)
+                            .map_or_else(|| b.clone(), |k| data.biomes[k].name.clone())
+                    })
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            };
+            let kind = match s.trophic.as_str() {
+                "producer" => "producteur",
+                "herbivore" => "herbivore",
+                "carnivore" => "carnivore",
+                _ => "omnivore",
+            };
+            out.push(format!("{}  ({kind})", s.name));
+            out.push(s.text.clone());
+            out.push(format!("Habitats : {}", biome_names(&s.habitat)));
+            if !s.diet.is_empty() {
+                let prey: Vec<String> = s
+                    .diet
+                    .iter()
+                    .filter_map(|d| data.species_index(d).map(|k| data.species[k].name.clone()))
+                    .collect();
+                out.push(format!("Se nourrit de : {}", prey.join(", ")));
+            }
+            out.push(format!(
+                "Masse {:.3} kg   croissance {:.1} %/jour   danger {:.0} %   envahissante {:.0} %",
+                s.body,
+                s.growth * 100.0,
+                s.danger * 100.0,
+                s.invasive * 100.0
+            ));
+            if !s.yields.is_empty() {
+                out.push(format!("Rend par individu : {}", fmt_list(data, &s.yields)));
+            }
+            if s.domestic {
+                out.push("Domesticable : oui (voir les colonies)".to_string());
+            }
         }
         11 => {
             let b = &data.biomes[i];

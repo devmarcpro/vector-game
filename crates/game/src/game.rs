@@ -136,6 +136,8 @@ pub struct Game {
     pub surf_spin: f64,
     /// Cities of this world's colonies: (name, cell x, cell y), computed when the screen opens.
     pub surf_cities: Vec<(String, usize, usize)>,
+    /// Food web of the world on the surface screen (settled balance, or the colony's own).
+    pub surf_eco: Option<vector_sim::ecology::Ecosystem>,
     pub help_open: bool,
     pub tut_step: Option<usize>,
     pub tut_keys: Vec<(Screen, KeyCode)>,
@@ -214,6 +216,7 @@ impl Game {
             surf_globe: false,
             surf_spin: 0.0,
             surf_cities: Vec::new(),
+            surf_eco: None,
             help_open: false,
             tut_step: None,
             tut_keys: Vec::new(),
@@ -840,6 +843,7 @@ impl Game {
                             .map(|(x, y)| (c.name.clone(), x, y))
                     })
                     .collect();
+                self.surf_eco = Some(vector_sim::ecology::Ecosystem::new(&self.data, &map));
                 self.surf = Some(map);
                 self.screen = Screen::Surface;
             }

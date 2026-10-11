@@ -6,6 +6,7 @@ pub mod colony;
 pub mod combat;
 pub mod crew;
 pub mod design;
+pub mod ecology;
 pub mod economy;
 pub mod fleet;
 pub mod market;
@@ -89,6 +90,8 @@ pub struct Ship {
     /// Structure points (separate from per-module health).
     pub hull: f64,
     pub assist: bool,
+    /// Colony (id) whose living world the ship last touched: where contamination comes from.
+    pub biosphere: Option<u32>,
     pub cargo: Cargo,
     pub design: ShipDesign,
     pub sys: Systems,
@@ -106,6 +109,7 @@ impl Ship {
             fuel: 0.0,
             hull: 0.0,
             assist: true,
+            biosphere: None,
             cargo: Cargo::new(data.resources.len()),
             design,
             sys,
@@ -287,6 +291,8 @@ pub struct Sim {
     /// Surface maps of colonised worlds and city sites (derived data, never saved).
     pub(crate) world_cache: std::collections::HashMap<(u64, usize), Option<Arc<planet::PlanetMap>>>,
     pub(crate) city_cache: std::collections::HashMap<u32, (usize, usize)>,
+    /// Food web of each colony's territory, by colony id: the only ecology that is saved.
+    pub ecologies: BTreeMap<u32, ecology::Ecosystem>,
     pub fleet_paid_day: i64,
     pub projectiles: Vec<combat::Projectile>,
     pub wrecks: Vec<combat::Wreck>,
@@ -397,6 +403,7 @@ impl Sim {
             steps: 0,
             world_cache: std::collections::HashMap::new(),
             city_cache: std::collections::HashMap::new(),
+            ecologies: BTreeMap::new(),
             fleet_paid_day: 0,
             projectiles: Vec::new(),
             wrecks: Vec::new(),
@@ -1010,6 +1017,7 @@ impl Sim {
         self.docked = Some(body);
         self.autopilot = None;
         self.events.push(Event::Docked { body });
+        self.biosecurity_check(ci);
         Ok(body)
     }
 

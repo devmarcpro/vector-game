@@ -33,6 +33,8 @@ pub struct Pointer {
     pub pos: (i32, i32),
     /// Zones declared by the last frame, in drawing order (the last one is on top).
     pub hits: RefCell<Vec<Hit>>,
+    /// The left button is held down (for dragging the globe).
+    pub down: bool,
     last_click: Option<(u64, (i32, i32))>,
 }
 
@@ -76,7 +78,18 @@ impl Game {
     }
 
     pub fn pointer_move(&mut self, x: i32, y: i32) {
+        let (px, py) = self.pointer.pos;
         self.pointer.pos = (x, y);
+        if self.pointer.down {
+            self.pointer_drag(x - px, y - py);
+        }
+    }
+
+    /// The pointer moved by (dx, dy) pixels with the left button down: it turns the globe.
+    pub fn pointer_drag(&mut self, dx: i32, _dy: i32) {
+        if self.screen == Screen::Surface && self.surf_globe {
+            self.surf_spin += f64::from(dx) * 0.01;
+        }
     }
 
     fn run_act(&mut self, act: Act) {

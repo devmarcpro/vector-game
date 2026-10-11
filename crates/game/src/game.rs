@@ -2871,6 +2871,28 @@ mod tests {
     }
 
     #[test]
+    fn dragging_with_the_left_button_turns_the_globe_only_then() {
+        let mut g = Game::new(data(), 1);
+        g.screen = Screen::Surface;
+        g.surf_globe = true;
+        let spin = g.surf_spin;
+        g.pointer_move(100, 100);
+        g.pointer_move(140, 100);
+        assert_eq!(g.surf_spin, spin, "no drag without the button");
+        g.pointer.down = true;
+        g.pointer_move(190, 100);
+        assert!(g.surf_spin > spin + 0.4, "50 px turns the globe");
+        g.pointer.down = false;
+        let after = g.surf_spin;
+        g.pointer_move(300, 100);
+        assert_eq!(g.surf_spin, after);
+        g.surf_globe = false;
+        g.pointer.down = true;
+        g.pointer_move(400, 100);
+        assert_eq!(g.surf_spin, after, "the flat map is not dragged");
+    }
+
+    #[test]
     fn the_mouse_selects_contract_rows() {
         let mut g = Game::new(data(), 1);
         g.key(KeyCode::Enter, None, true);

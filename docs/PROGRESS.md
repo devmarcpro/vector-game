@@ -81,3 +81,5 @@
 - 2026-10-11 : E5 (suite) Sites d'intérêt (`data/sites.ron`, validés) : campement, épave, ruine, grotte, source chaude, balise ; 2 à 4 par carte loin du point de chute, fouillés une fois avec G (butin, embuscade ou éboulement possible, la source soigne l'équipe) ; catégorie SITES du codex.
 
 - 2026-10-11 : Souris : banque (boutons texte emprunter/rembourser/tout), écran colonie (politiques avec flèches, menu de construction, stocks). Reste hors souris : glisser le globe.
+
+- 2026-10-11 : Souris : glisser avec le bouton gauche fait tourner le globe de la surface. La souris est maintenant utilisable sur tous les écrans.

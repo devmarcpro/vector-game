@@ -160,11 +160,17 @@ impl ApplicationHandler for App {
                 self.game.pointer_move(position.x as i32, position.y as i32);
             }
             WindowEvent::MouseInput {
+                state: ElementState::Released,
+                button: MouseButton::Left,
+                ..
+            } => self.game.pointer.down = false,
+            WindowEvent::MouseInput {
                 state: ElementState::Pressed,
                 button,
                 ..
             } => match button {
                 MouseButton::Left => {
+                    self.game.pointer.down = true;
                     let (x, y) = self.game.pointer.pos;
                     let ms = self.started.elapsed().as_millis() as u64;
                     self.game.pointer_click(x, y, ms);

@@ -92,3 +92,5 @@ Par défaut AZERTY : tangage Z/S, lacet Q/D, roulis A/E. Options > Clavier bascu
 
 ## Expédition (surface, touche E)
 Ecran de préparation : Haut/Bas, Espace coche un équipier ou le rover, Entrée part. En marche : flèches ou Z/Q/S/D (W/A/S/D en QWERTY) pour marcher, foncer sur un animal l'attaque, G cueille à côté, Tab passe au membre suivant, Espace attend un tour, R rentre au vaisseau (le butin va en soute), clic sur la carte = un pas vers la case, clic sur un nom = prendre le contrôle.
+
+- **Globe de surface** : glisser avec le bouton gauche pour le faire tourner.

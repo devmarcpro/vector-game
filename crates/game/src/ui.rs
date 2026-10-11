@@ -1696,6 +1696,17 @@ fn draw_colony(fb: &mut Framebuffer, g: &Game) {
             RED,
         );
     }
+    if c.epidemic.is_none() {
+        fb.text(
+            1,
+            4,
+            &format!(
+                "MOEURS : {}",
+                g.data.ethos.traits(&c.culture, 4).join(", ").to_uppercase()
+            ),
+            DIM,
+        );
+    }
     // Buildings.
     let top = 5;
     fb.text(1, top, "BATIMENTS", focus(0));

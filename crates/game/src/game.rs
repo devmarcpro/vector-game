@@ -1321,6 +1321,10 @@ impl Game {
                 return;
             }
             KeyCode::KeyM if n > 0 => self.sim.inject_mutagen(member),
+            KeyCode::KeyK => self
+                .sim
+                .grow_clone(organ)
+                .map(|c| format!("CLONE PRET (-{c:.0} CR) : EN SOUTE")),
             KeyCode::KeyI if n > 0 => self.sim.install_cyber(member, self.cyber_sel),
             KeyCode::KeyU if n > 0 => self.sim.remove_cyber(member, self.cyber_sel),
             KeyCode::KeyP if n > 0 => self.sim.implant(member, organ, Implant::Prosthesis),

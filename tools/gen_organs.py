@@ -18,6 +18,10 @@ for i, n, v in organs:
     )
 for i, n, v in organs:
     out.append(
+        f' (id:"clone_{i}", name:"Clone : {n}", category:"organes", density:1050.0, value:{float(v) * 1.5:.1f}),'
+    )
+for i, n, v in organs:
+    out.append(
         f' (id:"prosthesis_{i}", name:"Prothèse : {n}", category:"protheses", density:3000.0, value:{float(v) * 0.4:.1f}),'
     )
 cyber = re.findall(
@@ -40,4 +44,4 @@ out.append(
 )
 out.append("]")
 (root / "data" / "resources_organs.ron").write_bytes(("\n".join(out) + "\n").encode("utf-8"))
-print(len(organs) * 2 + len(cyber) + len(gear) + 1, "resources")
+print(len(organs) * 3 + len(cyber) + len(gear) + 1, "resources")

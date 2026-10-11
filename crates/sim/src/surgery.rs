@@ -7,6 +7,11 @@ use vector_core::{hash_coord, Rng};
 pub const SURGERY_FEE: f64 = 1500.0;
 /// Base chance that a graft is rejected (lowered by the surgeon's medicine skill).
 pub const REJECTION: f64 = 0.2;
+/// Below this value of the "corps" axis a people holds the body sacred.
+pub const SACRED_BODY: f64 = -0.4;
+pub const SACRILEGE_FINE: f64 = 800.0;
+/// A clone costs this much of the value of the organ to grow.
+pub const CLONE_COST_FACTOR: f64 = 1.2;
 /// Integrity of a fresh prosthesis: never worn by disease, never mends.
 pub const PROSTHESIS_INTEGRITY: f32 = 0.85;
 
@@ -22,6 +27,35 @@ pub enum Implant {
 }
 
 impl Sim {
+    /// Local mores: where the body is sacred (the "corps" axis very low) operating, cloning or
+    /// harvesting is a sacrilege: a fine and the loss of reputation of the territory's people.
+    fn moral_offense(&mut self, what: &str) {
+        let Some(f) = self.faction else {
+            return;
+        };
+        let profile = self
+            .data
+            .ethos
+            .profile(Some(self.data.factions[f].id.as_str()));
+        let corps = self
+            .data
+            .ethos
+            .axis("corps")
+            .and_then(|i| profile.get(i))
+            .copied()
+            .unwrap_or(0.0);
+        if corps >= SACRED_BODY {
+            return;
+        }
+        let fine = self.credits.clamp(0.0, SACRILEGE_FINE);
+        self.credits -= fine;
+        self.change_reputation(Some(f), -0.2);
+        let people = self.data.factions[f].name.clone();
+        self.events.push(crate::Event::MarketNews(format!(
+            "Moeurs locales ({people}) : {what} est un sacrilege ici, amende de {fine:.0} CR."
+        )));
+    }
+
     /// Who may operate: the hospital of a docked station, or a living medic aboard with a
     /// working infirmary. Returns the surgeon's medicine skill (0..10).
     fn surgeon_skill(&self, patient: usize) -> Result<f64, &'static str> {
@@ -64,10 +98,18 @@ impl Sim {
             Implant::Graft => "organ_",
             Implant::Prosthesis => "prosthesis_",
         };
-        let item = self
+        // A grown clone is preferred to a graft: it is the patient's own match, no rejection.
+        let clone = self
             .data
-            .resource_index(&format!("{prefix}{}", def.id))
-            .ok_or("piece inconnue")?;
+            .resource_index(&format!("clone_{}", def.id))
+            .filter(|&c| kind == Implant::Graft && self.ship.cargo.kg[c] >= 1.0);
+        let item = match clone {
+            Some(c) => c,
+            None => self
+                .data
+                .resource_index(&format!("{prefix}{}", def.id))
+                .ok_or("piece inconnue")?,
+        };
         if self.ship.cargo.kg[item] < 1.0 {
             return Err("piece absente de la soute");
         }
@@ -104,7 +146,11 @@ impl Sim {
             }
             Implant::Graft => {
                 p.organ_kind[organ] = KIND_GRAFT;
-                let chance = REJECTION * (1.0 - skill / 12.0);
+                let chance = if clone.is_some() {
+                    0.0
+                } else {
+                    REJECTION * (1.0 - skill / 12.0)
+                };
                 if rng.f64() < chance {
                     p.organs[organ] = 0.2;
                     format!("{name} : REJET du greffon ({organ_name})")
@@ -116,7 +162,29 @@ impl Sim {
         };
         let now = self.time;
         self.crew.log_event(now, report.clone());
+        self.moral_offense("operer un corps");
         Ok(report)
+    }
+
+    /// Grow a clone of organ `organ` at the hospital of the station (it costs more than the
+    /// organ is worth) and put it in the hold: a graft that is never rejected.
+    pub fn grow_clone(&mut self, organ: usize) -> Result<f64, &'static str> {
+        self.docked.ok_or("non amarre : il faut un hopital")?;
+        let data = std::sync::Arc::clone(&self.data);
+        let def = data.organs.get(organ).ok_or("organe inconnu")?;
+        let item = data
+            .resource_index(&format!("clone_{}", def.id))
+            .ok_or("piece inconnue")?;
+        let cost = def.value * CLONE_COST_FACTOR;
+        if cost > self.credits {
+            return Err("fonds insuffisants");
+        }
+        if self.ship.cargo.add(&data, item, 1.0) < 1.0 {
+            return Err("soute pleine");
+        }
+        self.credits -= cost;
+        self.moral_offense("cloner un organe");
+        Ok(cost)
     }
 
     /// Take organ `organ` out of crew member `member` into the hold as a graft. Allowed on the
@@ -166,6 +234,7 @@ impl Sim {
         let report = format!("{name} : {organ_name} preleve");
         let now = self.time;
         self.crew.log_event(now, report.clone());
+        self.moral_offense("prelever un organe");
         Ok(report)
     }
 }
@@ -548,5 +617,65 @@ mod tests {
         };
         assert!(run(0.9) >= 1, "an unstable genome drifts");
         assert_eq!(run(0.0), 0, "a stable genome does not");
+    }
+
+    #[test]
+    fn a_grown_clone_is_never_rejected_and_costs_more_than_the_organ() {
+        let mut s = docked_sim();
+        let d = Arc::clone(&s.data);
+        let liver = d.organ_index("foie").unwrap();
+        let credits = s.credits;
+        let cost = s.grow_clone(liver).expect("grow");
+        assert!((cost - d.organs[liver].value * CLONE_COST_FACTOR).abs() < 1e-6);
+        assert_eq!(s.credits, credits - cost);
+        // Even over many operations a clone graft never fails, where plain grafts sometimes do.
+        for t in 0..80 {
+            s.time = f64::from(t) * 3600.0;
+            s.credits = 1.0e6;
+            s.grow_clone(liver).unwrap();
+            let report = s.implant(0, liver, Implant::Graft).unwrap();
+            assert!(!report.contains("REJET"), "a clone is never rejected");
+            // The clone was used, not a plain graft.
+            let c = d.resource_index("clone_foie").unwrap();
+            assert!(s.ship.cargo.kg[c] < 1.5, "one clone was used each time");
+        }
+        s.undock();
+        assert!(s.grow_clone(liver).is_err(), "no hospital in space");
+    }
+
+    #[test]
+    fn where_the_body_is_sacred_surgery_costs_a_fine_and_reputation() {
+        let mut s = docked_sim();
+        let d = Arc::clone(&s.data);
+        let verdant = d
+            .factions
+            .iter()
+            .position(|f| f.id == "verdant")
+            .expect("verdant");
+        let concorde = d
+            .factions
+            .iter()
+            .position(|f| f.id == "concorde")
+            .expect("concorde");
+        let liver = d.organ_index("foie").unwrap();
+        let events_before = s.events.len();
+        // Among open people nothing happens.
+        s.faction = Some(concorde);
+        let (credits, rep) = (s.credits, s.reputation_with(Some(concorde)));
+        s.grow_clone(liver).unwrap();
+        let cost = d.organs[liver].value * CLONE_COST_FACTOR;
+        assert_eq!(s.credits, credits - cost);
+        assert_eq!(s.reputation_with(Some(concorde)), rep);
+        assert_eq!(s.events.len(), events_before);
+        // Among those who hold the body sacred it is a sacrilege.
+        s.faction = Some(verdant);
+        let (credits, rep) = (s.credits, s.reputation_with(Some(verdant)));
+        s.grow_clone(liver).unwrap();
+        assert_eq!(s.credits, credits - cost - SACRILEGE_FINE);
+        assert!(s.reputation_with(Some(verdant)) < rep - 0.15);
+        assert!(s
+            .events
+            .iter()
+            .any(|e| matches!(e, crate::Event::MarketNews(t) if t.contains("sacrilege"))));
     }
 }

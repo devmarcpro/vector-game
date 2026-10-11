@@ -126,7 +126,7 @@ pub fn hint_line(g: &Game) -> String {
             "FLECHES CHOISIR UN EQUIPEMENT  ENTREE EQUIPER (IL FAUT L'OBJET EN SOUTE)  U RETIRER  E/ECHAP RETOUR A LA LISTE"
         }
         Screen::Crew if g.organ_mode => {
-            "HAUT/BAS ORGANE  ENTREE GREFFE  P PROTHESE  H PRELEVER  </> IMPLANT  I POSER  U RETIRER  M MUTAGENE  O/ECHAP RETOUR"
+            "HAUT/BAS ORGANE  ENTREE GREFFE  P PROTHESE  H PRELEVER  </> IMPLANT  I POSER  U RETIRER  K CLONER  M MUTAGENE  O/ECHAP"
         }
         Screen::Crew => {
             "HAUT/BAS PERSONNE  </> POSTE  T QUART  X DEBARQUER  N RECRUTER  J JOURNAL  G ARBRE  V RESEAU  O ORGANES  E EQUIP.  K RETOUR"
@@ -214,7 +214,7 @@ pub fn help_lines(screen: Screen) -> &'static [&'static str] {
             "J : journal   Les besoins (faim, soif, air) comptent.",
             "V : reseau des relations (amis, rivaux, famille)",
             "E : equipement (arme, armure, outil pris en soute ; Entree equipe, U retire)",
-            "O : organes (Entree greffe, P prothese, H prelever, </> choisir un implant, I poser, U retirer, M mutagene ; piece en soute)",
+            "O : organes (Entree greffe, P prothese, H prelever, </> choisir un implant, I poser, U retirer, K cloner l'organe a l'hopital, M mutagene ; piece en soute)",
         ],
         Screen::Recruit => &["Haut/Bas : candidat   Entree : embaucher"],
         Screen::Journal => &["Haut/Bas ou PgUp/PgDn : defiler   Echap : retour"],

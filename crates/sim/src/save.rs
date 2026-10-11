@@ -6,7 +6,7 @@ use vector_data::GameData;
 use vector_world::generate_system;
 
 pub const MAGIC: [u8; 4] = *b"VECT";
-pub const VERSION: u32 = 22;
+pub const VERSION: u32 = 23;
 
 #[derive(Debug)]
 pub enum SaveError {

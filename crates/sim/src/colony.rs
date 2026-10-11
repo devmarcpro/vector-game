@@ -91,6 +91,10 @@ pub struct Colony {
     pub pest: f64,
     /// An epidemic of people (see `Epidemic`), if one is running.
     pub epidemic: Option<Epidemic>,
+    /// Mores of the colony on the axes of `ethos.ron`: they start as those of the people of the
+    /// place and drift under the policies (see `culture_target`).
+    pub culture: Vec<f64>,
+    pub culture_base: Vec<f64>,
     pub storage: Vec<f64>,
     pub buildings: Vec<BuildingInst>,
     /// Chosen level of each policy.
@@ -271,6 +275,55 @@ impl Colony {
                 (l.1, l.2, l.3)
             })
             .unwrap_or((0.0, 0.0, 0.0))
+    }
+
+    /// Mores the colony tends to: its founders' mores pushed by the policies (martial law makes
+    /// people more martial and authoritarian, open borders more open, strict quarantine less).
+    pub fn culture_target(&self, data: &GameData) -> Vec<f64> {
+        let mut t = self.culture_base.clone();
+        let level = |id: &str| {
+            data.policy_index(id)
+                .map_or(1.0, |p| self.policies[p] as f64)
+        };
+        let mut push = |axis: &str, v: f64| {
+            if let Some(i) = data.ethos.axis(axis) {
+                if let Some(x) = t.get_mut(i) {
+                    *x = (*x + v).clamp(-1.0, 1.0);
+                }
+            }
+        };
+        push("violence", (level("security") - 1.0) * 0.5);
+        push("autorite", (level("security") - 1.0) * 0.5);
+        push("ouverture", (level("immigration") - 1.0) * 0.6);
+        push("ouverture", -(level("quarantine") - 1.0) * 0.2);
+        t
+    }
+
+    /// How much the policies clash with the culture (0 = none): people resent what is against
+    /// their mores.
+    pub fn culture_friction(&self, data: &GameData) -> f64 {
+        let get = |axis: &str| {
+            data.ethos
+                .axis(axis)
+                .and_then(|i| self.culture.get(i))
+                .copied()
+                .unwrap_or(0.0)
+        };
+        let level = |id: &str| data.policy_index(id).map_or(1, |p| self.policies[p]);
+        let mut f = 0.0;
+        if level("security") >= 2 && get("violence") < -0.3 {
+            f += 0.08;
+        }
+        if level("security") == 0 && get("autorite") > 0.4 {
+            f += 0.05;
+        }
+        if level("immigration") >= 2 && get("ouverture") < -0.3 {
+            f += 0.08;
+        }
+        if level("immigration") == 0 && get("ouverture") > 0.4 {
+            f += 0.05;
+        }
+        f
     }
 
     /// Advance the colony to `now` with adaptively sized steps.
@@ -500,6 +553,14 @@ impl Colony {
         }
         self.research += research_gain;
 
+        // Culture drifts slowly towards what the policies push it to.
+        if self.culture.len() == self.culture_base.len() && !self.culture.is_empty() {
+            let target = self.culture_target(data);
+            let k = 1.0 - (-days / 600.0).exp();
+            for (c, t) in self.culture.iter_mut().zip(&target) {
+                *c += (t - *c) * k;
+            }
+        }
         // Services and happiness.
         let svc = |f: fn(&vector_data::Building) -> f64, per: f64, colony: &Colony| -> f64 {
             let cap: f64 = colony
@@ -542,6 +603,7 @@ impl Colony {
             + gather_h
             + quarantine_h
             - crowd
+            - self.culture_friction(data)
             - if broke { 0.1 } else { 0.0 })
         .clamp(0.0, 1.0);
         self.happiness += (target - self.happiness) * (1.0 - (-days / 8.0).exp());
@@ -774,6 +836,10 @@ impl Sim {
         let id = self.next_colony;
         self.next_colony += 1;
         let d_au = (self.bodies[i].pos.length() / vector_world::orbit::AU).max(0.01);
+        let founders = self
+            .data
+            .ethos
+            .profile(self.faction.map(|f| self.data.factions[f].id.as_str()));
         let mut c = Colony {
             id,
             name: name.unwrap_or_else(|| format!("{} Colonie", cb.name)),
@@ -791,6 +857,8 @@ impl Sim {
             unrest: 0.0,
             pest: 0.0,
             epidemic: None,
+            culture: founders.clone(),
+            culture_base: founders,
             storage: vec![0.0; data.resources.len()],
             buildings: Vec::new(),
             policies: data.policies.iter().map(|p| p.default_level).collect(),
@@ -1251,6 +1319,56 @@ mod tests {
             .log
             .iter()
             .any(|(_, l)| l.contains("terminee")));
+    }
+
+    #[test]
+    fn culture_starts_as_the_founders_drifts_with_policies_and_resents_what_clashes() {
+        let (mut s, ci) = founded();
+        let d = Arc::clone(&s.data);
+        let axes = d.ethos.axes.len();
+        assert_eq!(s.colonies[ci].culture.len(), axes);
+        assert_eq!(s.colonies[ci].culture, s.colonies[ci].culture_base);
+        let sec = d.policy_index("security").unwrap();
+        let violence = d.ethos.axis("violence").unwrap();
+        let before = s.colonies[ci].culture[violence];
+        // Martial law for years pushes the culture towards violence.
+        s.colonies[ci].policies[sec] = 2;
+        fill(
+            &mut s,
+            ci,
+            &[
+                ("food", 50000.0),
+                ("water", 50000.0),
+                ("consumer_goods", 5000.0),
+            ],
+        );
+        for _ in 0..30 {
+            s.time += 60.0 * DAY;
+            fill(
+                &mut s,
+                ci,
+                &[
+                    ("food", 50000.0),
+                    ("water", 50000.0),
+                    ("consumer_goods", 5000.0),
+                ],
+            );
+            s.update_colonies();
+        }
+        let after = s.colonies[ci].culture[violence];
+        assert!(after > before + 0.1 || after >= 0.99, "{before} -> {after}");
+        // A pacifist people under martial law is unhappier than a neutral one.
+        let mut c = s.colonies[ci].clone();
+        c.policies[sec] = 2;
+        c.culture[violence] = -0.8;
+        let angry = c.culture_friction(&d);
+        c.culture[violence] = 0.5;
+        let calm = c.culture_friction(&d);
+        assert!(angry > calm + 0.05, "{angry} vs {calm}");
+        // The target of a colony without any push is its base.
+        let mut free = s.colonies[ci].clone();
+        free.policies = d.policies.iter().map(|p| p.default_level).collect();
+        assert_eq!(free.culture_target(&d), free.culture_base);
     }
 
     #[test]

@@ -135,3 +135,6 @@ Sans épidémie en cours et au-delà de 20 habitants : probabilité par jour 0.0
 
 ## Contrats à terme
 Prix de référence = valeur de la ressource x facteur mondial de la région à la date (événements, dérive). Marge = 25 % de la valeur au prix d'ouverture. Règlement : marge + (prix - prix d'ouverture) x kg x (+1 hausse, -1 baisse), jamais négatif. Les gains ne dépendent que de la date et du lieu de signature : déterministes.
+
+## Culture des colonies
+`culture_target` = mœurs des fondateurs + (niveau de sécurité - 1) x 0.5 sur violence et autorité, (niveau d'immigration - 1) x 0.6 et -(quarantaine - 1) x 0.2 sur l'ouverture ; la culture rejoint sa cible avec une constante de 600 jours. Friction : loi martiale chez des pacifistes (violence < -0.3) -0.08, sécurité libre chez des autoritaires -0.05, frontières ouvertes chez des xénophobes -0.08, fermées chez des ouverts -0.05, soustrait de la cible de moral.

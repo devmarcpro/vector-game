@@ -3,3 +3,4 @@ saves/
 *.log
 *.png
 
+bench_tmp/

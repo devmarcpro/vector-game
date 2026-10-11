@@ -90,6 +90,7 @@ pub fn draw(fb: &mut Framebuffer, g: &Game) {
 
 /// Tutorial banner and the F1 contextual help box, drawn over any screen.
 pub fn draw_overlay(fb: &mut Framebuffer, g: &Game) {
+    crate::flight_menu::draw(fb, g);
     if let Some((i, text)) = g.tutorial_line() {
         let line = format!(
             "TUTO {}/{}  {}  [F10 ignorer]",

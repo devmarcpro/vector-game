@@ -7,6 +7,7 @@ mod dialogue_view;
 mod faction_view;
 mod family_view;
 mod fleet_map_view;
+mod flight_menu;
 mod flow_view;
 mod game;
 mod hud;
@@ -163,7 +164,10 @@ impl ApplicationHandler for App {
                 state: ElementState::Released,
                 button: MouseButton::Left,
                 ..
-            } => self.game.pointer.down = false,
+            } => {
+                self.game.pointer.down = false;
+                self.game.pointer_release();
+            }
             WindowEvent::MouseInput {
                 state: ElementState::Pressed,
                 button,

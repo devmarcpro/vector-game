@@ -23,6 +23,8 @@ pub struct Settings {
     pub azerty: bool,
     /// Index into `LANGS`.
     pub lang: usize,
+    /// Menu column of the cockpit (clickable menus and ship controls).
+    pub flight_menu: bool,
 }
 
 impl Default for Settings {
@@ -36,12 +38,13 @@ impl Default for Settings {
             hints: true,
             azerty: true,
             lang: 0,
+            flight_menu: true,
         }
     }
 }
 
 impl Settings {
-    pub const COUNT: usize = 8;
+    pub const COUNT: usize = 9;
 
     pub fn describe(&self) -> Vec<(&'static str, String)> {
         let yn = |b: bool| if b { "OUI" } else { "NON" }.to_string();
@@ -60,6 +63,7 @@ impl Settings {
                 if self.azerty { "AZERTY" } else { "QWERTY" }.to_string(),
             ),
             ("Langue", LANGS[self.lang.min(LANGS.len() - 1)].to_string()),
+            ("Menu de pilotage (cockpit)", yn(self.flight_menu)),
         ]
     }
 
@@ -80,6 +84,7 @@ impl Settings {
             5 => self.hints = !self.hints,
             6 => self.azerty = !self.azerty,
             7 => self.lang = cycle(self.lang, LANGS.len()),
+            8 => self.flight_menu = !self.flight_menu,
             _ => {}
         }
     }
@@ -141,7 +146,7 @@ impl Settings {
 
     pub fn to_text(&self) -> String {
         format!(
-            "scanlines={}\nglow={}\nscheme={}\nvolume={}\ntutorial={}\nhints={}\nazerty={}\nlang={}\n",
+            "scanlines={}\nglow={}\nscheme={}\nvolume={}\ntutorial={}\nhints={}\nazerty={}\nlang={}\nmenu={}\n",
             u8::from(self.scanlines),
             u8::from(self.glow),
             self.scheme,
@@ -149,7 +154,8 @@ impl Settings {
             u8::from(self.tutorial),
             u8::from(self.hints),
             u8::from(self.azerty),
-            self.lang
+            self.lang,
+            u8::from(self.flight_menu)
         )
     }
 
@@ -169,6 +175,7 @@ impl Settings {
                 "tutorial" => s.tutorial = n != 0,
                 "hints" => s.hints = n != 0,
                 "azerty" => s.azerty = n != 0,
+                "menu" => s.flight_menu = n != 0,
                 "lang" => s.lang = n.min(LANGS.len() - 1),
                 "volume" => s.volume = n.min(10) as u8,
                 _ => {}

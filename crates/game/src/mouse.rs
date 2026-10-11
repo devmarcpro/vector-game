@@ -15,6 +15,8 @@ pub enum Act {
     Call(fn(&mut Game, usize), usize),
     /// Call a function of the game with the pixel position of the click (a map, a chart).
     At(fn(&mut Game, (i32, i32))),
+    /// Hold this key down as long as the button is held (thrust, brake, boost, weapons).
+    Hold(KeyCode),
 }
 
 /// A clickable rectangle in framebuffer pixels (left, top, right, bottom), and what it does.
@@ -35,6 +37,8 @@ pub struct Pointer {
     pub hits: RefCell<Vec<Hit>>,
     /// The left button is held down (for dragging the globe).
     pub down: bool,
+    /// The key held by a click on a `Hold` zone, released with the button.
+    pub holding: Option<KeyCode>,
     last_click: Option<(u64, (i32, i32))>,
 }
 
@@ -85,6 +89,13 @@ impl Game {
         }
     }
 
+    /// The left button was released: let go of what a held click was pressing.
+    pub fn pointer_release(&mut self) {
+        if let Some(k) = self.pointer.holding.take() {
+            self.key(k, None, false);
+        }
+    }
+
     /// The pointer moved by (dx, dy) pixels with the left button down: it turns the globe.
     pub fn pointer_drag(&mut self, dx: i32, _dy: i32) {
         if self.screen == Screen::Surface && self.surf_globe {
@@ -101,6 +112,10 @@ impl Game {
             }
             Act::Call(f, n) => f(self, n),
             Act::At(f) => f(self, at),
+            Act::Hold(k) => {
+                self.key(k, None, true);
+                self.pointer.holding = Some(k);
+            }
         }
     }
 

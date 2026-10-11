@@ -83,3 +83,5 @@
 - 2026-10-11 : Souris : banque (boutons texte emprunter/rembourser/tout), écran colonie (politiques avec flèches, menu de construction, stocks). Reste hors souris : glisser le globe.
 
 - 2026-10-11 : Souris : glisser avec le bouton gauche fait tourner le globe de la surface. La souris est maintenant utilisable sur tous les écrans.
+
+- 2026-10-11 : Menu de pilotage dans le cockpit (colonne de mots cliquables à droite) : accès à tous les écrans (carte, galaxie, vaisseau, soute, équipage, journal, empire, flotte, technologies, codex, factions, surface, radio) et aux commandes (assistance, amarrage, pilote auto, cible, pause, temps, sauvegarde ; poussée, recul, frein, boost, laser et tir se maintiennent en gardant le bouton enfoncé). F11 ou clic sur le titre le plie ; option « Menu de pilotage ».

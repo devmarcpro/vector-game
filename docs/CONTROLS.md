@@ -94,3 +94,5 @@ Par défaut AZERTY : tangage Z/S, lacet Q/D, roulis A/E. Options > Clavier bascu
 Ecran de préparation : Haut/Bas, Espace coche un équipier ou le rover, Entrée part. En marche : flèches ou Z/Q/S/D (W/A/S/D en QWERTY) pour marcher, foncer sur un animal l'attaque, G cueille à côté, Tab passe au membre suivant, Espace attend un tour, R rentre au vaisseau (le butin va en soute), clic sur la carte = un pas vers la case, clic sur un nom = prendre le contrôle.
 
 - **Globe de surface** : glisser avec le bouton gauche pour le faire tourner.
+
+- **Menu de pilotage** (cockpit, à droite) : cliquer un mot ouvre l'écran ou exécute la commande ; les mots « (MAINT.) » agissent tant que le bouton de la souris reste enfoncé. F11 plie ou déplie le menu (Options > Menu de pilotage pour le retirer).

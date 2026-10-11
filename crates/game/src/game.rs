@@ -123,6 +123,8 @@ pub struct Game {
     /// Crew screen: the organ list of the selected person has the keys.
     pub organ_mode: bool,
     pub organ_sel: usize,
+    /// The piloting menu column is unfolded.
+    pub flight_menu_open: bool,
     /// Expedition: who goes (per crew index), the rover, the selected row, and the walk itself.
     pub exp_party: Vec<bool>,
     pub exp_vehicle: bool,
@@ -252,6 +254,7 @@ impl Game {
             crew_net: false,
             organ_mode: false,
             organ_sel: 0,
+            flight_menu_open: true,
             exp_party: Vec::new(),
             exp_vehicle: false,
             exp_sel: 0,
@@ -2020,6 +2023,7 @@ impl Game {
             },
             KeyCode::F5 => self.save_game(),
             KeyCode::F12 => self.screen = Screen::Proto,
+            KeyCode::F11 => self.toggle_flight_menu(),
             KeyCode::Enter => self.open_dialogue(),
             KeyCode::F9 => {
                 self.load_game();
@@ -2890,6 +2894,43 @@ mod tests {
         g.pointer.down = true;
         g.pointer_move(400, 100);
         assert_eq!(g.surf_spin, after, "the flat map is not dragged");
+    }
+
+    #[test]
+    fn the_piloting_menu_opens_screens_and_holds_ship_controls_by_click() {
+        let mut g = Game::new(data(), 1);
+        g.key(KeyCode::Enter, None, true);
+        g.settings.tutorial = false;
+        g.settings.flight_menu = true;
+        frame(&g);
+        // Words of the menu are zones: find them by their position (right column).
+        let x = 135 * 8 + 20;
+        let click = |g: &mut Game, row: i32, ms: u64| g.pointer_click(x, row * 10 + 3, ms);
+        // Row 6 is the first menu entry: the system map.
+        assert!(!g.map);
+        click(&mut g, 6, 1_000);
+        assert!(g.map, "CARTE SYSTEME toggled the map");
+        click(&mut g, 6, 5_000);
+        assert!(!g.map);
+        // Row 8 is the ship screen (H): a click opens it.
+        click(&mut g, 8, 9_000);
+        assert_eq!(g.screen, Screen::Ship);
+        g.key(KeyCode::Escape, None, true);
+        assert_eq!(g.screen, Screen::Flight);
+        // Holding a control word holds the key, and releasing the button lets go.
+        // The controls heading is at row 20, their entries from row 21.
+        frame(&g);
+        let brake_row = 21 + 9; // the 10th control, FREIN (MAINT.)
+        click(&mut g, brake_row, 20_000);
+        assert!(g.keys.contains(&KeyCode::KeyC), "the brake key is held");
+        g.pointer_release();
+        assert!(!g.keys.contains(&KeyCode::KeyC), "released with the button");
+        // F11 folds the menu away: its zones disappear.
+        g.key(KeyCode::F11, None, true);
+        assert!(!g.flight_menu_open);
+        frame(&g);
+        click(&mut g, 6, 30_000);
+        assert!(!g.map, "folded: nothing there");
     }
 
     #[test]

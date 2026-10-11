@@ -129,3 +129,5 @@
 - Physique des astres (`world/physics.rs`) : densite, liberation, inertie, moment cinetique, aplatissement, verrouillage de maree (rotation reelle des mondes proches), jour solaire, marees, Hill/Roche, noyau, flux de chaleur, activite, magnetisme; affiche dans l'ecran de surface.
 
 - Matieres (`materials.ron`, 38) : chaque case a une composition ; couleur/caractere/motif identiques en carte et en vue a la premiere personne (sol dessine case par case), neige/glace/eau gelee selon la temperature, vitesse de marche selon le sol; entree MATERIAUX du codex.
+
+- Zoom : + sur la carte de region descend sur la grille a pied, - remonte; le sol 3D de la vue a la premiere personne prend la matiere de la case sous les pieds (neige, glace, mousse...), le meme terrain a toutes les echelles.

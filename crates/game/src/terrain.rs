@@ -207,6 +207,7 @@ pub fn render(
     fb: &mut Framebuffer,
     t: &Terrain,
     color_of: &dyn Fn(usize, usize) -> u32,
+    local: &dyn Fn(f64, f64) -> Option<u32>,
     eye: &Eye,
     fr: &Frame,
     sky: &Sky,
@@ -254,7 +255,8 @@ pub fn render(
             let ytop = (horizon - fr.focal * dz / (d * cos_t)).floor() as i32;
             if ytop < ymin {
                 let (ci, ri) = Terrain::cell(lat, lon);
-                let mut base = color_of(ci, ri);
+                // Near the squad the ground is what the cells of the grid are made of.
+                let mut base = local(lat, lon).unwrap_or_else(|| color_of(ci, ri));
                 // Variation from place to place, snow and bare rock on the heights, water.
                 let (wx, wy) = (lon * t.radius, lat * t.radius);
                 let near = 1.0 / (1.0 + d / 600.0) as f32;
@@ -390,6 +392,7 @@ mod tests {
             &mut fb,
             &t,
             &|_, _| 0x0060_A040,
+            &|_, _| None,
             &eye,
             &fr,
             &sky,

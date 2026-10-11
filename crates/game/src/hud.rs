@@ -249,6 +249,7 @@ fn terrain_view(
         fb,
         &t,
         &|x, y| data.biomes[map.biome_at(x, y)].color,
+        &|_, _| None,
         &crate::terrain::Eye {
             lat,
             lon,

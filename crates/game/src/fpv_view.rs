@@ -493,6 +493,20 @@ pub fn draw_surface(fb: &mut Framebuffer, g: &Game, r: &Rogue, dir: i32) {
         fb,
         &t,
         &|x, y| data.biomes[map.biome_at(x, y)].color,
+        &|la, lo| {
+            // The grid laid on the ground: the material of the cell under that point.
+            let (east, north) = ((lo - lon0) * b.radius * cos_lat, (la - lat0) * b.radius);
+            let (gx, gy) = (
+                (landing_x + east / TILE_M).floor() as i32,
+                (landing_y - north / TILE_M).floor() as i32,
+            );
+            if !r.inside(gx, gy) || r.tile(gx, gy) == T_WALL {
+                return None;
+            }
+            r.mat(gx, gy)
+                .and_then(|m| g.sim.data.materials.get(m))
+                .map(|m| m.color)
+        },
         &crate::terrain::Eye {
             lat,
             lon,

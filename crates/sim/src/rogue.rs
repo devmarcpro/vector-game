@@ -10,7 +10,7 @@
 use crate::{ShipInput, Sim};
 use serde::{Deserialize, Serialize};
 use vector_core::{hash_coord, Rng};
-use vector_data::{GameData, ROGUE_FEATURES, ROGUE_TERMINALS};
+use vector_data::{GameData, RogueTheme, ROGUE_FEATURES, ROGUE_TERMINALS};
 use vector_world::surface::{Surface, H as SURF_H, W as SURF_W};
 use vector_world::{AnomalyKind, BodyKind};
 
@@ -106,6 +106,9 @@ pub struct Floor {
     pub items: Vec<Item>,
     pub sites: Vec<SiteInst>,
     pub start: (i32, i32),
+    /// What each cell is made of (index in `data.materials`).
+    #[serde(default)]
+    pub mats: Vec<u8>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -163,6 +166,17 @@ impl Rogue {
 
     pub fn inside(&self, x: i32, y: i32) -> bool {
         x >= 0 && y >= 0 && (x as usize) < self.w && (y as usize) < self.h
+    }
+
+    /// The material of the cell (index in `data.materials`), when the floor has them.
+    pub fn mat(&self, x: i32, y: i32) -> Option<usize> {
+        if !self.inside(x, y) {
+            return None;
+        }
+        self.floor()
+            .mats
+            .get(self.idx(x, y))
+            .map(|&m| usize::from(m))
     }
 
     pub fn tile(&self, x: i32, y: i32) -> u8 {
@@ -590,6 +604,7 @@ pub fn generate_social(
             place(&mut monsters, &mut rng, Some((*id, name)));
         }
     }
+    let mats = paint(data, &tiles, w, t, seed, None);
     Floor {
         seen: vec![false; w * h],
         tiles,
@@ -597,7 +612,86 @@ pub fn generate_social(
         items: Vec::new(),
         sites: Vec::new(),
         start,
+        mats,
     }
+}
+
+/// What the cells of a floor are made of: the floor and wall materials of the place, or on a
+/// surface the ground the biome is made of (patches of the materials that make it up, snow and
+/// ice where it is cold) and the liquid its temperature allows.
+fn paint(
+    data: &GameData,
+    tiles: &[u8],
+    w: usize,
+    theme: &RogueTheme,
+    seed: u64,
+    ground: Option<(&str, f64)>,
+) -> Vec<u8> {
+    let find = |id: &str| data.material_index(id).unwrap_or(0);
+    let (floor, wall) = (find(&theme.floor_mat), find(&theme.wall_mat));
+    let of_biome = |kind: &str, biome: &str| -> Vec<(usize, f64)> {
+        data.materials
+            .iter()
+            .enumerate()
+            .filter(|(_, m)| m.kind == kind)
+            .filter_map(|(i, m)| {
+                m.ground_of
+                    .iter()
+                    .find(|(b, _)| b == biome)
+                    .map(|(_, wt)| (i, *wt))
+            })
+            .collect()
+    };
+    let pick = |list: &[(usize, f64)], n: f64, fallback: usize| -> usize {
+        let total: f64 = list.iter().map(|(_, wt)| wt).sum();
+        let mut x = n * total;
+        for (i, wt) in list {
+            if x < *wt {
+                return *i;
+            }
+            x -= wt;
+        }
+        list.last().map_or(fallback, |(i, _)| *i)
+    };
+    let (floors, walls) = match ground {
+        Some((b, _)) => (of_biome("floor", b), of_biome("wall", b)),
+        None => (Vec::new(), Vec::new()),
+    };
+    let (snow, ice) = (find("neige"), find("glace"));
+    let liquid = match ground {
+        Some((_, t)) if t < 273.0 => find("eau_glacee"),
+        Some((_, t)) if t > 1200.0 => find("lave"),
+        _ => find("eau"),
+    };
+    tiles
+        .iter()
+        .enumerate()
+        .map(|(i, &t)| {
+            let (x, y) = ((i % w) as f64, (i / w) as f64);
+            let m = if t == T_WATER {
+                liquid
+            } else if t == T_WALL {
+                if walls.is_empty() {
+                    wall
+                } else {
+                    pick(&walls, vnoise(seed ^ 0x3B17, x / 8.0, y / 8.0), wall)
+                }
+            } else if floors.is_empty() {
+                floor
+            } else {
+                let cold = ground.is_some_and(|(_, tk)| tk < 268.0);
+                let frost = vnoise(seed ^ 0x77A1, x / 7.0, y / 7.0);
+                if cold && frost > 0.88 {
+                    ice
+                } else if cold && frost > 0.55 {
+                    snow
+                } else {
+                    pick(&floors, vnoise(seed ^ 0x6D41, x / 7.0, y / 7.0), floor)
+                }
+            };
+            m as u8
+        })
+        .collect()
 }
 
 /// Build floor `depth` of a place.
@@ -731,6 +825,14 @@ pub fn generate_floor(data: &GameData, theme: usize, seed: u64, depth: u32) -> F
             }
         }
     }
+    let mats = paint(
+        data,
+        &tiles,
+        w,
+        t,
+        hash_coord(seed, i64::from(depth), 5, 91),
+        None,
+    );
     Floor {
         seen: vec![false; w * h],
         tiles,
@@ -738,6 +840,7 @@ pub fn generate_floor(data: &GameData, theme: usize, seed: u64, depth: u32) -> F
         items,
         sites: Vec::new(),
         start,
+        mats,
     }
 }
 
@@ -1231,6 +1334,16 @@ impl Sim {
                 used: false,
             });
         }
+        let surface = self.data.rogue_theme_index("surface").unwrap_or(0);
+        let temp_here = self.temp_now(&map, cx, cy);
+        let mats = paint(
+            &self.data,
+            &tiles,
+            MAP_W,
+            &self.data.rogue_themes[surface],
+            seed,
+            Some((&b.id, temp_here)),
+        );
         let floor = Floor {
             seen: vec![false; MAP_W * MAP_H],
             tiles,
@@ -1238,8 +1351,8 @@ impl Sim {
             items,
             sites,
             start: (lx, ly),
+            mats,
         };
-        let surface = self.data.rogue_theme_index("surface").unwrap_or(0);
         let names: Vec<String> = party
             .iter()
             .map(|&i| self.crew.members[i].name.clone())
@@ -1267,7 +1380,7 @@ impl Sim {
             land: Some((cx, cy)),
             place: b.name.clone(),
             vehicle,
-            env: Some((map.pressure, self.temp_now(&map, cx, cy))),
+            env: Some((map.pressure, temp_here)),
             turn_seconds: SURFACE_TURN_SECONDS,
             parent: None,
             social: false,
@@ -1750,7 +1863,15 @@ impl Sim {
                 r.say("Le drone rentre, batteries a plat.");
             }
         }
-        self.advance(r.turn_seconds, &ShipInput::default());
+        // The ground slows or speeds the squad (mud, snow and sand cost time, ice saves it); a
+        // rover feels it less.
+        let slow = r.mat(r.x, r.y).map_or(1.0, |m| self.data.materials[m].slow);
+        let slow = if r.vehicle && r.on_surface() {
+            1.0 + (slow - 1.0) * 0.4
+        } else {
+            slow
+        };
+        self.advance(r.turn_seconds * slow, &ShipInput::default());
         let theme = self.data.rogue_themes[r.theme].clone();
         // Hazard of the place, every fifth turn.
         if theme.hazard > 0.0 && r.turn.is_multiple_of(5) {
@@ -2762,6 +2883,92 @@ mod tests {
             s.rogue.as_ref().unwrap().floors[0].tiles,
             first,
             "a new visit, a new layout"
+        );
+    }
+
+    #[test]
+    fn every_cell_is_made_of_a_material_of_its_own_kind() {
+        let d = data();
+        let kind_of = |t: u8| match t {
+            T_WALL => "wall",
+            T_WATER => "liquid",
+            _ => "floor",
+        };
+        let mut seen_kinds = std::collections::HashSet::new();
+        for theme in &d.rogue_themes {
+            if theme.id == "surface" {
+                continue;
+            }
+            let s = run_on(&theme.id, 9);
+            let r = s.rogue.as_ref().unwrap();
+            for f in &r.floors {
+                assert_eq!(f.mats.len(), f.tiles.len(), "{}", theme.id);
+                for (t, m) in f.tiles.iter().zip(&f.mats) {
+                    let mat = &d.materials[usize::from(*m)];
+                    assert_eq!(mat.kind, kind_of(*t), "{}: {}", theme.id, mat.id);
+                    seen_kinds.insert(mat.id.clone());
+                }
+            }
+        }
+        // The built places do not all share one material: stone, alloy, wax, crystal...
+        assert!(seen_kinds.len() >= 10, "{seen_kinds:?}");
+        let (mut s, body, cx, cy) = landing_site();
+        s.rogue_land(body, cx, cy, vec![0], false).unwrap();
+        let r = s.rogue.as_ref().unwrap();
+        let f = r.floor();
+        let ground: std::collections::HashSet<usize> = f
+            .tiles
+            .iter()
+            .zip(&f.mats)
+            .filter(|(t, _)| **t != T_WALL && **t != T_WATER)
+            .map(|(_, m)| usize::from(*m))
+            .collect();
+        assert!(ground.len() >= 2, "a landing is not one uniform ground");
+        for (t, m) in f.tiles.iter().zip(&f.mats) {
+            assert_eq!(d.materials[usize::from(*m)].kind, kind_of(*t));
+        }
+    }
+
+    #[test]
+    fn cold_makes_snow_and_ice_and_frozen_ponds() {
+        let d = data();
+        let surface = d.rogue_theme_index("surface").unwrap();
+        let t = &d.rogue_themes[surface];
+        let (w, h) = (MAP_W, MAP_H);
+        let mut tiles = vec![T_FLOOR; w * h];
+        tiles[5] = T_WATER;
+        let count = |temp: f64, id: &str| {
+            let m = paint(&d, &tiles, w, t, 33, Some(("desert", temp)));
+            let k = d.material_index(id).unwrap() as u8;
+            m.iter().filter(|&&x| x == k).count()
+        };
+        assert!(count(240.0, "neige") > 100, "cold ground gets snow");
+        assert_eq!(count(300.0, "neige"), 0, "warm ground does not");
+        assert_eq!(count(240.0, "eau_glacee"), 1);
+        assert_eq!(count(300.0, "eau"), 1);
+        assert_eq!(count(1500.0, "lave"), 1);
+    }
+
+    #[test]
+    fn mud_costs_time_and_ice_saves_it() {
+        let (mut s, body, cx, cy) = landing_site();
+        s.rogue_land(body, cx, cy, vec![0], false).unwrap();
+        let spent = |s: &mut Sim, id: &str| {
+            let k = s.data.material_index(id).unwrap() as u8;
+            let r = s.rogue.as_mut().unwrap();
+            let (x, y) = (r.x, r.y);
+            let i = r.idx(x, y);
+            r.floors[0].mats[i] = k;
+            let t0 = s.time;
+            s.rogue_wait().unwrap();
+            s.time - t0
+        };
+        let mud = spent(&mut s, "boue");
+        let ice = spent(&mut s, "glace");
+        let plain = spent(&mut s, "herbe");
+        assert!(
+            mud > plain * 1.8 && ice < plain * 0.9,
+            "{mud} {plain} {ice}"
         );
     }
 

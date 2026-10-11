@@ -127,3 +127,5 @@
 - Vue a la premiere personne (`fpv_view.rs`, prototype) : lancer de rayons sur les etages de l'exploration, murs en briques, plafond/ciel, sol ; 30 dessins ASCII (gens, robots, creatures, arbres, buissons, fleurs, bornes, escaliers, ruines) en panneaux a l'echelle de la distance.
 
 - Physique des astres (`world/physics.rs`) : densite, liberation, inertie, moment cinetique, aplatissement, verrouillage de maree (rotation reelle des mondes proches), jour solaire, marees, Hill/Roche, noyau, flux de chaleur, activite, magnetisme; affiche dans l'ecran de surface.
+
+- Matieres (`materials.ron`, 38) : chaque case a une composition ; couleur/caractere/motif identiques en carte et en vue a la premiere personne (sol dessine case par case), neige/glace/eau gelee selon la temperature, vitesse de marche selon le sol; entree MATERIAUX du codex.

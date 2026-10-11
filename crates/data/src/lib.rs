@@ -564,6 +564,29 @@ pub struct RogueMonster {
     pub text: String,
 }
 
+fn one() -> f64 {
+    1.0
+}
+
+/// What a cell of the ground or of a wall is made of (see `data/materials.ron`): its colour and
+/// the characters that stand for it, in the map and in first person.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct Material {
+    pub id: String,
+    pub name: String,
+    /// floor, wall or liquid.
+    pub kind: String,
+    pub glyphs: String,
+    pub color: u32,
+    pub pattern: String,
+    pub hardness: f64,
+    /// Turn-time multiplier for walking on it (mud 2, sand 1.3, ice 0.8).
+    #[serde(default = "one")]
+    pub slow: f64,
+    pub ground_of: Vec<(String, f64)>,
+    pub text: String,
+}
+
 /// A place explorable on foot (see `data/rogue_themes.ron`).
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct RogueTheme {
@@ -584,6 +607,11 @@ pub struct RogueTheme {
     pub social: Vec<String>,
     #[serde(default)]
     pub lines: Vec<String>,
+    /// Materials of the floor and of the walls of the place (ids of `materials.ron`).
+    #[serde(default)]
+    pub floor_mat: String,
+    #[serde(default)]
+    pub wall_mat: String,
 }
 
 /// A dimension behind a portal (see `data/dimensions.ron`).
@@ -769,6 +797,7 @@ pub struct GameData {
     pub dimensions: Vec<Dimension>,
     pub rogue_monsters: Vec<RogueMonster>,
     pub rogue_themes: Vec<RogueTheme>,
+    pub materials: Vec<Material>,
     pub companies: Vec<Company>,
 }
 
@@ -814,6 +843,7 @@ impl GameData {
             dimensions: read(&dir.join("dimensions.ron"))?,
             rogue_monsters: read(&dir.join("rogue_monsters.ron"))?,
             rogue_themes: read(&dir.join("rogue_themes.ron"))?,
+            materials: read(&dir.join("materials.ron"))?,
             companies: read(&dir.join("companies.ron"))?,
         };
         // Generated extension files (tools/gen_scale.py) extend the hand-written tables.
@@ -1243,6 +1273,7 @@ impl GameData {
         self.validate_religions()?;
         self.validate_cartels()?;
         self.validate_dimensions()?;
+        self.validate_materials()?;
         self.validate_rogue()?;
         self.validate_companies()
     }
@@ -1284,6 +1315,72 @@ impl GameData {
     /// Beliefs: unique ids, sane ranges, and every possible faith has at least one belief.
     pub fn rogue_monster_index(&self, id: &str) -> Option<usize> {
         self.rogue_monsters.iter().position(|m| m.id == id)
+    }
+
+    pub fn material_index(&self, id: &str) -> Option<usize> {
+        self.materials.iter().position(|m| m.id == id)
+    }
+
+    /// Materials: unique ids, known kinds, a colour and glyphs, existing biomes, and every land
+    /// biome has a ground and a rock; places name materials that exist and are of the right kind.
+    fn validate_materials(&self) -> Result<(), DataError> {
+        let bad = |s: String| Err(DataError::Invalid(s));
+        let mut seen = std::collections::HashSet::new();
+        for m in &self.materials {
+            if !seen.insert(m.id.as_str()) {
+                return bad(format!("materiau {} en double", m.id));
+            }
+            if !matches!(m.kind.as_str(), "floor" | "wall" | "liquid")
+                || !matches!(m.pattern.as_str(), "pierre" | "panneau" | "bruit" | "lisse")
+                || m.glyphs.is_empty()
+                || m.color == 0
+                || !(0.0..=1.0).contains(&m.hardness)
+                || !(0.5..=3.0).contains(&m.slow)
+            {
+                return bad(format!("materiau {}: valeurs invalides", m.id));
+            }
+            for (b, w) in &m.ground_of {
+                if self.biomes.iter().all(|x| &x.id != b) || *w <= 0.0 {
+                    return bad(format!("materiau {}: biome {b} inconnu ou poids nul", m.id));
+                }
+                if m.kind == "liquid" {
+                    return bad(format!("materiau {}: un liquide n'est pas un sol", m.id));
+                }
+            }
+        }
+        for b in self.biomes.iter().filter(|b| b.elev.0 >= 0.0) {
+            for kind in ["floor", "wall"] {
+                if !self
+                    .materials
+                    .iter()
+                    .any(|m| m.kind == kind && m.ground_of.iter().any(|(id, _)| *id == b.id))
+                {
+                    return bad(format!("biome {} sans materiau de type {kind}", b.id));
+                }
+            }
+        }
+        for id in ["eau", "eau_glacee", "lave"] {
+            if self.material_index(id).is_none() {
+                return bad(format!("materiau {id} absent"));
+            }
+        }
+        for t in &self.rogue_themes {
+            for (id, kind) in [(&t.floor_mat, "floor"), (&t.wall_mat, "wall")] {
+                if t.id == "surface" {
+                    continue;
+                }
+                match self.material_index(id) {
+                    Some(k) if self.materials[k].kind == kind => {}
+                    _ => {
+                        return bad(format!(
+                            "lieu {}: materiau {id} absent ou mauvais type",
+                            t.id
+                        ))
+                    }
+                }
+            }
+        }
+        Ok(())
     }
 
     pub fn rogue_theme_index(&self, id: &str) -> Option<usize> {

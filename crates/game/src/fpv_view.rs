@@ -7,7 +7,7 @@
 //! of a circle, up and down step forward and back. One engine, two representations.
 use crate::game::Game;
 use crate::hud::{AMBER, DIM, GREEN};
-use vector_data::ROGUE_TERMINALS;
+use vector_data::{Material, ROGUE_TERMINALS};
 use vector_render::Framebuffer;
 use vector_sim::rogue::{Mon, Rogue, T_DOWN, T_FEATURE, T_SITE, T_TERMINAL, T_UP, T_WALL, T_WATER};
 
@@ -261,22 +261,88 @@ fn crosshair(fb: &mut Framebuffer, dir: i32) {
     );
 }
 
-/// Indoors: walls by raycasting, billboards for everything else.
-pub fn draw(fb: &mut Framebuffer, r: &Rogue, dir: i32, wall_color: u32) {
+/// Brightness of a point (u, v in [0, 1) across one cell or one wall) of a material by its
+/// pattern: courses of blocks, plates with joints, rough grain, or smooth.
+fn texture(pattern: &str, u: f64, v: f64, cell: (i32, i32)) -> f64 {
+    let grain = |k: i64| {
+        let h = vector_core::hash_coord(11, i64::from(cell.0), i64::from(cell.1), k);
+        (h >> 11) as f64 / (1u64 << 53) as f64
+    };
+    match pattern {
+        "pierre" => {
+            // Dark joints every eighth, staggered across.
+            let stagger = if (v * 8.0) as i32 % 2 == 0 {
+                0.0
+            } else {
+                0.125
+            };
+            if (v * 8.0).fract() < 0.08 || ((u + stagger) * 4.0).fract() < 0.05 {
+                0.55
+            } else {
+                0.9 + 0.2 * grain(1)
+            }
+        }
+        "panneau" => {
+            if (v * 3.0).fract() < 0.05 || (u * 2.0).fract() < 0.04 {
+                0.5
+            } else if (u * 8.0).fract() < 0.12 && (v * 3.0).fract() < 0.2 {
+                1.25
+            } else {
+                1.0
+            }
+        }
+        "bruit" => {
+            let (gx, gy) = ((u * 6.0) as i64, (v * 6.0) as i64);
+            let h = vector_core::hash_coord(
+                13,
+                i64::from(cell.0) * 6 + gx,
+                i64::from(cell.1) * 6 + gy,
+                2,
+            );
+            0.78 + 0.4 * ((h >> 11) as f64 / (1u64 << 53) as f64)
+        }
+        _ => 0.95 + 0.1 * (1.0 - v),
+    }
+}
+
+/// Indoors: walls by raycasting, floor cell by cell, billboards for everything else. What a
+/// wall or a floor is made of (colour, pattern) comes from the material of its cell.
+pub fn draw(fb: &mut Framebuffer, materials: &[Material], r: &Rogue, dir: i32) {
     let a = f64::from(dir) * std::f64::consts::FRAC_PI_4;
     let (dx, dy) = (a.cos(), a.sin());
     let (px, py) = (f64::from(r.x) + 0.5, f64::from(r.y) + 0.5);
     let (plx, ply) = (-dy * PLANE, dx * PLANE);
-    // Ceiling and floor, in bands.
-    for y in 0..H {
-        let t = f64::from(y) / f64::from(H);
-        let c = if t < 0.5 {
-            shade(0x0030_3840, 0.15 + 0.5 * (t * 2.0))
-        } else {
-            shade(0x0030_4830, 0.12 + 0.55 * ((t - 0.5) * 2.0))
-        };
+    let look = |x: i32, y: i32, fallback: u32| -> (u32, &str) {
+        match r.mat(x, y).and_then(|m| materials.get(m)) {
+            Some(m) => (m.color, m.pattern.as_str()),
+            None => (fallback, "pierre"),
+        }
+    };
+    // Ceiling in bands, tinted by the walls around.
+    let (roof, _) = look(r.x, r.y, 0x0030_3840);
+    for y in 0..H / 2 {
+        let t = f64::from(y) / f64::from(H / 2);
+        let c = shade(roof, 0.05 + 0.18 * t);
         for x in 0..W {
             fb.plot(X0 + x, Y0 + y, c);
+        }
+    }
+    // The floor: each pixel row is a distance, each column pair a direction; the cell it lands
+    // on gives the colour and the grain.
+    for y in H / 2..H {
+        let row = f64::from(y) - f64::from(H) / 2.0 + 0.5;
+        let dist = f64::from(H) / (2.0 * row);
+        let fade = 1.0 / (1.0 + dist * dist * 0.03);
+        for col in 0..W / 2 {
+            let camx = 2.0 * f64::from(col) / f64::from(W / 2) - 1.0;
+            let (wx, wy) = (px + dist * (dx + plx * camx), py + dist * (dy + ply * camx));
+            let (cx, cy) = (wx.floor() as i32, wy.floor() as i32);
+            let (c0, pat) = look(cx, cy, 0x0030_4830);
+            let k = fade * 0.8 * texture(pat, wx - wx.floor(), wy - wy.floor(), (cx, cy));
+            let c = shade(c0, k.clamp(0.02, 1.2));
+            let x = X0 + col * 2;
+            fb.px_set(x, Y0 + y, c);
+            fb.px_set(x + 1, Y0 + y, c);
         }
     }
     // Walls, a column pair at a time.
@@ -334,20 +400,14 @@ pub fn draw(fb: &mut Framebuffer, r: &Rogue, dir: i32, wall_color: u32) {
         let u = wall_x - wall_x.floor();
         let fade = 1.0 / (1.0 + dist * dist * 0.03);
         let face = if side == 0 { 1.0 } else { 0.72 };
+        let (wall_color, pattern) = look(mx, my, 0x0080_6048);
         for yy in top.max(0)..(top + height as i32).min(H) {
             let v = f64::from(yy - top) / height;
-            // Courses of bricks: dark joints every eighth of the wall, staggered across.
-            let stagger = if (v * 8.0) as i32 % 2 == 0 {
-                0.0
-            } else {
-                0.125
-            };
-            let joint = (v * 8.0).fract() < 0.08 || ((u + stagger) * 4.0).fract() < 0.05;
-            let k = fade * face * if joint { 0.55 } else { 1.0 };
-            let c = shade(wall_color, k);
+            let k = fade * face * texture(pattern, u, v, (mx, my));
+            let c = shade(wall_color, k.clamp(0.02, 1.2));
             let x = X0 + col * 2;
-            fb.plot(x, Y0 + yy, c);
-            fb.plot(x + 1, Y0 + yy, c);
+            fb.px_set(x, Y0 + yy, c);
+            fb.px_set(x + 1, Y0 + yy, c);
         }
     }
     let sprites = collect_sprites(r, px, py, MAX_DIST);

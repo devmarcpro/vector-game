@@ -79,3 +79,14 @@ Un service n'existe que là où il a un sens. Station étrangère : marché, cha
 
 ## Une chose = une représentation (E10)
 Un monde se dessine de la même façon partout : le globe topographique (points par biome, courbes de niveau, côtes, graticule) est `globe.rs`, utilisé par l'écran de surface (F8) et par la vue de pilotage dès qu'un monde solide relevé est assez gros à l'écran (la face nocturne est assombrie d'après la position de l'étoile). Même principe pour les nouvelles : un seul fil (`news.rs`), rempli par la politique des secteurs (`politics.rs`), les incidents d'entreprises (`incidents.rs`) et la bourse ; l'univers est infini, donc la portée est locale (secteurs de 240 al, écoute de 2 secteurs autour du vaisseau) et ce qui est loin arrive en retard (4 al par jour au-delà du secteur) ; chaque fait a un effet réel sur les prix de son secteur.
+
+## Une case = une matiere (`data/materials.ron`)
+
+Chaque case d'un etage (sol, mur, liquide) est faite d'une matiere (`Floor.mats`, index dans
+`materials.ron`). Sa couleur et ses caracteres viennent de la matiere, dans la carte comme dans la vue
+a la premiere personne (murs et sol, motif pierre/panneau/bruit/lisse) : une seule representation,
+deux vues, qu'on change quand on veut (F). Sur une planete, le sol vient du biome (taches de matieres
+ponderees par `ground_of`), la neige et la glace apparaissent quand il fait froid, l'eau gele ou la
+lave remplace l'eau selon la temperature. Les lieux construits nomment leur matiere (`floor_mat`,
+`wall_mat`). La matiere agit : `slow` multiplie le temps de marche (boue x2, neige x1,5, glace x0,8) et
+un rover la ressent 2,5 fois moins. Sauvegardes : version 35.

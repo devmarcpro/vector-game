@@ -331,6 +331,12 @@ fn draw_choose(fb: &mut Framebuffer, g: &Game) {
     }
 }
 
+/// A colour as it looks in the dark (remembered, out of sight).
+fn dim(c: u32) -> u32 {
+    let ch = |s: u32| (((c >> s) & 0xFF) * 38 / 100) << s;
+    ch(16) | ch(8) | ch(0)
+}
+
 /// The map in characters: tiles, items, creatures, the squad, and the zone to click.
 fn draw_map(fb: &mut Framebuffer, g: &Game, r: &Rogue) {
     let s = &g.sim;
@@ -353,9 +359,21 @@ fn draw_map(fb: &mut Framebuffer, g: &Game, r: &Rogue) {
             let t = f.tiles[i];
             let glyph: String;
             let (ch, col) = match t {
-                T_WALL => ("#", if lit { WALL } else { FAR }),
-                T_FLOOR => (".", if lit { GREEN } else { FAR }),
-                T_WATER => ("~", if lit { WATER } else { FAR }),
+                T_WALL | T_FLOOR | T_WATER => {
+                    match r.mat(x, y).and_then(|m| s.data.materials.get(m)) {
+                        // The character and the colour of the cell come from what it is made of.
+                        Some(m) => {
+                            let chars: Vec<char> = m.glyphs.chars().collect();
+                            let n =
+                                vector_core::hash_coord(7, i64::from(x), i64::from(y), 3) as usize;
+                            glyph = chars[n % chars.len()].to_string();
+                            (glyph.as_str(), if lit { m.color } else { dim(m.color) })
+                        }
+                        None if t == T_WALL => ("#", if lit { WALL } else { FAR }),
+                        None if t == T_WATER => ("~", if lit { WATER } else { FAR }),
+                        None => (".", if lit { GREEN } else { FAR }),
+                    }
+                }
                 T_UP => ("<", AMBER),
                 T_DOWN => (">", AMBER),
                 T_SITE => match f.sites.iter().find(|st| (st.x, st.y) == (x, y)) {
@@ -431,19 +449,6 @@ fn draw_map(fb: &mut Framebuffer, g: &Game, r: &Rogue) {
     }
 }
 
-/// The colour of the walls in first person, by place.
-fn wall_color(theme: &str) -> u32 {
-    match theme {
-        "station" | "colonie" | "vaisseau" | "depot" | "laboratoire" => 0x0070_8898,
-        "epave" | "reacteur" | "base_pirate" => 0x0090_6048,
-        "ruche" => 0x0090_A040,
-        "grotte_cristal" | "glace" => 0x0060_B0D0,
-        "ruines" | "station_ancienne" | "portail" => 0x00B0_9060,
-        "reve" => 0x0090_60C0,
-        _ => 0x0080_6048,
-    }
-}
-
 fn draw_run(fb: &mut Framebuffer, g: &Game, r: &Rogue) {
     let s = &g.sim;
     let th = &s.data.rogue_themes[r.theme];
@@ -469,7 +474,7 @@ fn draw_run(fb: &mut Framebuffer, g: &Game, r: &Rogue) {
         if r.on_surface() {
             crate::fpv_view::draw_surface(fb, g, r, g.fpv_dir);
         } else {
-            crate::fpv_view::draw(fb, r, g.fpv_dir, wall_color(&th.id));
+            crate::fpv_view::draw(fb, &s.data.materials, r, g.fpv_dir);
         }
     } else {
         draw_map(fb, g, r);

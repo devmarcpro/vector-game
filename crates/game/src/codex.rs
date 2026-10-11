@@ -2,7 +2,7 @@
 //! weapon, faction, anomaly and condition, generated from the real data (no hand-written numbers).
 use vector_data::GameData;
 
-pub const CATEGORIES: [&str; 28] = [
+pub const CATEGORIES: [&str; 29] = [
     "RESSOURCES",
     "MODULES",
     "ARMES",
@@ -31,6 +31,7 @@ pub const CATEGORIES: [&str; 28] = [
     "DIMENSIONS",
     "LIEUX A EXPLORER",
     "CREATURES",
+    "MATERIAUX",
 ];
 
 /// Index in the source table of entry `k` of a category (modules and weapons share a table).
@@ -82,6 +83,7 @@ fn entries(data: &GameData, cat: usize) -> Vec<usize> {
         25 => (0..data.dimensions.len()).collect(),
         26 => (0..data.rogue_themes.len()).collect(),
         27 => (0..data.rogue_monsters.len()).collect(),
+        28 => (0..data.materials.len()).collect(),
         _ => Vec::new(),
     }
 }
@@ -115,6 +117,7 @@ pub fn names(data: &GameData, cat: usize) -> Vec<String> {
             25 => data.dimensions[i].name.clone(),
             26 => data.rogue_themes[i].name.clone(),
             27 => data.rogue_monsters[i].name.clone(),
+            28 => data.materials[i].name.clone(),
             18 => format!(
                 "Appeler : {}",
                 vector_data::dialogue::ROLES[i].to_lowercase()
@@ -523,6 +526,44 @@ pub fn entry(data: &GameData, cat: usize, k: usize) -> Vec<String> {
                     res_name(data, &d.cure).unwrap_or_else(|| d.cure.clone())
                 }
             ));
+        }
+        28 => {
+            let m = &data.materials[i];
+            out.push(format!(
+                "{} ({})",
+                m.name,
+                m.glyphs.chars().take(1).collect::<String>()
+            ));
+            out.push(m.text.clone());
+            out.push(format!(
+                "{}   durete {:.0} %   temps de marche x{:.2}   aspect en vue a la premiere personne : {}",
+                match m.kind.as_str() {
+                    "wall" => "Mur ou obstacle",
+                    "liquid" => "Liquide",
+                    _ => "Sol",
+                },
+                m.hardness * 100.0,
+                m.slow,
+                m.pattern
+            ));
+            let at: Vec<String> = m
+                .ground_of
+                .iter()
+                .filter_map(|(b, _)| data.biomes.iter().find(|x| &x.id == b))
+                .map(|b| b.name.clone())
+                .collect();
+            if !at.is_empty() {
+                out.push(format!("Se trouve sur : {}", at.join(", ")));
+            }
+            let places: Vec<&str> = data
+                .rogue_themes
+                .iter()
+                .filter(|t| t.floor_mat == m.id || t.wall_mat == m.id)
+                .map(|t| t.name.as_str())
+                .collect();
+            if !places.is_empty() {
+                out.push(format!("Construit : {}", places.join(", ")));
+            }
         }
         27 => {
             let m = &data.rogue_monsters[i];

@@ -65,3 +65,6 @@ Développer beaucoup plus les générateurs de noms : planètes, systèmes, gala
 
 ## Vue a la premiere personne (a faire apres les planetes)
 Exploration a la Daggerfall : une vue en perspective (lancer de rayons sur les memes etages que le moteur d'exploration : salles, couloirs, bornes, passants, monstres) a la place ou a cote de la vue en caracteres. Meme moteur, deux representations. Prototype demande par le joueur (2026-10-11).
+
+- Zoom continu (demande) : un seul niveau d'echelle de l'orbite a l'echelle humaine : globe -> relief -> region -> grille de 3 m -> vue a la premiere personne, avec les memes matieres et le meme terrain a chaque niveau.
+- Gameplay emergent : les matieres, la temperature, la physique des astres, la faune et l'economie doivent se parler (le sol ralentit, le froid gele l'eau, la gravite et l'atmosphere pesent sur le vol...).

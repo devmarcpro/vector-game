@@ -9,14 +9,59 @@ use vector_render::Framebuffer;
 use vector_sim::planet::{PlanetMap, Weather};
 use vector_world::surface::{Surface, H, W};
 
-pub const LAYERS: [&str; 6] = [
+pub const LAYERS: [&str; 7] = [
     "BIOMES",
     "ALTITUDE",
     "TEMPERATURE",
     "HUMIDITE",
     "METEO",
     "VIE",
+    "NUAGES",
 ];
+
+/// Water colours on the maps: lakes and rivers, and the ice that covers them (and the seas) when
+/// it is cold enough now.
+const LAKE: u32 = 0x0030_70C0;
+const ICE: u32 = 0x00D0_E8F8;
+
+fn mix_rgb(a: u32, b: u32, t: f32) -> u32 {
+    let ch = |s: u32| (((a >> s) & 0xFF) as f32 * (1.0 - t) + ((b >> s) & 0xFF) as f32 * t) as u32;
+    (ch(16) << 16) | (ch(8) << 8) | ch(0)
+}
+
+/// What a cell looks like from far away: the colour of its biome, with the lakes, the big rivers
+/// and the ice of the season on top. One place decides it, for the globe of the cockpit and the
+/// map of the surface alike.
+pub fn ground_color(sim: &vector_sim::Sim, map: &PlanetMap, x: usize, y: usize) -> u32 {
+    let base = sim.data.biomes[map.biome_at(x, y)].color;
+    let s = &map.surface;
+    if s.is_lake(x, y) {
+        return if sim.water_frozen(map, x, y) {
+            ICE
+        } else {
+            LAKE
+        };
+    }
+    if s.is_sea(x, y) {
+        return if sim.water_frozen(map, x, y) {
+            ICE
+        } else {
+            base
+        };
+    }
+    if s.is_river(x, y) {
+        let rel = s.hydro.rel(Surface::idx(x, y));
+        if rel > 0.3 {
+            let water = if sim.water_frozen(map, x, y) {
+                ICE
+            } else {
+                LAKE
+            };
+            return mix_rgb(base, water, 0.35 + 0.4 * rel);
+        }
+    }
+    base
+}
 
 /// Metres per unit of relative elevation (peaks and trenches of a living world).
 const RELIEF_M: f64 = 8000.0;
@@ -102,7 +147,15 @@ fn cell(g: &Game, map: &PlanetMap, x: usize, y: usize) -> (char, u32) {
     match g.surf_layer {
         0 => {
             let b = &g.data.biomes[map.biome_at(x, y)];
-            (b.glyph.chars().next().unwrap_or('?'), b.color)
+            let color = ground_color(&g.sim, map, x, y);
+            let ch = if s.is_water(x, y) && g.sim.water_frozen(map, x, y) {
+                '='
+            } else if s.is_lake(x, y) || s.is_river(x, y) {
+                '~'
+            } else {
+                b.glyph.chars().next().unwrap_or('?')
+            };
+            (ch, color)
         }
         1 => {
             let e = f64::from(s.elev[i]);
@@ -119,7 +172,14 @@ fn cell(g: &Game, map: &PlanetMap, x: usize, y: usize) -> (char, u32) {
         2 => ('#', temp_color(g.sim.temp_now(map, x, y))),
         3 => ('#', hum_color(f64::from(s.hum[i]))),
         4 => weather_glyph(g.sim.weather_at(map, x, y).0),
-        _ => ('#', life_color(g, map.biome_at(x, y))),
+        5 => ('#', life_color(g, map.biome_at(x, y))),
+        _ => {
+            let c = f64::from(g.sim.cloud_at(map, x, y));
+            (
+                '#',
+                lerp3(&[(0.0, [0.05, 0.08, 0.18]), (1.0, [0.95, 0.96, 1.0])], c),
+            )
+        }
     }
 }
 
@@ -396,6 +456,37 @@ fn draw_panel(fb: &mut Framebuffer, g: &Game, map: &PlanetMap, col: usize, row: 
         format!("HUMIDITE {:.0} %", f64::from(map.surface.hum[i]) * 100.0),
         GREEN,
     );
+    let sky = f64::from(sim.cloud_at(map, cx, cy));
+    line(
+        fb,
+        if map.pressure < 0.01 {
+            "CIEL : PAS D'AIR, PAS DE NUAGES".to_string()
+        } else {
+            format!("NUAGES {:.0} %", sky * 100.0)
+        },
+        GREEN,
+    );
+    let s = &map.surface;
+    if s.is_water(cx, cy) {
+        let kind = if s.is_sea(cx, cy) {
+            "MER"
+        } else if s.is_lake(cx, cy) {
+            "LAC"
+        } else {
+            "FLEUVE"
+        };
+        let frozen = sim.water_frozen(map, cx, cy);
+        let flow = if s.is_river(cx, cy) {
+            format!("  DEBIT {:.0} %", s.hydro.rel(i) * 100.0)
+        } else {
+            String::new()
+        };
+        line(
+            fb,
+            format!("{kind}{}{flow}", if frozen { " : GELE" } else { "" }),
+            if frozen { 0x00D0_E8F8 } else { 0x0030_70C0 },
+        );
+    }
     let (w, sev) = sim.weather_at(map, cx, cy);
     let (_, wc) = weather_glyph(w);
     line(

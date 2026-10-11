@@ -102,6 +102,8 @@
   text:"Eau liquide : on ne la traverse pas à pied."),
  (id:"eau_glacee", name:"Eau gelée", kind:"liquid", glyphs:"=", color:0x0090C0E8, pattern:"lisse", hardness:0.4, ground_of:[],
   text:"Étang pris par le gel, trop mince pour porter."),
+ (id:"banquise", name:"Banquise", kind:"floor", glyphs:"=-", color:0x00B0D8F0, pattern:"lisse", hardness:0.9, ground_of:[],
+  text:"Eau prise par un gel profond : la glace porte une équipe, fleuve ou lac, tant qu'il fait assez froid."),
  (id:"lave", name:"Lave", kind:"liquid", glyphs:"~", color:0x00F06020, pattern:"lisse", hardness:0.0, ground_of:[],
   text:"Roche en fusion."),
 ]

@@ -20,7 +20,7 @@ pub const H: i32 = 520;
 const PLANE: f64 = 0.66;
 const MAX_DIST: f64 = 16.0;
 /// Metres of one tile of a surface, and the height a billboard of size 1 stands (m).
-pub const TILE_M: f64 = 3.0;
+pub const TILE_M: f64 = vector_sim::rogue::TILE_M;
 const UNIT_M: f64 = 2.4;
 const EYE_M: f64 = 1.7;
 
@@ -446,7 +446,7 @@ pub fn draw_surface(fb: &mut Framebuffer, g: &Game, r: &Rogue, dir: i32) {
         return;
     };
     let b = &g.sim.bodies[body];
-    let t = crate::terrain::Terrain::new(&map, b.radius);
+    let t = crate::terrain::Terrain::new(&map, b.radius).with_season(g.sim.season_phase(body));
     let (lat0, lon0) = (
         vector_world::surface::Surface::lat(cy),
         vector_world::surface::Surface::lon(cx),
@@ -522,6 +522,7 @@ pub fn draw_surface(fb: &mut Framebuffer, g: &Game, r: &Rogue, dir: i32) {
             focal,
         },
         &crate::terrain::Sky {
+            cloud: g.sim.cloud_cover(&map, lat0, lon0),
             air: air
                 .as_ref()
                 .filter(|a| a.ground > 0.05)

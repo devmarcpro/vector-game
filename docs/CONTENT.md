@@ -49,3 +49,6 @@ Mœurs : data/ethos.ron (8 axes, 8 étiquettes morales, 8 profils de faction), g
 
 ## Entreprises
 `data/companies.ron` : id, nom, siège (faction), cours de base, rendement annuel, volatilité, biens (id, poids, total 1), texte.
+
+## Matières liées à l'eau
+`data/materials.ron` : la matière `banquise` (sol, dureté 0,9) est celle des étangs, fleuves et lacs pris par un gel profond (< 262 K) : la grille à pied les rend praticables. L'eau (`eau`, `eau_gelee`) reste liquide. Les fleuves, lacs et nuages ne sont pas du contenu : ils sont dérivés de la carte (`world/hydro.rs`, `world/climate.rs`).

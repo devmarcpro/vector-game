@@ -319,7 +319,7 @@ pub fn help_lines(screen: Screen) -> &'static [&'static str] {
         ],
         Screen::Surface => &[
             "Fleches : deplacer le curseur (Maj : x4)",
-            "Tab : couche (biomes, altitude, temperature, humidite, meteo)",
+            "Tab : couche (biomes, altitude, temperature, humidite, meteo, vie, nuages) ; lacs, fleuves et glaces des saisons sur la couche biomes",
             "G : globe fil de fer avec courbes de niveau (Gauche/Droite : tourner)",
             "F : codex   F8 ou Echap : retour au vol",
         ],

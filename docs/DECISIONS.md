@@ -80,6 +80,20 @@ Un service n'existe que là où il a un sens. Station étrangère : marché, cha
 ## Une chose = une représentation (E10)
 Un monde se dessine de la même façon partout : le globe topographique (points par biome, courbes de niveau, côtes, graticule) est `globe.rs`, utilisé par l'écran de surface (F8) et par la vue de pilotage dès qu'un monde solide relevé est assez gros à l'écran (la face nocturne est assombrie d'après la position de l'étoile). Même principe pour les nouvelles : un seul fil (`news.rs`), rempli par la politique des secteurs (`politics.rs`), les incidents d'entreprises (`incidents.rs`) et la bourse ; l'univers est infini, donc la portée est locale (secteurs de 240 al, écoute de 2 secteurs autour du vaisseau) et ce qui est loin arrive en retard (4 al par jour au-delà du secteur) ; chaque fait a un effet réel sur les prix de son secteur.
 
+## Eau, saisons et nuages : une seule source (`world/hydro.rs`, `world/climate.rs`)
+
+Les rivieres et les lacs ne sont pas des decors : ils sont derives de la carte d'altitude et d'humidite
+(remplissage par la priorite depuis la mer, direction de chaque case vers un voisin strictement plus bas,
+pluie cumulee), donc deterministes et jamais sauvegardes. `Surface.hydro` est lu par la carte, le globe,
+le terrain 3D et la grille a pied : la meme ligne de fleuve (du centre d'une case au centre de la suivante)
+sert aux quatre. L'etat gele ne vient que de `Sim::temp_now` (une formule de saison dans `climate.rs`) et
+de `climate::frozen` (la mer gele plus froid que l'eau douce). Les nuages sont une fonction pure de
+(carte, pression, saison, jours) : deux couches decalees par le vent zonal du monde, fondues l'une dans
+l'autre pour que le cisaillement ne les etire pas sans fin ; la meteo (`weather_at`) ne fait pleuvoir que
+sous un ciel couvert. Choix assume : un fleuve est une ligne par case de 300 km, pas un reseau fin ; sa
+largeur sur la grille a pied (6 a 36 m) et sa largeur lointaine (au moins un pixel) viennent de la meme
+fonction `river_half_width_m`.
+
 ## Une case = une matiere (`data/materials.ron`)
 
 Chaque case d'un etage (sol, mur, liquide) est faite d'une matiere (`Floor.mats`, index dans

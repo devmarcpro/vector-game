@@ -1,5 +1,7 @@
 //! Procedural universe: stellar systems generated deterministically from a seed.
+pub mod climate;
 pub mod galaxy;
+pub mod hydro;
 pub mod names;
 pub mod orbit;
 pub mod physics;

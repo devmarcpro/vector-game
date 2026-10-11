@@ -4,6 +4,7 @@
 use crate::Sim;
 use std::sync::Arc;
 use vector_core::hash_coord;
+use vector_world::climate::{self, Atmo};
 use vector_world::surface::{self, Surface, H, W};
 use vector_world::{BodyKind, PlanetKind};
 
@@ -83,8 +84,6 @@ pub struct Catastrophe {
     pub severity: f64,
 }
 
-/// Seasonal temperature swing at a pole of a world tilted by 0.4 rad, K.
-const SEASON_K: f64 = 22.0;
 /// Cells per weather region (weather is the same across a region on a given day).
 const REGION: usize = 8;
 
@@ -150,15 +149,45 @@ impl Sim {
         (self.time / self.year_length(body)).fract()
     }
 
-    /// Temperature of a cell now: its annual mean plus the seasonal swing, which grows with the
-    /// axial tilt and the latitude and is damped where the air is humid (maritime climate).
+    /// Temperature of a cell now: its annual mean plus the seasonal swing that the sunlight of
+    /// its latitude gives (the Sun's declination follows the axial tilt and the year), late and
+    /// damped where the air is humid (maritime climate). See `vector_world::climate`.
     pub fn temp_now(&self, map: &PlanetMap, x: usize, y: usize) -> f64 {
-        let i = Surface::idx(x, y);
-        let lat = Surface::lat(y);
-        let amp = SEASON_K * (f64::from(map.surface.tilt) / 0.4) * lat.sin();
-        let damp = 1.0 - 0.5 * f64::from(map.surface.hum[i]);
-        let phase = std::f64::consts::TAU * self.season_phase(map.body);
-        f64::from(map.surface.temp[i]) + amp * damp * phase.sin()
+        climate::seasonal_temp(&map.surface, x, y, self.season_phase(map.body))
+    }
+
+    /// Declination of the Sun above this world now, rad (+ is north).
+    pub fn sun_declination(&self, map: &PlanetMap) -> f64 {
+        climate::declination(f64::from(map.surface.tilt), self.season_phase(map.body))
+    }
+
+    /// Is the water of this cell frozen now? Seas freeze a little colder than lakes and rivers;
+    /// a cell with no water at all is never "frozen" (its snow is the weather's business).
+    pub fn water_frozen(&self, map: &PlanetMap, x: usize, y: usize) -> bool {
+        let sea = map.surface.is_sea(x, y);
+        (sea || map.surface.is_lake(x, y) || map.surface.is_river(x, y))
+            && climate::frozen(self.temp_now(map, x, y), sea)
+    }
+
+    /// What the clouds of this world depend on, now.
+    pub fn atmo(&self, map: &PlanetMap) -> Atmo {
+        Atmo::new(
+            &map.surface,
+            map.pressure,
+            self.system.spin_period(map.body),
+            self.season_phase(map.body),
+            self.time / 86_400.0,
+        )
+    }
+
+    /// Cloud cover (0..1) above a point of a world (rad). None of it where there is no air.
+    pub fn cloud_cover(&self, map: &PlanetMap, lat: f64, lon: f64) -> f32 {
+        climate::cloud_cover(&map.surface, &self.atmo(map), lat, lon)
+    }
+
+    /// Cloud cover above the middle of a cell.
+    pub fn cloud_at(&self, map: &PlanetMap, x: usize, y: usize) -> f32 {
+        self.cloud_cover(map, Surface::lat(y), Surface::lon(x))
     }
 
     pub fn day_number(&self) -> i64 {
@@ -189,7 +218,13 @@ impl Sim {
         if hum < 0.15 && r < 0.12 {
             return (Weather::Dust, sev);
         }
-        let precip = hum.powf(1.3) * 0.55;
+        // No rain from a clear sky: the clouds of the day are the ones of the cloud layer.
+        let cover = self.cloud_at(map, x, y);
+        let precip = if cover < 0.12 {
+            0.0
+        } else {
+            hum.powf(1.3) * 0.55 * (0.5 + cover.min(1.0) as f64)
+        };
         if r < precip {
             let cold = t < 273.0;
             let severe = sev > 0.88;
@@ -354,7 +389,7 @@ pub fn city_site_in(
         let mut best: Option<(f64, (usize, usize))> = None;
         for y in 2..H - 2 {
             for x in 0..W {
-                if map.surface.is_sea(x, y) {
+                if map.surface.is_sea(x, y) || map.surface.is_lake(x, y) {
                     continue;
                 }
                 let near = |a: (usize, usize)| {
@@ -373,7 +408,10 @@ pub fn city_site_in(
                     (-4isize..=4).any(|dx| {
                         let xx = (x as isize + dx).rem_euclid(W as isize) as usize;
                         let yy = y as isize + dy;
-                        (0..H as isize).contains(&yy) && map.surface.is_sea(xx, yy as usize)
+                        (0..H as isize).contains(&yy)
+                            && (map.surface.is_sea(xx, yy as usize)
+                                || map.surface.is_lake(xx, yy as usize)
+                                || map.surface.is_river(xx, yy as usize))
                     })
                 });
                 let noise = unit(hash_coord(
@@ -544,6 +582,97 @@ mod tests {
         let (sl, il) = sim_with(PlanetKind::Lava);
         let ml = sl.planet_map(il).expect("map");
         assert!(count(&sl, &ml) > n);
+    }
+
+    /// A year-long look at one cell of a world whose surface is edited to suit the test.
+    fn at_phase(s: &mut Sim, body: usize, phase: f64) {
+        s.time = phase * s.year_length(body);
+    }
+
+    #[test]
+    fn polar_seas_freeze_in_winter_and_melt_in_summer() {
+        let (mut s, i) = sim_with(PlanetKind::Terran);
+        let mut m = s.planet_map(i).expect("map");
+        let (x, y) = (10, 4);
+        let k = Surface::idx(x, y);
+        m.surface.elev[k] = -0.3;
+        m.surface.temp[k] = 270.0;
+        m.surface.hum[k] = 0.2;
+        m.surface.tilt = 0.5;
+        at_phase(&mut s, i, 0.30);
+        let summer = (s.temp_now(&m, x, y), s.water_frozen(&m, x, y));
+        at_phase(&mut s, i, 0.80);
+        let winter = (s.temp_now(&m, x, y), s.water_frozen(&m, x, y));
+        assert!(summer.0 > winter.0 + 10.0);
+        assert!(!summer.1, "the sea is open in summer: {}", summer.0);
+        assert!(winter.1, "and frozen in winter: {}", winter.0);
+        // Dry land never freezes as water.
+        m.surface.elev[k] = 0.3;
+        assert!(!s.water_frozen(&m, x, y) || m.surface.is_lake(x, y) || m.surface.is_river(x, y));
+        // A lake freezes at a warmer temperature than the sea does.
+        m.surface.elev[k] = -0.3;
+        m.surface.temp[k] = 277.0;
+        at_phase(&mut s, i, 0.80);
+        let t = s.temp_now(&m, x, y);
+        assert!(!s.water_frozen(&m, x, y) || t < 271.4, "a sea at {t} K");
+    }
+
+    #[test]
+    fn the_sun_goes_up_and_down_with_the_year_and_the_tilt() {
+        let (mut s, i) = sim_with(PlanetKind::Terran);
+        let m = s.planet_map(i).expect("map");
+        at_phase(&mut s, i, 0.25);
+        let up = s.sun_declination(&m);
+        at_phase(&mut s, i, 0.75);
+        let down = s.sun_declination(&m);
+        assert!((up - f64::from(m.surface.tilt)).abs() < 1e-3);
+        assert!((up + down).abs() < 1e-3);
+    }
+
+    #[test]
+    fn clouds_need_air_and_come_with_wet_weather() {
+        let (s, i) = sim_with(PlanetKind::Dwarf);
+        let m = s.planet_map(i).expect("map");
+        if m.pressure < 0.01 {
+            for y in (0..H).step_by(6) {
+                for x in (0..W).step_by(9) {
+                    assert_eq!(s.cloud_at(&m, x, y), 0.0, "no air, no clouds");
+                }
+            }
+        }
+        let (mut s, i) = sim_with(PlanetKind::Terran);
+        let m = s.planet_map(i).expect("map");
+        let mut any = false;
+        for d in 0..60 {
+            s.time = f64::from(d) * 86_400.0 + 100.0;
+            for (x, y) in [(5, 30), (40, 20), (70, 35), (100, 25), (120, 40)] {
+                let cover = s.cloud_at(&m, x, y);
+                any |= cover > 0.3;
+                // No rain from a clear sky.
+                let w = s.weather_at(&m, x, y).0;
+                if cover < 0.12 {
+                    assert!(
+                        !matches!(
+                            w,
+                            Weather::Rain | Weather::Storm | Weather::Snow | Weather::Blizzard
+                        ),
+                        "{w:?} under a clear sky"
+                    );
+                }
+            }
+        }
+        assert!(any, "a living world has clouds");
+    }
+
+    #[test]
+    fn the_clouds_move_with_time() {
+        let (mut s, i) = sim_with(PlanetKind::Terran);
+        let m = s.planet_map(i).expect("map");
+        let sky = |s: &Sim| -> Vec<f32> { (0..W).map(|x| s.cloud_at(&m, x, 28)).collect() };
+        at_phase(&mut s, i, 0.1);
+        let a = sky(&s);
+        s.time += 3.0 * 86_400.0;
+        assert_ne!(a, sky(&s));
     }
 
     #[test]

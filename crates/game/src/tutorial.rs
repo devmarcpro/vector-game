@@ -19,20 +19,7 @@ fn any_pressed(g: &Game, screen: Screen, codes: &[KeyCode]) -> bool {
 pub const STEPS: [Step; 17] = [
     Step {
         text: "Bienvenue, IA de bord. Pilotez le vaisseau : W/S tangage, A/D lacet, Q/E roulis.",
-        done: |g| {
-            any_pressed(
-                g,
-                Screen::Flight,
-                &[
-                    KeyCode::KeyW,
-                    KeyCode::KeyA,
-                    KeyCode::KeyS,
-                    KeyCode::KeyD,
-                    KeyCode::KeyQ,
-                    KeyCode::KeyE,
-                ],
-            )
-        },
+        done: |g| any_pressed(g, Screen::Flight, &g.settings.move_keys()),
     },
     Step {
         text: "Appuyez sur ESPACE pour pousser. Le carburant est precieux : coupez avant d'arriver.",
@@ -327,8 +314,12 @@ impl Game {
     }
 
     /// Text of the active tutorial step, with its number.
-    pub fn tutorial_line(&self) -> Option<(usize, &'static str)> {
-        self.tut_step
-            .map(|i| (i, STEPS[i.min(STEPS.len() - 1)].text))
+    pub fn tutorial_line(&self) -> Option<(usize, String)> {
+        self.tut_step.map(|i| {
+            (
+                i,
+                self.settings.localize(STEPS[i.min(STEPS.len() - 1)].text),
+            )
+        })
     }
 }

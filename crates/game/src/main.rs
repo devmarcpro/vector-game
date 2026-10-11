@@ -148,6 +148,7 @@ impl ApplicationHandler for App {
             WindowEvent::KeyboardInput { event, .. } => {
                 let pressed = event.state == ElementState::Pressed;
                 if let PhysicalKey::Code(code) = event.physical_key {
+                    let code = self.game.settings.translate(code);
                     self.game.key(code, event.text.as_deref(), pressed);
                     if self.game.quit {
                         el.exit();

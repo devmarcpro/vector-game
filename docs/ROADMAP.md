@@ -53,3 +53,6 @@ Plan de soute à cases de volume égal (densité = remplissage de la case), jaug
 
 ## Technologies (note du joueur)
 Sandbox totalement libre : la recherche ne doit jamais bloquer. A terme, les technologies donnent des bonus ou des variantes, pas des verrous.
+
+## Traductions (note du joueur)
+Langue par défaut : français. L'option Langue existe (une seule entrée) ; les traductions viendront plus tard : il faudra sortir tous les textes du jeu (aide, tutoriel, données .ron) vers des tables par langue.

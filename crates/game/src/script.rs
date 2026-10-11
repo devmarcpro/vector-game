@@ -161,6 +161,8 @@ pub fn run(
     let text = std::fs::read_to_string(path).map_err(|e| format!("{path}: {e}"))?;
     let mut g = Game::new(data, DEFAULT_SEED);
     g.settings.tutorial = false;
+    // Scripts name keys the QWERTY way (W/A/S/D/Q/E).
+    g.settings.azerty = false;
     let mut failures = 0;
     let mut marked_star = None;
     for (ln, raw) in text.lines().enumerate() {

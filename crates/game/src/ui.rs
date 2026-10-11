@@ -126,7 +126,9 @@ pub fn draw_overlay(fb: &mut Framebuffer, g: &Game) {
     }
     // Permanent command bar on the last row (option "Barre des commandes").
     if g.settings.hints {
-        let line: String = crate::tutorial::hint_line(g)
+        let line: String = g
+            .settings
+            .localize(&crate::tutorial::hint_line(g))
             .chars()
             .take(fb.cols().saturating_sub(2))
             .collect();
@@ -153,7 +155,10 @@ pub fn draw_overlay(fb: &mut Framebuffer, g: &Game) {
         }
     }
     if g.help_open && g.screen != Screen::MainMenu {
-        let lines = crate::tutorial::help_lines(g.screen);
+        let lines: Vec<String> = crate::tutorial::help_lines(g.screen)
+            .iter()
+            .map(|l| g.settings.localize(l))
+            .collect();
         let w = lines.iter().map(|l| l.len()).max().unwrap_or(10).max(14) + 2;
         let x0 = fb.cols().saturating_sub(w + 2);
         let y0 = 4;

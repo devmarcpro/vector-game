@@ -341,10 +341,12 @@ impl Game {
         let ax = |pos: KeyCode, neg: KeyCode| {
             f64::from(self.keys.contains(&pos) as i8) - f64::from(self.keys.contains(&neg) as i8)
         };
+        let [pitch_up, pitch_down, yaw_right, yaw_left, roll_left, roll_right] =
+            self.settings.move_keys();
         ShipInput {
-            pitch: (ax(KeyCode::KeyW, KeyCode::KeyS) + self.mouse.1).clamp(-1.0, 1.0),
-            yaw: (ax(KeyCode::KeyD, KeyCode::KeyA) + self.mouse.0).clamp(-1.0, 1.0),
-            roll: ax(KeyCode::KeyQ, KeyCode::KeyE),
+            pitch: (ax(pitch_up, pitch_down) + self.mouse.1).clamp(-1.0, 1.0),
+            yaw: (ax(yaw_right, yaw_left) + self.mouse.0).clamp(-1.0, 1.0),
+            roll: ax(roll_left, roll_right),
             fwd: ax(KeyCode::Space, KeyCode::KeyX),
             lat: ax(KeyCode::ArrowRight, KeyCode::ArrowLeft),
             vert: ax(KeyCode::ArrowUp, KeyCode::ArrowDown),
@@ -2021,7 +2023,7 @@ impl Game {
             KeyCode::KeyL => self.open_galaxy(),
             KeyCode::F2 => self.open_empire(),
             KeyCode::F3 => self.open_fleet(),
-            KeyCode::KeyZ => match self.sim.pay_tribute() {
+            KeyCode::KeyZ if !self.settings.azerty => match self.sim.pay_tribute() {
                 Ok(a) => self.say(format!("TRIBUT PAYE: {a:.0} CR")),
                 Err(e) => self.say(e.to_uppercase()),
             },
@@ -2718,6 +2720,52 @@ mod tests {
     }
 
     #[test]
+    fn azerty_is_the_default_and_moves_with_zqsd_and_ae_while_qwerty_keeps_wasd() {
+        let mut g = Game::new(data(), 1);
+        g.key(KeyCode::Enter, None, true);
+        g.settings = crate::settings::Settings::default();
+        assert!(g.settings.azerty, "AZERTY by default");
+        g.key(KeyCode::KeyZ, None, true);
+        assert!(g.input().pitch > 0.5, "Z pitches up on AZERTY");
+        g.key(KeyCode::KeyZ, None, false);
+        g.key(KeyCode::KeyQ, None, true);
+        assert!(g.input().yaw < -0.5, "Q yaws left on AZERTY");
+        g.key(KeyCode::KeyQ, None, false);
+        g.key(KeyCode::KeyA, None, true);
+        assert!(g.input().roll > 0.5, "A rolls on AZERTY");
+        g.key(KeyCode::KeyA, None, false);
+        // W does nothing on AZERTY labels.
+        g.key(KeyCode::KeyW, None, true);
+        assert_eq!(g.input().pitch, 0.0);
+        g.key(KeyCode::KeyW, None, false);
+        // Z does not pay the tribute on AZERTY (it pitches).
+        g.sim.tribute_due = Some((0, 1.0));
+        g.key(KeyCode::KeyZ, None, true);
+        assert!(g.sim.tribute_due.is_some());
+        g.key(KeyCode::KeyZ, None, false);
+        // Toggling in the options gives QWERTY.
+        g.settings.adjust(6, false);
+        assert!(!g.settings.azerty);
+        g.key(KeyCode::KeyW, None, true);
+        assert!(g.input().pitch > 0.5, "W pitches up on QWERTY");
+        // The physical keys are read by label: the key at the QWERTY W position is a Z on AZERTY.
+        let az = crate::settings::Settings::default();
+        assert_eq!(az.translate(KeyCode::KeyW), KeyCode::KeyZ);
+        assert_eq!(az.translate(KeyCode::KeyQ), KeyCode::KeyA);
+        assert_eq!(az.translate(KeyCode::Semicolon), KeyCode::KeyM);
+        assert_eq!(az.translate(KeyCode::KeyD), KeyCode::KeyD);
+        let qw = crate::settings::Settings {
+            azerty: false,
+            ..az
+        };
+        assert_eq!(qw.translate(KeyCode::KeyW), KeyCode::KeyW);
+        assert!(qw.localize("WASD/QE").contains("WASD"));
+        assert!(crate::settings::Settings::default()
+            .localize("WASD/QE")
+            .contains("ZQSD/AE"));
+    }
+
+    #[test]
     fn the_mouse_selects_contract_rows() {
         let mut g = Game::new(data(), 1);
         g.key(KeyCode::Enter, None, true);
@@ -2785,7 +2833,8 @@ mod tests {
         let mut g = Game::new(data(), 1);
         g.key(KeyCode::Enter, None, true);
         assert_eq!(g.tut_step, Some(0), "new games start the tutorial");
-        g.key(KeyCode::KeyW, None, true);
+        let pitch_up = g.settings.move_keys()[0];
+        g.key(pitch_up, None, true);
         assert_eq!(g.tut_step, Some(1), "rotating completes step 1");
         g.key(KeyCode::Space, None, true);
         g.key(KeyCode::KeyF, None, true);
@@ -2880,6 +2929,7 @@ mod tests {
     #[test]
     fn firing_and_utility_keys_reach_the_simulation() {
         let mut g = Game::new(data(), 1);
+        g.settings.azerty = false;
         g.key(KeyCode::Enter, None, true);
         g.key(KeyCode::ControlLeft, None, true);
         assert!(g.input().fire);

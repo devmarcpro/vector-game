@@ -1,5 +1,9 @@
 //! Player settings (graphics, sound), stored as simple `key=value` lines.
 use std::path::Path;
+use winit::keyboard::KeyCode;
+
+/// Languages of the interface (only French for now; the option is here for the translations).
+pub const LANGS: [&str; 1] = ["FRANCAIS"];
 
 pub const SCHEMES: [&str; 5] = ["COULEUR", "VERT PHOSPHORE", "AMBRE", "BLANC", "BLEU"];
 
@@ -15,6 +19,10 @@ pub struct Settings {
     pub tutorial: bool,
     /// Permanent command bar on the last screen row.
     pub hints: bool,
+    /// AZERTY keyboard (default) or QWERTY: the keys are read by position and named by label.
+    pub azerty: bool,
+    /// Index into `LANGS`.
+    pub lang: usize,
 }
 
 impl Default for Settings {
@@ -26,12 +34,14 @@ impl Default for Settings {
             volume: 6,
             tutorial: true,
             hints: true,
+            azerty: true,
+            lang: 0,
         }
     }
 }
 
 impl Settings {
-    pub const COUNT: usize = 6;
+    pub const COUNT: usize = 8;
 
     pub fn describe(&self) -> Vec<(&'static str, String)> {
         let yn = |b: bool| if b { "OUI" } else { "NON" }.to_string();
@@ -45,6 +55,11 @@ impl Settings {
             ("Volume sonore", format!("{}/10", self.volume)),
             ("Tutoriel guide", yn(self.tutorial)),
             ("Barre des commandes", yn(self.hints)),
+            (
+                "Clavier",
+                if self.azerty { "AZERTY" } else { "QWERTY" }.to_string(),
+            ),
+            ("Langue", LANGS[self.lang.min(LANGS.len() - 1)].to_string()),
         ]
     }
 
@@ -63,19 +78,78 @@ impl Settings {
             }
             4 => self.tutorial = !self.tutorial,
             5 => self.hints = !self.hints,
+            6 => self.azerty = !self.azerty,
+            7 => self.lang = cycle(self.lang, LANGS.len()),
             _ => {}
         }
     }
 
+    /// The key a physical key stands for under the chosen layout: the game names its keys by the
+    /// letter printed on them, so on an AZERTY keyboard the keys at the QWERTY positions of A, Q,
+    /// W, Z and M are read as Q, A, Z, W and M.
+    pub fn translate(&self, code: KeyCode) -> KeyCode {
+        if !self.azerty {
+            return code;
+        }
+        match code {
+            KeyCode::KeyQ => KeyCode::KeyA,
+            KeyCode::KeyA => KeyCode::KeyQ,
+            KeyCode::KeyW => KeyCode::KeyZ,
+            KeyCode::KeyZ => KeyCode::KeyW,
+            KeyCode::Semicolon => KeyCode::KeyM,
+            KeyCode::KeyM => KeyCode::Comma,
+            other => other,
+        }
+    }
+
+    /// Flight rotation keys: pitch up and down, yaw right and left, roll left and right.
+    pub fn move_keys(&self) -> [KeyCode; 6] {
+        if self.azerty {
+            [
+                KeyCode::KeyZ,
+                KeyCode::KeyS,
+                KeyCode::KeyD,
+                KeyCode::KeyQ,
+                KeyCode::KeyA,
+                KeyCode::KeyE,
+            ]
+        } else {
+            [
+                KeyCode::KeyW,
+                KeyCode::KeyS,
+                KeyCode::KeyD,
+                KeyCode::KeyA,
+                KeyCode::KeyQ,
+                KeyCode::KeyE,
+            ]
+        }
+    }
+
+    /// Rewrite the key names of a help text for the chosen layout (texts are written in QWERTY).
+    pub fn localize(&self, text: &str) -> String {
+        if !self.azerty {
+            return text.to_string();
+        }
+        text.replace(
+            "W/S tangage, A/D lacet, Q/E roulis",
+            "Z/S tangage, Q/D lacet, A/E roulis",
+        )
+        .replace("W/S A/D Q/E", "Z/S Q/D A/E")
+        .replace("WASD/QE", "ZQSD/AE")
+        .replace("Z tribut", "Entree : tribut (radio)")
+    }
+
     pub fn to_text(&self) -> String {
         format!(
-            "scanlines={}\nglow={}\nscheme={}\nvolume={}\ntutorial={}\nhints={}\n",
+            "scanlines={}\nglow={}\nscheme={}\nvolume={}\ntutorial={}\nhints={}\nazerty={}\nlang={}\n",
             u8::from(self.scanlines),
             u8::from(self.glow),
             self.scheme,
             self.volume,
             u8::from(self.tutorial),
-            u8::from(self.hints)
+            u8::from(self.hints),
+            u8::from(self.azerty),
+            self.lang
         )
     }
 
@@ -94,6 +168,8 @@ impl Settings {
                 "scheme" => s.scheme = n.min(SCHEMES.len() - 1),
                 "tutorial" => s.tutorial = n != 0,
                 "hints" => s.hints = n != 0,
+                "azerty" => s.azerty = n != 0,
+                "lang" => s.lang = n.min(LANGS.len() - 1),
                 "volume" => s.volume = n.min(10) as u8,
                 _ => {}
             }
@@ -137,6 +213,10 @@ mod tests {
     #[test]
     fn every_setting_adjusts() {
         for i in 0..Settings::COUNT {
+            if i == 7 && LANGS.len() < 2 {
+                // One language so far: the option exists for the translations to come.
+                continue;
+            }
             let base = Settings::default();
             let mut a = base.clone();
             let mut b = base.clone();

@@ -86,3 +86,6 @@ Tout se fait aussi à la souris (hors visée F7, où la souris pilote le vaissea
 - **Liste des organes, M** : injecter une dose de mutagène (0.1 kg) à la personne choisie.
 
 - **Entrée** (en vol, vaisseau ciblé) : appeler ; 1-6 ou clic pour répondre, Haut/Bas + Entrée, Echap coupe.
+
+## Clavier
+Par défaut AZERTY : tangage Z/S, lacet Q/D, roulis A/E. Options > Clavier bascule en QWERTY (W/S, A/D, Q/E). Les autres commandes se nomment par la lettre imprimée sur la touche, quelle que soit la disposition. Le tribut des pirates se paie avec la touche Z en QWERTY, par la radio (Entrée) en AZERTY. Options > Langue : FRANCAIS (les traductions viendront plus tard).

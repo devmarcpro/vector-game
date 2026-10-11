@@ -170,6 +170,9 @@ impl Sim {
     }
 }
 
+/// kg of mutagen of one injection.
+pub const MUTAGEN_DOSE: f64 = 0.1;
+
 /// Fee of the hospital for fitting an implant, credits.
 pub const IMPLANT_FEE: f64 = 3000.0;
 
@@ -243,6 +246,37 @@ impl Sim {
         let p = &mut self.crew.members[member];
         p.implants.remove(at);
         let report = format!("{} : implant {} retire", p.name, def.name);
+        let now = self.time;
+        self.crew.log_event(now, report.clone());
+        Ok(report)
+    }
+
+    /// Inject a dose of mutagen into `member`: one gene shifts at once and the genetic
+    /// instability jumps (more mutations, and cancers, follow while it stays high).
+    pub fn inject_mutagen(&mut self, member: usize) -> Result<String, &'static str> {
+        let data = std::sync::Arc::clone(&self.data);
+        let p = self.crew.members.get(member).ok_or("membre inconnu")?;
+        if !p.alive {
+            return Err("le patient est mort");
+        }
+        let item = data.resource_index("mutagen").ok_or("pas de mutagene")?;
+        if self.ship.cargo.kg[item] < MUTAGEN_DOSE {
+            return Err("pas assez de mutagene en soute");
+        }
+        self.ship.cargo.remove(&data, item, MUTAGEN_DOSE);
+        let mut rng = Rng::new(hash_coord(
+            self.system.seed,
+            i64::from(p.id),
+            self.time as i64,
+            19,
+        ));
+        let p = &mut self.crew.members[member];
+        let (gi, dir) = crate::genealogy::mutate(&data, &mut p.genome, &mut rng);
+        p.instability = (p.instability + 0.4).min(1.0);
+        let report = format!(
+            "{} : mutation du gene {} ({dir:+})",
+            p.name, data.genes[gi].name
+        );
         let now = self.time;
         self.crew.log_event(now, report.clone());
         Ok(report)
@@ -436,5 +470,83 @@ mod tests {
         };
         s.crew.update(&mut ctx2, 7200.0);
         assert!(!s.crew.members[0].cyber_ok);
+    }
+
+    #[test]
+    fn mutagen_shifts_one_allele_and_instability_decays_but_radiation_feeds_it() {
+        let mut s = docked_sim();
+        let d = Arc::clone(&s.data);
+        assert!(s.inject_mutagen(0).is_err(), "needs mutagen");
+        give(&mut s, "mutagen", 1.0);
+        let before = s.crew.members[0].genome.clone();
+        let report = s.inject_mutagen(0).expect("injection");
+        let after = &s.crew.members[0].genome;
+        let changed: Vec<usize> = (0..before.len())
+            .filter(|&i| before[i] != after[i])
+            .collect();
+        assert_eq!(changed.len(), 1, "exactly one allele moved: {report}");
+        assert_eq!(before[changed[0]].abs_diff(after[changed[0]]), 1);
+        assert!(after.iter().all(|&a| a <= 3));
+        assert!(s.crew.members[0].instability >= 0.4);
+        // Time heals instability when nothing feeds it; radiation sickness feeds it.
+        let mut cargo = std::mem::take(&mut s.ship.cargo);
+        let mut credits = s.credits;
+        let mut ctx = crate::crew::CrewCtx {
+            data: &d,
+            cargo: &mut cargo,
+            credits: &mut credits,
+            life_ok: true,
+            life_capacity: 9.0,
+            crew_cap: 9.0,
+            food_per_day: 0.0,
+            medbay: 0.0,
+            workshop: 0.0,
+            overheating: false,
+            seed: 3,
+            needs: false,
+            event_freq: 0.0,
+        };
+        s.crew.members[0].instability = 0.1;
+        s.crew.update(&mut ctx, 10.0 * 86_400.0);
+        assert!(s.crew.members[0].instability < 0.1, "it decays");
+        s.crew.members[0].disease = Some((d.disease_index("radiation").expect("d"), 40.0));
+        let low = s.crew.members[0].instability;
+        s.crew.update(&mut ctx, 20.0 * 86_400.0);
+        assert!(
+            s.crew.members[0].instability > low + 0.1,
+            "radiation feeds it"
+        );
+    }
+
+    #[test]
+    fn a_very_unstable_person_keeps_mutating_a_stable_one_does_not() {
+        let d = data();
+        let run = |instability: f32| -> usize {
+            let mut s = docked_sim();
+            let mut cargo = std::mem::take(&mut s.ship.cargo);
+            let mut credits = s.credits;
+            let mut ctx = crate::crew::CrewCtx {
+                data: &d,
+                cargo: &mut cargo,
+                credits: &mut credits,
+                life_ok: true,
+                life_capacity: 9.0,
+                crew_cap: 9.0,
+                food_per_day: 20.0,
+                medbay: 0.0,
+                workshop: 0.0,
+                overheating: false,
+                seed: 4,
+                needs: false,
+                event_freq: 0.0,
+            };
+            let before = s.crew.members[0].genome.clone();
+            s.crew.members[0].instability = instability;
+            s.crew.update(&mut ctx, 12.0 * 86_400.0);
+            let after = &s.crew.members[0].genome;
+            (0..before.len()).filter(|&i| before[i] != after[i]).count()
+        };
+        assert!(run(0.9) >= 1, "an unstable genome drifts");
+        assert_eq!(run(0.0), 0, "a stable genome does not");
     }
 }

@@ -935,6 +935,12 @@ fn draw_crew(fb: &mut Framebuffer, g: &Game) {
                 GREEN,
             );
         }
+        fb.text(
+            x + 40,
+            top + 19,
+            &format!("INSTABILITE GENETIQUE {:.0} %", p.instability * 100.0),
+            if p.instability > 0.5 { RED } else { DIM },
+        );
         // Implants installed, and the type picked with Left/Right in the organ list.
         let iy = top + 31;
         fb.text(x, iy, "IMPLANTS", AMBER);

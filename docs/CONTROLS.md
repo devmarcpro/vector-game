@@ -82,3 +82,5 @@ Tout se fait aussi à la souris (hors visée F7, où la souris pilote le vaissea
 - **Equipage, O** : liste des organes de la personne choisie ; Haut/Bas choisit l'organe, Entree greffe (ou prothèse s'il n'y a pas de greffon en soute), P prothèse, H prélève, O ou Echap revient à la liste. Il faut la pièce en soute et un hôpital (à quai, 1500 CR) ou un médecin et une infirmerie à bord.
 
 - **Equipage, O, puis Gauche/Droite** choisit un implant, **I** le pose, **U** le retire (la pièce doit être en soute ; 3000 CR à quai).
+
+- **Liste des organes, M** : injecter une dose de mutagène (0.1 kg) à la personne choisie.

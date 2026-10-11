@@ -10,7 +10,7 @@
 //! are the same whoever asks and from wherever.
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
-use vector_core::{hash_coord, mix64};
+use vector_core::{hash_coord, mix64, Rng};
 use vector_data::GameData;
 
 /// Generation of the people met at the start of the game; their ancestors go back to generation 0.
@@ -108,6 +108,24 @@ pub fn siblings(fams: &Families, kin: Kin) -> Vec<Kin> {
 
 /// Two alleles (paternal, maternal) of each gene, 0..3: `genome[2 * gene]`, `genome[2 * gene + 1]`.
 pub type Genome = Vec<u8>;
+
+/// Shift one random allele of one random gene by one step (a mutation). Returns the gene and the
+/// change actually made (+1 or -1).
+pub fn mutate(data: &GameData, genome: &mut Genome, rng: &mut Rng) -> (usize, i8) {
+    let gene = (rng.next_u64() % data.genes.len() as u64) as usize;
+    let slot = 2 * gene + (rng.next_u64() % 2) as usize;
+    let mut dir: i8 = if rng.next_u64().is_multiple_of(2) {
+        1
+    } else {
+        -1
+    };
+    let cur = genome[slot] as i8;
+    if !(0..=3).contains(&(cur + dir)) {
+        dir = -dir;
+    }
+    genome[slot] = (cur + dir) as u8;
+    (gene, dir)
+}
 
 fn founder_genome(data: &GameData, kin: Kin) -> Genome {
     let mut g = Vec::with_capacity(data.genes.len() * 2);

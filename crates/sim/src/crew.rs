@@ -62,6 +62,9 @@ pub struct Person {
     pub cyber_ok: bool,
     pub hacked: bool,
     pub hacked_until: f64,
+    /// Genetic instability 0..1: radiation and mutagens raise it, time lowers it; high values
+    /// mutate genes and bring cancers.
+    pub instability: f32,
 }
 
 impl Person {
@@ -322,6 +325,7 @@ pub fn person_from_kin(
         cyber_ok: true,
         hacked: false,
         hacked_until: 0.0,
+        instability: 0.0,
     }
 }
 
@@ -696,6 +700,28 @@ impl Crew {
                     let boost =
                         1.0 + if medic_on_duty { 0.5 } else { 0.0 } + 0.5 * ctx.medbay as f32;
                     p.organs[oi] = sat(p.organs[oi] + o.heal as f32 * days as f32 * boost);
+                }
+            }
+            // Genetic instability: radiation raises it, time lowers it; high values mutate.
+            let irradiated = p.disease.is_some_and(|(d, _)| {
+                matches!(data.diseases[d].id.as_str(), "radiation" | "brulure_rayons")
+            });
+            let d32 = days as f32;
+            p.instability =
+                sat(p.instability + if irradiated { 0.03 } else { 0.0 } * d32 - 0.003 * d32);
+            if p.instability > 0.15 {
+                let mut r = Rng::new(hash_coord(ctx.seed, i64::from(p.id), now as i64, 17));
+                if r.f64() < f64::from(p.instability) * 0.3 * days {
+                    let (gi, dir) = genealogy::mutate(data, &mut p.genome, &mut r);
+                    log_lines.push(format!(
+                        "{} : mutation du gene {} ({:+})",
+                        p.name, data.genes[gi].name, dir
+                    ));
+                }
+                if p.disease.is_none() && r.f64() < f64::from(p.instability) * 0.004 * days {
+                    if let Some(c) = data.disease_index("cancer_precoce") {
+                        p.disease = Some((c, data.diseases[c].duration_days as f32));
+                    }
                 }
             }
             let cond = p.condition(data);

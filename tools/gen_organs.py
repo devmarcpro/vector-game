@@ -27,6 +27,9 @@ for i, n, v in cyber:
     out.append(
         f' (id:"cyber_{i}", name:"Implant : {n}", category:"cybernetique", density:2500.0, value:{float(v):.1f}),'
     )
+out.append(
+    ' (id:"mutagen", name:"Mutagene", category:"chimie", density:1200.0, value:900.0),'
+)
 out.append("]")
 (root / "data" / "resources_organs.ron").write_bytes(("\n".join(out) + "\n").encode("utf-8"))
-print(len(organs) * 2 + len(cyber), "resources")
+print(len(organs) * 2 + len(cyber) + 1, "resources")

@@ -1215,6 +1215,7 @@ impl Game {
                 self.cyber_sel = (self.cyber_sel + 1) % nc;
                 return;
             }
+            KeyCode::KeyM if n > 0 => self.sim.inject_mutagen(member),
             KeyCode::KeyI if n > 0 => self.sim.install_cyber(member, self.cyber_sel),
             KeyCode::KeyU if n > 0 => self.sim.remove_cyber(member, self.cyber_sel),
             KeyCode::KeyP if n > 0 => self.sim.implant(member, organ, Implant::Prosthesis),

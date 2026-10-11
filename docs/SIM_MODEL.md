@@ -123,3 +123,6 @@ Chaque personne a `organs[i]` dans 0..1. Par heure : si sa maladie cible l'organ
 
 ## Implants (E3.3)
 Un implant actif ajoute ses effets (clés de traits ou `skill:<id>`). Par jour il consomme `upkeep` kg de pièces détachées ; sans pièces ou sans support de vie alimenté il s'arrête. Piraté (`hacked_until`), seuls les implants `hackable` s'arrêtent. Contrainte : stress cible + somme des `stress` (+0.25 si arrêté).
+
+## Mutations (E3.4)
+`instability` de 0 à 1 : +0.03/jour avec radiation ou brûlures de rayonnement, -0.003/jour sinon. Au-dessus de 0.15, par jour : chance 0.3 x instabilité de décaler un allèle (±1), et 0.004 x instabilité de déclarer un cancer précoce. Une injection de mutagène donne +0.4 et une mutation immédiate.

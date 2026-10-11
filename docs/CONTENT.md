@@ -52,3 +52,9 @@ Mœurs : data/ethos.ron (8 axes, 8 étiquettes morales, 8 profils de faction), g
 
 ## Energie (batiments)
 `data/buildings.ron` : champ `source` ("solar", "wind", "geothermal") pour les centrales a production variable, champ `battery` (kWh) pour le stockage. Batiments ajoutes : `wind_turbine` (Parc eolien), `battery_bank` (Parc de batteries), techs `bld_wind_turbine`, `bld_battery_bank`. Entrees de codex generees depuis ces champs.
+## Materiaux : champs de matiere (materials.ron)
+`yields` [(ressource, kg, rarete)], `under` (sol mis a nu), `harm`, `slick`, `fertility`, `cost`
+[(ressource, kg)] : tous optionnels, valides au chargement (ressources connues, `under` est un sol,
+valeurs 0..1, un mur qui donne peut etre creuse). Nouveau : `soufre` (sol caustique des plaines de
+lave). Le gear a `warmth` (protection contre le froid). Le codex des matieres liste ce qu'elles donnent,
+laissent a nu, leurs dangers et leur cout de construction.

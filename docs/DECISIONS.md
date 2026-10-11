@@ -93,3 +93,20 @@ un rover la ressent 2,5 fois moins. Sauvegardes : version 35.
 
 ## Reseau d'energie des colonies
 Un seul systeme d'energie : `Colony::tick` (colony.rs). La source d'une centrale est une donnee (`source` : solar, wind, geothermal; sinon constante ou a combustible), pas un identifiant code en dur. Ordre : production -> pertes de reseau (`grid_loss`) -> batteries (decharge du deficit, charge du surplus a `BATTERY_EFFICIENCY`) -> delestage : la charge vitale (batiments avec logement, recyclage ou medical) est servie avant le reste; `power_sat` ne concerne que le reste (productivite), `vital_sat` le recyclage. Les rafales viennent de hash(graine du systeme, colonie, jour): aucune horloge reelle. Sauvegardes : `Colony` (pressure, geo, charge) et `ColonyStats` (power_sat, vital_sat, battery_charge, battery_cap, grid_loss) ont change; `Building` (donnees) gagne `source` et `battery`.
+## La matiere donne, protege et blesse (suite de « Une case = une matiere »)
+
+La composition d'une case pilote le reste, par donnees de `materials.ron` et non par code special :
+`yields` (ressource, kg, rarete) ce que creuser la case donne, `under` le sol mis a nu, `harm` la
+sante perdue par tour (sol caustique ; un liquide brule a cote, au tiers), `slick` la chance de deraper
+d'une case (glace), `fertility` ce que les plantes y trouvent, `cost` ce que coute de la batir. Une
+seule representation : un mur creuse devient un sol (la matiere de dessous), une case batie est une
+matiere comme les autres (tole, pierre taillee), vue pareille en carte et en premiere personne ; seule
+la marque de propriete (`Floor.owned`) est en plus (teinte ambre sur la carte, compteur dans le panneau).
+La physique du monde module le rendement (`DigMods`, rogue.rs) : metaux, precieux, nucleaires suivent la
+densite (rapport a la Terre, 0,4 a 2), soufre/phosphore/terres rares/diamant l'activite interne (inerte
+x0,3 ... volcanique x2,5), glace et eau le froid de la surface (x0,3 en temperature douce, jusqu'a x3), et
+les etages d'une mine sont plus riches (+25 % par etage). La durete donne le temps (1 + 6 x durete /
+(1 + 2 x outil) tours) ; au-dessus de 0,75 il faut un outil de fouille (pioche, scanner : champ `gather`).
+Les animaux evitent les sols glissants ou brulants ; les plantes ne s'installent que sur sol fertile.
+Le froid : le gear a un champ `warmth` qui s'ajoute a la defense sous 250 K. Sauvegardes : `Floor.owned`
+ajoute (le coordinateur bumpe la version).

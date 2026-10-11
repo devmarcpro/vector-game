@@ -151,7 +151,7 @@ pub fn hint_line(g: &Game) -> String {
             "GAUCHE/DROITE ONGLET  HAUT/BAS CHOIX  +/- MISE  ENTREE AGIR  ECHAP RETOUR"
         }
         Screen::Rogue => {
-            "FLECHES/ZQSD DEPLACER (FONCER = ATTAQUER)  CLIC MARCHER  ENTREE ESCALIER/SITE  V DRONE  R RAPPEL  TAB CHEF"
+            "FLECHES/ZQSD DEPLACER  CLIC MARCHER  ENTREE ESCALIER/SITE  X CREUSER  B/N BATIR  V DRONE  R RAPPEL  TAB CHEF"
         }
         Screen::Cosmos => {
             "ENTREE PORTAIL  A ANCRE  R REMONTER  X LEVER  HAUT/BAS CHOIX  +/- JOURS  S STASE  ECHAP RETOUR"
@@ -265,6 +265,8 @@ pub fn help_lines(screen: Screen) -> &'static [&'static str] {
             "Fleches ou pave numerique : deplacer ; foncer sur un monstre l'attaque ; clic : marcher jusque-la",
             "Entree sur < sort (butin a bord) ou sur > descend ; sur un site (ruine, grotte, epave) elle y descend",
             "V : lance un drone (robotique) qui ramasse a proximite ; R : rappelle l'equipe depuis la surface",
+            "X : creuse ou casse la case devant (outil et durete = temps ; la matiere donne ses ressources)",
+            "B : construit un mur, N : pose un sol (tole, pont sur l'eau) avec ce que porte l'equipe : ces cases sont a vous",
         ],
         Screen::Cosmos => &[
             "Entree : franchir le portail   A : poser une ancre temporelle   R : remonter",

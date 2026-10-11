@@ -588,6 +588,24 @@ pub struct Material {
     #[serde(default = "one")]
     pub slow: f64,
     pub ground_of: Vec<(String, f64)>,
+    /// (resource, kg, rarity) given by digging a cell of it.
+    #[serde(default)]
+    pub yields: Vec<(String, f64, f64)>,
+    /// The floor material laid bare when the cell is dug (empty: nothing under it).
+    #[serde(default)]
+    pub under: String,
+    /// Health lost per turn standing on it (a liquid: next to it, a third of it).
+    #[serde(default)]
+    pub harm: f64,
+    /// Chance to slide one more cell after stepping on it.
+    #[serde(default)]
+    pub slick: f64,
+    /// 0..1: how well plants take root on it.
+    #[serde(default)]
+    pub fertility: f64,
+    /// (resource, kg) of the pack that building one cell of it takes.
+    #[serde(default)]
+    pub cost: Vec<(String, f64)>,
     pub text: String,
 }
 
@@ -672,6 +690,9 @@ pub struct Gear {
     pub attack: f64,
     pub defense: f64,
     pub gather: f64,
+    /// Extra protection against the cold only (added to `defense` below 250 K).
+    #[serde(default)]
+    pub warmth: f64,
     pub value: f64,
     pub text: String,
 }
@@ -1348,6 +1369,36 @@ impl GameData {
                 || !(0.5..=3.0).contains(&m.slow)
             {
                 return bad(format!("materiau {}: valeurs invalides", m.id));
+            }
+            if !(0.0..=1.0).contains(&m.harm)
+                || !(0.0..=1.0).contains(&m.slick)
+                || !(0.0..=1.0).contains(&m.fertility)
+            {
+                return bad(format!(
+                    "materiau {}: harm/slick/fertility hors de 0..1",
+                    m.id
+                ));
+            }
+            for (res, kg, rarity) in &m.yields {
+                if self.resource_index(res).is_none() || *kg <= 0.0 || !(0.0..=1.0).contains(rarity)
+                {
+                    return bad(format!("materiau {}: rendement {res} invalide", m.id));
+                }
+            }
+            for (res, kg) in &m.cost {
+                if self.resource_index(res).is_none() || *kg <= 0.0 || m.kind == "liquid" {
+                    return bad(format!("materiau {}: cout {res} invalide", m.id));
+                }
+            }
+            if !m.under.is_empty()
+                && !self
+                    .material_index(&m.under)
+                    .is_some_and(|k| self.materials[k].kind == "floor")
+            {
+                return bad(format!(
+                    "materiau {}: dessous {} inconnu ou pas un sol",
+                    m.id, m.under
+                ));
             }
             for (b, w) in &m.ground_of {
                 if self.biomes.iter().all(|x| &x.id != b) || *w <= 0.0 {

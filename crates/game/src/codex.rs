@@ -572,6 +572,54 @@ pub fn entry(data: &GameData, cat: usize, k: usize) -> Vec<String> {
             if !at.is_empty() {
                 out.push(format!("Se trouve sur : {}", at.join(", ")));
             }
+            if !m.yields.is_empty() {
+                let list: Vec<String> = m
+                    .yields
+                    .iter()
+                    .filter_map(|(res, kg, rarity)| {
+                        res_name(data, res)
+                            .map(|n| format!("{n} {kg:.1} kg ({:.0} %)", rarity * 100.0))
+                    })
+                    .collect();
+                out.push(format!(
+                    "Creuser (X) donne : {} - selon la physique du monde (densite, activite, froid)",
+                    list.join(", ")
+                ));
+            }
+            if let Some(u) = data.material_index(&m.under) {
+                out.push(format!("Creuse, laisse a nu : {}", data.materials[u].name));
+            }
+            if m.harm > 0.0 {
+                out.push(format!(
+                    "Dangereux : {:.1} % de sante par tour (un liquide brule a cote)",
+                    m.harm * 100.0
+                ));
+            }
+            if m.slick > 0.0 {
+                out.push(format!(
+                    "Glissant : {:.0} % de deraper d'une case",
+                    m.slick * 100.0
+                ));
+            }
+            if m.fertility > 0.0 {
+                out.push(format!(
+                    "Fertilite : {:.0} % (les plantes y poussent)",
+                    m.fertility * 100.0
+                ));
+            }
+            if !m.cost.is_empty() {
+                let list: Vec<String> = m
+                    .cost
+                    .iter()
+                    .filter_map(|(res, kg)| {
+                        res_name(data, res).map(|n| format!("{kg:.0} kg de {n}"))
+                    })
+                    .collect();
+                out.push(format!(
+                    "Se bati (B mur, N sol) avec : {} - la case est a vous",
+                    list.join(", ")
+                ));
+            }
             let places: Vec<&str> = data
                 .rogue_themes
                 .iter()
@@ -729,6 +777,12 @@ pub fn entry(data: &GameData, cat: usize, k: usize) -> Vec<String> {
                 out.push(format!(
                     "Defense : {:.0} % des degats subis arretes",
                     g.defense * 100.0
+                ));
+            }
+            if g.warmth > 0.0 {
+                out.push(format!(
+                    "Chaleur : +{:.0} % de protection contre le froid (sous 250 K)",
+                    g.warmth * 100.0
                 ));
             }
             if g.gather > 0.0 {
@@ -1085,5 +1139,33 @@ mod tests {
             tech.contains("fusion_mk3") && tech.contains("Physique des plasmas"),
             "{tech}"
         );
+    }
+
+    #[test]
+    fn material_entries_list_what_they_give_and_do() {
+        let d = data();
+        let text = |id: &str| {
+            entry(&d, 28, d.material_index(id).expect(id)).join(
+                "
+",
+            )
+        };
+        let roche = text("roche");
+        assert!(
+            roche.contains("Creuser (X) donne")
+                && roche.contains("Fer")
+                && roche.contains("laisse a nu"),
+            "{roche}"
+        );
+        assert!(text("glace").contains("Glissant"));
+        assert!(text("soufre").contains("Dangereux"));
+        assert!(text("humus").contains("Fertilite"));
+        assert!(text("pierre_taillee").contains("Se bati"));
+        assert!(text("lave").contains("Dangereux"));
+        let suit = entry(&d, 21, d.gear_index("exosquelette").unwrap()).join(
+            "
+",
+        );
+        assert!(suit.contains("Chaleur"), "{suit}");
     }
 }

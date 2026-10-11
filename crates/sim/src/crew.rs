@@ -142,6 +142,7 @@ impl Person {
             .map(|g| match stat {
                 "attack" => g.attack,
                 "defense" => g.defense,
+                "warmth" => g.warmth,
                 _ => g.gather,
             })
             .sum::<f64>()

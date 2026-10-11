@@ -171,3 +171,19 @@ Tout est derive (rien n'est stocke, meme graine = memes nombres) et une seule fo
 
 ## Energie des colonies
 Par tick : offre = somme des centrales actives x sante x facteur de source (solaire: flux x exp(-0,25 P), eolien: sqrt(P) x rafale 0,3..1,7, geothermie: sqrt(M/M_terre) borne 0,2..1,6, combustible: constant tant que le stock dure) ; offre nette = offre x (1 - pertes), pertes = 2 % + 0,4 % par batiment actif (max 20 %). Deficit : decharge des batteries (kW x dt). Surplus : charge x 0,9 jusqu'a la capacite. Reste du deficit : delestage, charge vitale d'abord (`vital_sat`), puis le reste (`power_sat`, qui multiplie la productivite et le terraformage).
+## Matiere : fouille, batiment, effets (rogue.rs)
+- `rogue_dig(dx, dy)` : une case mur ou sol voisine, `under` non vide ; refuse liquide, monstre, rocher
+  sans outil si durete >= 0,75. Tours = 1 + round(6 durete / (1 + 2 outil)). Pour chaque `yields`,
+  tirage deterministe hash(graine, x, y, etage) < rarete x facteur ; kg x facteur x (0,6..1,4) x (1 + outil).
+  Facteur = `DigMods::factor(categorie, id)` : metal/precious/nuclear = densite/5514 (0,4..2) ; sulfur,
+  phosphorus, rare_earths, diamond = activite (0,3 / 0,7 / 1 / 2,5) ; volatile et water = froid de
+  surface ; x(1 + 0,25 etage). La case devient T_FLOOR de matiere `under`.
+- `rogue_build(dx, dy, mur)` : premiere matiere du type voulu ayant un `cost` (pierre_taillee 10 kg de
+  regolithe, tole 6 kg de fer), preleve dans le sac ; un sol se pose aussi sur l'eau (pont) ; la case
+  est marquee `owned`. Un tour.
+- Glace : apres un pas, si `slick` x adherence (rover x0,4) > tirage hash(graine, tour, case, n), on
+  glisse d'une case de plus (3 au plus, arret sur obstacle/creature).
+- `harm` : chaque tour, max(sol sous les pieds, liquide voisin / 3), reduit par la defense (max 0,9).
+- Animaux (`Mon.species`) : jamais sur `slick >= 0,3` ou `harm > 0` (placement et deplacement) ; plantes
+  placees avec probabilite `fertility` de la case ; la matiere est peinte avant la vie au debarquement.
+- Froid : defense + `warmth` du gear sous 250 K dans `environment_damage`.

@@ -2,7 +2,7 @@
 //! weapon, faction, anomaly and condition, generated from the real data (no hand-written numbers).
 use vector_data::GameData;
 
-pub const CATEGORIES: [&str; 31] = [
+pub const CATEGORIES: [&str; 50] = [
     "RESSOURCES",
     "MODULES",
     "ARMES",
@@ -86,8 +86,8 @@ fn entries(data: &GameData, cat: usize) -> Vec<usize> {
         26 => (0..data.rogue_themes.len()).collect(),
         27 => (0..data.rogue_monsters.len()).collect(),
         28 => (0..data.materials.len()).collect(),
-        29 => (0..data.geology.len()).collect(),
-        30 => (0..data.cosmos.len()).collect(),
+        48 => (0..data.geology.len()).collect(),
+        49 => (0..data.cosmos.len()).collect(),
         _ => Vec::new(),
     }
 }
@@ -122,8 +122,8 @@ pub fn names(data: &GameData, cat: usize) -> Vec<String> {
             26 => data.rogue_themes[i].name.clone(),
             27 => data.rogue_monsters[i].name.clone(),
             28 => data.materials[i].name.clone(),
-            29 => data.geology[i].name.clone(),
-            30 => data.cosmos[i].name.clone(),
+            48 => data.geology[i].name.clone(),
+            49 => data.cosmos[i].name.clone(),
             18 => format!(
                 "Appeler : {}",
                 vector_data::dialogue::ROLES[i].to_lowercase()
@@ -533,8 +533,8 @@ pub fn entry(data: &GameData, cat: usize, k: usize) -> Vec<String> {
                 }
             ));
         }
-        29 => out = crate::codex_sky::geology_entry(data, i),
-        30 => out = crate::codex_sky::cosmos_entry(data, i),
+        48 => out = crate::codex_sky::geology_entry(data, i),
+        49 => out = crate::codex_sky::cosmos_entry(data, i),
         28 => {
             let m = &data.materials[i];
             out.push(format!(

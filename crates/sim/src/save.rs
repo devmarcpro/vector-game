@@ -20,7 +20,11 @@ impl std::fmt::Display for SaveError {
         match self {
             SaveError::BadMagic => write!(f, "fichier de sauvegarde invalide"),
             SaveError::UnsupportedVersion(v) => {
-                write!(f, "version de sauvegarde non supportee: {v}")
+                write!(
+                    f,
+                    "sauvegarde d'une autre version du jeu (v{v}, attendue v{VERSION}) : \
+                     pas de migration, lancez une nouvelle partie"
+                )
             }
             SaveError::Corrupt(e) => write!(f, "sauvegarde corrompue: {e}"),
         }
@@ -260,6 +264,13 @@ mod tests {
             Sim::load_bytes(&v, data()),
             Err(SaveError::UnsupportedVersion(99))
         ));
+        let msg = SaveError::UnsupportedVersion(10).to_string();
+        assert!(
+            msg.contains("v10")
+                && msg.contains(&format!("v{VERSION}"))
+                && msg.contains("nouvelle partie"),
+            "{msg}"
+        );
         let mut v = MAGIC.to_vec();
         v.extend_from_slice(&VERSION.to_le_bytes());
         v.extend_from_slice(&[1, 2, 3]);

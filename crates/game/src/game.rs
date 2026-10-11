@@ -462,6 +462,12 @@ impl Game {
         }
     }
 
+    /// Write a line in the ship's journal in the AI's own voice.
+    fn note(&mut self, text: String) {
+        let now = self.sim.time;
+        self.sim.crew.log_event(now, format!("IA : {text}"));
+    }
+
     fn handle_events(&mut self) {
         let evs = std::mem::take(&mut self.sim.events);
         for e in evs {
@@ -473,12 +479,16 @@ impl Game {
                 } => {
                     let name = self.sim.bodies[body].name.clone();
                     self.say(format!("IMPACT {name} {speed:.0} M/S  DEGATS {damage:.0}"));
+                    self.note(format!(
+                        "impact sur {name} a {speed:.0} m/s, coque endommagee ({damage:.0})."
+                    ));
                     self.timescale = 1.0;
                 }
                 Event::OutOfFuel => self.say("CARBURANT EPUISE"),
                 Event::Arrived { body } => {
                     let name = self.sim.bodies[body].name.clone();
                     self.say(format!("ARRIVE A {name}"));
+                    self.note(format!("arrivee pres de {name}."));
                     self.timescale = 1.0;
                 }
                 Event::CargoFull => self.say("SOUTE PLEINE"),
@@ -494,6 +504,7 @@ impl Game {
                     self.map = false;
                     let name = self.sim.system.name.clone();
                     self.say(format!("ARRIVEE DANS LE SYSTEME {name}"));
+                    self.note(format!("saut termine : systeme {name}."));
                 }
                 Event::JumpAborted(why) => {
                     self.say(format!("SAUT ANNULE: {}", why.to_uppercase()));
@@ -506,7 +517,8 @@ impl Game {
                     ));
                 }
                 Event::ContractDone { reward } => {
-                    self.say(format!("CONTRAT REMPLI: +{reward:.0} CR"))
+                    self.say(format!("CONTRAT REMPLI: +{reward:.0} CR"));
+                    self.note(format!("contrat rempli, {reward:.0} cr recus."));
                 }
                 Event::ContractExpired => self.say("UN CONTRAT A EXPIRE (-REPUTATION)"),
                 Event::BankSeizure { amount } => {
@@ -516,8 +528,14 @@ impl Game {
                 Event::ColonyFounded { index } => {
                     let name = self.sim.colonies[index].name.clone();
                     self.say(format!("COLONIE FONDEE : {name}"));
+                    self.note(format!("colonie fondee : {name}."));
                 }
-                Event::ColonyNews(t) | Event::MarketNews(t) => self.say(t.to_uppercase()),
+                Event::ColonyNews(t) | Event::MarketNews(t) => {
+                    if t.starts_with("INTRUSION") || t.starts_with("Contrat a terme") {
+                        self.note(t.clone());
+                    }
+                    self.say(t.to_uppercase())
+                }
                 Event::FleetDelivery { ship, revenue } => {
                     let n = self
                         .sim
@@ -531,6 +549,7 @@ impl Game {
                     self.timescale = 1.0;
                 }
                 Event::PirateDemand { amount } => {
+                    self.note(format!("des pirates exigent {amount:.0} cr."));
                     self.say(format!("PIRATES : PAYEZ {amount:.0} CR [Z] OU COMBATTEZ !"));
                     self.timescale = 1.0;
                 }

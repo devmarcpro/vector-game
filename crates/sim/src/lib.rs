@@ -15,6 +15,7 @@ pub mod fleet;
 pub mod futures;
 pub mod gear;
 pub mod genealogy;
+pub mod intrusion;
 pub mod market;
 pub mod npc;
 pub mod planet;
@@ -268,6 +269,8 @@ pub struct Sim {
     /// Futures signed at the exchange.
     pub futures: Vec<futures::Future>,
     pub next_future: u32,
+    /// Day of the last intrusion roll (not saved).
+    pub intrusion_day: i64,
     /// Body used as velocity reference for flight assist (within its influence radius).
     pub ref_body: Option<usize>,
     pub target: Option<usize>,
@@ -395,6 +398,7 @@ impl Sim {
             civ_rep: BTreeMap::new(),
             futures: Vec::new(),
             next_future: 0,
+            intrusion_day: i64::MIN,
             ref_body: None,
             target: None,
             credits: START_CREDITS,
@@ -746,6 +750,7 @@ impl Sim {
             self.bank_tick();
             self.market_news_tick();
             self.futures_tick();
+            self.intrusion_tick();
             self.refresh_bodies();
             self.update_npcs();
             self.hazard_tick(dt);

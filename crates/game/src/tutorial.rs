@@ -18,7 +18,7 @@ fn any_pressed(g: &Game, screen: Screen, codes: &[KeyCode]) -> bool {
 
 pub const STEPS: [Step; 17] = [
     Step {
-        text: "Bienvenue, capitaine. Tournez le vaisseau : W/S tangage, A/D lacet, Q/E roulis.",
+        text: "Bienvenue, IA de bord. Pilotez le vaisseau : W/S tangage, A/D lacet, Q/E roulis.",
         done: |g| {
             any_pressed(
                 g,

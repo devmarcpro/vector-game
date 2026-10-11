@@ -1,4 +1,4 @@
-# ROADMAP (validée par l'utilisateur le 2026-10-11)
+﻿# ROADMAP (validée par l'utilisateur le 2026-10-11)
 
 État de départ : M0-M10 terminés (voir PROGRESS.md, ACCEPTANCE.md). 147 tests verts, 100 ans stables.
 
@@ -21,7 +21,7 @@ Arbres de dialogue data-driven (conditions : réputation, traits, compétences, 
 ### E5 — Vue roguelike à la Dwarf Fortress (exploration à pied)
 Vue en quadrillage de caractères (déjà compatible avec la grille texte 8x10 du moteur) pour : intérieur du vaisseau (plan généré depuis les modules installés), stations, villes, ruines, épaves, grottes et surfaces planétaires. Tuiles par `.ron` (sol, mur, porte, sas, machine, végétation...), cartes locales générées par hachage (coordonnée + graine), déplacement au tour par tour ou en temps réel pausable, équipe contrôlable, objets et inventaire, lignes de vue, atmosphère/pression/température par tuile, combat à pied, interactions avec les PNJ et les dialogues (E4), fouille et archéologie. Les organes (E3) y deviennent visibles (blessures localisées).
 ### E6 — Autres idées retenues
-Épidémies à l'échelle station/planète (propagation par le trafic PNJ, quarantaines, vaccins) ; écologie et terraformation à long terme ; religions et idéologies internes aux colonies (schismes, révolutions) ; marché noir plus profond (biologie, cybernétique, organes, mercenaires) ; piratage et guerre électronique ; journal du capitaine généré depuis les événements réels.
+Épidémies à l'échelle station/planète (propagation par le trafic PNJ, quarantaines, vaccins) ; écologie et terraformation à long terme ; religions et idéologies internes aux colonies (schismes, révolutions) ; marché noir plus profond (biologie, cybernétique, organes, mercenaires) ; piratage et guerre électronique ; journal de bord de l'IA généré depuis les événements réels.
 
 ## Principes à conserver
 Données `.ron` validées au chargement ; génération déterministe par hachage ; sim/rendu/UI séparés ; chaque règle testée ; tout nouveau système a une entrée de codex générée depuis les données ; pas de dépendances nouvelles sans raison ; saves = graine + deltas.

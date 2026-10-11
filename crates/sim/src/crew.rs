@@ -1,4 +1,4 @@
-//! Crew: individuals with skills, traits, needs, posts, relations; a data-driven event engine and a journal.
+﻿//! Crew: individuals with skills, traits, needs, posts, relations; a data-driven event engine and a journal.
 use crate::cargo::Cargo;
 use serde::{Deserialize, Serialize};
 use vector_core::{hash_coord, mix64, Rng};
@@ -8,7 +8,7 @@ pub const DAY: f64 = 86_400.0;
 /// Base simulation tick of the crew layer (game seconds).
 pub const TICK: f64 = 600.0;
 pub const LOG_CAP: usize = 400;
-/// Efficiency of a post nobody staffs (the captain muddles through).
+/// Efficiency of a post nobody staffs (the ship's AI muddles through).
 pub const NO_CREW_EFF: f64 = 0.7;
 const FOOD_KG_PER_DAY: f64 = 0.6;
 const WATER_KG_PER_DAY: f64 = 3.0;

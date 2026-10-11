@@ -7,5 +7,5 @@
  (id:"tech_hub", name:"Pole technologique", produces:["medicine","rare_earths","deuterium","lithium","silver"], consumes:["silicon","copper","gold","platinum","food"]),
  (id:"fuel_depot", name:"Depot de carburant", produces:["fuel","hydrogen","deuterium","helium3","helium"], consumes:["food","water","spare_parts","medicine","iron"]),
  (id:"trade_hub", name:"Plaque tournante", produces:["salts","argon","sulfur"], consumes:["tungsten","uranium","thorium","diamond","palladium"]),
- (id:"military_base", name:"Base militaire", produces:[], consumes:["fuel","spare_parts","food","medicine","titanium","tungsten"]),
+ (id:"military_base", name:"Base militaire", produces:["ammo_slugs","missiles","mines"], consumes:["fuel","spare_parts","food","medicine","titanium","tungsten"]),
 ]

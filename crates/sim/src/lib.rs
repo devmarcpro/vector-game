@@ -3,6 +3,7 @@
 pub mod autopilot;
 pub mod cargo;
 pub mod colony;
+pub mod combat;
 pub mod crew;
 pub mod design;
 pub mod economy;
@@ -56,6 +57,9 @@ pub struct ShipInput {
     pub lat: f64,
     pub vert: f64,
     pub mine: bool,
+    /// Primary weapons (beams, cannons) and secondary weapons (missiles, mines).
+    pub fire: bool,
+    pub fire_missile: bool,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -187,6 +191,17 @@ pub enum Event {
         ship: usize,
         revenue: f64,
     },
+    PlayerDestroyed,
+    PirateDemand {
+        amount: f64,
+    },
+    NpcDestroyed,
+    BountyPaid {
+        amount: f64,
+    },
+    CrimeCommitted,
+    PatrolHostile,
+    Respawned,
 }
 
 pub struct Sim {
@@ -238,6 +253,20 @@ pub struct Sim {
     pub next_fleet: u32,
     pub next_route: u32,
     pub fleet_paid_day: i64,
+    pub projectiles: Vec<combat::Projectile>,
+    pub wrecks: Vec<combat::Wreck>,
+    pub next_wreck: u32,
+    /// Seconds until each module slot may fire again.
+    pub weapon_cd: Vec<f64>,
+    /// Beams drawn this step: (from, to, fired by the player).
+    pub beams: Vec<(Vec3, Vec3, bool)>,
+    pub enemy_beams: Vec<(Vec3, Vec3)>,
+    pub ecm_range: f64,
+    pub destroyed: bool,
+    /// Outstanding pirate demand: (npc id, credits).
+    pub tribute_due: Option<(u32, f64)>,
+    /// Factions that consider the player a criminal until the given time.
+    pub wanted_until: BTreeMap<usize, f64>,
 }
 
 /// Propellant mass flow (kg/s) for a thrust force (N) at a given specific impulse.
@@ -318,7 +347,18 @@ impl Sim {
             next_fleet: 1,
             next_route: 1,
             fleet_paid_day: 0,
+            projectiles: Vec::new(),
+            wrecks: Vec::new(),
+            next_wreck: 1,
+            weapon_cd: Vec::new(),
+            beams: Vec::new(),
+            enemy_beams: Vec::new(),
+            ecm_range: 0.0,
+            destroyed: false,
+            tribute_due: None,
+            wanted_until: BTreeMap::new(),
         };
+        s.weapon_cd = vec![0.0; s.ship.design.slots.len()];
         s.reputation = vec![0.0; s.data.factions.len()];
         s.scan = Self::initial_scan(&s.system);
         s.scan_progress = vec![0.0; n];
@@ -414,6 +454,9 @@ impl Sim {
     pub fn safe_dt(&self) -> f64 {
         if self.in_transit() {
             return 600.0;
+        }
+        if self.combat_active() {
+            return SIM_DT;
         }
         let mut dt = f64::MAX;
         for b in &self.bodies {
@@ -589,6 +632,7 @@ impl Sim {
             mining: aimed,
             rcs_use,
             jumping: self.is_charging_jump(),
+            firing: input.fire || input.fire_missile,
         };
         self.run_systems(&act, dt);
         let mut eff = self.effective.clone();
@@ -692,6 +736,10 @@ impl Sim {
         self.expire_contracts();
         self.bank_tick();
         self.update_npcs();
+        if self.weapon_cd.len() != self.ship.design.slots.len() {
+            self.weapon_cd = vec![0.0; self.ship.design.slots.len()];
+        }
+        self.combat_tick(dt, &input);
         if aimed && eff.mining_rate > 0.0 {
             let miner = Crew::role_index(&self.data, "miner");
             let eff_mult = self.crew.role_efficiency(&self.data, miner, self.time);

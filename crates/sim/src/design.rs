@@ -12,6 +12,8 @@ pub const T_SCRAM: f64 = 900.0;
 pub const REACTOR_WASTE: f64 = 0.6;
 /// Specific isp of the RCS thrusters (s).
 pub const RCS_ISP: f64 = 20_000.0;
+/// Damage points absorbed per MJ of shield capacity.
+pub const SHIELD_PTS_PER_MJ: f64 = 10.0;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ShipDesign {
@@ -171,6 +173,7 @@ pub struct Activity {
     pub mining: bool,
     pub rcs_use: f64,
     pub jumping: bool,
+    pub firing: bool,
 }
 
 /// Capabilities actually available this step after power allocation.
@@ -190,6 +193,10 @@ pub struct Effective {
     pub jump_range: f64,
     /// Number of people the powered life support can sustain.
     pub life_capacity: f64,
+    /// Shield capacity in damage points (powered shield modules).
+    pub shield_cap: f64,
+    /// Sum of the armour rating of healthy plating.
+    pub armor: f64,
     /// kg of food per day grown by powered greenhouses.
     pub food_per_day: f64,
     pub medbay: f64,
@@ -206,6 +213,9 @@ pub struct Systems {
     pub supply_kw: f64,
     pub demand_kw: f64,
     pub overheating: bool,
+    /// Current shield charge (damage points) and the time of the last hit.
+    pub shield_pts: f64,
+    pub last_hit: f64,
 }
 
 impl Systems {
@@ -219,6 +229,8 @@ impl Systems {
             supply_kw: 0.0,
             demand_kw: 0.0,
             overheating: false,
+            shield_pts: 0.0,
+            last_hit: -1.0e9,
         }
     }
 
@@ -263,6 +275,7 @@ impl Systems {
                     "engine" => act.throttle.clamp(0.0, 1.0),
                     "mining" => f64::from(u8::from(act.mining)),
                     "ftl" => f64::from(u8::from(act.jumping)),
+                    "weapon" => f64::from(u8::from(act.firing)),
                     "gyro" | "rcs" => 0.2 + 0.8 * act.rcs_use.clamp(0.0, 1.0),
                     _ => 1.0,
                 };
@@ -364,6 +377,8 @@ impl Systems {
             e.food_per_day += m.food * k;
             e.medbay += m.medical * k;
             e.workshop += m.repair * k;
+            e.shield_cap += m.shield * k * SHIELD_PTS_PER_MJ;
+            e.armor += m.armor * k;
             e.scan_range = f64::max(e.scan_range, m.scan_range * k);
             if k > 0.5 {
                 e.jump_range = f64::max(e.jump_range, m.jump_range);
@@ -453,6 +468,7 @@ mod tests {
             mining: true,
             rcs_use: 0.0,
             jumping: false,
+            firing: false,
         };
         for _ in 0..20_000 {
             sys.step(&d, &design, &stats, 30_000.0, &act, 1.0, 0.5);
@@ -501,6 +517,7 @@ mod tests {
             mining: true,
             rcs_use: 0.0,
             jumping: false,
+            firing: false,
         };
         let eff = sys.step(&d, &design, &stats, 30_000.0, &act, 1.0, 0.1);
         let cat = |c: &str| {

@@ -149,6 +149,56 @@ family("armory", "Armurerie", "armory", "Internal", [
 ], {})
 
 
+# ---- weapons and defences (category "weapon"/"defense"; stats: weapon kind, damage, rate, speed, range, ammo) ----
+def weapon(prefix, label, category, wkind, tiers, base=None):
+    for k, t in enumerate(tiers, start=1):
+        d = dict(base or {})
+        d.update(t)
+        mod(f"{prefix}_mk{k}", f"{label} Mk{k}", category, "Hardpoint", d.pop("size", k), d.pop("mass"), d.pop("hp"), d.pop("cost"), weapon=wkind, **d)
+
+weapon("pulselaser", "Laser a impulsions", "weapon", "beam", [
+    dict(size=1, mass=300, hp=60, cost=14000, damage=30.0, range=6000.0, power=-2000, priority=2),
+    dict(size=2, mass=650, hp=90, cost=34000, damage=60.0, range=9000.0, power=-4000, priority=2),
+    dict(size=3, mass=1400, hp=140, cost=90000, damage=120.0, range=14000.0, power=-8000, priority=2),
+])
+weapon("particlebeam", "Canon a particules", "weapon", "beam", [
+    dict(size=2, mass=1800, hp=140, cost=120000, damage=200.0, range=12000.0, power=-14000, priority=2),
+    dict(size=3, mass=3600, hp=220, cost=320000, damage=420.0, range=20000.0, power=-30000, priority=2),
+])
+weapon("massdriver", "Canon electromagnetique", "weapon", "kinetic", [
+    dict(size=1, mass=500, hp=100, cost=22000, damage=350.0, rate=2.0, speed=3000.0, range=30000.0, ammo="ammo_slugs", ammo_use=0.5, power=-300, priority=2),
+    dict(size=2, mass=1100, hp=160, cost=58000, damage=800.0, rate=1.5, speed=5000.0, range=45000.0, ammo="ammo_slugs", ammo_use=0.8, power=-600, priority=2),
+    dict(size=3, mass=2400, hp=240, cost=150000, damage=1800.0, rate=1.0, speed=8000.0, range=70000.0, ammo="ammo_slugs", ammo_use=1.2, power=-1200, priority=2),
+])
+weapon("railgun", "Rail gun", "weapon", "kinetic", [
+    dict(size=3, mass=3200, hp=200, cost=240000, damage=3500.0, rate=0.4, speed=15000.0, range=120000.0, ammo="ammo_slugs", ammo_use=3.0, power=-9000, priority=2),
+    dict(size=4, mass=7000, hp=320, cost=620000, damage=9000.0, rate=0.3, speed=25000.0, range=200000.0, ammo="ammo_slugs", ammo_use=6.0, power=-20000, priority=2),
+])
+weapon("autocannon", "Canon automatique", "weapon", "kinetic", [
+    dict(size=1, mass=420, hp=90, cost=16000, damage=60.0, rate=8.0, speed=2500.0, range=12000.0, ammo="ammo_slugs", ammo_use=0.1, power=-120, priority=2),
+    dict(size=2, mass=900, hp=140, cost=42000, damage=110.0, rate=10.0, speed=3000.0, range=16000.0, ammo="ammo_slugs", ammo_use=0.15, power=-250, priority=2),
+])
+weapon("missilerack", "Rack de missiles", "weapon", "missile", [
+    dict(size=2, mass=700, hp=100, cost=30000, damage=800.0, rate=0.2, speed=1500.0, range=15000.0, ammo="missiles", ammo_use=1.0, guidance=1.5, power=-100, priority=2),
+    dict(size=3, mass=1500, hp=150, cost=76000, damage=1800.0, rate=0.25, speed=2000.0, range=22000.0, ammo="missiles", ammo_use=1.0, guidance=2.0, power=-150, priority=2),
+    dict(size=4, mass=3000, hp=220, cost=190000, damage=4000.0, rate=0.3, speed=2600.0, range=30000.0, ammo="missiles", ammo_use=1.0, guidance=2.5, power=-250, priority=2),
+])
+weapon("torpedo", "Tube a torpilles", "weapon", "missile", [
+    dict(size=4, mass=4200, hp=260, cost=260000, damage=14000.0, rate=0.05, speed=900.0, range=18000.0, ammo="missiles", ammo_use=3.0, guidance=0.8, power=-300, priority=2),
+])
+weapon("pointdefense", "Defense ponctuelle", "defense", "pd", [
+    dict(size=1, mass=350, hp=80, cost=26000, damage=100.0, rate=6.0, range=3000.0, power=-400, priority=2),
+    dict(size=2, mass=800, hp=130, cost=70000, damage=200.0, rate=10.0, range=5000.0, power=-900, priority=2),
+])
+weapon("ecm", "Brouilleur ECM", "defense", "ecm", [
+    dict(size=1, mass=250, hp=60, cost=24000, range=10000.0, power=-500, priority=2),
+    dict(size=2, mass=500, hp=90, cost=64000, range=20000.0, power=-1100, priority=2),
+])
+weapon("minelayer", "Mouilleur de mines", "weapon", "mine", [
+    dict(size=2, mass=600, hp=100, cost=36000, damage=2500.0, rate=0.1, speed=20.0, range=500.0, ammo="mines", ammo_use=1.0, power=-80, priority=2),
+])
+
+
 def ron_value(v):
     if isinstance(v, str):
         return '"%s"' % v.replace('"', "'")
@@ -161,7 +211,7 @@ def ron_value(v):
     return str(v)
 
 
-FLOAT_FIELDS = {"mass", "hp", "cost", "power", "thrust", "isp", "fuel", "cargo_kg", "cargo_m3", "battery", "radiate",
+FLOAT_FIELDS = {"damage", "rate", "speed", "range", "ammo_use", "guidance", "mass", "hp", "cost", "power", "thrust", "isp", "fuel", "cargo_kg", "cargo_m3", "battery", "radiate",
                 "mining_rate", "mining_range", "life_support", "crew_cap", "medical", "science", "repair", "food",
                 "scan_range", "jump_range", "armor", "agility", "rcs", "shield", "dock", "hangar", "armory"}
 
@@ -171,6 +221,8 @@ def emit_module(m):
     for k, v in m.items():
         if k in FLOAT_FIELDS:
             parts.append(f"{k}:{float(v)!r}")
+        elif k in ("weapon", "ammo"):
+            parts.append(f'{k}:"{v}"')
         elif k == "size" or k == "priority":
             parts.append(f"{k}:{v}")
         elif k == "slot":
@@ -198,7 +250,7 @@ hulls = [
     ("explorer", "Explorateur Magellan", "explorateur", 8800, 1300, 260000, 3.2e5, 1.6, 2.1, [("Core", 3), ("Core", 3), ("Core", 2), ("Internal", 3), ("Internal", 3), ("Internal", 2), ("Internal", 2), ("External", 3), ("External", 2), ("Hardpoint", 1)]),
     ("fighter", "Chasseur Vespa", "combat", 4200, 900, 180000, 3.6e5, 2.6, 3.6, [("Core", 2), ("Core", 2), ("Core", 1), ("Internal", 1), ("External", 2), ("Hardpoint", 2), ("Hardpoint", 2)]),
     ("corvette", "Corvette Aegis", "combat", 14000, 3200, 640000, 5.5e5, 1.3, 1.8, [("Core", 3), ("Core", 3), ("Core", 2), ("Internal", 3), ("Internal", 2), ("Internal", 2), ("External", 3), ("External", 2), ("Hardpoint", 3), ("Hardpoint", 2), ("Hardpoint", 2)]),
-    ("frigate", "Fregate Orion", "combat", 38000, 8500, 1900000, 1.0e6, 0.8, 1.0, [("Core", 4), ("Core", 4), ("Core", 3), ("Core", 2), ("Internal", 4), ("Internal", 4), ("Internal", 3), ("Internal", 3), ("Internal", 2), ("External", 4), ("External", 3), ("Hardpoint", 4), ("Hardpoint", 3), ("Hardpoint", 3)]),
+    ("frigate", "Fregate Orion", "combat", 38000, 8500, 1900000, 1.0e6, 0.8, 1.0, [("Core", 4), ("Core", 4), ("Core", 3), ("Core", 2), ("Internal", 4), ("Internal", 4), ("Internal", 3), ("Internal", 3), ("Internal", 2), ("External", 4), ("External", 3), ("Hardpoint", 4), ("Hardpoint", 3), ("Hardpoint", 3), ("Hardpoint", 2), ("Hardpoint", 2), ("Hardpoint", 1)]),
     ("survey", "Releveur Kepler", "science", 7000, 900, 210000, 2.4e5, 1.7, 2.2, [("Core", 2), ("Core", 2), ("Internal", 3), ("Internal", 3), ("Internal", 2), ("External", 3), ("External", 3), ("Hardpoint", 1)]),
     ("tender", "Ravitailleur Atlas-R", "support", 12500, 2000, 380000, 4.0e5, 1.0, 1.4, [("Core", 3), ("Core", 2), ("Internal", 4), ("Internal", 4), ("Internal", 3), ("Internal", 2), ("External", 3), ("External", 2), ("Hardpoint", 2)]),
     ("colony", "Vaisseau colonial Exode", "colonial", 52000, 11000, 2600000, 1.2e6, 0.6, 0.7, [("Core", 4), ("Core", 4), ("Core", 3), ("Internal", 4), ("Internal", 4), ("Internal", 4), ("Internal", 4), ("Internal", 3), ("Internal", 3), ("External", 4), ("External", 3), ("Hardpoint", 2)]),

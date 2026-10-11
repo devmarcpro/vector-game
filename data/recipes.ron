@@ -39,6 +39,9 @@
  (id:"make_medicine", name:"Pharmacie", kind:"process", inputs:[("organics",100.0), ("fertilizer",10.0), ("water",100.0)], outputs:[("medicine",55.0)], hours:24.0, energy_kwh:800.0),
  (id:"make_spare_parts", name:"Pieces detachees", kind:"process", inputs:[("steel",200.0), ("machinery",40.0), ("polymers",40.0)], outputs:[("spare_parts",270.0)], hours:12.0, energy_kwh:600.0),
  (id:"make_weapon_parts", name:"Pieces d'armement", kind:"process", inputs:[("steel",300.0), ("titanium_alloy",100.0), ("electronics",60.0)], outputs:[("weapon_parts",450.0)], hours:24.0, energy_kwh:2500.0),
+ (id:"make_slugs", name:"Munitions cinetiques", kind:"process", inputs:[("steel",120.0), ("tungsten",5.0)], outputs:[("ammo_slugs",100.0)], hours:12.0, energy_kwh:400.0),
+ (id:"make_missiles", name:"Missiles", kind:"process", inputs:[("weapon_parts",60.0), ("electronics",20.0), ("fuel",20.0)], outputs:[("missiles",95.0)], hours:24.0, energy_kwh:1500.0),
+ (id:"make_mines", name:"Mines", kind:"process", inputs:[("weapon_parts",40.0), ("electronics",10.0), ("steel",30.0)], outputs:[("mines",75.0)], hours:24.0, energy_kwh:900.0),
  (id:"do_research", name:"Recherche appliquee", kind:"data", inputs:[("electronics",20.0)], outputs:[("research_data",25.0)], hours:24.0, energy_kwh:3000.0),
  (id:"recycle_scrap", name:"Recyclage", kind:"process", inputs:[("spare_parts",100.0)], outputs:[("steel",70.0), ("polymers",20.0)], hours:12.0, energy_kwh:300.0),
 ]

@@ -35,6 +35,13 @@ impl NpcRole {
     }
 }
 
+/// Tactical posture of a ship in a fight.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum AiMode {
+    Pursue,
+    Flee,
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum NpcState {
     Docked {
@@ -63,6 +70,10 @@ pub enum NpcState {
         around: usize,
         phase: f64,
     },
+    /// Explicitly flown (integrated) while fighting.
+    Combat {
+        mode: AiMode,
+    },
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -77,6 +88,18 @@ pub struct Npc {
     pub cargo: Option<(usize, f64)>,
     pub last_scan: f64,
     pub home: usize,
+    pub hull: f64,
+    pub hull_max: f64,
+    pub shield: f64,
+    pub shield_max: f64,
+    pub level: u8,
+    /// Shoots at the player.
+    pub hostile: bool,
+    /// Crippled: drifts, harmless, can be boarded.
+    pub disabled: bool,
+    /// The player attacked it first (it fights back or flees).
+    pub provoked: bool,
+    pub hail_deadline: Option<f64>,
 }
 
 impl Npc {
@@ -131,6 +154,8 @@ impl Sim {
             let id = sim.next_npc;
             sim.next_npc += 1;
             let name = sim.npc_name(role, rng, faction);
+            let level = 1 + (rng.next_u64() % 3) as u8;
+            let stats = crate::combat::npc_stats(role, level);
             sim.npcs.push(Npc {
                 id,
                 role,
@@ -142,6 +167,15 @@ impl Sim {
                 cargo: None,
                 last_scan: 0.0,
                 home,
+                hull: stats.hull,
+                hull_max: stats.hull,
+                shield: stats.shield,
+                shield_max: stats.shield,
+                level,
+                hostile: false,
+                disabled: false,
+                provoked: false,
+                hail_deadline: None,
             });
         };
         let now = self.time;
@@ -242,6 +276,7 @@ impl Sim {
                         (*from + (target - *from) * s, (target - *from) * (ds / dur))
                     }
                     NpcState::Away { .. } => (Vec3::new(1.0e15, 0.0, 0.0), Vec3::ZERO),
+                    NpcState::Combat { .. } => (n.pos, n.vel),
                 }
             };
             self.npcs[k].pos = pos;
@@ -433,6 +468,13 @@ impl Sim {
         self.npcs[k].last_scan = self.time;
         self.events.push(Event::PatrolScan);
         self.customs_check();
+        if self.is_wanted() {
+            self.npcs[k].hostile = true;
+            self.npcs[k].state = NpcState::Combat {
+                mode: AiMode::Pursue,
+            };
+            self.events.push(Event::PatrolHostile);
+        }
     }
 
     /// Pirates notice rich-looking ships passing close by.
@@ -449,6 +491,9 @@ impl Sim {
         if value > 2000.0 {
             self.npcs[k].last_scan = self.time;
             self.events.push(Event::PirateAlert);
+            self.npcs[k].state = NpcState::Combat {
+                mode: AiMode::Pursue,
+            };
         }
     }
 

@@ -36,6 +36,10 @@ NEW_RESOURCES = [
     ("colonists", "Colons (hibernation)", "people", 400, 8.0),
     ("research_data", "Donnees de recherche", "data", 100, 50.0),
     ("weapon_parts", "Pieces d'armement", "component", 5000, 50.0),
+    ("ammo_slugs", "Munitions cinetiques", "ammo", 7800, 6.0),
+    ("missiles", "Missiles", "ammo", 1500, 120.0),
+    ("mines", "Mines", "ammo", 2500, 90.0),
+    ("artifacts", "Artefacts anciens", "artifact", 3000, 900.0),
 ]
 
 def sync_resources():
@@ -97,6 +101,9 @@ recipe("make_fuel_rods", "Barres de combustible", "process", [("uranium", 20), (
 recipe("make_medicine", "Pharmacie", "process", [("organics", 100), ("fertilizer", 10), ("water", 100)], [("medicine", 55)], 24, 800)
 recipe("make_spare_parts", "Pieces detachees", "process", [("steel", 200), ("machinery", 40), ("polymers", 40)], [("spare_parts", 270)], 12, 600)
 recipe("make_weapon_parts", "Pieces d'armement", "process", [("steel", 300), ("titanium_alloy", 100), ("electronics", 60)], [("weapon_parts", 450)], 24, 2500)
+recipe("make_slugs", "Munitions cinetiques", "process", [("steel", 120), ("tungsten", 5)], [("ammo_slugs", 100)], 12, 400)
+recipe("make_missiles", "Missiles", "process", [("weapon_parts", 60), ("electronics", 20), ("fuel", 20)], [("missiles", 95)], 24, 1500)
+recipe("make_mines", "Mines", "process", [("weapon_parts", 40), ("electronics", 10), ("steel", 30)], [("mines", 75)], 24, 900)
 recipe("do_research", "Recherche appliquee", "data", [("electronics", 20)], [("research_data", 25)], 24, 3000)
 recipe("recycle_scrap", "Recyclage", "process", [("spare_parts", 100)], [("steel", 70), ("polymers", 20)], 12, 300)
 
@@ -135,7 +142,7 @@ bld("algae_vats", "Cuves d'algues", "agriculture", [(CM, 700), ("polymers", 150)
 bld("smelter", "Fonderie", "industry", [(CM, 1600), ("machinery", 120), ("ceramics", 100)], 12, -3000, 14, upkeep=45, recipes=["smelt_steel", "alloy_aluminium", "alloy_titanium", "draw_wire"], throughput=1.0, sites=("rocky", "icy", "asteroid"))
 bld("glassworks", "Verrerie-ceramique", "industry", [(CM, 900), ("machinery", 60)], 8, -1800, 8, upkeep=25, recipes=["make_glass", "fire_ceramics", "make_concrete"], sites=("rocky", "icy", "asteroid"))
 bld("chemical_plant", "Usine chimique", "industry", [(CM, 1800), ("machinery", 140), ("steel", 300)], 14, -3500, 16, upkeep=55, recipes=["make_plastics", "make_polymers", "make_fertilizer", "make_fuel", "electrolysis", "make_medicine"], sites=("rocky", "icy", "asteroid"))
-bld("component_factory", "Usine de composants", "industry", [(CM, 2200), ("machinery", 200), ("electronics", 60)], 16, -4500, 24, upkeep=75, recipes=["build_machinery", "forge_tools", "make_spare_parts", "press_hull_plates", "build_engine_parts", "build_reactor_parts", "build_life_support", "make_weapon_parts"], sites=("rocky", "icy", "asteroid"))
+bld("component_factory", "Usine de composants", "industry", [(CM, 2200), ("machinery", 200), ("electronics", 60)], 16, -4500, 24, upkeep=75, recipes=["build_machinery", "forge_tools", "make_spare_parts", "press_hull_plates", "build_engine_parts", "build_reactor_parts", "build_life_support", "make_weapon_parts", "make_slugs", "make_missiles", "make_mines"], sites=("rocky", "icy", "asteroid"))
 bld("electronics_fab", "Fabrique d'electronique", "industry", [(CM, 2000), ("machinery", 180), ("robotics", 20)], 16, -5000, 24, upkeep=90, recipes=["fab_circuits", "assemble_electronics", "make_solar_cells", "make_batteries", "build_robotics", "make_nanomaterials", "make_fuel_rods"], sites=("rocky", "icy", "asteroid"))
 bld("consumer_factory", "Usine de biens de consommation", "industry", [(CM, 1400), ("machinery", 100)], 10, -1800, 14, upkeep=35, recipes=["weave_textiles", "make_consumer_goods", "make_luxury_goods"], sites=("rocky", "icy", "asteroid"))
 bld("recycler", "Centre de recyclage", "industry", [(CM, 700), ("machinery", 50)], 6, -800, 6, upkeep=15, recipes=["recycle_scrap"], sites=("rocky", "icy", "asteroid"))

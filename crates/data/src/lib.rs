@@ -86,6 +86,19 @@ pub struct Module {
     pub dock: f64,
     pub hangar: f64,
     pub armory: f64,
+    /// Weapon class: beam, kinetic, missile, mine, pd (point defence) or ecm.
+    pub weapon: String,
+    /// Damage per second for beams, per hit otherwise.
+    pub damage: f64,
+    /// Shots per second.
+    pub rate: f64,
+    /// Projectile speed (m/s).
+    pub speed: f64,
+    pub range: f64,
+    pub ammo: String,
+    pub ammo_use: f64,
+    /// Missile turn rate (rad/s).
+    pub guidance: f64,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -419,6 +432,18 @@ impl GameData {
             if !(1..=4).contains(&m.size) || m.mass <= 0.0 || m.hp <= 0.0 || m.cost < 0.0 {
                 return bad(format!("module invalide: {}", m.id));
             }
+            if !m.weapon.is_empty() {
+                if !["beam", "kinetic", "missile", "mine", "pd", "ecm"].contains(&m.weapon.as_str())
+                {
+                    return bad(format!("arme {}: type inconnu {}", m.id, m.weapon));
+                }
+                if !m.ammo.is_empty() && self.resource_index(&m.ammo).is_none() {
+                    return bad(format!("arme {}: munition inconnue {}", m.id, m.ammo));
+                }
+                if m.weapon != "ecm" && m.range <= 0.0 {
+                    return bad(format!("arme {}: portee nulle", m.id));
+                }
+            }
             let produces = matches!(m.category.as_str(), "reactor" | "solar");
             if produces != (m.power > 0.0) && m.power != 0.0 {
                 return bad(format!("signe de puissance incoherent: {}", m.id));
@@ -651,6 +676,8 @@ mod tests {
         assert!(d.hulls.len() >= 15);
         assert!(d.factions.len() >= 6 && d.industries.len() >= 8);
         assert!(d.recipes.len() >= 35 && d.buildings.len() >= 25 && d.policies.len() >= 4);
+        let defences = d.modules.iter().filter(|m| !m.weapon.is_empty()).count();
+        assert!(defences >= 20, "{defences}");
         assert!(d.skills.len() >= 12 && d.traits.len() >= 30 && d.events.len() >= 25);
         assert!(d.resource_index("food").is_some() && !d.text("hire").is_empty());
     }

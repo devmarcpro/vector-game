@@ -139,6 +139,8 @@ pub struct Game {
     pub opt_sel: usize,
     pub codex_cat: usize,
     pub codex_sel: usize,
+    /// Entries visited before the current one (Backspace goes back).
+    pub codex_back: Vec<(usize, usize)>,
     /// Surface map screen (F8): the map, cursor, layer, globe view and its rotation.
     pub surf: Option<vector_sim::planet::PlanetMap>,
     pub surf_cx: usize,
@@ -244,6 +246,7 @@ impl Game {
             opt_sel: 0,
             codex_cat: 0,
             codex_sel: 0,
+            codex_back: Vec::new(),
             surf: None,
             surf_cx: 0,
             surf_cy: 0,
@@ -1030,6 +1033,37 @@ impl Game {
             KeyCode::ArrowDown => self.codex_sel = (self.codex_sel + 1) % n,
             KeyCode::PageUp => self.codex_sel = self.codex_sel.saturating_sub(10),
             KeyCode::PageDown => self.codex_sel = (self.codex_sel + 10).min(n - 1),
+            KeyCode::Digit1
+            | KeyCode::Digit2
+            | KeyCode::Digit3
+            | KeyCode::Digit4
+            | KeyCode::Digit5
+            | KeyCode::Digit6
+            | KeyCode::Digit7
+            | KeyCode::Digit8
+            | KeyCode::Digit9 => {
+                let n = match code {
+                    KeyCode::Digit1 => 0,
+                    KeyCode::Digit2 => 1,
+                    KeyCode::Digit3 => 2,
+                    KeyCode::Digit4 => 3,
+                    KeyCode::Digit5 => 4,
+                    KeyCode::Digit6 => 5,
+                    KeyCode::Digit7 => 6,
+                    KeyCode::Digit8 => 7,
+                    _ => 8,
+                };
+                let links = crate::codex::links(&self.data, self.codex_cat, self.codex_sel);
+                if let Some((c, j, _)) = links.get(n) {
+                    self.follow_codex_link(c * 10_000 + j);
+                }
+            }
+            KeyCode::Backspace => {
+                if let Some((c, k)) = self.codex_back.pop() {
+                    self.codex_cat = c;
+                    self.codex_sel = k;
+                }
+            }
             KeyCode::Escape | KeyCode::F6 => self.screen = self.back_to,
             _ => {}
         }
@@ -2479,6 +2513,41 @@ mod tests {
         frame(&g);
         g.key(KeyCode::KeyM, None, true);
         assert!(!g.fleet_map);
+    }
+
+    #[test]
+    fn codex_links_follow_names_and_backspace_returns() {
+        let mut g = Game::new(data(), 1);
+        g.key(KeyCode::Enter, None, true);
+        g.key(KeyCode::F6, None, true);
+        // Find a resource entry that names a recipe: it must offer at least one link.
+        let (k, links) = (0..crate::codex::count(&g.data, 0))
+            .map(|k| (k, crate::codex::links(&g.data, 0, k)))
+            .find(|(_, l)| l.iter().any(|(c, _, _)| *c == 5))
+            .expect("some resource is made by a named recipe");
+        g.codex_cat = 0;
+        g.codex_sel = k;
+        let (c, j, _) = links.iter().find(|(c, _, _)| *c == 5).cloned().unwrap();
+        let n = links
+            .iter()
+            .position(|(lc, lj, _)| *lc == c && *lj == j)
+            .unwrap();
+        assert!(n < 9, "the link has a digit key");
+        let key = [
+            KeyCode::Digit1,
+            KeyCode::Digit2,
+            KeyCode::Digit3,
+            KeyCode::Digit4,
+            KeyCode::Digit5,
+            KeyCode::Digit6,
+            KeyCode::Digit7,
+            KeyCode::Digit8,
+            KeyCode::Digit9,
+        ][n];
+        g.key(key, None, true);
+        assert_eq!((g.codex_cat, g.codex_sel), (c, j));
+        g.key(KeyCode::Backspace, None, true);
+        assert_eq!((g.codex_cat, g.codex_sel), (0, k));
     }
 
     #[test]

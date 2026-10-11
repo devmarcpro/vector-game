@@ -76,3 +76,5 @@ Tout se fait aussi à la souris (hors visée F7, où la souris pilote le vaissea
 - Un arbre généalogique : un parent à bord est un bouton qui ouvre son propre arbre.
 
 - **X** (en vol) : écran des factions et de leurs moeurs ; Gauche/Droite ou clic pour choisir, X ou Echap pour revenir.
+
+- **Codex** : sous chaque entrée, « VOIR AUSSI » liste les entrées citées ; clic ou touches 1 à 9 pour les suivre, Retour arrière pour revenir.

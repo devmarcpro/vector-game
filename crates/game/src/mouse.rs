@@ -191,6 +191,13 @@ impl Game {
         self.codex_sel = 0;
     }
 
+    /// Follow a cross-link of the codex: remember where we were.
+    pub fn follow_codex_link(&mut self, code: usize) {
+        self.codex_back.push((self.codex_cat, self.codex_sel));
+        self.codex_cat = code / 10_000;
+        self.codex_sel = code % 10_000;
+    }
+
     pub fn click_codex_sel(&mut self, k: usize) {
         self.codex_sel = k;
     }

@@ -80,6 +80,39 @@ pub fn names(data: &GameData, cat: usize) -> Vec<String> {
         .collect()
 }
 
+/// Entries of other categories (or the same one) whose name appears in the text of entry
+/// (`cat`, `k`): the cross-links of the codex, as (category, index, name).
+pub fn links(data: &GameData, cat: usize, k: usize) -> Vec<(usize, usize, String)> {
+    let lines = entry(data, cat, k);
+    let text = lines
+        .iter()
+        .skip(1)
+        .map(|l| l.to_lowercase())
+        .collect::<Vec<_>>()
+        .join(" ");
+    let mut out: Vec<(usize, usize, String)> = Vec::new();
+    for c in 0..CATEGORIES.len() {
+        for (j, name) in names(data, c).into_iter().enumerate() {
+            if (c, j) == (cat, k) || name.chars().count() < 4 {
+                continue;
+            }
+            let lower = name.to_lowercase();
+            // Whole-word match, so "fer" does not light up inside "carburant de fer".
+            let found = text.match_indices(&lower).any(|(p, m)| {
+                let before = text[..p].chars().next_back();
+                let after = text[p + m.len()..].chars().next();
+                !before.is_some_and(char::is_alphanumeric)
+                    && !after.is_some_and(char::is_alphanumeric)
+            });
+            if found && !out.iter().any(|(oc, _, on)| *oc == c && *on == name) {
+                out.push((c, j, name));
+            }
+        }
+    }
+    out.truncate(14);
+    out
+}
+
 fn names_of(
     data: &GameData,
     ids: &[String],

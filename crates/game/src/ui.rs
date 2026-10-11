@@ -327,10 +327,49 @@ fn draw_codex(fb: &mut Framebuffer, g: &Game) {
         }
         row += 1;
     }
+    // Cross-links: entries named in this one.
+    let links = codex::links(&g.data, g.codex_cat, sel);
+    if !links.is_empty() {
+        row += 1;
+        if row < max_row {
+            fb.text(38, row, "VOIR AUSSI (CLIC OU CHIFFRE) :", AMBER);
+        }
+        let mut x = 38;
+        row += 1;
+        for (n, (c, j, name)) in links.iter().enumerate() {
+            let label = format!(
+                "[{}{}: {}]",
+                if n < 9 {
+                    format!("{} ", n + 1)
+                } else {
+                    String::new()
+                },
+                codex::CATEGORIES[*c],
+                name.to_uppercase()
+            );
+            if x + label.chars().count() > 38 + w {
+                x = 38;
+                row += 1;
+            }
+            if row >= max_row {
+                break;
+            }
+            let hover = g.hit_cells(
+                x,
+                row,
+                label.chars().count(),
+                1,
+                Act::Call(Game::follow_codex_link, c * 10_000 + j),
+                None,
+            );
+            fb.text(x, row, &label, if hover { AMBER } else { DIM });
+            x += label.chars().count() + 1;
+        }
+    }
     fb.text(
         2,
         fb.rows() - 3,
-        "GAUCHE/DROITE CATEGORIE  HAUT/BAS ENTREE  ECHAP RETOUR",
+        "GAUCHE/DROITE CATEGORIE  HAUT/BAS ENTREE  RET.ARR. REVENIR  ECHAP RETOUR",
         DIM,
     );
 }

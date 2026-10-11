@@ -61,3 +61,5 @@
 - 2026-10-11 : Sandbox libre : plus besoin de rechercher des technologies pour acheter coques, modules et bâtiments (règle `tech_locks` désactivée par défaut, activable dans les règles). Sauvegarde v14.
 
 - 2026-10-11 : Passe visuelle : schéma des flux d'énergie et de chaleur (écran vaisseau H) : producteurs -> bus/batterie -> consommateurs (rouge si éteint), chaleur -> radiateurs avec jauge.
+
+- 2026-10-11 : Passe visuelle (fin) : liens croisés du codex (« VOIR AUSSI » : clic ou chiffres 1-9, Retour arrière pour revenir). La passe visuelle est terminée.

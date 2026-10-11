@@ -3,8 +3,10 @@
 //! children below them), and a second page (Tab) with the genes.
 use crate::game::Game;
 use crate::hud::{AMBER, DIM, GREEN, RED};
+use crate::mouse::Act;
 use vector_render::Framebuffer;
 use vector_sim::genealogy::{Kin, Relative};
+use winit::keyboard::KeyCode;
 
 const WHITE: u32 = 0x00FF_FFFF;
 const WIRE: u32 = 0x0040_7050;
@@ -75,7 +77,17 @@ fn status(r: &Relative) -> String {
 }
 
 /// Name, tie and age with resemblance of a relative, drawn in a box.
-fn show(fb: &mut Framebuffer, x: usize, y: usize, w: usize, r: &Relative, c: u32) {
+fn show(fb: &mut Framebuffer, g: &Game, x: usize, y: usize, w: usize, r: &Relative, c: u32) {
+    // A relative who is aboard opens their own tree when clicked.
+    if let Some(mi) = g
+        .sim
+        .crew
+        .members
+        .iter()
+        .position(|m| m.kin == r.kin && m.alive)
+    {
+        g.hit_cells(x, y, w, 3, Act::Call(Game::click_family_member, mi), None);
+    }
     let (name, tie, st) = (
         r.name.to_uppercase(),
         r.relation.label(r.kin.male()).to_uppercase(),
@@ -111,6 +123,14 @@ pub fn draw(fb: &mut Framebuffer, g: &Game) {
         ),
         DIM,
     );
+    for (col, label, key) in [
+        (70usize, "[<]", KeyCode::ArrowLeft),
+        (74, "[>]", KeyCode::ArrowRight),
+        (78, "[ARBRE/GENES]", KeyCode::Tab),
+    ] {
+        let hover = g.hit_cells(col, 2, label.len(), 1, Act::Key(key), None);
+        fb.text(col, 2, label, if hover { AMBER } else { DIM });
+    }
     if g.family_tab == 1 {
         draw_genes(fb, g);
         return;
@@ -154,10 +174,10 @@ pub fn draw(fb: &mut Framebuffer, g: &Game) {
     let mat_x: Vec<usize> = (0..mat.len()).map(|i| xc + 5 * unit + i * unit).collect();
     // Level 1: uncles and aunts, then the parents.
     for (r, &x) in pat.iter().zip(&pat_x).chain(mat.iter().zip(&mat_x)) {
-        show(fb, x, y1, w, r, color(r));
+        show(fb, g, x, y1, w, r, color(r));
     }
     for (r, x) in [(father, xf), (mother, xm)] {
-        show(fb, x, y1, w, r, color(r));
+        show(fb, g, x, y1, w, r, color(r));
     }
     // The couple's union, and below it the children.
     let ymid = (y1 * 10 + 15) as f32;
@@ -175,7 +195,7 @@ pub fn draw(fb: &mut Framebuffer, g: &Game) {
     for (i, (_, rel)) in kids.iter().take(5).enumerate() {
         let x = start + i * unit;
         match rel {
-            Some(r) => show(fb, x, y2, w, r, color(r)),
+            Some(r) => show(fb, g, x, y2, w, r, color(r)),
             None => draw_box(
                 fb,
                 x,
@@ -199,7 +219,7 @@ pub fn draw(fb: &mut Framebuffer, g: &Game) {
             let left = ((lo + hi) / 2).saturating_sub(w + 1).max(1);
             let right = left + w + 2;
             for (r, x) in gps.iter().zip([left, right]) {
-                show(fb, x, y0, w, r, color(r));
+                show(fb, g, x, y0, w, r, color(r));
             }
             let ym = (y0 * 10 + 15) as f32;
             fb.line(

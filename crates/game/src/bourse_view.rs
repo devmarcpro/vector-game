@@ -3,8 +3,10 @@
 //! the news of the period.
 use crate::game::{Game, BOURSE_RANGES};
 use crate::hud::{AMBER, DIM, GREEN, RED};
+use crate::mouse::Act;
 use vector_render::Framebuffer;
 
+const WHITE: u32 = 0x00FF_FFFF;
 const UP: u32 = 0x0040_E070;
 const DOWN: u32 = 0x00FF_5050;
 
@@ -56,12 +58,24 @@ pub fn draw(fb: &mut Framebuffer, g: &Game) {
     fb.text(
         16,
         1,
-        &format!(
-            "PRIX DE REFERENCE   PERIODE : {days} JOURS   (TAB : CHANGER)   CREDITS {:.0}",
-            g.sim.credits
-        ),
+        &format!("PRIX DE REFERENCE   CREDITS {:.0}", g.sim.credits),
         DIM,
     );
+    // Period tabs.
+    let mut tx = 62usize;
+    for (i, &d) in BOURSE_RANGES.iter().enumerate() {
+        let label = format!("[{d} J]");
+        let hover = g.hit_cells(
+            tx,
+            1,
+            label.len(),
+            1,
+            Act::Call(Game::click_bourse_range, i),
+            None,
+        );
+        fb.text(tx, 1, &label, if d == days || hover { AMBER } else { DIM });
+        tx += label.len() + 2;
+    }
     // The people of this territory: their mœurs and what they forbid.
     let faction = g.sim.faction;
     let values = data
@@ -106,6 +120,8 @@ pub fn draw(fb: &mut Framebuffer, g: &Game) {
         let mut name = r.name.to_uppercase();
         name.truncate(18);
         let row = 4 + k - start;
+        let hover = g.hit_cells(2, row, 44, 1, Act::Call(Game::click_bourse_res, k), None);
+        let col = if hover && !selected { WHITE } else { col };
         fb.text(
             2,
             row,

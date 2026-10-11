@@ -190,6 +190,7 @@ pub fn help_lines(screen: Screen) -> &'static [&'static str] {
             "L galaxie  F2 empire  F3 flotte  F4 techno  F6 codex",
             "O : fonder une colonie   Z tribut   N epave   U abordage",
             "F8 : surface de la planete ou lune ciblee (releve niveau 2)",
+            "Souris : clic = cibler un objet, double clic = y aller ; molette = temps ; clic droit = retour",
         ],
         Screen::Station => &[
             "Haut/Bas : ressource   Entree : tout vendre",

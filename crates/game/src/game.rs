@@ -78,6 +78,8 @@ pub struct Game {
     pub keys: HashSet<KeyCode>,
     /// Mouse look (F7): turn demand in [-1, 1] as (yaw, pitch), fed each frame by the window.
     pub mouse_look: bool,
+    /// Pointer position and the clickable zones of the last frame (see `mouse`).
+    pub pointer: crate::mouse::Pointer,
     pub mouse: (f64, f64),
     pub timescale: f64,
     pub paused: bool,
@@ -134,6 +136,8 @@ pub struct Game {
     pub surf_cx: usize,
     pub surf_cy: usize,
     pub surf_layer: usize,
+    /// Where the map was drawn (column, row, columns, rows), for clicks.
+    pub surf_geom: std::cell::Cell<(usize, usize, usize, usize)>,
     pub surf_globe: bool,
     pub surf_spin: f64,
     /// Cities of this world's colonies: (name, cell x, cell y), computed when the screen opens.
@@ -180,6 +184,7 @@ impl Game {
             stars: scene::star_field(seed, 900),
             keys: HashSet::new(),
             mouse_look: false,
+            pointer: Default::default(),
             mouse: (0.0, 0.0),
             timescale: 1.0,
             paused: false,
@@ -231,6 +236,7 @@ impl Game {
             surf_cx: 0,
             surf_cy: 0,
             surf_layer: 0,
+            surf_geom: Default::default(),
             surf_globe: false,
             surf_spin: 0.0,
             surf_cities: Vec::new(),
@@ -313,6 +319,7 @@ impl Game {
 
     pub fn view(&self) -> crate::hud::View<'_> {
         crate::hud::View {
+            game: self,
             sim: &self.sim,
             stars: &self.stars,
             timescale: self.timescale,
@@ -2178,6 +2185,167 @@ mod tests {
         assert_eq!(g.sim.current_research, Some(open));
         g.key(KeyCode::Escape, None, true);
         assert_ne!(g.screen, Screen::Tech);
+    }
+
+    fn frame(g: &Game) {
+        let mut fb = vector_render::Framebuffer::new(1280, 720);
+        crate::draw_frame(&mut fb, g);
+    }
+
+    #[test]
+    fn the_mouse_clicks_menus_graphs_tabs_maps_and_the_command_bar() {
+        let mut g = Game::new(data(), 1);
+        // Main menu: a click on the first line starts a game.
+        frame(&g);
+        let col = 1280 / 8 / 2 - 12;
+        g.pointer_click((col * 8 + 20) as i32, 13 * 10 + 3, 1000);
+        assert_eq!(
+            g.screen,
+            Screen::Flight,
+            "clicking NOUVELLE PARTIE starts the game"
+        );
+        // Tech graph: a double click on a node starts its research, whichever it is.
+        g.key(KeyCode::F4, None, true);
+        assert_eq!(g.screen, Screen::Tech);
+        frame(&g);
+        let zones: Vec<(i32, i32)> = g
+            .pointer
+            .hits
+            .borrow()
+            .iter()
+            .map(|h| ((h.rect.0 + h.rect.2) / 2, (h.rect.1 + h.rect.3) / 2))
+            .collect();
+        assert!(zones.len() > 20, "{} zones on the graph", zones.len());
+        let mut t = 5000u64;
+        for (x, y) in zones {
+            g.pointer_click(x, y, t);
+            g.pointer_click(x, y, t + 100);
+            t += 2000;
+            if g.sim.current_research.is_some() {
+                break;
+            }
+        }
+        assert!(
+            g.sim.current_research.is_some(),
+            "a double click started a research"
+        );
+        // The wheel moves the selection, a right click goes back.
+        let sel = g.tech_sel;
+        g.pointer_wheel(-1.0);
+        assert_ne!(g.tech_sel, sel);
+        g.pointer_back();
+        assert_ne!(g.screen, Screen::Tech);
+        // Exchange: the period tabs and the rows are clickable, and so is the command bar.
+        let (st, _) = g.sim.nearest_station().expect("station");
+        g.sim.spawn_near(st, g.sim.bodies[st].radius + 200.0);
+        g.key(KeyCode::KeyD, None, true);
+        g.key(KeyCode::KeyT, None, true);
+        assert_eq!(g.screen, Screen::Bourse);
+        frame(&g);
+        g.pointer_click(78 * 8 + 8, 1 * 10 + 3, 20_000);
+        assert_eq!(g.bourse_range, 2, "the third tab shows 180 days");
+        assert_eq!(g.bourse_series[0].len(), BOURSE_RANGES[2]);
+        frame(&g);
+        g.pointer_click(2 * 8 + 4, 7 * 10 + 3, 22_000);
+        assert_ne!(g.bourse_sel, 0, "a click on a row selects that resource");
+        // The last segment of the command bar is "T/ECHAP RETOUR": clicking it goes back.
+        frame(&g);
+        let last = g
+            .pointer
+            .hits
+            .borrow()
+            .last()
+            .copied()
+            .expect("a command-bar zone");
+        g.pointer_click(
+            (last.rect.0 + last.rect.2) / 2,
+            (last.rect.1 + last.rect.3) / 2,
+            30_000,
+        );
+        assert_eq!(g.screen, Screen::Station);
+        // Surface: a click on the map moves the cursor.
+        g.sim.reveal_all();
+        g.screen = Screen::Flight;
+        g.sim.docked = None;
+        g.cycle_target(|k| matches!(k, BodyKind::Planet(p) if !p.is_giant()));
+        g.open_surface();
+        assert_eq!(g.screen, Screen::Surface);
+        frame(&g);
+        let (x0, y0, cols, rows) = g.surf_geom.get();
+        let before = (g.surf_cx, g.surf_cy);
+        g.pointer_click(
+            ((x0 + cols / 4) * 8) as i32,
+            ((y0 + rows / 4) * 10 + 3) as i32,
+            40_000,
+        );
+        assert_ne!((g.surf_cx, g.surf_cy), before);
+        assert!(
+            g.surf_cx < vector_world::surface::W / 2 && g.surf_cy < vector_world::surface::H / 2
+        );
+        // Clicking empty space does nothing; the pointer never steers while mouse look is on.
+        let screen = g.screen;
+        g.pointer_click(1, 715, 50_000);
+        assert_eq!(g.screen, screen);
+    }
+
+    #[test]
+    fn the_mouse_targets_objects_in_flight_and_changes_options_and_follows_the_family() {
+        let mut g = Game::new(data(), 1);
+        g.key(KeyCode::Enter, None, true);
+        assert_eq!(g.screen, Screen::Flight);
+        g.settings.tutorial = false;
+        // The station sits at the middle of the first view: a click targets it.
+        g.sim.target = None;
+        frame(&g);
+        g.pointer_click(640, 360, 1_000);
+        let station = g.sim.target.expect("the click targeted something");
+        assert!(matches!(
+            g.sim.bodies[station].kind,
+            BodyKind::Station | BodyKind::Planet(_) | BodyKind::Moon(_) | BodyKind::Asteroid(_)
+        ));
+        // A second click on it, quickly, is a double click: the autopilot (or its refusal) answers.
+        g.pointer_click(640, 360, 1_200);
+        assert!(
+            g.sim.autopilot.is_some() || g.messages.last().is_some(),
+            "{:?}",
+            g.messages.last()
+        );
+        // The map: the wheel zooms.
+        g.key(KeyCode::KeyM, None, true);
+        let scale = g.map_scale;
+        g.pointer_wheel(1.0);
+        assert!(g.map_scale < scale, "wheel up zooms in");
+        g.key(KeyCode::KeyM, None, true);
+        // Options: the arrows next to a value change it.
+        g.screen = Screen::Options;
+        frame(&g);
+        let before = g.settings.clone();
+        // Row 0 is at text row 5; its "<" is at column 38.
+        g.pointer_click(38 * 8 + 3, 5 * 10 + 3, 10_000);
+        assert_ne!(g.settings, before, "the arrow changed the first option");
+        // Family tree: a relative aboard is a button.
+        let me = g.sim.crew.members[0].kin;
+        let sib = vector_sim::genealogy::siblings(&g.sim.crew.families, me)[0];
+        let p =
+            vector_sim::crew::person_from_kin(&g.data, &g.sim.crew.families, sib, 99, None, None);
+        let data = std::sync::Arc::clone(&g.data);
+        g.sim.crew.hire(&data, p, 2, 0.0);
+        g.family_member = 0;
+        g.refresh_family();
+        g.screen = Screen::Family;
+        frame(&g);
+        // Click every zone of the tree: one of them is the brother, whose tree then opens.
+        let zones: Vec<(i32, i32)> = g
+            .pointer
+            .hits
+            .borrow()
+            .iter()
+            .map(|h| ((h.rect.0 + h.rect.2) / 2, (h.rect.1 + h.rect.3) / 2))
+            .collect();
+        for (i, (x, y)) in zones.into_iter().enumerate() {
+            g.pointer_click(x, y, 100_000 + 1_000 * i as u64);
+        }
+        assert_eq!(g.family_member, 1, "the brother's tree is shown");
     }
 
     #[test]

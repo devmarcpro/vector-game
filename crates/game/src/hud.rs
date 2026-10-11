@@ -1,5 +1,7 @@
 //! Cockpit view and system map: 3D scene + ASCII HUD.
 use crate::console::Console;
+use crate::game::Game;
+use crate::mouse::Act;
 use vector_core::{Mat3, Vec3};
 use vector_render::{Camera, Framebuffer, Wireframe};
 use vector_sim::design::{T_DAMAGE, T_SCRAM};
@@ -27,6 +29,8 @@ pub fn npc_color(r: NpcRole) -> u32 {
 }
 
 pub struct View<'a> {
+    /// The game, for the clickable zones the view declares.
+    pub game: &'a Game,
     pub sim: &'a Sim,
     pub stars: &'a [Vec3],
     pub timescale: f64,
@@ -245,6 +249,18 @@ fn draw_cockpit(fb: &mut Framebuffer, v: &View) {
         }
         // Marker + label for objects too small to see as shapes.
         if let Some((x, y)) = cam.project_world(b.pos, fb) {
+            // Click to target, double click to fly there.
+            let reach = (px as f32).clamp(9.0, 220.0);
+            v.game.hit(
+                (
+                    (x - reach) as i32,
+                    (y - reach) as i32,
+                    (x + reach) as i32,
+                    (y + reach) as i32,
+                ),
+                Act::Call(Game::click_body, i),
+                Some(Act::Call(Game::dbl_body, i)),
+            );
             if px < 6.0 && !matches!(b.kind, BodyKind::Star(_)) {
                 fb.line(x - 3.0, y, x + 3.0, y, col);
                 fb.line(x, y - 3.0, x, y + 3.0, col);
@@ -328,6 +344,16 @@ fn draw_cockpit(fb: &mut Framebuffer, v: &View) {
             scaled.draw(&cam, fb, &rot, n.pos, col);
         }
         if let Some((x, y)) = cam.project_world(n.pos, fb) {
+            v.game.hit(
+                (
+                    (x - 12.0) as i32,
+                    (y - 12.0) as i32,
+                    (x + 12.0) as i32,
+                    (y + 12.0) as i32,
+                ),
+                Act::Call(Game::click_npc, k),
+                None,
+            );
             fb.line(x - 3.0, y, x, y - 3.0, col);
             fb.line(x, y - 3.0, x + 3.0, y, col);
             fb.line(x + 3.0, y, x, y + 3.0, col);
@@ -448,6 +474,19 @@ fn draw_map(fb: &mut Framebuffer, v: &View) {
         }
         let (x, y) = to_px(b.pos);
         let r = (b.radius / v.map_scale).clamp(2.0, 14.0) as f32;
+        if v.sim.scan[i] > 0 {
+            let reach = r.max(7.0);
+            v.game.hit(
+                (
+                    (x - reach) as i32,
+                    (y - reach) as i32,
+                    (x + reach) as i32,
+                    (y + reach) as i32,
+                ),
+                Act::Call(Game::click_body, i),
+                Some(Act::Call(Game::dbl_body, i)),
+            );
+        }
         match cb.kind {
             BodyKind::Star(_) => fb.circle(x, y, r.max(4.0), SUN),
             BodyKind::Asteroid(_) => fb.plot(x as i32, y as i32, col),

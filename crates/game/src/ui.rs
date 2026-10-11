@@ -1,13 +1,30 @@
 //! Text-grid screens: main menu, pause, station market, inventory.
 use crate::game::{Game, Screen, MAIN_MENU, PAUSE_MENU};
 use crate::hud::{AMBER, DIM, GREEN, RED};
+use crate::mouse::{key_of_word, Act};
+use winit::keyboard::KeyCode;
+
+/// Colour of a list line under the pointer.
+const HOVER: u32 = 0x00D0_FFD0;
 use vector_render::Framebuffer;
 use vector_sim::{G0, RESALE};
 
-fn menu(fb: &mut Framebuffer, top: usize, items: &[&str], sel: usize) {
+fn menu(fb: &mut Framebuffer, g: &Game, top: usize, items: &[&str], sel: usize) {
     let col = fb.cols() / 2 - 12;
     for (i, it) in items.iter().enumerate() {
-        let (c, mark) = if i == sel { (AMBER, ">") } else { (GREEN, " ") };
+        let hover = g.hit_cells(
+            col,
+            top + i * 2,
+            26,
+            1,
+            Act::Call(Game::click_menu, i),
+            None,
+        );
+        let (c, mark) = if i == sel || hover {
+            (AMBER, ">")
+        } else {
+            (GREEN, " ")
+        };
         fb.text(col, top + i * 2, &format!("{mark} {it}"), c);
     }
 }
@@ -17,7 +34,7 @@ pub fn draw(fb: &mut Framebuffer, g: &Game) {
         Screen::MainMenu => draw_main(fb, g),
         Screen::Pause => {
             fb.text(fb.cols() / 2 - 4, 6, "== PAUSE ==", AMBER);
-            menu(fb, 9, &PAUSE_MENU, g.menu_sel);
+            menu(fb, g, 9, &PAUSE_MENU, g.menu_sel);
             fb.text(
                 fb.cols() / 2 - 12,
                 fb.rows() - 3,
@@ -117,7 +134,20 @@ pub fn draw_overlay(fb: &mut Framebuffer, g: &Game) {
                 fb.px_set(x, y, 0);
             }
         }
-        fb.text(1, fb.rows().saturating_sub(1), &line, 0x0040_A058);
+        // Each command of the bar ("KEY what it does", separated by two spaces) is a button.
+        let row = fb.rows().saturating_sub(1);
+        let (mut col, mut rest) = (1usize, line.as_str());
+        while !rest.is_empty() {
+            let end = rest.find("  ").unwrap_or(rest.len());
+            let (seg, tail) = rest.split_at(end);
+            let word = seg.split_whitespace().next().unwrap_or("");
+            let hover = key_of_word(g.screen, word)
+                .is_some_and(|k| g.hit_cells(col, row, seg.chars().count(), 1, Act::Key(k), None));
+            fb.text(col, row, seg, if hover { AMBER } else { 0x0040_A058 });
+            let skipped = tail.len() - tail.trim_start().len();
+            col += seg.chars().count() + skipped;
+            rest = tail.trim_start();
+        }
     }
     if g.help_open && g.screen != Screen::MainMenu {
         let lines = crate::tutorial::help_lines(g.screen);
@@ -148,8 +178,29 @@ fn draw_rules(fb: &mut Framebuffer, g: &Game) {
     for (i, (label, val)) in r.iter().enumerate() {
         let c = if i == g.rules_sel { AMBER } else { GREEN };
         let mark = if i == g.rules_sel { ">" } else { " " };
-        fb.text(4, 5 + i * 2, &format!("{mark} {label}"), c);
-        fb.text(40, 5 + i * 2, val, c);
+        let row = 5 + i * 2;
+        let hover = g.hit_cells(
+            4,
+            row,
+            34,
+            1,
+            Act::Call(Game::click_rules_row, i * 3 + 1),
+            None,
+        );
+        g.hit_cells(38, row, 2, 1, Act::Call(Game::click_rules_row, i * 3), None);
+        g.hit_cells(
+            41 + val.len(),
+            row,
+            2,
+            1,
+            Act::Call(Game::click_rules_row, i * 3 + 2),
+            None,
+        );
+        let c = if hover && i != g.rules_sel { HOVER } else { c };
+        fb.text(4, row, &format!("{mark} {label}"), c);
+        fb.text(38, row, "<", AMBER);
+        fb.text(40, row, val, c);
+        fb.text(41 + val.len(), row, ">", AMBER);
     }
     if g.pending_rules.is_modified() {
         fb.text(
@@ -172,8 +223,36 @@ fn draw_options(fb: &mut Framebuffer, g: &Game) {
     for (i, (label, val)) in g.settings.describe().iter().enumerate() {
         let c = if i == g.opt_sel { AMBER } else { GREEN };
         let mark = if i == g.opt_sel { ">" } else { " " };
-        fb.text(4, 5 + i * 2, &format!("{mark} {label}"), c);
-        fb.text(40, 5 + i * 2, val, c);
+        let row = 5 + i * 2;
+        let hover = g.hit_cells(
+            4,
+            row,
+            34,
+            1,
+            Act::Call(Game::click_options_row, i * 3 + 1),
+            None,
+        );
+        g.hit_cells(
+            38,
+            row,
+            2,
+            1,
+            Act::Call(Game::click_options_row, i * 3),
+            None,
+        );
+        g.hit_cells(
+            41 + val.len(),
+            row,
+            2,
+            1,
+            Act::Call(Game::click_options_row, i * 3 + 2),
+            None,
+        );
+        let c = if hover && i != g.opt_sel { HOVER } else { c };
+        fb.text(4, row, &format!("{mark} {label}"), c);
+        fb.text(38, row, "<", AMBER);
+        fb.text(40, row, val, c);
+        fb.text(41 + val.len(), row, ">", AMBER);
     }
     fb.text(
         4,
@@ -188,7 +267,12 @@ fn draw_codex(fb: &mut Framebuffer, g: &Game) {
     fb.text(2, 1, "== CODEX ==", AMBER);
     let mut x = 2;
     for (i, c) in codex::CATEGORIES.iter().enumerate() {
-        let col = if i == g.codex_cat { AMBER } else { DIM };
+        let hover = g.hit_cells(x, 3, c.len(), 1, Act::Call(Game::click_codex_cat, i), None);
+        let col = if i == g.codex_cat || hover {
+            AMBER
+        } else {
+            DIM
+        };
         fb.text(x, 3, c, col);
         x += c.len() + 2;
     }
@@ -199,7 +283,21 @@ fn draw_codex(fb: &mut Framebuffer, g: &Game) {
         .saturating_sub(rows / 2)
         .min(names.len().saturating_sub(rows));
     for (k, n) in names.iter().enumerate().skip(start).take(rows) {
-        let c = if k == sel { AMBER } else { GREEN };
+        let hover = g.hit_cells(
+            2,
+            5 + k - start,
+            34,
+            1,
+            Act::Call(Game::click_codex_sel, k),
+            None,
+        );
+        let c = if k == sel {
+            AMBER
+        } else if hover {
+            HOVER
+        } else {
+            GREEN
+        };
         let mark = if k == sel { ">" } else { " " };
         let mut s = format!("{mark} {n}");
         s.truncate(34);
@@ -247,7 +345,7 @@ fn draw_main(fb: &mut Framebuffer, g: &Game) {
         "SANDBOX SPATIAL EN LIGNES VECTORIELLES",
         DIM,
     );
-    menu(fb, 13, &MAIN_MENU, g.menu_sel);
+    menu(fb, g, 13, &MAIN_MENU, g.menu_sel);
     let seed = if g.seed_text.is_empty() {
         "(DEFAUT)"
     } else {
@@ -348,7 +446,21 @@ fn draw_station(fb: &mut Framebuffer, g: &Game) {
     let rows = fb.rows().saturating_sub(top + 6);
     for (line, i) in window(g.sel_res, g.data.resources.len(), rows).enumerate() {
         let r = &g.data.resources[i];
-        let c = if i == g.sel_res { AMBER } else { GREEN };
+        let hover = g.hit_cells(
+            x,
+            top + 1 + line,
+            66,
+            1,
+            Act::Call(Game::click_sel_res, i),
+            Some(Act::Key(KeyCode::Enter)),
+        );
+        let c = if i == g.sel_res {
+            AMBER
+        } else if hover {
+            HOVER
+        } else {
+            GREEN
+        };
         fb.text(
             x,
             top + 1 + line,
@@ -401,7 +513,14 @@ fn draw_inventory(fb: &mut Framebuffer, g: &Game) {
     let sel = g.sel_res;
     for (line, &i) in items.iter().take(fb.rows().saturating_sub(10)).enumerate() {
         let r = &g.data.resources[i];
-        let col = if i == sel { AMBER } else { GREEN };
+        let hover = g.hit_cells(x, 4 + line, 60, 1, Act::Call(Game::click_sel_res, i), None);
+        let col = if i == sel {
+            AMBER
+        } else if hover {
+            HOVER
+        } else {
+            GREEN
+        };
         fb.text(
             x,
             4 + line,
@@ -446,7 +565,21 @@ fn draw_ship(fb: &mut Framebuffer, g: &Game) {
     );
     for (i, &(ty, size)) in hull.slots.iter().enumerate() {
         let sel = i == g.ship_sel;
-        let c = if sel { AMBER } else { GREEN };
+        let hover = g.hit_cells(
+            1,
+            top + 1 + i,
+            70,
+            1,
+            Act::Call(Game::click_ship_slot, i),
+            Some(Act::Key(KeyCode::Enter)),
+        );
+        let c = if sel {
+            AMBER
+        } else if hover {
+            HOVER
+        } else {
+            GREEN
+        };
         let (name, health, powered) = match ship.design.slots[i] {
             Some(m) => (
                 g.data.modules[m].name.clone(),
@@ -589,6 +722,14 @@ fn draw_shipyard(fb: &mut Framebuffer, g: &Game) {
     );
     for (i, h) in g.data.hulls.iter().enumerate() {
         let sel = i == g.yard_sel;
+        let hover = g.hit_cells(
+            1,
+            top + 1 + i,
+            100,
+            1,
+            Act::Call(Game::click_yard, i),
+            Some(Act::Key(KeyCode::Enter)),
+        );
         fb.text(
             1,
             top + 1 + i,
@@ -607,7 +748,13 @@ fn draw_shipyard(fb: &mut Framebuffer, g: &Game) {
                     "  (VERROUILLEE)"
                 }
             ),
-            if sel { AMBER } else { GREEN },
+            if sel {
+                AMBER
+            } else if hover {
+                HOVER
+            } else {
+                GREEN
+            },
         );
     }
     let b = fb.rows() - 4;
@@ -653,10 +800,21 @@ fn draw_crew(fb: &mut Framebuffer, g: &Game) {
     );
     for (i, p) in crew.members.iter().enumerate() {
         let sel = i == g.crew_sel;
+        // A click selects, a double click opens the family tree.
+        let hover = g.hit_cells(
+            1,
+            top + 1 + i,
+            96,
+            1,
+            Act::Call(Game::click_crew, i),
+            Some(Act::Call(Game::open_family_of, i)),
+        );
         let c = if !p.alive {
             DIM
         } else if sel {
             AMBER
+        } else if hover {
+            HOVER
         } else {
             GREEN
         };
@@ -762,6 +920,14 @@ fn draw_recruit(fb: &mut Framebuffer, g: &Game) {
     fb.text(1, top, "NOM                  CULTURE       AGE  MEILLEURE COMPETENCE     TRAITS                      EMBAUCHE", DIM);
     for (i, p) in cands.iter().enumerate() {
         let sel = i == g.recruit_sel;
+        g.hit_cells(
+            1,
+            top + 1 + i,
+            120,
+            1,
+            Act::Call(Game::click_recruit, i),
+            Some(Act::Key(KeyCode::Enter)),
+        );
         let (bi, bv) = p.best_skill();
         let traits: Vec<&str> = p
             .traits
@@ -880,6 +1046,17 @@ fn draw_galaxy(fb: &mut Framebuffer, g: &Game) {
     for (k, e) in g.gal_cache.iter().enumerate() {
         let (x, y) = proj(e.pos);
         let h = (e.pos[1] - s.here_pos[1]) as f32 * zoom * 0.5;
+        // Click selects the star, double click starts the jump.
+        g.hit(
+            (
+                (x - 7.0) as i32,
+                (y - h - 7.0) as i32,
+                (x + 7.0) as i32,
+                (y - h + 7.0) as i32,
+            ),
+            Act::Call(Game::click_star, k),
+            Some(Act::Key(KeyCode::Enter)),
+        );
         let col = class_color(e.class());
         fb.line(x, y, x, y - h, DIM);
         fb.circle(x, y - h, 2.0, col);

@@ -65,3 +65,12 @@ La dernière ligne de l'écran affiche en permanence les touches utiles ici et m
 
 ## Couleurs
 Une fois un corps relevé (niveau 2), sa couleur donne son type : étoiles par classe (O bleu à M rouge), planètes (aride gris, désert sable, terrestre vert, océan bleu, toundra turquoise, glace blanc-bleu, lave rouge-orangé, vénusienne ocre, géante gazeuse orange, géante de glace bleue, Jupiter chaud magenta), astéroïdes par type (C brun, S sable, M métal, I glace), stations cyan. Non relevé : vert neutre. La cible est entourée de crochets ambre ; atmosphères et géantes ont un halo, certaines géantes des anneaux.
+
+## Souris
+Tout se fait aussi à la souris (hors visée F7, où la souris pilote le vaisseau).
+- **Clic gauche** : une ligne de menu ou de liste la sélectionne ; un bouton (barre des commandes du bas, onglets, flèches < > autour d'une valeur) fait ce que fait sa touche ; en vol, un objet du cockpit ou de la carte système devient la cible ; sur la carte de surface le curseur va sous le clic ; dans l'arbre des technologies une case est sélectionnée.
+- **Double clic** : station, soute, vaisseau, chantier naval, recrutement = Entrée sur la ligne (vendre, installer, acheter, embaucher) ; équipage = arbre généalogique ; technologie = lancer la recherche ; objet en vol = pilote automatique ; étoile = saut.
+- **Clic droit** : retour (Échap) sur tous les écrans sauf en vol et au menu principal.
+- **Molette** : fait défiler la sélection de l'écran (Haut/Bas) ; en vol, change l'accélération du temps ; sur la carte système, zoome.
+- **Barre des commandes** : chaque commande (« TOUCHE ce qu'elle fait ») est un bouton, sauf les touches maintenues en vol (poussée, boost, frein, lasers).
+- Un arbre généalogique : un parent à bord est un bouton qui ouvre son propre arbre.

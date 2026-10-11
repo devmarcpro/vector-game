@@ -5,6 +5,7 @@ mod console;
 mod family_view;
 mod game;
 mod hud;
+mod mouse;
 mod scene;
 mod script;
 mod settings;
@@ -20,7 +21,7 @@ use vector_render::Framebuffer;
 use vector_sim::{ShipInput, SIM_DT};
 use winit::{
     application::ApplicationHandler,
-    event::{DeviceEvent, DeviceId, ElementState, WindowEvent},
+    event::{DeviceEvent, DeviceId, ElementState, MouseButton, MouseScrollDelta, WindowEvent},
     event_loop::{ActiveEventLoop, EventLoop},
     keyboard::{KeyCode, PhysicalKey},
     window::{Window, WindowId},
@@ -44,6 +45,7 @@ fn load_data() -> Option<Arc<GameData>> {
 
 /// Render whichever screen is active.
 fn draw_frame(fb: &mut Framebuffer, g: &Game) {
+    g.begin_frame();
     match g.screen {
         Screen::Flight => hud::draw(fb, &g.view()),
         Screen::Pause => {
@@ -70,6 +72,7 @@ struct App {
     /// Raw mouse motion since the last frame, and whether the cursor is currently captured.
     mouse_acc: (f64, f64),
     grabbed: bool,
+    started: Instant,
 }
 
 /// Full turn demand at this many pixels of raw mouse motion per second.
@@ -142,6 +145,34 @@ impl ApplicationHandler for App {
                     if self.game.quit {
                         el.exit();
                     }
+                }
+            }
+            WindowEvent::CursorMoved { position, .. } => {
+                self.game.pointer_move(position.x as i32, position.y as i32);
+            }
+            WindowEvent::MouseInput {
+                state: ElementState::Pressed,
+                button,
+                ..
+            } => match button {
+                MouseButton::Left => {
+                    let (x, y) = self.game.pointer.pos;
+                    let ms = self.started.elapsed().as_millis() as u64;
+                    self.game.pointer_click(x, y, ms);
+                    if self.game.quit {
+                        el.exit();
+                    }
+                }
+                MouseButton::Right => self.game.pointer_back(),
+                _ => {}
+            },
+            WindowEvent::MouseWheel { delta, .. } => {
+                let lines = match delta {
+                    MouseScrollDelta::LineDelta(_, y) => f64::from(y),
+                    MouseScrollDelta::PixelDelta(p) => p.y / 24.0,
+                };
+                if lines != 0.0 {
+                    self.game.pointer_wheel(lines);
                 }
             }
             WindowEvent::RedrawRequested => {
@@ -691,6 +722,7 @@ fn main() {
         acc: 0.0,
         mouse_acc: (0.0, 0.0),
         grabbed: false,
+        started: Instant::now(),
     };
     if let Err(e) = el.run_app(&mut app) {
         eprintln!("run failed: {e}");

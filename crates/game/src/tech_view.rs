@@ -3,6 +3,7 @@
 //! prerequisite to what it unlocks. Arrows walk the graph, Enter starts a research.
 use crate::game::Game;
 use crate::hud::{AMBER, DIM, GREEN, RED};
+use crate::mouse::Act;
 use vector_data::GameData;
 use vector_render::Framebuffer;
 
@@ -195,6 +196,14 @@ pub fn draw(fb: &mut Framebuffer, g: &Game) {
             continue;
         }
         let (x, y) = (x as usize, y as usize);
+        let hover = g.hit_cells(
+            x,
+            y,
+            BOX_W,
+            2,
+            Act::Call(Game::click_tech, t),
+            Some(Act::Call(Game::start_tech, t)),
+        );
         let tech = &data.techs[t];
         let c = state_color(t);
         let (l, tp) = ((x * 8) as f32 - 3.0, (y * 10) as f32 - 3.0);
@@ -208,6 +217,8 @@ pub fn draw(fb: &mut Framebuffer, g: &Game) {
         rect(fb, l, tp, r, b, c);
         if t == sel {
             rect(fb, l - 2.0, tp - 2.0, r + 2.0, b + 2.0, WHITE);
+        } else if hover {
+            rect(fb, l - 1.0, tp - 1.0, r + 1.0, b + 1.0, 0x0090_C0A0);
         }
         // A bar in the colour of the field along the left edge.
         let fc = field_color(&tech.field);

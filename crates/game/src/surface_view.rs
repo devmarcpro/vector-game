@@ -2,6 +2,7 @@
 //! panel for the cursor cell, and a wireframe globe with contour lines.
 use crate::game::Game;
 use crate::hud::{AMBER, DIM, GREEN, RED};
+use crate::mouse::Act;
 use vector_core::{Mat3, Vec3};
 use vector_render::Framebuffer;
 use vector_sim::planet::{PlanetMap, Weather};
@@ -192,16 +193,42 @@ pub fn draw(fb: &mut Framebuffer, g: &Game) {
     // Layer tabs.
     let mut x = 2;
     for (i, l) in LAYERS.iter().enumerate() {
-        fb.text(x, 2, l, if i == g.surf_layer { AMBER } else { DIM });
+        let hover = g.hit_cells(
+            x,
+            2,
+            l.len(),
+            1,
+            Act::Call(Game::click_surface_layer, i),
+            None,
+        );
+        fb.text(
+            x,
+            2,
+            l,
+            if i == g.surf_layer || hover {
+                AMBER
+            } else {
+                DIM
+            },
+        );
         x += l.len() + 2;
     }
     let panel_w = 38;
     let (x0, y0) = (1usize, 4usize);
     let cols_map = fb.cols().saturating_sub(panel_w + 3).clamp(20, W);
     let rows_map = fb.rows().saturating_sub(y0 + 3).clamp(10, H);
+    g.surf_geom.set((x0, y0, cols_map, rows_map));
     if g.surf_globe {
         draw_globe(fb, g, map, x0, y0, cols_map, rows_map);
     } else {
+        g.hit_cells(
+            x0,
+            y0,
+            cols_map,
+            rows_map,
+            Act::At(Game::click_surface_map),
+            None,
+        );
         for r in 0..rows_map {
             let my = r * H / rows_map;
             for c in 0..cols_map {

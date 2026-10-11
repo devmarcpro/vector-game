@@ -47,6 +47,8 @@ pub enum Screen {
     Galaxy,
     Contracts,
     Bank,
+    Livestock,
+    Casino,
     Empire,
     Colony,
     Fleet,
@@ -193,6 +195,7 @@ pub struct Game {
     /// Exchange tab (0 goods, 1 companies), the company chosen, and their price series.
     pub bourse_tab: u8,
     pub comp_sel: usize,
+    pub farm: crate::farm_view::FarmUi,
     pub comp_series: Vec<Vec<f64>>,
     pub bourse_live: Vec<f64>,
     pub bourse_news: Vec<vector_sim::bourse::ActiveEvent>,
@@ -318,6 +321,7 @@ impl Game {
             bourse_series: Vec::new(),
             bourse_tab: 0,
             comp_sel: 0,
+            farm: Default::default(),
             comp_series: Vec::new(),
             bourse_live: Vec::new(),
             bourse_news: Vec::new(),
@@ -775,6 +779,8 @@ impl Game {
             Screen::Galaxy => self.galaxy_key(code),
             Screen::Contracts => self.contracts_key(code),
             Screen::Bank => self.bank_key(code),
+            Screen::Livestock => self.livestock_key(code),
+            Screen::Casino => self.casino_key(code),
             Screen::Empire => self.empire_key(code),
             Screen::Colony => self.colony_key(code),
             Screen::Fleet => self.fleet_key(code),
@@ -1303,6 +1309,14 @@ impl Game {
             }
             KeyCode::KeyE => {
                 self.screen = Screen::Bank;
+                return;
+            }
+            KeyCode::KeyL => {
+                self.screen = Screen::Livestock;
+                return;
+            }
+            KeyCode::KeyA => {
+                self.screen = Screen::Casino;
                 return;
             }
             KeyCode::KeyG => self
@@ -2376,6 +2390,8 @@ mod tests {
             Screen::Galaxy,
             Screen::Contracts,
             Screen::Bank,
+            Screen::Livestock,
+            Screen::Casino,
             Screen::Empire,
             Screen::Colony,
             Screen::Fleet,
@@ -3270,6 +3286,44 @@ mod tests {
     }
 
     #[test]
+    fn the_pens_and_the_casino_work_from_the_station() {
+        let mut g = Game::new(data(), 1);
+        g.key(KeyCode::Enter, None, true);
+        let (st, _) = g.sim.nearest_station().expect("station");
+        g.sim.spawn_near(st, g.sim.bodies[st].radius + 200.0);
+        g.sim.try_dock().expect("dock");
+        g.sim.credits = 1.0e6;
+        g.screen = Screen::Station;
+        g.key(KeyCode::KeyL, None, true);
+        assert_eq!(g.screen, Screen::Livestock);
+        frame(&g);
+        g.key(KeyCode::KeyB, None, true);
+        g.key(KeyCode::KeyB, None, true);
+        assert_eq!(g.sim.herd.len(), 2);
+        frame(&g);
+        g.key(KeyCode::ArrowRight, None, true);
+        g.key(KeyCode::KeyH, None, true);
+        assert_eq!(g.sim.herd.len(), 1, "an adult animal was harvested");
+        g.key(KeyCode::Escape, None, true);
+        assert_eq!(g.screen, Screen::Station);
+        g.key(KeyCode::KeyA, None, true);
+        assert_eq!(g.screen, Screen::Casino);
+        let credits = g.sim.credits;
+        g.key(KeyCode::Enter, None, true);
+        assert_ne!(g.sim.credits, credits, "a round was played");
+        assert!(g.farm.last.is_some());
+        frame(&g);
+        g.key(KeyCode::ArrowRight, None, true);
+        g.key(KeyCode::ArrowRight, None, true);
+        g.key(KeyCode::Equal, None, true);
+        assert_eq!(g.farm.number, 1);
+        g.key(KeyCode::Enter, None, true);
+        frame(&g);
+        g.key(KeyCode::Escape, None, true);
+        assert_eq!(g.screen, Screen::Station);
+    }
+
+    #[test]
     fn the_mouse_selects_contract_rows() {
         let mut g = Game::new(data(), 1);
         g.key(KeyCode::Enter, None, true);
@@ -3367,6 +3421,8 @@ mod tests {
             Screen::Galaxy,
             Screen::Contracts,
             Screen::Bank,
+            Screen::Livestock,
+            Screen::Casino,
             Screen::Empire,
             Screen::Colony,
             Screen::Fleet,
@@ -3415,6 +3471,8 @@ mod tests {
             (KeyCode::KeyK, Screen::Crew),
             (KeyCode::KeyC, Screen::Contracts),
             (KeyCode::KeyE, Screen::Bank),
+            (KeyCode::KeyL, Screen::Livestock),
+            (KeyCode::KeyA, Screen::Casino),
             (KeyCode::F2, Screen::Empire),
             (KeyCode::F3, Screen::Fleet),
         ];

@@ -110,7 +110,7 @@ pub fn hint_line(g: &Game) -> String {
             "WASD/QE ROT  ESP/X POUSSEE  MAJ BOOST  C FREIN  F ASSIST  TAB CIBLE  G AUTO  D AMARRER  V LASER  CTRL TIR  M CARTE  F1 AIDE"
         }
         Screen::Station => {
-            "HAUT/BAS CHOIX  ENTREE VENDRE  F PLEIN  R REPARER  H NAVIRE  Y CHANTIER  N RECRUTE  C CONTRATS  T BOURSE  G/J NOIR  U DECOLLER"
+            "HAUT/BAS CHOIX  ENTREE VENDRE  F PLEIN  R REPARER  H NAVIRE  Y CHANTIER  C CONTRATS  T BOURSE  L ELEVAGE  A CASINO  U DECOLLER"
         }
         Screen::Inventory => "HAUT/BAS CHOISIR  J JETER  I/ECHAP RETOUR",
         Screen::Pause => "HAUT/BAS CHOISIR  ENTREE VALIDER  ECHAP REPRENDRE",
@@ -144,6 +144,12 @@ pub fn hint_line(g: &Game) -> String {
         Screen::Contracts => "HAUT/BAS CONTRAT  ENTREE ACCEPTER/LIVRER  X ABANDONNER  ECHAP RETOUR",
         Screen::Bank => {
             "HAUT EMPRUNTER 1000  BAS REMBOURSER 1000  ENTREE TOUT REMBOURSER  ECHAP RETOUR"
+        }
+        Screen::Livestock => {
+            "HAUT/BAS ANIMAL  GAUCHE/DROITE ESPECE  B ACHETER  P REPRODUIRE  H ABATTRE  ECHAP RETOUR"
+        }
+        Screen::Casino => {
+            "GAUCHE/DROITE JEU  HAUT/BAS MISE  +/- NUMERO  ENTREE JOUER  ECHAP RETOUR"
         }
         Screen::Empire => "HAUT/BAS COLONIE  ENTREE DETAIL  F3 FLOTTE  ECHAP RETOUR",
         Screen::Colony => {
@@ -244,6 +250,11 @@ pub fn help_lines(screen: Screen) -> &'static [&'static str] {
         ],
         Screen::Contracts => &["Entree : accepter / livrer   X : abandonner"],
         Screen::Bank => &["Haut : emprunter 1000   Bas : rembourser 1000   Entree : tout"],
+        Screen::Livestock => &[
+            "B : acheter un animal   P : reproduire avec le meilleur partenaire",
+            "H : abattre (rendement selon les genes)   les animaux mangent des rations",
+        ],
+        Screen::Casino => &["Entree : jouer   la maison garde toujours un avantage"],
         Screen::Empire => &["Entree : detail de la colonie   F3 : flotte"],
         Screen::Colony => &[
             "Tab : zone   Haut/Bas : choix   Espace : on/off",

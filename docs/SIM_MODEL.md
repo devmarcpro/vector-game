@@ -144,3 +144,6 @@ Prix de référence = valeur de la ressource x facteur mondial de la région à 
 
 ## Entreprises cotées
 Cours = base x exp(somme des poids x ln(facteur mondial du bien)) x (1 + volatilité x bruit lent), les facteurs étant ceux de la région fixe de l'entreprise (`world_factors`) : fonction pure de la date. Frais de 1 % à l'achat et à la vente ; dividende tous les 30 jours = actions x cours x rendement annuel / 12 (jusqu'à 3 mois de retard rattrapés).
+
+## Elevage et casino
+Un animal a 4 traits de 2 alleles (0..4) ; l'enfant recoit un allele de chaque parent, mutation 2 %. Maturite 12-28 j, femelle au repos 30 j, rations 0,02*masse^0,75 par jour, famine mortelle apres 4-12 j. Casino : roulette 36/37 de retour, machine ~0,93 ; tirages par graine + compteur de parties.

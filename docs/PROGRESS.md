@@ -111,3 +111,5 @@
 - 2026-10-11 (lot) : Entreprises (note du joueur) : 8 sociétés cotées (`data/companies.ron`, validées : siège dans une faction, biens et poids, rendement, volatilité). Le cours d'une action suit les prix mondiaux de ce que l'entreprise fabrique (événements, dérive de sa région) plus un mouvement propre ; onglet ENTREPRISES de la bourse (E) : liste, graphique, B achète 10 actions, N en vend 10 (frais 1 %), dividende mensuel sur la valeur détenue ; catégorie ENTREPRISES du codex. Sauvegarde v25.
 
 - Marche noir (`blackmarket.rs`) : biens interdits negociables a prime, risque de descente de police. Touches G/J a quai.
+
+- Elevage (`livestock.rs`) : especes domestiques, genes mendeliens a 4 traits, reproduction, abattage, rations quotidiennes (save v26). Casino (`casino.rs`) : roulette et machine a sous, avantage de la maison mesure par test.

@@ -4,6 +4,7 @@ pub mod autopilot;
 pub mod blackmarket;
 pub mod bourse;
 pub mod cargo;
+pub mod casino;
 pub mod civ;
 pub mod colony;
 pub mod combat;
@@ -18,6 +19,7 @@ pub mod futures;
 pub mod gear;
 pub mod genealogy;
 pub mod intrusion;
+pub mod livestock;
 pub mod market;
 pub mod npc;
 pub mod planet;
@@ -276,6 +278,12 @@ pub struct Sim {
     pub last_dividend_month: i64,
     /// Day of the last intrusion roll (not saved).
     pub intrusion_day: i64,
+    /// Animals kept aboard, a counter for the dealer's stock, and the last day they were fed.
+    pub herd: Vec<livestock::Animal>,
+    pub herd_counter: i64,
+    /// Rounds played at the casino (feeds the draws).
+    pub casino_round: i64,
+    pub last_livestock_day: i64,
     /// Body used as velocity reference for flight assist (within its influence radius).
     pub ref_body: Option<usize>,
     pub target: Option<usize>,
@@ -406,6 +414,10 @@ impl Sim {
             shares: Vec::new(),
             last_dividend_month: i64::MIN,
             intrusion_day: i64::MIN,
+            herd: Vec::new(),
+            herd_counter: 0,
+            casino_round: 0,
+            last_livestock_day: i64::MIN,
             ref_body: None,
             target: None,
             credits: START_CREDITS,
@@ -682,6 +694,7 @@ impl Sim {
     }
 
     pub(crate) fn run_systems(&mut self, act: &Activity, dt: f64) {
+        self.livestock_tick();
         let flux = self.solar_flux();
         let mass = self.ship.mass();
         let was_hot = self.ship.sys.overheating;

@@ -6,7 +6,7 @@ use vector_data::GameData;
 use vector_world::generate_system;
 
 pub const MAGIC: [u8; 4] = *b"VECT";
-pub const VERSION: u32 = 25;
+pub const VERSION: u32 = 26;
 
 #[derive(Debug)]
 pub enum SaveError {
@@ -80,6 +80,10 @@ pub struct SaveGame {
     pub civ_rep: Vec<(u64, f32)>,
     pub futures: Vec<crate::futures::Future>,
     pub next_future: u32,
+    pub herd: Vec<crate::livestock::Animal>,
+    pub herd_counter: i64,
+    pub casino_round: i64,
+    pub last_livestock_day: i64,
     pub shares: Vec<(usize, f64)>,
     pub last_dividend_month: i64,
 }
@@ -130,6 +134,10 @@ impl Sim {
             civ_rep: self.civ_rep.iter().map(|(k, v)| (*k, *v)).collect(),
             futures: self.futures.clone(),
             next_future: self.next_future,
+            herd: self.herd.clone(),
+            herd_counter: self.herd_counter,
+            casino_round: self.casino_round,
+            last_livestock_day: self.last_livestock_day,
             shares: self.shares.clone(),
             last_dividend_month: self.last_dividend_month,
             ecologies: self
@@ -206,6 +214,10 @@ impl Sim {
         sim.civ_rep = save.civ_rep.into_iter().collect();
         sim.futures = save.futures;
         sim.next_future = save.next_future;
+        sim.herd = save.herd;
+        sim.herd_counter = save.herd_counter;
+        sim.casino_round = save.casino_round;
+        sim.last_livestock_day = save.last_livestock_day;
         sim.shares = save.shares;
         sim.last_dividend_month = save.last_dividend_month;
         for (id, time, bio, native) in save.ecologies {

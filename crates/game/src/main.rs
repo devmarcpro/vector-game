@@ -6,6 +6,7 @@ mod crew_net_view;
 mod dialogue_view;
 mod faction_view;
 mod family_view;
+mod farm_view;
 mod fleet_map_view;
 mod flight_menu;
 mod flow_view;

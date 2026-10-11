@@ -2,7 +2,7 @@
 //! weapon, faction, anomaly and condition, generated from the real data (no hand-written numbers).
 use vector_data::GameData;
 
-pub const CATEGORIES: [&str; 32] = [
+pub const CATEGORIES: [&str; 47] = [
     "RESSOURCES",
     "MODULES",
     "ARMES",
@@ -87,9 +87,9 @@ fn entries(data: &GameData, cat: usize) -> Vec<usize> {
         26 => (0..data.rogue_themes.len()).collect(),
         27 => (0..data.rogue_monsters.len()).collect(),
         28 => (0..data.materials.len()).collect(),
-        29 => (0..data.body_parts.len()).collect(),
-        30 => (0..data.wounds.len()).collect(),
-        31 => (0..data.drugs.len()).collect(),
+        44 => (0..data.body_parts.len()).collect(),
+        45 => (0..data.wounds.len()).collect(),
+        46 => (0..data.drugs.len()).collect(),
         _ => Vec::new(),
     }
 }
@@ -124,9 +124,9 @@ pub fn names(data: &GameData, cat: usize) -> Vec<String> {
             26 => data.rogue_themes[i].name.clone(),
             27 => data.rogue_monsters[i].name.clone(),
             28 => data.materials[i].name.clone(),
-            29 => data.body_parts[i].name.clone(),
-            30 => data.wounds[i].name.clone(),
-            31 => data.drugs[i].name.clone(),
+            44 => data.body_parts[i].name.clone(),
+            45 => data.wounds[i].name.clone(),
+            46 => data.drugs[i].name.clone(),
             18 => format!(
                 "Appeler : {}",
                 vector_data::dialogue::ROLES[i].to_lowercase()
@@ -847,7 +847,7 @@ pub fn entry(data: &GameData, cat: usize, k: usize) -> Vec<String> {
                 "Non piratable (aucune interface sans fil).".to_string()
             });
         }
-        29 => {
+        44 => {
             let p = &data.body_parts[i];
             out.push(format!(
                 "{}  ({})",
@@ -877,7 +877,7 @@ pub fn entry(data: &GameData, cat: usize, k: usize) -> Vec<String> {
                 .collect();
             out.push(format!("Blessures possibles : {}", wounds.join(", ")));
         }
-        30 => {
+        45 => {
             let w = &data.wounds[i];
             out.push(format!(
                 "{}  ({})",
@@ -916,7 +916,7 @@ pub fn entry(data: &GameData, cat: usize, k: usize) -> Vec<String> {
                 .collect();
             out.push(format!("Peut toucher : {}", places.join(", ")));
         }
-        31 => {
+        46 => {
             let d = &data.drugs[i];
             out.push(format!("{}  ({})", d.name, d.text));
             out.push(format!(

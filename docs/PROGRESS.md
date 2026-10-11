@@ -11,7 +11,7 @@
 - [x] M7 Économie vivante (reste : escortes/convois de la flotte joueur en M8, combat pirates en M9)
 - [x] M8 Colonies et empire (reste : individus détaillés des colonies, convois armés en M9)
 - [x] M9 Combat, menaces, science (reste : IA tactique plus riche, escorte de flotte)
-- [~] M10 Contenu et finition (fait : contenu aux seuils, règles, options, codex, aide/tutoriel, outils, audio, --script ; reste : paquet dist/, README, rapport final)
+- [x] M10 Contenu et finition (voir docs/ACCEPTANCE.md)
 
 ## Journal
 - 2026-10-11 : rustup installé (rustc 1.99, cargo 1.99), git init. Build Tools MSVC en cours d'installation (winget, en arrière-plan).
@@ -29,3 +29,4 @@
 - 2026-10-11 : M10 (a) : règles de partie (13 options testées), menus principal/pause étendus, écrans Règles/Options/Codex, console réservée au mode créatif, accélération max, mort permanente, marqueur PARTIE MODIFIEE.
 - 2026-10-11 : M10 (b) : montée en charge du contenu (`tools/gen_scale.py`) : 155 événements, 106 recettes, 300+ gabarits de texte, classe stellaire D ; codex F6 (11 catégories, 350+ entrées générées) ; options graphiques (CRT, halo, palettes) ; outils `data_check`, `sim_bench`, `balance_check` (crate `tools`).
 - 2026-10-11 : M10 (c) : tutoriel guidé de 15 étapes, aide contextuelle F1 sur tous les écrans, audio procédural (cpal), mode `--script` avec scripts de régression rejoués par `cargo test`.
+- 2026-10-11 : M10 (d) : README, docs/ACCEPTANCE.md, paquet `dist/VECTOR.zip` (`tools/package.ps1`). `sim_bench 100` : 100 ans en 26 s, stable.

@@ -94,6 +94,7 @@ Par défaut AZERTY : tangage Z/S, lacet Q/D, roulis A/E. Options > Clavier bascu
 Écran de préparation : Haut/Bas, Espace coche un équipier ou le rover, Entrée part. Ensuite c'est l'exploration commune (voir « Exploration à pied ») : flèches, pavé numérique ou Z/Q/S/D pour avancer (foncer sur un animal ou un monstre l'attaque), les plantes et le butin se ramassent en marchant, Entrée sur un site (ruine, grotte, épave…) y descend et sur < remonte, V lance un drone, R rappelle l'équipe depuis la surface, Tab change de chef, clic = marcher jusqu'à la case.
 
 - **Globe de surface** : glisser avec le bouton gauche pour le faire tourner.
+- **Carte de surface (F8)** : Tab change de couche (biomes, altitude, température, humidité, météo, vie, nuages). Sur la couche biomes, `~` marque un lac ou un fleuve et `=` l'eau prise par la glace (selon la saison) ; le panneau de droite dit la mer, le lac ou le fleuve sous le curseur, son débit et s'il est gelé.
 
 - **Menu de pilotage** (cockpit, à droite) : cliquer un mot ouvre l'écran ou exécute la commande ; les mots « (MAINT.) » agissent tant que le bouton de la souris reste enfoncé. F11 plie ou déplie le menu (Options > Menu de pilotage pour le retirer).
 

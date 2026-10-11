@@ -6,7 +6,7 @@
 use crate::globe::elev_at;
 use vector_render::Framebuffer;
 use vector_sim::planet::PlanetMap;
-use vector_world::surface::{H, W};
+use vector_world::surface::{Surface, H, W};
 
 /// Wavelength of the coarsest octave added to the map, and the ratio between octaves.
 const LAMBDA0: f64 = 800_000.0;
@@ -21,7 +21,23 @@ pub struct Terrain<'a> {
     /// Craters (airless worlds: nothing wears them away), and the seed of their placing.
     pub craters: bool,
     pub seed: u64,
+    /// Which cells of the map have their water frozen now (empty: none do).
+    pub ice: Vec<bool>,
 }
+
+/// Water on the land: a lake (flat, at the level its basin would fill to) or a river (a line
+/// that follows the ground), with the height of its surface (m above the sea).
+#[derive(Clone, Copy, Debug)]
+pub struct Inland {
+    pub river: bool,
+    pub level: f32,
+}
+
+/// Colours of the water, and of its ice.
+pub const SEA_ICE: u32 = 0x00D8_ECF8;
+pub const LAKE_ICE: u32 = 0x00C0_E0F0;
+pub const LAKE_COLOR: u32 = 0x0020_60A8;
+pub const RIVER_COLOR: u32 = 0x002A_6CB4;
 
 fn noise2(x: f64, y: f64) -> f32 {
     let (ix, iy) = (x.floor(), y.floor());
@@ -44,7 +60,53 @@ impl<'a> Terrain<'a> {
             relief: (radius * 0.0007).clamp(1500.0, 9000.0),
             craters: map.pressure < 0.02,
             seed: map.seed,
+            ice: Vec::new(),
         }
+    }
+
+    /// The same ground at a point of the year: the water that is cold enough there is ice.
+    pub fn with_season(mut self, phase: f64) -> Self {
+        let s = &self.map.surface;
+        if s.elev.iter().any(|&e| e < 0.0) {
+            let temps = vector_world::climate::season_map(s, phase);
+            self.ice = (0..W * H)
+                .map(|i| {
+                    let (x, y) = (i % W, i / W);
+                    s.is_water(x, y)
+                        && vector_world::climate::frozen(f64::from(temps[i]), s.is_sea(x, y))
+                })
+                .collect();
+        }
+        self
+    }
+
+    pub fn is_ice(&self, x: usize, y: usize) -> bool {
+        self.ice.get(Surface::idx(x, y)).copied().unwrap_or(false)
+    }
+
+    /// The lake or river at a point, if there is one. Rivers are drawn at least as wide as the
+    /// pixel (`lod`, m) so that they stay visible from afar, and meander a little.
+    pub fn inland_water(&self, lat: f64, lon: f64, lod: f64) -> Option<Inland> {
+        let h = &self.map.surface.hydro;
+        let fx = lon.rem_euclid(std::f64::consts::TAU) / std::f64::consts::TAU * W as f64 - 0.5;
+        let fy = (0.5 - lat / std::f64::consts::PI) * H as f64 - 0.5;
+        let (wx, wy) = (lon * self.radius, lat * self.radius);
+        let lake = h.lake_at(fx, fy);
+        if lake > 0.0 && lake > 0.5 + 0.2 * noise2(wx / 40_000.0, wy / 40_000.0) {
+            let level = h.filled_at(fx, fy).max(0.0) as f64 * self.relief;
+            return Some(Inland {
+                river: false,
+                level: level as f32,
+            });
+        }
+        let cell_n = self.radius * std::f64::consts::PI / H as f64;
+        let (d, rel) = h.river_near(fx, fy)?;
+        let meander = f64::from(noise2(wx / 90.0, wy / 90.0)) * 5.0;
+        let half = vector_world::hydro::river_half_width_m(rel).max(lod * 1.2);
+        (d * cell_n + meander < half).then_some(Inland {
+            river: true,
+            level: f32::NAN,
+        })
     }
 
     /// The cell of the map a point belongs to.
@@ -157,6 +219,8 @@ pub struct Frame {
 /// distance at which the air hides the ground (m).
 pub struct Sky {
     pub air: Option<(u32, u32)>,
+    /// Cloud cover over the eye, 0..1: the sky greys and the light with it.
+    pub cloud: f32,
     /// Distance at which the air at the ground hides the ground (m), and the scale height of
     /// that air (m): the thinner it gets with height, the less it hazes.
     pub haze: f64,
@@ -222,9 +286,10 @@ pub fn render(
         rows: fr.h,
         d: vec![f32::MAX; (cols * fr.h) as usize],
     };
-    let horizon_color = sky.air.map_or(0, |a| a.1);
+    let overcast = |c: u32| mix(c, 0x0098_A0A8, (sky.cloud * 0.75).clamp(0.0, 0.75));
+    let horizon_color = sky.air.map_or(0, |a| overcast(a.1));
     // The sky above the horizon.
-    if let Some((top, low)) = sky.air {
+    if let Some((top, low)) = sky.air.map(|(t, l)| (overcast(t), overcast(l))) {
         for y in 0..fr.h {
             let up = ((horizon - f64::from(y)) / (fr.focal * 0.9)).clamp(0.0, 1.0) as f32;
             let c = mix(low, top, up.sqrt());
@@ -249,7 +314,18 @@ pub fn render(
             let lon = eye.lon + de * d / (t.radius * cos_lat);
             let (h_raw, e) = t.sample(lat, lon, d / fr.focal * 2.0);
             let sea = e <= 0.0 && h_raw <= 0.0;
-            let h = if sea { 0.0 } else { f64::from(h_raw) };
+            let inland = if sea {
+                None
+            } else {
+                t.inland_water(lat, lon, d / fr.focal * 2.0)
+            };
+            let h = match inland {
+                _ if sea => 0.0,
+                Some(w) if !w.river => f64::from(w.level),
+                // A river lies a little below the ground it cuts through.
+                Some(_) => f64::from(h_raw) - 1.5,
+                None => f64::from(h_raw),
+            };
             let drop = d * d / (2.0 * t.radius);
             let dz = h - eye.height - drop;
             let ytop = (horizon - fr.focal * dz / (d * cos_t)).floor() as i32;
@@ -264,12 +340,24 @@ pub fn render(
                     + 0.10 * noise2(wx / 400.0, wy / 400.0)
                     + near
                         * (0.10 * noise2(wx / 3.0, wy / 3.0) + 0.07 * noise2(wx / 30.0, wy / 30.0));
+                let iced = t.is_ice(ci, ri);
                 let k = if sea {
-                    base = mix(
-                        0x0018_4A8C,
-                        0x0030_90B0,
-                        (1.0 - (-e * 3.0).exp()).clamp(0.0, 0.7),
-                    );
+                    base = if iced {
+                        SEA_ICE
+                    } else {
+                        mix(
+                            0x0018_4A8C,
+                            0x0030_90B0,
+                            (1.0 - (-e * 3.0).exp()).clamp(0.0, 0.7),
+                        )
+                    };
+                    1.0
+                } else if let Some(w) = inland {
+                    base = match (iced, w.river) {
+                        (true, _) => LAKE_ICE,
+                        (false, true) => RIVER_COLOR,
+                        (false, false) => LAKE_COLOR,
+                    };
                     1.0
                 } else {
                     let hh = h as f32 / t.relief as f32;
@@ -327,6 +415,59 @@ mod tests {
     }
 
     #[test]
+    fn rivers_run_along_their_line_lakes_are_flat_and_water_freezes_with_the_season() {
+        let (s, i) = world();
+        let mut map = s.planet_map(i).unwrap();
+        let (x, y) = (60usize, 30usize);
+        let k = Surface::idx(x, y);
+        // One river of one cell flowing east, no other water but a lake far away.
+        let h = &mut map.surface.hydro;
+        h.river.iter_mut().for_each(|r| *r = false);
+        h.lake.iter_mut().for_each(|l| *l = false);
+        h.river[k] = true;
+        h.down[k] = 0;
+        h.flow[k] = 10.0;
+        h.max_flow = 10.0;
+        h.lake[Surface::idx(20, 10)] = true;
+        let t = Terrain::new(&map, s.bodies[i].radius);
+        let on = t.inland_water(Surface::lat(y), Surface::lon(x), 1.0);
+        assert!(
+            on.is_some_and(|w| w.river),
+            "the line runs through its cell"
+        );
+        let east = t.inland_water(
+            Surface::lat(y),
+            Surface::lon(x) + 0.5 * std::f64::consts::TAU / W as f64,
+            1.0,
+        );
+        assert!(east.is_some_and(|w| w.river), "and on to the next one");
+        assert!(t
+            .inland_water(Surface::lat(y + 6), Surface::lon(x), 1.0)
+            .is_none());
+        // Far away a river is as wide as a pixel, up close it is a few metres.
+        let near = Surface::lat(y) + 40.0 / t.radius;
+        assert!(
+            t.inland_water(near, Surface::lon(x), 1.0).is_none(),
+            "40 m off the line is dry"
+        );
+        assert!(
+            t.inland_water(near, Surface::lon(x), 100.0).is_some(),
+            "but not seen from afar"
+        );
+        // The lake is flat and at its own level.
+        let lake = t.inland_water(Surface::lat(10), Surface::lon(20), 1.0);
+        assert!(lake.is_some_and(|w| !w.river && w.level >= 0.0));
+        // Ice follows the temperature of the season.
+        let mut cold = map.clone();
+        cold.surface.elev[Surface::idx(5, 5)] = -0.2;
+        cold.surface.temp[Surface::idx(5, 5)] = 240.0;
+        cold.surface.elev[Surface::idx(6, 5)] = -0.2;
+        cold.surface.temp[Surface::idx(6, 5)] = 300.0;
+        let t = Terrain::new(&cold, s.bodies[i].radius).with_season(0.3);
+        assert!(t.is_ice(5, 5) && !t.is_ice(6, 5));
+    }
+
+    #[test]
     fn the_ground_is_continuous_deterministic_and_finer_the_closer_you_look() {
         let (s, i) = world();
         let map = s.planet_map(i).unwrap();
@@ -379,6 +520,7 @@ mod tests {
             focal: 200.0,
         };
         let sky = Sky {
+            cloud: 0.0,
             air: Some((0x0040_70C0, 0x00B0_D0F0)),
             haze: 40_000.0,
             scale: 8000.0,

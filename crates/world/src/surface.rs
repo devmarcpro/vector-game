@@ -2,6 +2,7 @@
 //! temperature and humidity on an equirectangular grid. Nothing is stored: the same seed always
 //! gives the same map. Noise is sampled on the unit sphere, so the map has no seam at the
 //! date line and no stretching at the poles.
+use crate::hydro::Hydro;
 use crate::PlanetKind;
 use vector_core::hash_coord;
 
@@ -56,6 +57,10 @@ pub struct Surface {
     pub tilt: f32,
     /// Fraction of cells below sea level.
     pub sea_frac: f32,
+    /// Seed of the body, for everything else that is drawn from it (clouds).
+    pub seed: u64,
+    /// Rivers and lakes, derived from the relief and the humidity.
+    pub hydro: Hydro,
 }
 
 impl Surface {
@@ -76,6 +81,19 @@ impl Surface {
     pub fn is_sea(&self, x: usize, y: usize) -> bool {
         self.elev[Self::idx(x, y)] < 0.0
     }
+
+    pub fn is_lake(&self, x: usize, y: usize) -> bool {
+        self.hydro.lake[Self::idx(x, y)]
+    }
+
+    pub fn is_river(&self, x: usize, y: usize) -> bool {
+        self.hydro.river[Self::idx(x, y)]
+    }
+
+    /// Sea, lake or river: liquid water (or ice) lies here.
+    pub fn is_water(&self, x: usize, y: usize) -> bool {
+        self.is_sea(x, y) || self.is_lake(x, y) || self.is_river(x, y)
+    }
 }
 
 fn smooth(t: f64) -> f64 {
@@ -83,7 +101,7 @@ fn smooth(t: f64) -> f64 {
 }
 
 /// Value noise in [-1, 1] on a 3D lattice.
-fn noise3(seed: u64, x: f64, y: f64, z: f64) -> f64 {
+pub(crate) fn noise3(seed: u64, x: f64, y: f64, z: f64) -> f64 {
     let (ix, iy, iz) = (x.floor(), y.floor(), z.floor());
     let (fx, fy, fz) = (smooth(x - ix), smooth(y - iy), smooth(z - iz));
     let corner = |dx: i64, dy: i64, dz: i64| {
@@ -98,7 +116,7 @@ fn noise3(seed: u64, x: f64, y: f64, z: f64) -> f64 {
     lerp(lerp(x00, x10, fy), lerp(x01, x11, fy), fz)
 }
 
-fn fbm(seed: u64, p: [f64; 3], octaves: u32) -> f64 {
+pub(crate) fn fbm(seed: u64, p: [f64; 3], octaves: u32) -> f64 {
     let (mut sum, mut amp, mut freq, mut norm) = (0.0, 1.0, 1.0, 0.0);
     for o in 0..octaves {
         sum += amp
@@ -220,6 +238,7 @@ pub fn generate(seed: u64, kind: PlanetKind, temp_eq: f64) -> Option<Surface> {
             temp[i] = t as f32;
         }
     }
+    let hydro = Hydro::compute(&elev, &hum);
     let tilt = (hash_coord(seed, 7, 7, 7) % 10_000) as f64 / 10_000.0 * 0.65 + 0.02;
     Some(Surface {
         elev,
@@ -227,6 +246,8 @@ pub fn generate(seed: u64, kind: PlanetKind, temp_eq: f64) -> Option<Surface> {
         hum,
         tilt: tilt as f32,
         sea_frac: sea_cells as f32 / (W * H) as f32,
+        seed,
+        hydro,
     })
 }
 

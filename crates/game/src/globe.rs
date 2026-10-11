@@ -146,6 +146,8 @@ pub struct Paint<'a> {
     pub color: &'a dyn Fn(usize, usize) -> u32,
     /// Air pressure (bar): above a trace, a bright rim of atmosphere is drawn.
     pub air: f64,
+    /// Cloud cover (0..1) above a point (latitude, longitude in rad); None: no clouds.
+    pub clouds: Option<&'a dyn Fn(f64, f64) -> f32>,
 }
 
 /// Elevation of the map at a fractional cell, bilinear, wrapping in longitude.
@@ -280,6 +282,14 @@ pub fn fill_world(
                             1.0 + 0.12 * noise2(lon * radius / 30_000.0, lat * radius / 30_000.0);
                     } else {
                         shade *= 1.0 + 0.06 * e.clamp(-1.0, 0.0);
+                    }
+                }
+                // Clouds hide the ground and shade the part of the sky they stand in.
+                if let Some(cloud) = paint.clouds {
+                    let c = cloud(lat, lon);
+                    if c > 0.02 {
+                        base = mix_color(base, 0x00F4_F6FA, (c * 0.92).min(0.92));
+                        shade = shade * (1.0 - c) + c * 0.95;
                     }
                 }
                 let light = n.dot(sun).max(-0.2);

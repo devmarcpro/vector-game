@@ -27,6 +27,10 @@ pub const T_SITE: u8 = 5;
 pub const T_FEATURE: u8 = 6;
 /// First terminal tile; terminal `k` of `ROGUE_TERMINALS` is `T_TERMINAL + k`.
 pub const T_TERMINAL: u8 = T_FEATURE + 16;
+/// Metres of ground one tile of a surface floor stands for (the same in the 3D view).
+pub const TILE_M: f64 = 3.0;
+/// Water thicker than this under its freezing point carries a squad: ice, not a thin skin.
+pub const ICE_WALKS_BELOW: f64 = 262.0;
 
 /// How far the squad sees, and seconds one turn takes in a dungeon and on a surface.
 pub const VIEW_RADIUS: i32 = 9;
@@ -676,6 +680,22 @@ pub fn generate_social(
     }
 }
 
+/// A hard freeze turns the water of a surface floor into ice one can walk on (a thin freeze only
+/// makes the water "eau gelee", which still does not carry anyone).
+pub fn freeze_over(data: &GameData, tiles: &mut [u8], mats: &mut [u8], temp: f64) {
+    if temp >= ICE_WALKS_BELOW {
+        return;
+    }
+    if let Some(ice) = data.material_index("banquise") {
+        for (t, m) in tiles.iter_mut().zip(mats.iter_mut()) {
+            if *t == T_WATER {
+                *t = T_FLOOR;
+                *m = ice as u8;
+            }
+        }
+    }
+}
+
 /// What the cells of a floor are made of: the floor and wall materials of the place, or on a
 /// surface the ground the biome is made of (patches of the materials that make it up, snow and
 /// ice where it is cold) and the liquid its temperature allows.
@@ -1267,7 +1287,7 @@ impl Sim {
         }
         self.expedition_possible(body)?;
         let map = self.planet_map(body).ok_or("pas de surface solide")?;
-        if map.surface.is_sea(cx, cy) {
+        if map.surface.is_sea(cx, cy) || map.surface.is_lake(cx, cy) {
             return Err("pas de terre ferme ici");
         }
         let party = self.able(party);
@@ -1280,22 +1300,69 @@ impl Sim {
         let hum = f64::from(map.surface.hum[Surface::idx(cx, cy)]);
         let (w, h) = (MAP_W as i32, MAP_H as i32);
         let at = |x: i32, y: i32| (y * w + x) as usize;
-        // Ground: rocks and, in wet places, ponds.
+        let (lx, ly) = (w / 2, h / 2);
+        // Ground: rocks, ponds in wet places, the river of the cell (the same line the 3D view
+        // draws, from the map) and the shore where a sea or a lake lies next to the cell.
+        let radius = self.bodies[body].radius;
+        let cell_n = radius * std::f64::consts::PI / SURF_H as f64;
+        let cell_e = (radius * Surface::lat(cy).cos().abs().max(0.05) * std::f64::consts::TAU
+            / SURF_W as f64)
+            .max(1.0);
+        let wet_next = |dx: isize, dy: isize| {
+            let (nx, ny) = (
+                (cx as isize + dx).rem_euclid(SURF_W as isize) as usize,
+                cy as isize + dy,
+            );
+            (0..SURF_H as isize).contains(&ny)
+                && (map.surface.is_sea(nx, ny as usize) || map.surface.is_lake(nx, ny as usize))
+        };
+        let shores = [
+            wet_next(1, 0),
+            wet_next(-1, 0),
+            wet_next(0, -1),
+            wet_next(0, 1),
+        ];
         let mut tiles = vec![T_FLOOR; MAP_W * MAP_H];
         for y in 0..h {
             for x in 0..w {
                 let n = vnoise(seed, f64::from(x) / 6.0, f64::from(y) / 6.0);
                 let wv = vnoise(seed ^ 0xA5A5, f64::from(x) / 9.0, f64::from(y) / 9.0);
-                tiles[at(x, y)] = if n > 0.80 {
+                let (fx, fy) = (
+                    cx as f64 + f64::from(x - lx) * TILE_M / cell_e,
+                    cy as f64 + f64::from(y - ly) * TILE_M / cell_n,
+                );
+                let river = map
+                    .surface
+                    .hydro
+                    .river_near(fx, fy)
+                    .is_some_and(|(d, rel)| {
+                        let meander =
+                            (vnoise(seed ^ 0x71BE, f64::from(x) / 9.0, f64::from(y) / 9.0) - 0.5)
+                                * 20.0;
+                        d * cell_n + meander < vector_world::hydro::river_half_width_m(rel)
+                    });
+                // Distance of the tile from the edge of the grid facing each neighbour.
+                let edge = [w - 1 - x, x, y, h - 1 - y];
+                let shore = (0..4).any(|k| {
+                    shores[k]
+                        && f64::from(edge[k])
+                            < 2.0
+                                + 8.0
+                                    * vnoise(
+                                        seed ^ (0x5408 + k as u64),
+                                        f64::from(x) / 5.0,
+                                        f64::from(y) / 5.0,
+                                    )
+                });
+                tiles[at(x, y)] = if n > 0.80 && !river && !shore {
                     T_WALL
-                } else if hum > 0.45 && wv < 0.22 {
+                } else if river || shore || (hum > 0.45 && wv < 0.22) {
                     T_WATER
                 } else {
                     T_FLOOR
                 };
             }
         }
-        let (lx, ly) = (w / 2, h / 2);
         for dy in -2..=2 {
             for dx in -2..=2 {
                 tiles[at(lx + dx, ly + dy)] = T_FLOOR;
@@ -1306,7 +1373,7 @@ impl Sim {
         // keep off ice and fire.
         let surface = self.data.rogue_theme_index("surface").unwrap_or(0);
         let temp_here = self.temp_now(&map, cx, cy);
-        let mats = paint(
+        let mut mats = paint(
             &self.data,
             &tiles,
             MAP_W,
@@ -1314,6 +1381,7 @@ impl Sim {
             seed,
             Some((&b.id, temp_here)),
         );
+        freeze_over(&self.data, &mut tiles, &mut mats, temp_here);
         let fertile = |x: i32, y: i32| self.data.materials[usize::from(mats[at(x, y)])].fertility;
         let avoided = |x: i32, y: i32| animal_avoids(&self.data, usize::from(mats[at(x, y)]));
         let mut monsters: Vec<Mon> = Vec::new();
@@ -3289,6 +3357,119 @@ mod tests {
         assert!(ground.len() >= 2, "a landing is not one uniform ground");
         for (t, m) in f.tiles.iter().zip(&f.mats) {
             assert_eq!(d.materials[usize::from(*m)].kind, kind_of(*t));
+        }
+    }
+
+    /// A land cell of a world with rivers: (sim, body, cx, cy) with the number of tiles of water of
+    /// the floor it makes, for a cell on a river and for a dry cell far from any water.
+    fn water_tiles(sim: &mut Sim, body: usize, cx: usize, cy: usize) -> Option<usize> {
+        sim.rogue = None;
+        sim.ship.pos =
+            sim.bodies[body].pos - vector_core::Vec3::new(0.0, 0.0, sim.bodies[body].radius * 3.0);
+        sim.ship.vel = sim.bodies[body].vel;
+        sim.update_ref();
+        sim.rogue_land(body, cx, cy, vec![0], false).ok()?;
+        let r = sim.rogue.take()?;
+        Some(r.floor().tiles.iter().filter(|&&t| t == T_WATER).count())
+    }
+
+    #[test]
+    fn a_river_cell_has_a_river_on_its_grid_and_a_dry_cell_has_none() {
+        for seed in 1..80u64 {
+            let mut s = new_sim(seed, data());
+            for body in 0..s.bodies.len() {
+                let Some(map) = s.planet_map(body) else {
+                    continue;
+                };
+                let h = &map.surface.hydro;
+                let near_water = |x: usize, y: usize| {
+                    (-3i32..=3).any(|dy| {
+                        (-3i32..=3).any(|dx| {
+                            let (xx, yy) = (
+                                (x as i32 + dx).rem_euclid(SURF_W as i32) as usize,
+                                (y as i32 + dy).clamp(0, SURF_H as i32 - 1) as usize,
+                            );
+                            map.surface.is_water(xx, yy)
+                        })
+                    })
+                };
+                let dry = (4..SURF_H - 4)
+                    .flat_map(|y| (0..SURF_W).map(move |x| (x, y)))
+                    .find(|&(x, y)| {
+                        !near_water(x, y)
+                            && map.surface.hum[Surface::idx(x, y)] < 0.4
+                            && !map.surface.is_sea(x, y)
+                    });
+                let river = (4..SURF_H - 4)
+                    .flat_map(|y| (0..SURF_W).map(move |x| (x, y)))
+                    .find(|&(x, y)| {
+                        h.river[Surface::idx(x, y)]
+                            && map.surface.hum[Surface::idx(x, y)] < 0.45
+                            && s.temp_now(&map, x, y) > 276.0
+                            && !(-1i32..=1).any(|d| {
+                                map.surface
+                                    .is_sea((x as i32 + d).rem_euclid(SURF_W as i32) as usize, y)
+                                    || map.surface.is_sea(x, (y as i32 + d) as usize)
+                            })
+                    });
+                let (Some(dry), Some(river)) = (dry, river) else {
+                    continue;
+                };
+                let Some(w_river) = water_tiles(&mut s, body, river.0, river.1) else {
+                    continue;
+                };
+                let Some(w_dry) = water_tiles(&mut s, body, dry.0, dry.1) else {
+                    continue;
+                };
+                assert_eq!(w_dry, 0, "no water, no river: a dry cell has none");
+                assert!(
+                    w_river >= 20,
+                    "the river shows on the grid: {w_river} tiles"
+                );
+                return;
+            }
+        }
+        panic!("no world with both a dry cell and a dry-climate river found");
+    }
+
+    #[test]
+    fn a_hard_freeze_makes_ice_one_can_walk_on_and_a_thin_one_does_not() {
+        let d = data();
+        let surface = d.rogue_theme_index("surface").unwrap();
+        let t = &d.rogue_themes[surface];
+        let mut tiles = vec![T_FLOOR; MAP_W * MAP_H];
+        tiles[7] = T_WATER;
+        tiles[8] = T_WATER;
+        // Just under the freezing point: still water that cannot be crossed.
+        let mut mats = paint(&d, &tiles, MAP_W, t, 5, Some(("desert", 270.0)));
+        let mut thin = tiles.clone();
+        freeze_over(&d, &mut thin, &mut mats, 270.0);
+        assert_eq!(thin[7], T_WATER);
+        // Deep freeze: the same cells become ice floor.
+        let mut mats = paint(&d, &tiles, MAP_W, t, 5, Some(("desert", 240.0)));
+        let mut hard = tiles.clone();
+        freeze_over(&d, &mut hard, &mut mats, 240.0);
+        assert_eq!((hard[7], hard[8]), (T_FLOOR, T_FLOOR));
+        let ice = d.material_index("banquise").unwrap() as u8;
+        assert_eq!((mats[7], mats[8]), (ice, ice));
+        assert_eq!(d.materials[usize::from(mats[7])].kind, "floor");
+    }
+
+    #[test]
+    fn lakes_and_seas_are_not_landed_on() {
+        let mut s = new_sim(3, data());
+        for body in 0..s.bodies.len() {
+            let Some(map) = s.planet_map(body) else {
+                continue;
+            };
+            for y in 0..SURF_H {
+                for x in 0..SURF_W {
+                    if map.surface.is_lake(x, y) {
+                        assert!(s.rogue_land(body, x, y, vec![0], false).is_err());
+                        return;
+                    }
+                }
+            }
         }
     }
 

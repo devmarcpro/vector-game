@@ -141,6 +141,20 @@ Sans épidémie en cours et au-delà de 20 habitants : probabilité par jour 0.0
 ## Contrats à terme
 Prix de référence = valeur de la ressource x facteur mondial de la région à la date (événements, dérive). Marge = 25 % de la valeur au prix d'ouverture. Règlement : marge + (prix - prix d'ouverture) x kg x (+1 hausse, -1 baisse), jamais négatif. Les gains ne dépendent que de la date et du lieu de signature : déterministes.
 
+## Hydrologie, saisons et nuages (`world/hydro.rs`, `world/climate.rs`)
+
+- Declinaison solaire d = asin(sin(inclinaison) sin(2 pi phase)). Ensoleillement journalier moyen
+  Q(lat, d) = (h0 sin lat sin d + cos lat cos d sin h0) / pi, h0 = acos(-tan lat tan d) (jour et nuit polaires
+  inclus). T(case) = T_moyenne + 80 K (Q(lat, d(phase - retard)) - Q_moyen(lat)) (1 - hum / 2), retard
+  = 0,04 + 0,08 hum de l'annee : un pole incline est chaud l'ete, froid l'hiver ; l'equateur bouge peu.
+- Gel : mer sous 271,4 K, eau douce sous 273,15 K ; un sol de grille a pied sous 262 K porte l'equipe.
+- Rivieres : remplissage depuis la mer (tas de priorite, eps = 1e-5), `down` = voisin parmi 8 strictement
+  plus bas, pluie propre = 0,02 + hum^1,2 cumulee vers l'aval ; fleuve si debit >= 2,5, lac si la cuvette
+  est profonde de plus de 0,004 et recoit >= 1. Pas de mer, pas de fleuve.
+- Nuages : couverture = lissage de 0,95 hum (0,35 + 0,65 chaud) + 0,5 motif + 0,3 convergence
+  (gaussienne autour de 0,8 d) + 0,8 epaisseur - 0,3, fois 1 - exp(-3 P). Vent zonal -cos(3 lat) x
+  2,5 sqrt(rotation / jour) x contraste equateur-poles / 50 K, en cases par jour. Pression < 0,01 bar : aucune.
+
 ## Culture des colonies
 `culture_target` = mœurs des fondateurs + (niveau de sécurité - 1) x 0.5 sur violence et autorité, (niveau d'immigration - 1) x 0.6 et -(quarantaine - 1) x 0.2 sur l'ouverture ; la culture rejoint sa cible avec une constante de 600 jours. Friction : loi martiale chez des pacifistes (violence < -0.3) -0.08, sécurité libre chez des autoritaires -0.05, frontières ouvertes chez des xénophobes -0.08, fermées chez des ouverts -0.05, soustrait de la cible de moral.
 

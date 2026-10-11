@@ -180,7 +180,6 @@ fn draw_world(fb: &mut Framebuffer, cam: &Camera, v: &View, i: usize) -> bool {
     let angle = std::f64::consts::TAU * v.sim.time / v.sim.system.spin_period(i).max(60.0);
     let orient = Mat3::rot_z(f64::from(map.surface.tilt)).mul(&Mat3::rot_y(angle));
     let sun = (b.pos * -1.0).normalized();
-    let data = &v.sim.data;
     // Low over the ground the world stops being a ball: the same ground is marched to the horizon.
     if terrain_view(fb, cam, v, i, &map, &orient) {
         return true;
@@ -195,8 +194,9 @@ fn draw_world(fb: &mut Framebuffer, cam: &Camera, v: &View, i: usize) -> bool {
         sun,
         &crate::globe::Paint {
             map: Some(&map),
-            color: &|x, y| data.biomes[map.biome_at(x, y)].color,
+            color: &|x, y| crate::surface_view::ground_color(v.sim, &map, x, y),
             air: map.pressure,
+            clouds: Some(&|lat, lon| v.sim.cloud_cover(&map, lat, lon)),
         },
     );
     true
@@ -241,7 +241,7 @@ fn terrain_view(
     let yaw = fwd.dot(east).atan2(fwd.dot(north));
     let sun = (b.pos * -1.0).normalized();
     let air = map.pressure;
-    let t = crate::terrain::Terrain::new(map, b.radius);
+    let t = crate::terrain::Terrain::new(map, b.radius).with_season(v.sim.season_phase(map.body));
     let data = &v.sim.data;
     let focal = fb.h as f64 * 0.5 / (cam.fov_y * 0.5).tan();
     let horizon_dist = (2.0 * b.radius * alt.max(10.0)).sqrt();
@@ -265,6 +265,7 @@ fn terrain_view(
             focal,
         },
         &crate::terrain::Sky {
+            cloud: v.sim.cloud_cover(map, lat, lon),
             air: v.sim.air_of(i).filter(|a| a.ground > 0.05).map(|a| {
                 // The zenith goes dark with height as the air thins out.
                 let k = (a.pressure(alt) / a.ground).sqrt() as f32;
@@ -342,6 +343,7 @@ fn draw_ball(fb: &mut Framebuffer, cam: &Camera, v: &View, i: usize, col: u32, b
                 (ch(16) << 16) | (ch(8) << 8) | ch(0)
             },
             air: if bands { 1.0 } else { sys.pressure },
+            clouds: None,
         },
     );
 }

@@ -90,3 +90,6 @@ ponderees par `ground_of`), la neige et la glace apparaissent quand il fait froi
 lave remplace l'eau selon la temperature. Les lieux construits nomment leur matiere (`floor_mat`,
 `wall_mat`). La matiere agit : `slow` multiplie le temps de marche (boue x2, neige x1,5, glace x0,8) et
 un rover la ressent 2,5 fois moins. Sauvegardes : version 35.
+
+## Reseau d'energie des colonies
+Un seul systeme d'energie : `Colony::tick` (colony.rs). La source d'une centrale est une donnee (`source` : solar, wind, geothermal; sinon constante ou a combustible), pas un identifiant code en dur. Ordre : production -> pertes de reseau (`grid_loss`) -> batteries (decharge du deficit, charge du surplus a `BATTERY_EFFICIENCY`) -> delestage : la charge vitale (batiments avec logement, recyclage ou medical) est servie avant le reste; `power_sat` ne concerne que le reste (productivite), `vital_sat` le recyclage. Les rafales viennent de hash(graine du systeme, colonie, jour): aucune horloge reelle. Sauvegardes : `Colony` (pressure, geo, charge) et `ColonyStats` (power_sat, vital_sat, battery_charge, battery_cap, grid_loss) ont change; `Building` (donnees) gagne `source` et `battery`.

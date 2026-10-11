@@ -373,6 +373,23 @@ pub fn entry(data: &GameData, cat: usize, k: usize) -> Vec<String> {
                 out.push(format!("Recettes : {}", b.recipes.join(", ")));
                 out.push(format!("Cadence : {:.1} lots/jour", b.throughput));
             }
+            match b.source.as_str() {
+                "solar" => {
+                    out.push("Source : solaire (flux de l'etoile, attenue par l'atmosphere)".into())
+                }
+                "wind" => {
+                    out.push("Source : eolienne (pression atmospherique, rafales variables)".into())
+                }
+                "geothermal" => out.push("Source : chaleur interne de la planete".into()),
+                _ => {}
+            }
+            if b.battery > 0.0 {
+                out.push(format!(
+                    "Batterie : {:.0} kWh (rendement {:.0} %)",
+                    b.battery,
+                    vector_sim::colony::BATTERY_EFFICIENCY * 100.0
+                ));
+            }
             if !b.burns.is_empty() {
                 out.push(format!("Brule par jour : {}", fmt_list(data, &b.burns)));
             }

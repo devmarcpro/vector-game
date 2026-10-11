@@ -168,3 +168,6 @@ Tout est derive (rien n'est stocke, meme graine = memes nombres) et une seule fo
 - Interieur : fraction du noyau selon la densite, flux de chaleur ~ R / age (+ chauffage de maree selon
   l'excentricite), activite (inerte, couvercle fige, plaques, volcanique, fluide), champ magnetique
   (dynamo : noyau fluide + rotation + taille).
+
+## Energie des colonies
+Par tick : offre = somme des centrales actives x sante x facteur de source (solaire: flux x exp(-0,25 P), eolien: sqrt(P) x rafale 0,3..1,7, geothermie: sqrt(M/M_terre) borne 0,2..1,6, combustible: constant tant que le stock dure) ; offre nette = offre x (1 - pertes), pertes = 2 % + 0,4 % par batiment actif (max 20 %). Deficit : decharge des batteries (kW x dt). Surplus : charge x 0,9 jusqu'a la capacite. Reste du deficit : delestage, charge vitale d'abord (`vital_sat`), puis le reste (`power_sat`, qui multiplie la productivite et le terraformage).

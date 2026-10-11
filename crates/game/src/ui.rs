@@ -1718,6 +1718,10 @@ fn draw_empire(fb: &mut Framebuffer, g: &Game) {
             "EPIDEMIE"
         } else if c.stats.food_sat < 0.5 {
             "FAMINE"
+        } else if c.stats.power_sat < 0.5 && c.stats.vital_sat < 1.0 {
+            "PANNE GENERALE"
+        } else if c.stats.power_sat < 0.9 {
+            "DELESTAGE"
         } else if c.stats.power_supply < c.stats.power_demand * 0.9 {
             "PENURIE D ENERGIE"
         } else {
@@ -1797,9 +1801,12 @@ fn draw_colony(fb: &mut Framebuffer, g: &Game) {
         1,
         3,
         &format!(
-            "ENERGIE {:.1}/{:.1} MW  EMPLOIS {:.0} / TRAVAILLEURS {:.0}  PRODUCTIVITE {:.0}%  VIVRES {:.0}%  EAU {:.0}%  RECHERCHE {:.0}  TERRAFORMAGE {:.1}%",
+            "ENERGIE {:.1}/{:.1} MW  BATTERIE {:.0}/{:.0} MWH  PERTES {:.0}%  EMPLOIS {:.0} / TRAVAILLEURS {:.0}  PRODUCTIVITE {:.0}%  VIVRES {:.0}%  EAU {:.0}%  RECHERCHE {:.0}  TERRAFORMAGE {:.1}%",
             c.stats.power_supply / 1000.0,
             c.stats.power_demand / 1000.0,
+            c.stats.battery_charge / 1000.0,
+            c.stats.battery_cap / 1000.0,
+            c.stats.grid_loss * 100.0,
             c.stats.jobs,
             c.stats.workers,
             c.stats.prod_mult * 100.0,

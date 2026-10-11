@@ -22,6 +22,24 @@ const GOODS_KG_PER_DAY: f64 = 0.04;
 const LOG_CAP: usize = 120;
 /// Colonies are simulated in steps of this many seconds (6 h), coarser for long absences.
 const TICK: f64 = DAY / 4.0;
+/// Share of the energy sent to a battery that can be drawn back out.
+pub const BATTERY_EFFICIENCY: f64 = 0.9;
+/// Transmission loss of a colony grid: base plus a share per active building, capped.
+pub fn grid_loss(active_buildings: usize) -> f64 {
+    (0.02 + 0.004 * active_buildings as f64).min(0.2)
+}
+/// Solar transmittance of an atmosphere of `pressure` bar.
+pub fn solar_transmittance(pressure: f64) -> f64 {
+    (-0.25 * pressure.clamp(0.0, 4.0)).exp()
+}
+/// Wind output factor of an atmosphere of `pressure` bar for a gust factor (0.3..1.7).
+pub fn wind_factor(pressure: f64, gust: f64) -> f64 {
+    pressure.clamp(0.0, 2.0).sqrt() * gust
+}
+/// Geothermal output factor: small worlds have cooled, big ones are hot inside.
+pub fn geo_factor(mass_kg: f64) -> f64 {
+    (mass_kg / 5.972e24).sqrt().clamp(0.2, 1.6)
+}
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct BuildingInst {
@@ -44,6 +62,13 @@ impl BuildingInst {
 pub struct ColonyStats {
     pub power_supply: f64,
     pub power_demand: f64,
+    /// Share of the demand met after the grid, batteries and load shedding (1 = no shedding).
+    pub power_sat: f64,
+    /// Share of the vital demand (housing, life support, medical) met; shed last.
+    pub vital_sat: f64,
+    pub battery_charge: f64,
+    pub battery_cap: f64,
+    pub grid_loss: f64,
     pub jobs: f64,
     pub workers: f64,
     pub housing: f64,
@@ -82,6 +107,12 @@ pub struct Colony {
     pub deposits: Vec<(usize, f64)>,
     /// Stellar flux relative to 1 AU at the body (for solar farms).
     pub flux: f64,
+    /// Surface pressure, bar (solar attenuation, wind).
+    pub pressure: f64,
+    /// Geothermal output factor of the world.
+    pub geo: f64,
+    /// Energy held in the batteries, kWh.
+    pub charge: f64,
     pub founded: f64,
     pub last_tick: f64,
     pub pop: f64,
@@ -395,13 +426,21 @@ impl Colony {
         };
 
         // Power: solar scales with the star, fuel plants burn stock, others are steady.
-        let (mut supply, mut demand) = (0.0, 0.0);
+        let (mut supply, mut demand, mut vital) = (0.0, 0.0, 0.0);
+        let day = (now / DAY).floor() as i64;
+        let gust =
+            0.3 + 1.4 * Rng::new(hash_coord(self.system_seed, i64::from(self.id), day, 77)).f64();
         let mut burn_needs: Vec<(usize, f64)> = Vec::new();
         for b in self.buildings.iter().filter(active) {
             let d = &data.buildings[b.def];
             if d.power > 0.0 {
                 if d.burns.is_empty() {
-                    let k = if d.id == "solar_farm" { self.flux } else { 1.0 };
+                    let k = match d.source.as_str() {
+                        "solar" => self.flux * solar_transmittance(self.pressure),
+                        "wind" => wind_factor(self.pressure, gust),
+                        "geothermal" => self.geo,
+                        _ => 1.0,
+                    };
                     supply += d.power * b.health * k;
                 } else {
                     // Fuel plants run only while their fuel lasts.
@@ -420,16 +459,53 @@ impl Colony {
                 }
             } else {
                 demand += -d.power;
+                if d.housing > 0.0 || d.recycling > 0.0 || d.medical > 0.0 {
+                    vital += -d.power;
+                }
             }
         }
         for (i, kg) in burn_needs {
             self.storage[i] = (self.storage[i] - kg).max(0.0);
         }
-        let power_sat = if demand > 0.0 {
-            (supply / demand).min(1.0)
+        // Grid: losses, then batteries buffer the surplus and cover the deficit, then the
+        // remaining shortage sheds the non-vital load first.
+        let n_active = self.buildings.iter().filter(active).count();
+        let loss = grid_loss(n_active);
+        let battery_cap: f64 = self
+            .buildings
+            .iter()
+            .filter(|b| b.built() && b.health > 0.2)
+            .map(|b| data.buildings[b.def].battery * b.health)
+            .sum();
+        let dt_h = (dt / 3600.0).max(1e-9);
+        let mut avail = supply * (1.0 - loss);
+        if demand > avail {
+            let drawn = (demand - avail).min(self.charge / dt_h);
+            self.charge -= drawn * dt_h;
+            avail += drawn;
+        } else {
+            self.charge += (avail - demand) * dt_h * BATTERY_EFFICIENCY;
+        }
+        self.charge = self.charge.clamp(0.0, battery_cap);
+        let vital_sat = if vital > 0.0 {
+            (avail / vital).min(1.0)
         } else {
             1.0
         };
+        let other = demand - vital;
+        let power_sat = if other > 0.0 {
+            ((avail - vital).max(0.0) / other).min(1.0)
+        } else {
+            vital_sat
+        };
+        if self.stats.power_demand > 0.0 && power_sat < 0.5 && self.stats.power_sat >= 0.5 {
+            let msg = if vital_sat < 1.0 {
+                "Panne generale : meme les services vitaux manquent d'energie."
+            } else {
+                "Delestage : les ateliers sont coupes pour garder les services vitaux."
+            };
+            self.log_line(now, msg);
+        }
 
         // Population needs.
         let (_, _, rations_h) = self.policy_level(data, "rations");
@@ -445,7 +521,8 @@ impl Colony {
             .iter()
             .filter(active)
             .map(|b| data.buildings[b.def].recycling)
-            .sum::<f64>();
+            .sum::<f64>()
+            * vital_sat;
         let recycle = 0.8 + 0.15 * (recycling * 1000.0 / self.pop.max(1.0)).min(1.0);
         let take = |name: &str, need: f64, storage: &mut Vec<f64>| -> f64 {
             match data.resource_index(name) {
@@ -755,6 +832,11 @@ impl Colony {
         self.stats = ColonyStats {
             power_supply: supply,
             power_demand: demand,
+            power_sat,
+            vital_sat,
+            battery_charge: self.charge,
+            battery_cap,
+            grid_loss: loss,
             jobs,
             workers,
             housing,
@@ -871,6 +953,9 @@ impl Sim {
             deposits: site_deposits(&data, &cb, self.system.seed),
             tags,
             flux: self.system.luminosity / (d_au * d_au),
+            pressure: cb.pressure,
+            geo: geo_factor(cb.mass),
+            charge: 0.0,
             founded: self.time,
             last_tick: self.time,
             pop: KIT_COLONISTS_KG / COLONIST_KG,
@@ -1729,5 +1814,127 @@ pub(crate) mod tests {
             assert!(c.treasury.is_finite());
         }
         let _ = ShipInput::default();
+    }
+
+    fn add_built(s: &mut Sim, ci: usize, id: &str, n: usize) {
+        let def = s.data.building_index(id).expect("building");
+        for _ in 0..n {
+            s.colonies[ci].buildings.push(BuildingInst {
+                def,
+                progress: 1.0,
+                enabled: true,
+                recipe: 0,
+                health: 1.0,
+            });
+        }
+    }
+
+    /// Advance one colony tick and return the colony.
+    fn one_tick(s: &mut Sim, ci: usize) -> &Colony {
+        s.time += TICK;
+        s.update_colonies();
+        &s.colonies[ci]
+    }
+
+    #[test]
+    fn energy_sources_follow_the_atmosphere_the_star_and_the_planet() {
+        assert!(solar_transmittance(0.0) > solar_transmittance(1.0));
+        assert!(solar_transmittance(1.0) > solar_transmittance(4.0));
+        assert_eq!(wind_factor(0.0, 1.5), 0.0, "no air, no wind");
+        assert!(wind_factor(1.0, 1.0) > wind_factor(0.1, 1.0));
+        assert!(
+            geo_factor(1.0e22) < geo_factor(5.972e24),
+            "small worlds have cooled"
+        );
+        assert!(geo_factor(5.972e24) < geo_factor(2.0e25));
+        // In a colony: a wind farm yields nothing without air and something with it.
+        let (mut s, ci) = founded();
+        add_built(&mut s, ci, "wind_turbine", 1);
+        s.colonies[ci].pressure = 0.0;
+        let calm = one_tick(&mut s, ci).stats.power_supply;
+        s.colonies[ci].pressure = 1.0;
+        let windy = one_tick(&mut s, ci).stats.power_supply;
+        assert!(windy > calm + 100.0, "{windy} vs {calm}");
+        // The gust changes from one day to the next: the output is not constant.
+        let mut outputs = Vec::new();
+        for _ in 0..8 {
+            s.time += DAY;
+            s.update_colonies();
+            outputs.push(s.colonies[ci].stats.power_supply);
+        }
+        let (lo, hi) = outputs
+            .iter()
+            .fold((f64::MAX, f64::MIN), |(l, h), &x| (l.min(x), h.max(x)));
+        assert!(hi > lo + 50.0, "gusts vary the output: {lo}..{hi}");
+    }
+
+    #[test]
+    fn batteries_buffer_a_deficit_and_charge_on_surplus_with_losses() {
+        let (mut s, ci) = founded();
+        add_built(&mut s, ci, "surface_mine", 1);
+        s.colonies[ci].pressure = 0.0;
+        s.colonies[ci].flux = 1.0;
+        // Without a battery the mine starves the grid.
+        let sat = one_tick(&mut s, ci).stats.power_sat;
+        assert!(sat < 0.99, "deficit without storage: {sat}");
+        // With a charged battery bank the same deficit is covered, and the charge goes down.
+        add_built(&mut s, ci, "battery_bank", 1);
+        s.colonies[ci].charge = 50_000.0;
+        let c = one_tick(&mut s, ci);
+        assert!(
+            c.stats.power_sat > 0.99,
+            "battery covers: {}",
+            c.stats.power_sat
+        );
+        assert!(c.charge < 50_000.0, "charge drawn");
+        assert!(c.stats.battery_cap >= 60_000.0 - 1e-6);
+        // Surplus: demolish the mine's load by disabling it; the bank charges at < 100 % efficiency.
+        let def = s.data.building_index("surface_mine").unwrap();
+        for b in &mut s.colonies[ci].buildings {
+            if b.def == def {
+                b.enabled = false;
+            }
+        }
+        s.colonies[ci].charge = 0.0;
+        let c = one_tick(&mut s, ci);
+        let surplus_kwh = (c.stats.power_supply * (1.0 - c.stats.grid_loss) - c.stats.power_demand)
+            * TICK
+            / 3600.0;
+        assert!(surplus_kwh > 0.0);
+        assert!(
+            c.charge > 0.0 && c.charge < surplus_kwh,
+            "{} vs {}",
+            c.charge,
+            surplus_kwh
+        );
+    }
+
+    #[test]
+    fn a_shortage_sheds_workshops_before_life_support() {
+        let (mut s, ci) = founded();
+        s.colonies[ci].flux = 1.0;
+        one_tick(&mut s, ci); // a first, healthy tick
+        add_built(&mut s, ci, "surface_mine", 3);
+        s.colonies[ci].pressure = 0.0;
+        s.colonies[ci].charge = 0.0;
+        s.colonies[ci].flux = 0.6;
+        let c = one_tick(&mut s, ci);
+        assert!((c.stats.vital_sat - 1.0).abs() < 1e-9, "vital served first");
+        assert!(
+            c.stats.power_sat < 0.3,
+            "workshops shed: {}",
+            c.stats.power_sat
+        );
+        assert!(
+            c.log.iter().any(|(_, l)| l.contains("Delestage")),
+            "{:?}",
+            c.log
+        );
+        // A total blackout reaches the vital services too.
+        s.colonies[ci].flux = 0.0;
+        s.colonies[ci].stats.power_sat = 1.0;
+        let c = one_tick(&mut s, ci);
+        assert!(c.stats.vital_sat < 1.0);
+        assert!(c.log.iter().any(|(_, l)| l.contains("Panne generale")));
     }
 }

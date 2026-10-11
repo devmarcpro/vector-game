@@ -249,6 +249,10 @@ pub struct Building {
     pub port: f64,
     pub terraform: f64,
     pub defense: f64,
+    /// Energy source of a power plant: "" (steady), "solar", "wind" or "geothermal".
+    pub source: String,
+    /// Energy storage of the building, kWh (batteries).
+    pub battery: f64,
 }
 
 /// A colony policy with discrete levels: (label, credits per person per day, productivity delta, happiness delta).
@@ -1185,6 +1189,12 @@ impl GameData {
                 if !rids.contains(r.as_str()) {
                     return bad(format!("batiment {}: recette inconnue {r}", b.id));
                 }
+            }
+            if !["", "solar", "wind", "geothermal"].contains(&b.source.as_str())
+                || b.battery < 0.0
+                || (!b.source.is_empty() && b.power <= 0.0)
+            {
+                return bad(format!("batiment {}: source ou batterie invalide", b.id));
             }
             if !b.recipes.is_empty() && b.throughput <= 0.0 {
                 return bad(format!("batiment {}: debit nul", b.id));

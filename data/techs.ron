@@ -61,6 +61,8 @@
  (id:"bld_fusion_plant", name:"Bâtiment : fusion plant", field:"energie", cost:1400.0, requires:["plasma_physics"], unlocks:[("building","fusion_plant")], start:false),
  (id:"bld_fission_plant", name:"Bâtiment : fission plant", field:"energie", cost:500.0, requires:["basics"], unlocks:[("building","fission_plant")], start:false),
  (id:"bld_geothermal_plant", name:"Bâtiment : geothermal plant", field:"energie", cost:450.0, requires:["basics"], unlocks:[("building","geothermal_plant")], start:false),
+ (id:"bld_wind_turbine", name:"Bâtiment : wind turbine", field:"energie", cost:300.0, requires:["basics"], unlocks:[("building","wind_turbine")], start:false),
+ (id:"bld_battery_bank", name:"Bâtiment : battery bank", field:"energie", cost:400.0, requires:["basics"], unlocks:[("building","battery_bank")], start:false),
  (id:"bld_deep_drill", name:"Bâtiment : deep drill", field:"industrie", cost:800.0, requires:["advanced_robotics"], unlocks:[("building","deep_drill")], start:false),
  (id:"bld_gas_scoop", name:"Bâtiment : gas scoop", field:"industrie", cost:700.0, requires:["basics"], unlocks:[("building","gas_scoop")], start:false),
  (id:"bld_electronics_fab", name:"Bâtiment : electronics fab", field:"industrie", cost:900.0, requires:["advanced_robotics"], unlocks:[("building","electronics_fab")], start:false),

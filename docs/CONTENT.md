@@ -49,3 +49,6 @@ Mœurs : data/ethos.ron (8 axes, 8 étiquettes morales, 8 profils de faction), g
 
 ## Entreprises
 `data/companies.ron` : id, nom, siège (faction), cours de base, rendement annuel, volatilité, biens (id, poids, total 1), texte.
+
+## Energie (batiments)
+`data/buildings.ron` : champ `source` ("solar", "wind", "geothermal") pour les centrales a production variable, champ `battery` (kWh) pour le stockage. Batiments ajoutes : `wind_turbine` (Parc eolien), `battery_bank` (Parc de batteries), techs `bld_wind_turbine`, `bld_battery_bank`. Entrees de codex generees depuis ces champs.

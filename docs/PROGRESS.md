@@ -131,3 +131,5 @@
 - Matieres (`materials.ron`, 38) : chaque case a une composition ; couleur/caractere/motif identiques en carte et en vue a la premiere personne (sol dessine case par case), neige/glace/eau gelee selon la temperature, vitesse de marche selon le sol; entree MATERIAUX du codex.
 
 - Zoom : + sur la carte de region descend sur la grille a pied, - remonte; le sol 3D de la vue a la premiere personne prend la matiere de la case sous les pieds (neige, glace, mousse...), le meme terrain a toutes les echelles.
+
+- Energie des colonies (ingenierie) : le reseau n'est plus un simple ratio. Solaire attenue par l'atmosphere (`solar_transmittance`), parc eolien (pression et rafales deterministes par jour), geothermie selon la masse de la planete, parcs de batteries (stockage kWh, rendement 90 %), pertes de reseau croissantes avec le nombre de batiments, delestage (logements, support de vie et medical servis en premier) et panne generale journalisee. Ecran colonie : batterie, pertes, etats DELESTAGE / PANNE GENERALE.

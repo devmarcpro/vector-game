@@ -107,6 +107,8 @@ GATED_BUILDINGS = {
     "fusion_plant": ("energie", 1400, ["plasma_physics"]),
     "fission_plant": ("energie", 500, ["basics"]),
     "geothermal_plant": ("energie", 450, ["basics"]),
+    "wind_turbine": ("energie", 300, ["basics"]),
+    "battery_bank": ("energie", 400, ["basics"]),
     "deep_drill": ("industrie", 800, ["advanced_robotics"]),
     "gas_scoop": ("industrie", 700, ["basics"]),
     "electronics_fab": ("industrie", 900, ["advanced_robotics"]),

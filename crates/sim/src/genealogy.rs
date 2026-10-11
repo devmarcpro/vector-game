@@ -226,10 +226,6 @@ pub fn culture_of(fams: &Families, data: &GameData, kin: Kin) -> usize {
     (k.h(0xC017) % data.cultures.len() as u64) as usize
 }
 
-fn pick(list: &[String], h: u64) -> &str {
-    &list[(h % list.len() as u64) as usize]
-}
-
 /// Family name, handed down from father to child, from the founder of the male line.
 pub fn surname(fams: &Families, data: &GameData, kin: Kin) -> String {
     let mut k = kin;
@@ -237,20 +233,12 @@ pub fn surname(fams: &Families, data: &GameData, kin: Kin) -> String {
         k = parents(fams, k).0;
     }
     let c = &data.cultures[culture_of(fams, data, k)];
-    format!(
-        "{}{}",
-        pick(&c.last_start, k.h(0x5A1)),
-        pick(&c.last_end, k.h(0x5A2))
-    )
+    vector_world::names::surname(&c.id, k.h(0x5A1))
 }
 
 pub fn given_name(fams: &Families, data: &GameData, kin: Kin) -> String {
     let c = &data.cultures[culture_of(fams, data, kin)];
-    format!(
-        "{}{}",
-        pick(&c.first_start, kin.h(0x6A1)),
-        pick(&c.first_end, kin.h(0x6A2))
-    )
+    vector_world::names::given_name(&c.id, !kin.male(), kin.h(0x6A1))
 }
 
 pub fn full_name(fams: &Families, data: &GameData, kin: Kin) -> String {

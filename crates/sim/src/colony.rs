@@ -863,7 +863,16 @@ impl Sim {
         };
         let mut c = Colony {
             id,
-            name: name.unwrap_or_else(|| format!("{} Colonie", cb.name)),
+            name: name.unwrap_or_else(|| {
+                let nh = hash_coord(self.system.seed, i as i64, id as i64, 0xC010);
+                let culture = self.faction.map(|f| self.data.factions[f].culture.as_str());
+                vector_world::names::Spec::new("colony")
+                    .culture(Some(
+                        culture.unwrap_or_else(|| vector_world::names::culture_id(nh)),
+                    ))
+                    .host(&cb.name)
+                    .name(nh)
+            }),
             star: self.here,
             system_seed: self.system.seed,
             body: i,

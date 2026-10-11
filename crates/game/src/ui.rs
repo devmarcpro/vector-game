@@ -1349,8 +1349,10 @@ fn draw_galaxy(fb: &mut Framebuffer, g: &Game) {
         1,
         1,
         &format!(
-            "CARTE GALACTIQUE - {} ({})",
-            s.system.name, s.system.designation
+            "CARTE GALACTIQUE - {} - {} ({})",
+            s.galaxy.name().to_uppercase(),
+            s.system.name,
+            s.system.designation
         ),
         AMBER,
     );
@@ -1483,6 +1485,15 @@ fn draw_galaxy(fb: &mut Framebuffer, g: &Game) {
         );
         if s.visited.contains_key(&e.id) {
             fb.text(x, 15, "SYSTEME DEJA VISITE", DIM);
+        }
+        fb.text(
+            x,
+            16,
+            &s.galaxy.region_name(e.id.sector).to_uppercase(),
+            GREEN,
+        );
+        if let Some(n) = s.galaxy.nebula_name(e.id.sector) {
+            fb.text(x, 17, &n.to_uppercase(), DIM);
         }
     } else {
         fb.text(x, 4, "AUCUNE ETOILE CONNUE", DIM);

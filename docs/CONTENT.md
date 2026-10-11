@@ -49,3 +49,6 @@ Mœurs : data/ethos.ron (8 axes, 8 étiquettes morales, 8 profils de faction), g
 
 ## Entreprises
 `data/companies.ron` : id, nom, siège (faction), cours de base, rendement annuel, volatilité, biens (id, poids, total 1), texte.
+
+## Noms
+`data/names.ron` : `voices` (id, start, mid, end, mid_chance), `words` (id, list), `patterns` (kind, voice, forms = (modele, poids)) et `cultures` (id, place = voix des lieux, words = listes propres a la culture, first_start/first_mid/first_end_m/first_end_f, last_start/last_mid/last_end, particles, nick_m/nick_f, title_m/title_f). Jetons des modeles : {root} {root2} {gr} {rom} {n} {n3} {n4} {cat} {l} {idx} {idx_l} {host} {label} {given} {surname} {person} {w:liste}. Chaque culture de `cultures_names.ron` doit avoir la meme id dans `names.ron` (teste). Le codex a une entree NOMS par culture, generee depuis la grammaire (exemples de prenoms, noms, surnoms, titres, villes, stations, fleuves, entreprises, vaisseaux).

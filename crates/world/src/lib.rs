@@ -5,9 +5,9 @@ pub mod orbit;
 pub mod physics;
 pub mod surface;
 
-use names::{pick, roman, star_name};
+use names::{pick, roman, Spec};
 use orbit::{Orbit, AU, G, M_EARTH, M_SUN, R_EARTH, R_SUN};
-use vector_core::{Rng, Vec3};
+use vector_core::{hash_coord, Rng, Vec3};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum StarClass {
@@ -427,7 +427,15 @@ fn star_header(rng: &mut Rng) -> StarHeader {
         )
     };
     let teff = 5772.0 * (lum / (rad * rad)).powf(0.25);
-    let name = star_name(rng);
+    // The former syllable generator drew 3 or 4 numbers here: draw the same amount, so that
+    // every system keeps exactly the same physics; the name comes from a hash of the state.
+    let name_h = rng.0;
+    rng.next_u64();
+    if rng.f64() < 0.55 {
+        rng.next_u64();
+    }
+    rng.next_u64();
+    let name = names::star_name(name_h);
     let designation = format!("HD {}", 1000 + rng.next_u64() % 900_000);
     StarHeader {
         class,
@@ -438,6 +446,17 @@ fn star_header(rng: &mut Rng) -> StarHeader {
         name,
         designation,
     }
+}
+
+/// `name`, made unique among the bodies already generated (a roman suffix if it clashes).
+fn unique_name(bodies: &[CelBody], name: String) -> String {
+    let mut out = name.clone();
+    let mut k = 1;
+    while bodies.iter().any(|b| b.name == out) {
+        k += 1;
+        out = format!("{name} {}", roman(k - 1));
+    }
+    out
 }
 
 /// Summary of the star a seed would produce, without generating the planets.
@@ -503,7 +522,23 @@ pub fn generate_system(seed: u64) -> System {
             R_EARTH * mass_e.powf(0.27)
         };
         let orbit = random_orbit(&mut rng, 0, a_m, 0.15, 0.06, mu_star);
-        let pname = format!("{} {}", name, roman(pi));
+        let pkind = if pk.is_giant() {
+            "planet_giant"
+        } else if matches!(
+            pk,
+            PlanetKind::Terran | PlanetKind::Ocean | PlanetKind::Tundra
+        ) {
+            "planet_living"
+        } else {
+            "planet_dead"
+        };
+        let pname = unique_name(
+            &bodies,
+            Spec::new(pkind)
+                .host(&name)
+                .idx(pi)
+                .name(hash_coord(seed, pi as i64, 0, 0x91A7)),
+        );
         let idx = bodies.len();
         bodies.push(make_body(
             &mut rng,
@@ -548,7 +583,13 @@ pub fn generate_system(seed: u64) -> System {
             let mmass = moon_mass_e * M_EARTH;
             let mrad = R_EARTH * moon_mass_e.powf(0.3) * 1.2;
             let morbit = random_orbit(&mut rng, idx, ma, 0.05, 0.05, mu_p);
-            let mname = format!("{}-{}", pname, (b'a' + mi as u8) as char);
+            let mh = hash_coord(seed, pi as i64, mi as i64 + 1, 0x300F);
+            let mkind = if (pk.is_giant() || pkind == "planet_living") && mh % 5 < 3 {
+                "moon_named"
+            } else {
+                "moon_dead"
+            };
+            let mname = unique_name(&bodies, Spec::new(mkind).host(&pname).idx(mi).name(mh));
             bodies.push(make_body(
                 &mut rng,
                 mname,
@@ -635,11 +676,15 @@ pub fn generate_system(seed: u64) -> System {
         let hname = h.name.clone();
         let t = h.temp;
         let orbit = random_orbit(&mut rng, host, orb_a, 0.0, 0.5, mu_h);
-        let sname = if k == 0 {
-            format!("Station {hname}")
-        } else {
-            format!("Station {hname}-{}", k + 1)
-        };
+        let sh = hash_coord(seed, k as i64, host as i64, 0x57A7);
+        let sname = unique_name(
+            &bodies,
+            Spec::new("station")
+                .culture(Some(names::culture_id(sh)))
+                .host(&hname)
+                .idx(k)
+                .name(sh),
+        );
         bodies.push(CelBody {
             name: sname,
             kind: BodyKind::Station,
@@ -674,7 +719,13 @@ pub fn generate_system(seed: u64) -> System {
             _ => 1500.0,
         };
         bodies.push(CelBody {
-            name: format!("{} {}-{}", kind.label(), name, k + 1),
+            name: unique_name(
+                &bodies,
+                Spec::new("anomaly")
+                    .host(&name)
+                    .label(kind.label())
+                    .name(hash_coord(seed, k as i64, 0, 0xA20A)),
+            ),
             kind: BodyKind::Anomaly(kind),
             mass: 1.0e9,
             radius,

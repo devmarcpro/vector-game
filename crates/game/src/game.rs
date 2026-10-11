@@ -32,6 +32,9 @@ const TIME_LADDER: [f64; 10] = [
     0.25, 0.5, 1.0, 2.0, 5.0, 10.0, 100.0, 1000.0, 10_000.0, 100_000.0,
 ];
 
+/// Reagents of one batch in the laboratory (codex, REACTIONS), kg.
+pub const LAB_BATCH_KG: f64 = 100.0;
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Screen {
     MainMenu,
@@ -1316,8 +1319,44 @@ impl Game {
                     self.codex_sel = k;
                 }
             }
+            KeyCode::KeyL | KeyCode::Enter | KeyCode::NumpadEnter => self.codex_lab(0),
             KeyCode::Escape | KeyCode::F6 => self.screen = self.back_to,
             _ => {}
+        }
+    }
+
+    /// Laboratory: run a batch of the reaction selected in the codex (REACTIONS) on the cargo.
+    pub fn codex_lab(&mut self, _arg: usize) {
+        if self.codex_cat != crate::codex::LAB_CATEGORY {
+            return;
+        }
+        let Some(r) = crate::codex::source_index(&self.data, self.codex_cat, self.codex_sel) else {
+            return;
+        };
+        let name = self.data.reactions[r].name.to_uppercase();
+        match self.sim.lab_run(r, LAB_BATCH_KG) {
+            Ok(rep) => {
+                let names = |l: &[(usize, f64)]| {
+                    l.iter()
+                        .map(|&(i, kg)| format!("{kg:.1} KG {}", self.data.resources[i].name))
+                        .collect::<Vec<_>>()
+                        .join(" + ")
+                        .to_uppercase()
+                };
+                let (a, b) = (names(&rep.consumed), names(&rep.produced));
+                self.say(format!(
+                    "LABO {name} : {a} -> {b}   BATTERIE -{:.1} MJ   CHALEUR +{:.1} MJ",
+                    rep.electric_kj / 1000.0,
+                    rep.heat_kj / 1000.0
+                ));
+                if rep.blast_mj > 0.0 {
+                    self.say(format!(
+                        "EXPLOSION A BORD : {:.0} MJ, DES MODULES SONT ENDOMMAGES",
+                        rep.blast_mj
+                    ));
+                }
+            }
+            Err(e) => self.say(format!("LABO {name} : {}", e.to_uppercase())),
         }
     }
 

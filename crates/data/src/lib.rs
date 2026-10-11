@@ -1,4 +1,5 @@
 //! Data schemas and loading/validation of `data/*.ron`. Content lives in data, not code.
+pub mod chemistry;
 pub mod dialogue;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
@@ -799,6 +800,8 @@ pub struct GameData {
     pub rogue_themes: Vec<RogueTheme>,
     pub materials: Vec<Material>,
     pub companies: Vec<Company>,
+    pub chemistry: chemistry::Chemistry,
+    pub reactions: Vec<chemistry::Reaction>,
 }
 
 fn read<T: for<'a> Deserialize<'a>>(path: &Path) -> Result<T, DataError> {
@@ -845,10 +848,14 @@ impl GameData {
             rogue_themes: read(&dir.join("rogue_themes.ron"))?,
             materials: read(&dir.join("materials.ron"))?,
             companies: read(&dir.join("companies.ron"))?,
+            chemistry: read(&dir.join("chemistry.ron"))?,
+            reactions: read(&dir.join("reactions.ron"))?,
         };
         // Generated extension files (tools/gen_scale.py) extend the hand-written tables.
         let mut extra_resources: Vec<Resource> = read(&dir.join("resources_organs.ron"))?;
         d.resources.append(&mut extra_resources);
+        let mut chem_resources: Vec<Resource> = read(&dir.join("resources_chemistry.ron"))?;
+        d.resources.append(&mut chem_resources);
         let mut extra_events: Vec<EventDef> = read(&dir.join("events_extra.ron"))?;
         d.events.append(&mut extra_events);
         let mut extra_recipes: Vec<Recipe> = read(&dir.join("recipes_extra.ron"))?;
@@ -1275,6 +1282,7 @@ impl GameData {
         self.validate_dimensions()?;
         self.validate_materials()?;
         self.validate_rogue()?;
+        self.validate_chemistry()?;
         self.validate_companies()
     }
 

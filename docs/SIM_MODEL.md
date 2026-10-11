@@ -168,3 +168,17 @@ Tout est derive (rien n'est stocke, meme graine = memes nombres) et une seule fo
 - Interieur : fraction du noyau selon la densite, flux de chaleur ~ R / age (+ chauffage de maree selon
   l'excentricite), activite (inerte, couvercle fige, plaques, volcanique, fluide), champ magnetique
   (dynamo : noyau fluide + rotation + taille).
+
+## Chimie (`sim/chemistry.rs`, `data/chemistry.ron`, `data/reactions.ron`)
+- Hess : dH(reaction) = somme n_i Hf(produits) - somme n_i Hf(reactifs), en kJ/mol de reaction. Chaleur degagee
+  = -dH x avancement. Un melange ne perd ni atome ni masse (test sur chaque reaction).
+- Conditions : T >= t_act, P >= p_min, catalyseur present (non consomme), sinon la reaction ne part pas.
+- ISP d'un ergol : v = sqrt(2 q), q = |dH| / masse des produits ; ISP = 0,78 v / g0.
+- Air : toxicite = somme x_i / limite_i (nocif au-dela de 1) ; corrosion = somme x_i c_i x P x 2^((T-288)/25) (plafonnee a x8) ;
+  feu : se propage si pO2 >= 0,12 bar, vitesse ~ pO2 / 0,21 ; melange explosif si somme x_i / LEL_i >= 1 en presence d'oxygene.
+  Respirable : 0,1 <= pO2 <= 0,5 bar et toxicite < 1. Les modules externes perdent 1e-4 x corrosion par seconde de sante en vol dans l'air.
+- Gisements d'un monde : une glace (categorie volatile) n'est stable que si T < boil x (0,55 + 0,45 min(P,1)) ; le fer s'oxyde en
+  oxyde de fer (Fe2O3, x1,43) selon l'oxygene, l'eau, le CO2 et le SO2 de l'air.
+- Laboratoire : reagents tires de la soute (kg proportionnels a la masse molaire x coefficient), energie = (dH + chauffe a t_act)/0,6
+  pour une reaction endothermique, 5 % de la chauffe pour une exothermique ; chaleur dans le vaisseau = electricite - dH x avancement ;
+  une explosion abime des modules (500 pv par MJ).

@@ -298,6 +298,7 @@ pub fn help_lines(screen: Screen) -> &'static [&'static str] {
         Screen::Codex => &[
             "Gauche/Droite : categorie   Haut/Bas : entree",
             "PgUp/PgDn : sauter de 10   Echap ou F6 : retour",
+            "Categorie REACTIONS (laboratoire) : L ou Entree lance un lot de 100 kg sur la soute",
         ],
         Screen::Family => &[
             "Arbre : grands-parents (couples), parents, fratrie, oncles et tantes avec leurs enfants",

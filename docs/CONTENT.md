@@ -49,3 +49,6 @@ Mœurs : data/ethos.ron (8 axes, 8 étiquettes morales, 8 profils de faction), g
 
 ## Entreprises
 `data/companies.ron` : id, nom, siège (faction), cours de base, rendement annuel, volatilité, biens (id, poids, total 1), texte.
+
+## Chimie
+`data/chemistry.ron` : `elements` (symbole, nom, z, masse molaire, electronegativite, fusion, ebullition, abondance solaire, texte) et `compounds` (id, nom, formule, classe, enthalpie de formation, fusion, ebullition, ressources, limite de toxicite, corrosivite, auto-inflammation + limite basse d'inflammabilite, comburant, texte). `data/reactions.ron` : id, nom, genre (synthese, combustion, explosion, electrolyse, reduction, corrosion, decomposition), reactifs et produits (corps, coefficient), t_act, p_min, catalyseur, texte. `data/resources_chemistry.ron` : ressources des reactifs. Codex : categories ELEMENTS, COMPOSES, REACTIONS (laboratoire) et ligne CHIMIE dans chaque ressource pure.

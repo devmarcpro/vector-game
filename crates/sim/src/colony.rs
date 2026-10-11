@@ -213,12 +213,16 @@ pub fn site_deposits(data: &GameData, b: &CelBody, seed: u64) -> Vec<(usize, f64
         }
         _ => {}
     }
-    v.into_iter()
+    let mut out: Vec<(usize, f64)> = v
+        .into_iter()
         .filter_map(|(id, share)| {
             data.resource_index(id)
                 .map(|i| (i, share * rng.range(0.5, 1.5)))
         })
-        .collect()
+        .collect();
+    // Chemistry: unstable ices are gone, the iron of an oxidising world has rusted.
+    crate::chemistry::weather_deposits(data, b, &mut out);
+    out
 }
 
 /// The deposit subset an extraction recipe draws from, normalised to sum to 1.

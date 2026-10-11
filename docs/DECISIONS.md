@@ -90,3 +90,19 @@ ponderees par `ground_of`), la neige et la glace apparaissent quand il fait froi
 lave remplace l'eau selon la temperature. Les lieux construits nomment leur matiere (`floor_mat`,
 `wall_mat`). La matiere agit : `slow` multiplie le temps de marche (boue x2, neige x1,5, glace x0,8) et
 un rover la ressent 2,5 fois moins. Sauvegardes : version 35.
+
+## Chimie : une table, la loi de Hess, un laboratoire (`data/chemistry.ron`, `reactions.ron`)
+
+Une seule representation de la matiere chimique : les corps purs (`chemistry.ron`) portent une formule dont
+la masse molaire est calculee (jamais saisie) et une enthalpie de formation ; une reaction (`reactions.ron`)
+ne porte pas son energie : elle se deduit de la difference des enthalpies de formation (loi de Hess), donc
+une table ne peut pas se contredire. A la lecture, chaque reaction doit equilibrer les atomes de chaque
+element, une combustion ou une explosion doit degager de la chaleur, une electrolyse en absorber. Les
+ressources de `resources.ron` restent la monnaie du jeu : un corps pur liste les ressources qu'il est
+(`resources:[...]`, la premiere est celle qu'une reaction fabrique) ; les alliages et composants ne sont pas des
+corps purs et n'ont pas de composition. Les atmospheres (`world`) gardent leurs formules (`"CO2"`) : on les
+rattache aux corps par la formule. Nouvelles ressources dans `resources_chemistry.ron` (fichier a part pour
+ne pas heurter les autres ajouts de ressources). Le laboratoire reutilise le codex (categorie REACTIONS) au
+lieu d'un nouvel ecran. Le reacteur du bord monte a 2400 K et 300 bar ; l'efficacite electrique est de 0,6 ;
+l'impulsion specifique reelle = 0,78 x sqrt(2 q) / g0 (q = chaleur par kg d'ejecta). Sauvegardes : aucune
+structure sauvegardee n'a change (corrosion = sante des modules existante ; stock = soute existante).

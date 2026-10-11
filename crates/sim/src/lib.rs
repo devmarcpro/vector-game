@@ -7,6 +7,7 @@ pub mod blackmarket;
 pub mod bourse;
 pub mod cargo;
 pub mod casino;
+pub mod chemistry;
 pub mod civ;
 pub mod colony;
 pub mod combat;
@@ -1001,6 +1002,7 @@ impl Sim {
         self.time += dt;
         self.refresh_bodies();
         self.atmosphere_drag(dt);
+        self.corrode(dt);
         let riding = self.ride.take();
         if let Some((bi, rp, rv)) = riding {
             self.ship.pos = self.bodies[bi].pos + rp;

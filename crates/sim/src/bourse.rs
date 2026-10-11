@@ -137,8 +137,11 @@ pub fn world_factors(data: &GameData, galaxy_seed: u64, pos: [f64; 3], t: f64) -
     let events = events_between(data, galaxy_seed, pos, t, t);
     let cell = region_cell(pos);
     // What the people of this territory want and shun (their mœurs, see `data/ethos.ron`).
-    let faction =
-        vector_world::galaxy::Galaxy::new(galaxy_seed).territory(pos, data.factions.len());
+    let galaxy = vector_world::galaxy::Galaxy::new(galaxy_seed);
+    let faction = galaxy.territory(pos, data.factions.len());
+    // War and unrest of the sector, incidents of the companies in it: worked out once.
+    let turmoil = crate::politics::turmoil(data, &galaxy, galaxy_seed, pos, t);
+    let local = crate::incidents::goods_factors(data, galaxy_seed, pos, t);
     let values = data
         .ethos
         .profile(faction.map(|f| data.factions[f].id.as_str()));
@@ -151,7 +154,10 @@ pub fn world_factors(data: &GameData, galaxy_seed: u64, pos: [f64; 3], t: f64) -
             let key = region_key ^ (r as i64).wrapping_mul(0x9E37_79B9);
             let n = 0.65 * smooth_noise(galaxy_seed, key, 9.0, t)
                 + 0.35 * smooth_noise(galaxy_seed ^ 1, key, 31.0, t);
-            f * (1.0 + vol * 2.0 * n) * crate::trading::cartel_factor(data, galaxy_seed, pos, t, r)
+            f * (1.0 + vol * 2.0 * n)
+                * crate::trading::cartel_factor(data, galaxy_seed, pos, t, r)
+                * turmoil.factor(data, r)
+                * local[r]
         })
         .collect()
 }
@@ -330,8 +336,11 @@ mod tests {
             .cloned()
             .collect();
         let expect = at_peak * event_factor(&d, &other, res, peak);
+        let galaxy = vector_world::galaxy::Galaxy::new(7);
         let got = world_factors(&d, 7, pos, peak)[res]
-            / crate::trading::cartel_factor(&d, 7, pos, peak, res);
+            / crate::trading::cartel_factor(&d, 7, pos, peak, res)
+            / crate::politics::turmoil(&d, &galaxy, 7, pos, peak).factor(&d, res)
+            / crate::incidents::goods_factors(&d, 7, pos, peak)[res];
         assert!((got / expect - 1.0).abs() < 0.12, "{got} vs {expect}");
     }
     /// A point of space inside a faction's territory.

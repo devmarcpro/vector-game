@@ -1,6 +1,7 @@
 //! Cockpit view and system map: 3D scene + ASCII HUD.
 use crate::console::Console;
 use crate::game::Game;
+use crate::globe::Globe;
 use crate::mouse::Act;
 use vector_core::{Mat3, Vec3};
 use vector_render::{Camera, Framebuffer, Wireframe};
@@ -169,6 +170,70 @@ fn dimmed(c: u32, k: f32) -> u32 {
     (ch(16) << 16) | (ch(8) << 8) | ch(0)
 }
 
+/// Draw the topography of solid world `i` as seen from the cockpit: a dot per cell in the colour
+/// of its biome (dimmed on the night side), contour lines, and the graticule when it is big.
+/// Returns false when the world has no surface to show.
+fn draw_world(fb: &mut Framebuffer, cam: &Camera, v: &View, i: usize, px: f64) -> bool {
+    let Some(map) = v.game.flight_map(i) else {
+        return false;
+    };
+    let b = &v.sim.bodies[i];
+    let sys = &v.sim.system.bodies[i];
+    // The world turns on its tilted axis once per day of its own.
+    let angle = std::f64::consts::TAU * v.sim.time / sys.rotation_period.max(60.0);
+    let orient = Mat3::rot_z(f64::from(map.surface.tilt)).mul(&Mat3::rot_y(angle));
+    let to_cam = cam.pos - b.pos;
+    let sun = (b.pos * -1.0).normalized();
+    let (fw, fh) = (fb.w as f64, fb.h as f64);
+    let focal = fh * 0.5 / (cam.fov_y * 0.5).tan();
+    let to_view = |lat: f64, lon: f64| -> Vec3 {
+        orient.mul_vec(Vec3::new(
+            lat.cos() * lon.cos(),
+            lat.sin(),
+            lat.cos() * lon.sin(),
+        ))
+    };
+    let visible = |p: Vec3| p.dot(to_cam) > b.radius;
+    let project = |p: Vec3| -> Option<(f32, f32)> {
+        let vw = cam.to_view(b.pos + p * b.radius);
+        (vw.z > vector_render::NEAR).then(|| {
+            (
+                (fw * 0.5 + vw.x / vw.z * focal) as f32,
+                (fh * 0.5 - vw.y / vw.z * focal) as f32,
+            )
+        })
+    };
+    let globe = Globe {
+        map: &map,
+        to_view: &to_view,
+        visible: &visible,
+        project: &project,
+    };
+    // Coarser sampling the farther away the world is (fewer cells than pixels are useful).
+    let step = if px > 160.0 {
+        1
+    } else if px > 70.0 {
+        2
+    } else {
+        4
+    };
+    let size = if px > 120.0 { 2 } else { 1 };
+    let data = &v.sim.data;
+    globe.dots(fb, step, size, &|x, y, p| {
+        let c = data.biomes[map.biome_at(x, y)].color;
+        if p.dot(sun) > -0.05 {
+            c
+        } else {
+            dimmed(c, 0.3)
+        }
+    });
+    globe.contours(fb, step.max(2));
+    if px > 90.0 {
+        globe.graticule(fb, 0x0018_3040);
+    }
+    true
+}
+
 fn body_color(v: &View, i: usize) -> u32 {
     if v.sim.scan[i] >= SCAN_SURVEYED {
         kind_color(v.sim.bodies[i].kind)
@@ -232,8 +297,16 @@ fn draw_cockpit(fb: &mut Framebuffer, v: &View) {
             BodyKind::Planet(k) if k.is_giant() => {
                 cam.draw_sphere(fb, b.pos, b.radius, &spin, 12, 6, col)
             }
-            BodyKind::Planet(_) => cam.draw_sphere(fb, b.pos, b.radius, &spin, 8, 14, col),
-            BodyKind::Moon(_) => cam.draw_sphere(fb, b.pos, b.radius, &spin, 5, 8, col),
+            BodyKind::Planet(_) | BodyKind::Moon(_) => {
+                // A surveyed solid world close enough to see: its relief, seas and continents.
+                if px > 22.0 && v.sim.scan[i] >= SCAN_SURVEYED && draw_world(fb, &cam, v, i, px) {
+                    cam.draw_sphere(fb, b.pos, b.radius, &spin, 0, 0, col);
+                } else if matches!(b.kind, BodyKind::Planet(_)) {
+                    cam.draw_sphere(fb, b.pos, b.radius, &spin, 8, 14, col)
+                } else {
+                    cam.draw_sphere(fb, b.pos, b.radius, &spin, 5, 8, col)
+                }
+            }
             BodyKind::Anomaly(_) => {
                 // Anomalies: a lattice sphere that pulses, so they do not look like rocks.
                 let pulse = 1.0 + 0.08 * (v.sim.time * 0.7).sin();

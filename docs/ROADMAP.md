@@ -59,3 +59,6 @@ Langue par défaut : français. L'option Langue existe (une seule entrée) ; les
 
 ## Equipement et combat des personnages (note du joueur)
 Equipements des personnages (armes, armures, outils, combinaisons), statistiques de combat (attaque, défense, précision, endurance), à relier à la vue de marche (expéditions), aux implants et aux organes (blessures localisées).
+
+## Noms (pas prioritaire)
+Développer beaucoup plus les générateurs de noms : planètes, systèmes, galaxies, secteurs, prénoms et noms de famille par culture, entreprises, vaisseaux, lieux (demande du joueur, 2026-10-11).

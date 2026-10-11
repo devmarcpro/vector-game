@@ -75,6 +75,8 @@ pub struct Mon {
     pub friendly: bool,
     pub crew: Option<u32>,
     pub lines: Vec<String>,
+    /// The species of an animal of a planet (tame ones can be caught for the pens).
+    pub species: Option<usize>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -323,6 +325,7 @@ fn mon_from_def(
         friendly: false,
         crew: None,
         lines: Vec::new(),
+        species: None,
     }
 }
 
@@ -361,6 +364,7 @@ fn mon_from_species(data: &GameData, sp: usize, x: i32, y: i32) -> Mon {
         friendly: false,
         crew: None,
         lines: Vec::new(),
+        species: Some(sp),
     }
 }
 
@@ -546,6 +550,7 @@ pub fn generate_social(
             friendly: true,
             crew,
             lines,
+            species: None,
         };
     let place = |monsters: &mut Vec<Mon>, rng: &mut Rng, who: Option<(u32, &String)>| {
         for _ in 0..40 {
@@ -1859,6 +1864,51 @@ impl Sim {
             r.active = 0;
         }
         r.reveal();
+    }
+
+    /// Catch alive the tame animal next to the squad for the pens of the ship (the livestock):
+    /// only species that can be kept, only if there is room in the pens.
+    pub fn rogue_capture(&mut self) -> Result<String, &'static str> {
+        let mut r = self.rogue.take().ok_or("pas d'exploration en cours")?;
+        let res = self.rogue_capture_inner(&mut r);
+        self.rogue = Some(r);
+        res
+    }
+
+    fn rogue_capture_inner(&mut self, r: &mut Rogue) -> Result<String, &'static str> {
+        if r.over {
+            return Err("l'exploration est terminee");
+        }
+        let near = (0..r.floor().monsters.len()).find(|&k| {
+            let m = &r.floor().monsters[k];
+            m.species.is_some() && (m.x - r.x).abs().max((m.y - r.y).abs()) <= 1
+        });
+        let k = near.ok_or("aucune bete a portee")?;
+        let sp = r.floor().monsters[k].species.expect("checked");
+        if !self.domestic_species().contains(&sp) {
+            return Err("cette bete ne se laisse pas apprivoiser");
+        }
+        if self.herd.len() >= crate::livestock::HERD_MAX {
+            return Err("enclos pleins");
+        }
+        let name = r.floor().monsters[k].name.clone();
+        let n = self.herd_counter;
+        self.herd_counter += 1;
+        let mut a = crate::livestock::random_animal(
+            hash_coord(self.galaxy.seed, r.seed as i64, i64::from(r.turn), 5),
+            sp,
+            self.time,
+            n,
+        );
+        a.born = self.time - crate::bourse::DAY * 30.0;
+        self.herd.push(a);
+        r.floor_mut().monsters.remove(k);
+        r.say(format!(
+            "Vous capturez : {}. Elle ira dans les enclos.",
+            name.to_lowercase()
+        ));
+        self.rogue_end_turn(r);
+        Ok(format!("{} CAPTURE", name.to_uppercase()))
     }
 
     /// Wait a turn.
@@ -3428,5 +3478,44 @@ mod tests {
             said.iter().any(|l| l.contains("arrive dans")),
             "some rumours of the exchange are relayed: {said:?}"
         );
+    }
+
+    #[test]
+    fn a_tame_animal_of_a_surface_can_be_caught_for_the_pens() {
+        let (mut s, body, cx, cy) = landing_site();
+        s.rogue_land(body, cx, cy, vec![0], false).unwrap();
+        let tame = s.domestic_species()[0];
+        let wild = (0..s.data.species.len())
+            .find(|&i| {
+                !s.data.species[i].is_producer()
+                    && !s.data.species[i].domestic
+                    && s.data.species[i].danger == 0.0
+            })
+            .expect("a wild harmless species");
+        let (lx, ly) = {
+            let r = s.rogue.as_mut().unwrap();
+            r.floors[0].monsters.clear();
+            (r.x, r.y)
+        };
+        assert!(s.rogue_capture().is_err(), "nothing to catch");
+        let m = mon_from_species(&s.data, wild, lx + 1, ly);
+        s.rogue.as_mut().unwrap().floors[0].monsters.push(m);
+        assert!(s.rogue_capture().is_err(), "a wild beast will not be tamed");
+        s.rogue.as_mut().unwrap().floors[0].monsters.clear();
+        let m = mon_from_species(&s.data, tame, lx + 1, ly);
+        s.rogue.as_mut().unwrap().floors[0].monsters.push(m);
+        let herd = s.herd.len();
+        s.rogue_capture().expect("caught");
+        assert_eq!(s.herd.len(), herd + 1);
+        assert_eq!(s.herd.last().unwrap().species, tame);
+        assert!(s.rogue.as_ref().unwrap().floor().monsters.is_empty());
+        // Full pens refuse.
+        let m = mon_from_species(&s.data, tame, lx + 1, ly);
+        s.rogue.as_mut().unwrap().floors[0].monsters.push(m);
+        while s.herd.len() < crate::livestock::HERD_MAX {
+            let a = s.herd[0].clone();
+            s.herd.push(a);
+        }
+        assert!(s.rogue_capture().is_err());
     }
 }

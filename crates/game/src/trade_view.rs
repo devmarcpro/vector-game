@@ -39,7 +39,7 @@ impl Game {
     fn trade_rows(&self) -> usize {
         match self.trade_ui.tab {
             2 => self.data.cartels.len(),
-            3 => self.sim.offered_tenders().len() + self.sim.trade.tenders.len(),
+            3 => self.sim.offered_tenders().len(),
             _ => 0,
         }
     }
@@ -85,16 +85,14 @@ impl Game {
             }
             3 => {
                 let offers = self.sim.offered_tenders();
-                if sel < offers.len() {
-                    let o = &offers[sel];
-                    let price = o.ceiling * self.bid_fraction();
-                    self.sim
-                        .bid_tender(o.id, price)
-                        .map(|()| format!("MARCHE REMPORTE A {price:.1} CR/KG"))
-                } else {
-                    self.sim
-                        .deliver_tender(sel - offers.len())
-                        .map(|p| format!("LIVRE : {p:.0} CR"))
+                match offers.get(sel) {
+                    Some(o) => {
+                        let price = o.ceiling * self.bid_fraction();
+                        self.sim
+                            .bid_tender(o.id, price)
+                            .map(|()| format!("MARCHE REMPORTE A {price:.1} CR/KG : VOIR CONTRATS"))
+                    }
+                    None => Err("aucune offre choisie"),
                 }
             }
             4 => self
@@ -295,43 +293,13 @@ fn draw_tenders(fb: &mut Framebuffer, g: &Game) {
             },
         );
     }
-    let row = 8 + offers.len().max(1) + 1;
-    fb.text(1, row, "VOS MARCHES EN COURS", AMBER);
-    for (j, t) in s.trade.tenders.iter().enumerate() {
-        let i = offers.len() + j;
-        let sel = i == g.trade_ui.sel;
-        let hov = g.hit_cells(
-            1,
-            row + 1 + j,
-            80,
-            1,
-            Act::Call(Game::click_trade_row, i),
-            None,
-        );
-        let left = (t.deadline - s.time) / DAY;
-        fb.text(
-            1,
-            row + 1 + j,
-            &format!(
-                "{}{:<16.16} {:>6.0} KG A {:>7.1} CR/KG   {:>4.1} J RESTANTS",
-                if sel { ">" } else { " " },
-                s.data.resources[t.res].name.to_uppercase(),
-                t.kg,
-                t.price,
-                left
-            ),
-            if sel {
-                AMBER
-            } else if hov {
-                WHITE
-            } else if left < 3.0 {
-                DOWN
-            } else {
-                GREEN
-            },
-        );
-    }
-    fb.text(1, 30, "[ENTREE] MISER / LIVRER", GREEN);
+    fb.text(
+        1,
+        8 + offers.len().max(1) + 1,
+        "UN MARCHE REMPORTE DEVIENT UN CONTRAT : IL SE LIVRE ET SE SUIT DANS CONTRATS.",
+        DIM,
+    );
+    fb.text(1, 30, "[ENTREE] MISER", GREEN);
 }
 
 fn draw_insurance(fb: &mut Framebuffer, g: &Game) {

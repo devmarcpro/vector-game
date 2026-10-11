@@ -25,6 +25,8 @@ pub struct Settings {
     pub lang: usize,
     /// Menu column of the cockpit (clickable menus and ship controls).
     pub flight_menu: bool,
+    /// Scrolling banner of the news along the bottom of the screen.
+    pub ticker: bool,
 }
 
 impl Default for Settings {
@@ -39,12 +41,13 @@ impl Default for Settings {
             azerty: true,
             lang: 0,
             flight_menu: true,
+            ticker: true,
         }
     }
 }
 
 impl Settings {
-    pub const COUNT: usize = 9;
+    pub const COUNT: usize = 10;
 
     pub fn describe(&self) -> Vec<(&'static str, String)> {
         let yn = |b: bool| if b { "OUI" } else { "NON" }.to_string();
@@ -64,6 +67,7 @@ impl Settings {
             ),
             ("Langue", LANGS[self.lang.min(LANGS.len() - 1)].to_string()),
             ("Menu de pilotage (cockpit)", yn(self.flight_menu)),
+            ("Bandeau d'informations", yn(self.ticker)),
         ]
     }
 
@@ -85,6 +89,7 @@ impl Settings {
             6 => self.azerty = !self.azerty,
             7 => self.lang = cycle(self.lang, LANGS.len()),
             8 => self.flight_menu = !self.flight_menu,
+            9 => self.ticker = !self.ticker,
             _ => {}
         }
     }
@@ -146,7 +151,7 @@ impl Settings {
 
     pub fn to_text(&self) -> String {
         format!(
-            "scanlines={}\nglow={}\nscheme={}\nvolume={}\ntutorial={}\nhints={}\nazerty={}\nlang={}\nmenu={}\n",
+            "scanlines={}\nglow={}\nscheme={}\nvolume={}\ntutorial={}\nhints={}\nazerty={}\nlang={}\nmenu={}\nticker={}\n",
             u8::from(self.scanlines),
             u8::from(self.glow),
             self.scheme,
@@ -155,7 +160,8 @@ impl Settings {
             u8::from(self.hints),
             u8::from(self.azerty),
             self.lang,
-            u8::from(self.flight_menu)
+            u8::from(self.flight_menu),
+            u8::from(self.ticker)
         )
     }
 
@@ -176,6 +182,7 @@ impl Settings {
                 "hints" => s.hints = n != 0,
                 "azerty" => s.azerty = n != 0,
                 "menu" => s.flight_menu = n != 0,
+                "ticker" => s.ticker = n != 0,
                 "lang" => s.lang = n.min(LANGS.len() - 1),
                 "volume" => s.volume = n.min(10) as u8,
                 _ => {}

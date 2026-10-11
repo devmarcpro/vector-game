@@ -156,6 +156,7 @@ impl Game {
                 res
             }
             KeyCode::KeyR => self.sim.rogue_recall(),
+            KeyCode::KeyC => self.sim.rogue_capture(),
             KeyCode::KeyV => self
                 .sim
                 .rogue_deploy_drone()
@@ -486,6 +487,7 @@ fn draw_run(fb: &mut Framebuffer, g: &Game, r: &Rogue) {
         ("[ESP] ATTENDRE", KeyCode::Space),
         ("[TAB] CHEF", KeyCode::Tab),
         ("[V] LANCER UN DRONE", KeyCode::KeyV),
+        ("[C] CAPTURER UNE BETE", KeyCode::KeyC),
     ];
     if r.on_surface() && r.parent.is_none() {
         cmds.push(("[R] RAPPELER L'EQUIPE", KeyCode::KeyR));

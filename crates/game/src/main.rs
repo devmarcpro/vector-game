@@ -13,6 +13,7 @@ mod fleet_map_view;
 mod flight_menu;
 mod flow_view;
 mod game;
+mod globe;
 mod hud;
 mod mouse;
 mod power_view;
@@ -274,6 +275,34 @@ fn snapshot(path: &str, scene: &str, data: Arc<GameData>) {
             g.sim.target_npc = Some(k);
             g.open_dialogue();
             g.dlg_sel = 1;
+        }
+        "world" => {
+            g.sim.reveal_all();
+            let i = g
+                .sim
+                .bodies
+                .iter()
+                .position(|b| {
+                    matches!(
+                        b.kind,
+                        vector_world::BodyKind::Planet(
+                            vector_world::PlanetKind::Terran | vector_world::PlanetKind::Ocean
+                        )
+                    )
+                })
+                .or_else(|| {
+                    g.sim.bodies.iter().position(
+                        |b| matches!(b.kind, vector_world::BodyKind::Planet(p) if !p.is_giant()),
+                    )
+                })
+                .expect("a solid planet");
+            let b = &g.sim.bodies[i];
+            let dir = vector_core::Vec3::new(0.3, 0.15, -1.0).normalized();
+            g.sim.ship.pos = b.pos - dir * (b.radius * 3.2);
+            g.sim.ship.vel = b.vel;
+            g.sim.ship.rot = vector_core::Mat3::look_at(dir, vector_core::Vec3::new(0.0, 1.0, 0.0));
+            g.sim.target = Some(i);
+            g.sim.update_ref_pub();
         }
         "visit_ship" | "visit_station" => {
             let d = Arc::clone(&g.data);

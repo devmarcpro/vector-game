@@ -1,6 +1,7 @@
 //! Surface screen (F8): a coloured character map of a solid planet with five layers, an info
 //! panel for the cursor cell, and a wireframe globe with contour lines.
 use crate::game::Game;
+use crate::globe::Globe;
 use crate::hud::{AMBER, DIM, GREEN, RED};
 use crate::mouse::Act;
 use vector_core::{Mat3, Vec3};
@@ -473,83 +474,17 @@ fn draw_globe(
                 cy_px - (p.y / z * focal) as f32,
             )
         })
-    }; // One dot per visible cell, coloured by the current layer.
-    for y in 0..H {
-        for x in 0..W {
-            let p = to_view(Surface::lat(y), Surface::lon(x));
-            if !visible(p) {
-                continue;
-            }
-            if let Some((sx, sy)) = project(p) {
-                let (_, c) = cell(g, map, x, y);
-                for (dx, dy) in [(0, 0), (1, 0), (0, 1), (1, 1)] {
-                    fb.plot(sx as i32 + dx, sy as i32 + dy, c);
-                }
-            }
-        }
-    }
-    let mut seg = |a: Vec3, b: Vec3, c: u32| {
-        if !(visible(a) || visible(b)) {
-            return;
-        }
-        if let (Some(p), Some(q)) = (project(a), project(b)) {
-            fb.line(p.0, p.1, q.0, q.1, c);
-        }
     };
-    // Graticule every 30 degrees.
-    for k_lat in -2..=2 {
-        let lat = f64::from(k_lat) * 30f64.to_radians();
-        for s in 0..72 {
-            let (a, b) = (
-                f64::from(s) / 72.0 * std::f64::consts::TAU,
-                f64::from(s + 1) / 72.0 * std::f64::consts::TAU,
-            );
-            seg(to_view(lat, a), to_view(lat, b), 0x0018_3040);
-        }
-    }
-    for k_lon in 0..12 {
-        let lon = f64::from(k_lon) * 30f64.to_radians();
-        for s in -30..30 {
-            let (a, b) = (
-                f64::from(s) / 60.0 * std::f64::consts::PI,
-                f64::from(s + 1) / 60.0 * std::f64::consts::PI,
-            );
-            seg(to_view(a, lon), to_view(b, lon), 0x0018_3040);
-        }
-    }
-    // Contours.
-    let levels: [(f32, u32); 5] = [
-        (-0.5, 0x0020_50A0),
-        (0.0, 0x0090_E0FF),
-        (0.25, 0x0060_C060),
-        (0.5, 0x00C0_A050),
-        (0.75, 0x00F0_F0F0),
-    ];
-    let at = |x: usize, y: usize| map.surface.elev[Surface::idx(x % W, y)];
-    for y in 0..H - 1 {
-        for x in 0..W {
-            let corners = [at(x, y), at(x + 1, y), at(x + 1, y + 1), at(x, y + 1)];
-            let pos = [(x, y), (x + 1, y), (x + 1, y + 1), (x, y + 1)];
-            for &(level, color) in &levels {
-                let mut pts: Vec<Vec3> = Vec::new();
-                for e in 0..4 {
-                    let (a, b) = (corners[e], corners[(e + 1) % 4]);
-                    if (a < level) != (b < level) {
-                        let t = f64::from((level - a) / (b - a));
-                        let ((ax, ay), (bx, by)) = (pos[e], pos[(e + 1) % 4]);
-                        let fx = ax as f64 + (bx as f64 - ax as f64) * t + 0.5;
-                        let fy = ay as f64 + (by as f64 - ay as f64) * t + 0.5;
-                        let lon = fx / W as f64 * std::f64::consts::TAU;
-                        let lat = (0.5 - fy / H as f64) * std::f64::consts::PI;
-                        pts.push(to_view(lat, lon));
-                    }
-                }
-                for pair in pts.as_chunks::<2>().0 {
-                    seg(pair[0], pair[1], color);
-                }
-            }
-        }
-    }
+    let globe = Globe {
+        map,
+        to_view: &to_view,
+        visible: &visible,
+        project: &project,
+    };
+    // One dot per visible cell, coloured by the current layer, then the graticule and contours.
+    globe.dots(fb, 1, 2, &|x, y, _| cell(g, map, x, y).1);
+    globe.graticule(fb, 0x0018_3040);
+    globe.contours(fb, 1);
     // Limb.
     let r = limb_r;
     let z = -1.0 / cam_dist;

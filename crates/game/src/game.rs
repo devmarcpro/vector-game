@@ -109,6 +109,8 @@ pub struct Game {
     pub crew_sel: usize,
     pub recruit_sel: usize,
     pub journal_scroll: usize,
+    /// 0 the log of the ship, 1 the news of the world.
+    pub journal_tab: u8,
     pub log_seen: usize,
     pub gal_cache: Vec<StarEntry>,
     pub gal_sel: usize,
@@ -178,6 +180,12 @@ pub struct Game {
     pub codex_back: Vec<(usize, usize)>,
     /// Surface map screen (F8): the map, cursor, layer, globe view and its rotation.
     pub surf: Option<vector_sim::planet::PlanetMap>,
+    /// Maps of the planets of the system, built when first seen from the cockpit (drawn as
+    /// topographic globes): the system they belong to, and one per body.
+    pub flight_maps: std::cell::RefCell<(
+        u64,
+        std::collections::HashMap<usize, std::rc::Rc<vector_sim::planet::PlanetMap>>,
+    )>,
     pub surf_cx: usize,
     pub surf_cy: usize,
     pub surf_layer: usize,
@@ -264,6 +272,7 @@ impl Game {
             crew_sel: 0,
             recruit_sel: 0,
             journal_scroll: 0,
+            journal_tab: 0,
             log_seen: 0,
             gal_cache: Vec::new(),
             gal_sel: 0,
@@ -314,6 +323,7 @@ impl Game {
             codex_cat: 0,
             codex_sel: 0,
             codex_back: Vec::new(),
+            flight_maps: Default::default(),
             surf: None,
             surf_cx: 0,
             surf_cy: 0,
@@ -413,6 +423,21 @@ impl Game {
             boost: self.keys.contains(&KeyCode::ShiftLeft),
             brake: !self.map && self.keys.contains(&KeyCode::KeyC),
         }
+    }
+
+    /// The map of a solid world of the system, for its globe in the cockpit (built once).
+    pub fn flight_map(&self, body: usize) -> Option<std::rc::Rc<vector_sim::planet::PlanetMap>> {
+        let mut cache = self.flight_maps.borrow_mut();
+        if cache.0 != self.sim.system.seed {
+            cache.0 = self.sim.system.seed;
+            cache.1.clear();
+        }
+        if let Some(m) = cache.1.get(&body) {
+            return Some(std::rc::Rc::clone(m));
+        }
+        let m = std::rc::Rc::new(self.sim.planet_map(body)?);
+        cache.1.insert(body, std::rc::Rc::clone(&m));
+        Some(m)
     }
 
     pub fn view(&self) -> crate::hud::View<'_> {
@@ -1654,6 +1679,10 @@ impl Game {
                 self.journal_scroll = self.journal_scroll.saturating_sub(5)
             }
             KeyCode::KeyK => self.screen = Screen::Crew,
+            KeyCode::Tab => {
+                self.journal_tab = 1 - self.journal_tab;
+                self.journal_scroll = 0;
+            }
             KeyCode::Escape | KeyCode::KeyJ => {
                 self.screen = if self.sim.docked.is_some() {
                     Screen::Station
@@ -2520,10 +2549,14 @@ mod tests {
             let y0 = (fb.rows() - 1) * 10;
             (y0..y0 + 10).any(|y| (0..fb.w).any(|x| fb.px[y * fb.w + x] != 0))
         };
+        // (the news banner has its own option and row)
+        g.settings.ticker = false;
         g.screen = Screen::Flight;
         assert!(lit(&g));
         g.settings.hints = false;
         assert!(!lit(&g));
+        g.settings.ticker = true;
+        assert!(lit(&g), "the banner takes the last row when the command bar is off");
     }
 
     #[test]
@@ -3531,7 +3564,11 @@ mod tests {
             g.key(KeyCode::Minus, None, true);
         }
         g.key(KeyCode::Enter, None, true);
-        assert_eq!(g.sim.trade.tenders.len(), 1);
+        assert!(g
+            .sim
+            .contracts
+            .iter()
+            .any(|c| c.dest_name == g.sim.bodies[g.sim.docked.unwrap()].name));
         frame(&g);
         g.key(KeyCode::Escape, None, true);
         assert_eq!(g.screen, Screen::Station);

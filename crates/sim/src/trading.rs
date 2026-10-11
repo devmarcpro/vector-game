@@ -28,10 +28,9 @@ pub const MAX_SEATS: usize = 3;
 /// Share of months a cartel is active in a region.
 pub const P_CARTEL: f64 = 0.4;
 pub const CARTEL_MONTH: f64 = 30.0 * DAY;
-/// Tenders: days to deliver, how many are offered at once, how many can be held.
+/// Tenders: days to deliver, how many are offered at once.
 pub const TENDER_DAYS: f64 = 20.0;
 pub const TENDERS_OFFERED: usize = 3;
-pub const MAX_TENDERS: usize = 4;
 const TENDER_EPOCH: f64 = 10.0 * DAY;
 
 #[derive(Clone, Debug, PartialEq)]
@@ -112,17 +111,6 @@ pub fn cartel_factor(data: &GameData, seed: u64, pos: [f64; 3], t: f64, res: usi
     f
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub struct Tender {
-    pub id: u64,
-    pub system_seed: u64,
-    pub station: usize,
-    pub res: usize,
-    pub kg: f64,
-    pub price: f64,
-    pub deadline: f64,
-}
-
 /// A tender on offer (not yet won).
 #[derive(Clone, Debug, PartialEq)]
 pub struct TenderOffer {
@@ -141,7 +129,6 @@ pub struct TradeState {
     /// Cartel seats held, and the month last settled.
     pub seats: Vec<usize>,
     pub last_cartel_month: i64,
-    pub tenders: Vec<Tender>,
     /// Trust of the contraband contacts, per faction: (faction, 0..1).
     pub contacts: Vec<(usize, f32)>,
 }
@@ -357,7 +344,8 @@ impl Sim {
                 continue;
             }
             let id = h(9);
-            if self.trade.tenders.iter().any(|t| t.id == id) {
+            // Already won (running, or done): no longer on offer.
+            if self.contracts.iter().any(|c| c.id == id) || self.done_contracts.contains(&id) {
                 continue;
             }
             out.push(TenderOffer {
@@ -371,7 +359,8 @@ impl Sim {
     }
 
     /// Bid `price` per kg on tender `id`. The rivals' best bid is a fixed draw below the ceiling:
-    /// the lowest bid wins, but a bid below cost is yours to honour.
+    /// the lowest bid wins, and a won tender is an ordinary delivery contract to this station
+    /// (same list, same payment, same expiry and reputation as any other).
     pub fn bid_tender(&mut self, id: u64, price: f64) -> Result<(), &'static str> {
         let st = self.docked_station()?;
         let offer = self
@@ -379,9 +368,6 @@ impl Sim {
             .into_iter()
             .find(|o| o.id == id)
             .ok_or("appel d'offres clos")?;
-        if self.trade.tenders.len() >= MAX_TENDERS {
-            return Err("trop de marches en cours");
-        }
         if !(price > 0.0 && price <= offer.ceiling) {
             return Err("offre au-dessus du plafond");
         }
@@ -389,59 +375,20 @@ impl Sim {
         if price >= rival {
             return Err("offre battue : un concurrent est moins cher");
         }
-        self.trade.tenders.push(Tender {
+        self.accept_contract(crate::economy::Contract {
             id,
-            system_seed: self.system.seed,
-            station: st,
-            res: offer.res,
+            dest_star: self.here,
+            dest_seed: self.system.seed,
+            dest_body: st,
+            dest_name: self.bodies[st].name.clone(),
+            dest_system: self.system.name.clone(),
+            dist_ly: 0.0,
+            resource: offer.res,
             kg: offer.kg,
-            price,
-            deadline: self.time + TENDER_DAYS * DAY,
-        });
-        Ok(())
-    }
-
-    /// Deliver tender `i` at its station; returns the payment.
-    pub fn deliver_tender(&mut self, i: usize) -> Result<f64, &'static str> {
-        let st = self.docked_station()?;
-        let t = self.trade.tenders.get(i).ok_or("marche inconnu")?.clone();
-        if t.system_seed != self.system.seed || t.station != st {
-            return Err("ce marche se livre a une autre station");
-        }
-        if self.ship.cargo.kg[t.res] + 1e-9 < t.kg {
-            return Err("cargaison insuffisante");
-        }
-        let data = std::sync::Arc::clone(&self.data);
-        self.ship.cargo.remove(&data, t.res, t.kg);
-        let pay = t.kg * t.price;
-        self.credits += pay;
-        self.trade.tenders.remove(i);
-        self.change_reputation(self.faction, 0.03);
-        Ok(pay)
-    }
-
-    /// Fine the tenders that ran out of time.
-    pub(crate) fn tender_tick(&mut self) {
-        let now = self.time;
-        let late: Vec<Tender> = self
-            .trade
-            .tenders
-            .iter()
-            .filter(|t| t.deadline < now)
-            .cloned()
-            .collect();
-        if late.is_empty() {
-            return;
-        }
-        self.trade.tenders.retain(|t| t.deadline >= now);
-        for t in late {
-            let fine = (t.kg * t.price * 0.15).min(self.credits.max(0.0));
-            self.credits -= fine;
-            self.change_reputation(self.faction, -0.1);
-            self.events.push(Event::MarketNews(format!(
-                "Marche non livre : penalite de {fine:.0} CR."
-            )));
-        }
+            reward: offer.kg * price,
+            expires: self.time + TENDER_DAYS * DAY,
+            faction: self.faction,
+        })
     }
 }
 
@@ -591,7 +538,7 @@ mod tests {
     }
 
     #[test]
-    fn tenders_are_won_by_underbidding_rivals_and_must_be_delivered() {
+    fn a_won_tender_is_an_ordinary_contract_with_its_payment_and_its_penalty() {
         let mut s = docked();
         let offers = s.offered_tenders();
         assert!(!offers.is_empty());
@@ -606,22 +553,30 @@ mod tests {
             "beaten by a rival"
         );
         assert!(s.bid_tender(1, 1.0).is_err(), "unknown tender");
+        let n = s.contracts.len();
         s.bid_tender(o.id, o.ceiling * 0.5).expect("a low bid wins");
+        assert_eq!(s.contracts.len(), n + 1, "it is a contract now");
         assert!(!s.offered_tenders().iter().any(|x| x.id == o.id));
-        assert!(s.deliver_tender(0).is_err(), "no cargo yet");
+        let idx = s.contracts.iter().position(|c| c.id == o.id).unwrap();
+        assert!(s.deliver_contract(idx).is_err(), "no cargo yet");
         s.ship.cargo.kg[o.res] = o.kg;
         let c = s.credits;
-        let pay = s.deliver_tender(0).expect("delivered");
-        assert!((pay - o.kg * o.ceiling * 0.5).abs() < 1e-6);
+        let pay = s.deliver_contract(idx).expect("delivered");
+        assert!((pay - o.kg * o.ceiling * 0.5 * (1.0 - s.tax_rate())).abs() < 1e-6);
         assert!((s.credits - c - pay).abs() < 1e-6);
-        assert!(s.trade.tenders.is_empty());
-        // A won tender left undelivered costs a penalty.
+        assert!(!s.contracts.iter().any(|c| c.id == o.id));
+        assert!(
+            !s.offered_tenders().iter().any(|x| x.id == o.id),
+            "not offered twice"
+        );
+        // A won tender left undelivered expires like any contract: reputation is lost.
         let o2 = s.offered_tenders()[0].clone();
         s.bid_tender(o2.id, o2.ceiling * 0.5).unwrap();
+        let rep0 = s.reputation_with(s.faction);
         s.time += (TENDER_DAYS + 1.0) * DAY;
-        let c = s.credits;
-        s.tender_tick();
-        assert!(s.credits < c && s.trade.tenders.is_empty());
+        s.expire_contracts();
+        assert!(!s.contracts.iter().any(|c| c.id == o2.id));
+        assert!(s.reputation_with(s.faction) < rep0);
     }
 
     #[test]

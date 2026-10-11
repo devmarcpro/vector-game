@@ -46,3 +46,8 @@ Les stations, colonies et le vaisseau lui-même deviennent des lieux du moteur d
 
 ## 6. Propriété (règle du joueur, 2026-10-11)
 Beaucoup de services n'avaient pas de logique de lieu (de l'élevage dans une station étrangère, par exemple). Règle : un service n'existe que chez celui à qui il appartient ou qui le vend. Voir `docs/DECISIONS.md`, « Chacun chez soi ». Appliqué : élevage (enclos à bord, marché aux bêtes en station), ancres temporelles (vaisseau seulement), gestion de colonie (colonies seulement), marche à pied dans une station (seulement amarré). À vérifier encore : casino interdit par certaines mœurs, banque propre à une faction, relais seulement entre colonies à soi.
+
+## 7. Une chose, une représentation (2026-10-11)
+- Planètes : `globe.rs` partagé (surface F8 + pilotage). Restent à unifier : carte système (disque), codex (texte).
+- Nouvelles : un fil unique `news.rs` ; politique par secteurs (`politics.rs`), incidents d'entreprises (`incidents.rs`), événements de bourse ; ticker + onglet du journal.
+- Exploration : un seul moteur (`rogue.rs`) pour surfaces, lieux, stations, colonies, vaisseau.

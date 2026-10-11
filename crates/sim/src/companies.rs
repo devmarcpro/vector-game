@@ -36,7 +36,10 @@ impl Sim {
         }
         let own = 0.6 * smooth_noise(self.galaxy.seed ^ 0xC0, c as i64, 17.0, t)
             + 0.4 * smooth_noise(self.galaxy.seed ^ 0xC1, c as i64, 61.0, t);
-        k.base * ln.exp() * (1.0 + k.vol * own).max(0.2)
+        // What befalls the company in the sectors around its headquarters.
+        let hq =
+            crate::incidents::share_factor(&self.data, self.galaxy.seed, c, self.company_pos(c), t);
+        k.base * ln.exp() * (1.0 + k.vol * own).max(0.2) * hq
     }
 
     /// Daily prices of company `c` over the last `days` days, oldest first.

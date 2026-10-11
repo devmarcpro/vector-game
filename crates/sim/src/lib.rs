@@ -19,12 +19,15 @@ pub mod fleet;
 pub mod futures;
 pub mod gear;
 pub mod genealogy;
+pub mod incidents;
 pub mod intrusion;
 pub mod livestock;
 pub mod market;
 pub mod multiverse;
+pub mod news;
 pub mod npc;
 pub mod planet;
+pub mod politics;
 pub mod rogue;
 pub mod rules;
 #[cfg(test)]
@@ -294,6 +297,9 @@ pub struct Sim {
     pub rogue: Option<rogue::Rogue>,
     pub rogue_visits: Vec<(u64, u32)>,
     pub births_day: i64,
+    /// The news heard so far, and the last day the sectors around were listened to.
+    pub news: Vec<news::NewsItem>,
+    pub news_scanned_to: f64,
     pub last_livestock_day: i64,
     /// Body used as velocity reference for flight assist (within its influence radius).
     pub ref_body: Option<usize>,
@@ -433,6 +439,8 @@ impl Sim {
             rogue: None,
             rogue_visits: Vec::new(),
             births_day: i64::MIN,
+            news: Vec::new(),
+            news_scanned_to: f64::NEG_INFINITY,
             last_livestock_day: i64::MIN,
             ref_body: None,
             target: None,
@@ -712,9 +720,9 @@ impl Sim {
     pub(crate) fn run_systems(&mut self, act: &Activity, dt: f64) {
         self.livestock_tick();
         self.cartel_tick();
-        self.tender_tick();
         self.multiverse_tick();
         self.births_tick();
+        self.news_tick();
         let flux = self.solar_flux();
         let mass = self.ship.mass();
         let was_hot = self.ship.sys.overheating;

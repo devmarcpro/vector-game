@@ -66,7 +66,7 @@ impl Animal {
 }
 
 /// An animal of a given species made by chance (the stock of a station dealer).
-fn random_animal(seed: u64, species: usize, now: f64, n: i64) -> Animal {
+pub(crate) fn random_animal(seed: u64, species: usize, now: f64, n: i64) -> Animal {
     let mut rng = Rng::new(hash_coord(seed ^ 0x11FE, species as i64, n, now as i64));
     let mut genes = [[0u8; 2]; 4];
     for g in &mut genes {

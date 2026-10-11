@@ -93,8 +93,69 @@ pub fn draw(fb: &mut Framebuffer, g: &Game) {
 }
 
 /// Tutorial banner and the F1 contextual help box, drawn over any screen.
+/// Colour of a news tag (see `vector_sim::news::TAGS`).
+fn tag_color(tag: u8) -> u32 {
+    match tag {
+        0 => AMBER,
+        1 => RED,
+        2 => GREEN,
+        3 => 0x0060_C0FF,
+        4 => 0x0090_E090,
+        5 => 0x00D0_A0FF,
+        _ => 0x00FF_8040,
+    }
+}
+
+/// The news banner: what the sectors around have seen happen, scrolling along the bottom.
+fn draw_ticker(fb: &mut Framebuffer, g: &Game) {
+    let items = g.sim.headlines(14);
+    let row = fb
+        .rows()
+        .saturating_sub(if g.settings.hints { 2 } else { 1 });
+    let y = (row * 10) as i32;
+    for yy in y..y + 10 {
+        for x in 0..fb.w as i32 {
+            fb.px_set(x, yy, 0);
+        }
+    }
+    if items.is_empty() {
+        fb.text_at(
+            8,
+            y + 1,
+            "INFORMATIONS : AUCUNE NOUVELLE POUR L'INSTANT.",
+            DIM,
+        );
+        return;
+    }
+    let segs: Vec<(u32, String)> = items
+        .iter()
+        .map(|n| {
+            (
+                tag_color(n.tag),
+                format!("[{}] {}  +++  ", n.scale(), n.text.to_uppercase()),
+            )
+        })
+        .collect();
+    let total: i32 = segs.iter().map(|s| s.1.chars().count() as i32 * 8).sum();
+    // The banner moves left at 40 px/s; the list is repeated so there is never a gap.
+    let shift = ((crate::proto_view::anim_time() * 40.0) as i32).rem_euclid(total.max(1));
+    let mut x = 8 - shift;
+    for _ in 0..2 {
+        for (col, text) in &segs {
+            let w = text.chars().count() as i32 * 8;
+            if x + w > 0 && x < fb.w as i32 {
+                fb.text_at(x, y + 1, text, *col);
+            }
+            x += w;
+        }
+    }
+}
+
 pub fn draw_overlay(fb: &mut Framebuffer, g: &Game) {
     crate::flight_menu::draw(fb, g);
+    if g.settings.ticker && g.screen != Screen::MainMenu {
+        draw_ticker(fb, g);
+    }
     if let Some((i, text)) = g.tutorial_line() {
         let line = format!(
             "TUTO {}/{}  {}  [F10 ignorer]",
@@ -1206,7 +1267,12 @@ fn draw_recruit(fb: &mut Framebuffer, g: &Game) {
 }
 
 fn draw_journal(fb: &mut Framebuffer, g: &Game) {
+    if g.journal_tab == 1 {
+        draw_news(fb, g);
+        return;
+    }
     fb.text(1, 1, "JOURNAL DE BORD", AMBER);
+    fb.text(30, 1, "[TAB] NOUVELLES DU MONDE", DIM);
     let log = &g.sim.crew.log;
     let rows = fb.rows().saturating_sub(6);
     let end = log.len().saturating_sub(g.journal_scroll.min(log.len()));
@@ -1221,6 +1287,45 @@ fn draw_journal(fb: &mut Framebuffer, g: &Game) {
         1,
         fb.rows() - 3,
         "HAUT/BAS:DEFILER  K:EQUIPAGE  J/ECHAP:RETOUR",
+        DIM,
+    );
+}
+
+/// The news heard so far, newest first, with how far away it happened.
+fn draw_news(fb: &mut Framebuffer, g: &Game) {
+    fb.text(1, 1, "NOUVELLES DU MONDE", AMBER);
+    fb.text(30, 1, "[TAB] JOURNAL DE BORD", DIM);
+    fb.text(
+        1,
+        2,
+        "TOUT CE QUI SE DIT EST VRAI ; PLUS C'EST LOIN, PLUS CA ARRIVE TARD.",
+        DIM,
+    );
+    let rows = fb.rows().saturating_sub(7);
+    let list: Vec<_> = g.sim.news.iter().rev().collect();
+    let start = g.journal_scroll.min(list.len().saturating_sub(1));
+    for (i, n) in list.iter().skip(start).take(rows).enumerate() {
+        fb.text(
+            1,
+            4 + i,
+            &format!(
+                "{}  {:<8}{:<12} {:>5.0} AL  {}",
+                stamp(n.time),
+                n.scale(),
+                vector_sim::news::TAGS[usize::from(n.tag).min(vector_sim::news::TAGS.len() - 1)],
+                n.dist_ly,
+                n.text
+            ),
+            tag_color(n.tag),
+        );
+    }
+    if list.is_empty() {
+        fb.text(1, 4, "(AUCUNE NOUVELLE POUR L'INSTANT)", DIM);
+    }
+    fb.text(
+        1,
+        fb.rows() - 4,
+        "HAUT/BAS:DEFILER  TAB:JOURNAL  J/ECHAP:RETOUR",
         DIM,
     );
 }

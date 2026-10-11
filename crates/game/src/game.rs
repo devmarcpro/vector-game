@@ -120,6 +120,8 @@ pub struct Game {
     /// Crew screen: the organ list of the selected person has the keys.
     pub organ_mode: bool,
     pub organ_sel: usize,
+    /// Implant type chosen in the organ list (Left/Right).
+    pub cyber_sel: usize,
     /// Interface prototypes (F12): which one, and the implant slot picked in the body one.
     pub proto: u8,
     pub proto_slot: usize,
@@ -236,6 +238,7 @@ impl Game {
             crew_net: false,
             organ_mode: false,
             organ_sel: 0,
+            cyber_sel: 0,
             proto: 0,
             proto_slot: 0,
             fleet_map: false,
@@ -1202,6 +1205,18 @@ impl Game {
                     },
                 )
             }
+            KeyCode::ArrowLeft => {
+                let nc = self.data.cybernetics.len().max(1);
+                self.cyber_sel = (self.cyber_sel + nc - 1) % nc;
+                return;
+            }
+            KeyCode::ArrowRight => {
+                let nc = self.data.cybernetics.len().max(1);
+                self.cyber_sel = (self.cyber_sel + 1) % nc;
+                return;
+            }
+            KeyCode::KeyI if n > 0 => self.sim.install_cyber(member, self.cyber_sel),
+            KeyCode::KeyU if n > 0 => self.sim.remove_cyber(member, self.cyber_sel),
             KeyCode::KeyP if n > 0 => self.sim.implant(member, organ, Implant::Prosthesis),
             KeyCode::KeyH if n > 0 => self.sim.harvest(member, organ),
             _ => return,

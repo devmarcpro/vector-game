@@ -120,3 +120,6 @@ Chaque personne a `organs[i]` dans 0..1. Par heure : si sa maladie cible l'organ
 
 ## Greffes et prothèses (E3.3)
 `surgery.rs` : une greffe réussit avec probabilité 1 - 0.2 x (1 - compétence/12) (4 à quai), sinon l'organe tombe à 20 % ; une prothèse vaut 85 % et ne s'use ni ne guérit. Prélever sur un vivant (non vital) : morale -0.4 et loyauté -0.4 pour lui, -0.2 aux autres (-0.1 de plus pour ses amis) ; sur un mort : -0.05.
+
+## Implants (E3.3)
+Un implant actif ajoute ses effets (clés de traits ou `skill:<id>`). Par jour il consomme `upkeep` kg de pièces détachées ; sans pièces ou sans support de vie alimenté il s'arrête. Piraté (`hacked_until`), seuls les implants `hackable` s'arrêtent. Contrainte : stress cible + somme des `stress` (+0.25 si arrêté).

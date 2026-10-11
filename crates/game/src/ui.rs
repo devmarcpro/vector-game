@@ -935,6 +935,32 @@ fn draw_crew(fb: &mut Framebuffer, g: &Game) {
                 GREEN,
             );
         }
+        // Implants installed, and the type picked with Left/Right in the organ list.
+        let iy = top + 31;
+        fb.text(x, iy, "IMPLANTS", AMBER);
+        for (k, &c) in p.implants.iter().enumerate() {
+            let on = p.cyber_ok && !(g.data.cybernetics[c].hackable && p.hacked);
+            fb.text(
+                x,
+                iy + 1 + k,
+                &format!(
+                    "{}{}",
+                    g.data.cybernetics[c].name.to_uppercase(),
+                    if on { "" } else { "  (ARRET)" }
+                ),
+                if on { GREEN } else { RED },
+            );
+        }
+        if g.organ_mode {
+            if let Some(c) = g.data.cybernetics.get(g.cyber_sel) {
+                fb.text(
+                    x,
+                    iy + 6,
+                    &format!("< {} >  I POSER  U RETIRER", c.name.to_uppercase()),
+                    AMBER,
+                );
+            }
+        }
         // Organs: integrity of each, red when failing.
         fb.text(x, top + 19, "ORGANES", AMBER);
         for (k, (def, v)) in g.data.organs.iter().zip(&p.organs).enumerate() {

@@ -2,7 +2,7 @@
 //! weapon, faction, anomaly and condition, generated from the real data (no hand-written numbers).
 use vector_data::GameData;
 
-pub const CATEGORIES: [&str; 17] = [
+pub const CATEGORIES: [&str; 18] = [
     "RESSOURCES",
     "MODULES",
     "ARMES",
@@ -20,6 +20,7 @@ pub const CATEGORIES: [&str; 17] = [
     "EVENEMENTS",
     "GENES",
     "ORGANES",
+    "IMPLANTS",
 ];
 
 /// Number of entries in a category.
@@ -55,6 +56,7 @@ fn entries(data: &GameData, cat: usize) -> Vec<usize> {
         14 => (0..data.world_events.len()).collect(),
         15 => (0..data.genes.len()).collect(),
         16 => (0..data.organs.len()).collect(),
+        17 => (0..data.cybernetics.len()).collect(),
         _ => Vec::new(),
     }
 }
@@ -78,6 +80,7 @@ pub fn names(data: &GameData, cat: usize) -> Vec<String> {
             14 => data.world_events[i].name.clone(),
             15 => data.genes[i].name.clone(),
             16 => data.organs[i].name.clone(),
+            17 => data.cybernetics[i].name.clone(),
             _ => data.species[i].name.clone(),
         })
         .collect()
@@ -482,6 +485,31 @@ pub fn entry(data: &GameData, cat: usize, k: usize) -> Vec<String> {
                     res_name(data, &d.cure).unwrap_or_else(|| d.cure.clone())
                 }
             ));
+        }
+        17 => {
+            let c = &data.cybernetics[i];
+            out.push(format!("{}  (implant, emplacement {})", c.name, c.slot));
+            for (k, w) in &c.effects {
+                let what = match k.strip_prefix("skill:") {
+                    Some(s) => format!("competence {s}"),
+                    None => k.clone(),
+                };
+                out.push(format!("Effet : {what} {w:+.2}"));
+            }
+            out.push(format!(
+                "Besoins : {:.2} kW du vaisseau, {:.3} kg de pieces detachees par jour. Sans courant ou sans pieces, il s'arrete.",
+                c.power, c.upkeep
+            ));
+            out.push(format!(
+                "Contrainte constante sur le porteur : {:.0} %   valeur : {:.0} cr",
+                c.stress * 100.0,
+                c.value
+            ));
+            out.push(if c.hackable {
+                "Piratable : un intrus peut le prendre pour quelques jours.".to_string()
+            } else {
+                "Non piratable (aucune interface sans fil).".to_string()
+            });
         }
         16 => {
             let o = &data.organs[i];

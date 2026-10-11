@@ -56,6 +56,12 @@ pub struct Person {
     pub organs: Vec<f32>,
     /// 0 natural, 1 graft, 2 prosthesis (see `surgery`), per organ.
     pub organ_kind: Vec<u8>,
+    /// Cybernetic implants installed (indices into `GameData::cybernetics`).
+    pub implants: Vec<usize>,
+    /// Whether they run right now (power, spare parts) and whether an intruder holds them.
+    pub cyber_ok: bool,
+    pub hacked: bool,
+    pub hacked_until: f64,
 }
 
 impl Person {
@@ -109,6 +115,34 @@ impl Person {
             .fold((0, 0.0), |b, (i, v)| if v > b.1 { (i, v) } else { b })
     }
 
+    /// What the running implants add to a trait key or to `skill:<id>`.
+    pub fn implant_effect(&self, data: &GameData, key: &str) -> f64 {
+        if !self.cyber_ok {
+            return 0.0;
+        }
+        self.implants
+            .iter()
+            .map(|&i| &data.cybernetics[i])
+            .filter(|c| !(c.hackable && self.hacked))
+            .flat_map(|c| c.effects.iter().filter(|(k, _)| k == key).map(|(_, w)| *w))
+            .sum()
+    }
+
+    /// Constant strain of the implants on their owner (more when they stop).
+    pub fn implant_strain(&self, data: &GameData) -> f32 {
+        let base: f64 = self
+            .implants
+            .iter()
+            .map(|&i| data.cybernetics[i].stress)
+            .sum();
+        let stopped = if !self.implants.is_empty() && (!self.cyber_ok || self.hacked) {
+            0.25
+        } else {
+            0.0
+        };
+        (base + stopped) as f32
+    }
+
     /// Sum of a trait key over the person's traits and genes.
     fn trait_sum(&self, data: &GameData, key: &str) -> f64 {
         let traits: f64 = self
@@ -116,7 +150,10 @@ impl Person {
             .iter()
             .map(|&t| data.traits[t].effect(key))
             .sum();
-        traits + genealogy::gene_effect(data, &self.genome, key) + self.organ_effect(data, key)
+        traits
+            + genealogy::gene_effect(data, &self.genome, key)
+            + self.organ_effect(data, key)
+            + self.implant_effect(data, key)
     }
 
     /// Chance multiplier of a disease from the genes (predispositions).
@@ -281,6 +318,10 @@ pub fn person_from_kin(
         family_def,
         organs: vec![1.0; data.organs.len()],
         organ_kind: vec![0; data.organs.len()],
+        implants: Vec::new(),
+        cyber_ok: true,
+        hacked: false,
+        hacked_until: 0.0,
     }
 }
 
@@ -375,7 +416,10 @@ impl Crew {
             .alive()
             .filter(|p| p.role == role && p.on_duty(now) && p.disease.is_none())
         {
-            let skill = skill_idx.map_or(0.0, |s| f64::from(p.skills[s]));
+            let skill = skill_idx.map_or(0.0, |s| {
+                f64::from(p.skills[s])
+                    + p.implant_effect(data, &format!("skill:{}", data.skills[s].id))
+            });
             let ws = 1.0 + p.trait_sum(data, "work_speed");
             let e =
                 (0.6 + 0.1 * skill) * ws * f64::from(p.health) * (1.0 - 0.4 * f64::from(p.fatigue));
@@ -530,6 +574,26 @@ impl Crew {
             }
             let on_duty = p.on_duty(now);
             let working = on_duty && p.role != 0;
+            // Implants: they need the ship's power and spare parts, and an intruder can take them.
+            if !p.implants.is_empty() {
+                p.hacked = now < p.hacked_until;
+                let need: f64 = p
+                    .implants
+                    .iter()
+                    .map(|&i| data.cybernetics[i].upkeep)
+                    .sum::<f64>()
+                    * days;
+                let parts_ok = data.resource_index("spare_parts").is_some_and(|sp| {
+                    ctx.cargo.kg[sp] >= need && {
+                        ctx.cargo.remove(data, sp, need);
+                        true
+                    }
+                });
+                p.cyber_ok = ctx.life_ok && parts_ok;
+            } else {
+                p.hacked = false;
+                p.cyber_ok = true;
+            }
             let t_sleep = p.trait_sum(data, "sleep_need") as f32;
             let t_social = p.trait_sum(data, "social_need") as f32;
             let t_resist = p.trait_sum(data, "stress_resist") as f32;
@@ -555,6 +619,7 @@ impl Crew {
                 + 0.3 * p.hunger.max(p.thirst)
                 + 0.3 * (1.0 - self.air)
                 + if ctx.overheating { 0.3 } else { 0.0 }
+                + p.implant_strain(data)
                 - t_resist)
                 .clamp(0.0, 1.0);
             p.stress += (stress_target - p.stress) * (1.0 - (-hours / 8.0).exp());

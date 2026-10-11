@@ -170,6 +170,107 @@ impl Sim {
     }
 }
 
+/// Fee of the hospital for fitting an implant, credits.
+pub const IMPLANT_FEE: f64 = 3000.0;
+
+impl Sim {
+    /// Fit implant `cyber` (a part from the hold) on crew member `member`.
+    pub fn install_cyber(&mut self, member: usize, cyber: usize) -> Result<String, &'static str> {
+        let data = std::sync::Arc::clone(&self.data);
+        let p = self.crew.members.get(member).ok_or("membre inconnu")?;
+        if !p.alive {
+            return Err("le patient est mort");
+        }
+        let def = data.cybernetics.get(cyber).ok_or("implant inconnu")?;
+        if p.implants.contains(&cyber) {
+            return Err("deja installe");
+        }
+        let cap = vector_data::CYBER_SLOTS
+            .iter()
+            .find(|(s, _)| *s == def.slot)
+            .map_or(0, |(_, n)| *n);
+        let used = p
+            .implants
+            .iter()
+            .filter(|&&i| data.cybernetics[i].slot == def.slot)
+            .count();
+        if used >= cap {
+            return Err("emplacement deja occupe");
+        }
+        let item = data
+            .resource_index(&format!("cyber_{}", def.id))
+            .ok_or("piece inconnue")?;
+        if self.ship.cargo.kg[item] < 1.0 {
+            return Err("piece absente de la soute");
+        }
+        self.surgeon_skill(member)?;
+        let fee = if self.docked.is_some() {
+            IMPLANT_FEE
+        } else {
+            0.0
+        };
+        if fee > self.credits {
+            return Err("fonds insuffisants");
+        }
+        self.credits -= fee;
+        self.ship.cargo.remove(&data, item, 1.0);
+        let p = &mut self.crew.members[member];
+        p.implants.push(cyber);
+        p.cyber_ok = true;
+        let report = format!("{} : implant {} installe", p.name, def.name);
+        let now = self.time;
+        self.crew.log_event(now, report.clone());
+        Ok(report)
+    }
+
+    /// Take implant `cyber` out of crew member `member` back into the hold.
+    pub fn remove_cyber(&mut self, member: usize, cyber: usize) -> Result<String, &'static str> {
+        let data = std::sync::Arc::clone(&self.data);
+        let p = self.crew.members.get(member).ok_or("membre inconnu")?;
+        let at = p
+            .implants
+            .iter()
+            .position(|&i| i == cyber)
+            .ok_or("pas installe")?;
+        let def = &data.cybernetics[cyber];
+        let item = data
+            .resource_index(&format!("cyber_{}", def.id))
+            .ok_or("piece inconnue")?;
+        self.surgeon_skill(member)?;
+        if self.ship.cargo.add(&data, item, 1.0) < 1.0 {
+            return Err("soute pleine");
+        }
+        let p = &mut self.crew.members[member];
+        p.implants.remove(at);
+        let report = format!("{} : implant {} retire", p.name, def.name);
+        let now = self.time;
+        self.crew.log_event(now, report.clone());
+        Ok(report)
+    }
+
+    /// An intruder takes the hackable implants of `member` for `days` days (they stop, their
+    /// owner is stressed). Returns how many were taken.
+    pub fn hack_implants(&mut self, member: usize, days: f64) -> usize {
+        let now = self.time;
+        let data = std::sync::Arc::clone(&self.data);
+        let Some(p) = self.crew.members.get_mut(member) else {
+            return 0;
+        };
+        let n = p
+            .implants
+            .iter()
+            .filter(|&&i| data.cybernetics[i].hackable)
+            .count();
+        if n > 0 {
+            p.hacked_until = now + days * 86_400.0;
+            p.hacked = true;
+            let text = format!("{} : implants piratés !", p.name);
+            self.crew.log_event(now, text);
+        }
+        n
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -272,5 +373,68 @@ mod tests {
         s.harvest(1, heart).expect("the heart of the dead");
         assert!(s.ship.cargo.kg[d.resource_index("organ_coeur").expect("r")] >= 1.0);
         assert!(s.harvest(1, heart).is_err(), "nothing left to take");
+    }
+
+    #[test]
+    fn implants_boost_skills_stop_without_parts_or_power_and_can_be_hacked() {
+        let mut s = docked_sim();
+        let d = Arc::clone(&s.data);
+        let eye = d.cyber_index("oeil").expect("eye");
+        let hand = d.cyber_index("main_fine").expect("hand");
+        let pilot = d.skill_index("pilotage").expect("skill");
+        let before = f64::from(s.crew.members[0].skills[pilot]);
+        // Needs the part first.
+        assert!(s.install_cyber(0, eye).is_err());
+        give(&mut s, "cyber_oeil", 1.0);
+        give(&mut s, "cyber_main_fine", 2.0);
+        s.install_cyber(0, eye).expect("eye");
+        assert!(s.install_cyber(0, eye).is_err(), "already fitted");
+        s.install_cyber(0, hand).expect("one hand");
+        s.install_cyber(0, hand).expect_err("the same twice");
+        let p = &s.crew.members[0];
+        let skill_key = "skill:pilotage";
+        assert!((p.implant_effect(&d, skill_key) - 1.0).abs() < 1e-9);
+        assert!(before + p.implant_effect(&d, skill_key) > before);
+        // Hacked: the hackable ones stop, then come back.
+        assert_eq!(s.hack_implants(0, 2.0), 2);
+        assert_eq!(
+            s.crew.members[0].implant_effect(&d, skill_key),
+            0.0,
+            "the intruder stops them at once"
+        );
+        give(&mut s, "spare_parts", 50.0);
+        let mut cargo = std::mem::take(&mut s.ship.cargo);
+        let mut credits = s.credits;
+        let mut ctx = crate::crew::CrewCtx {
+            data: &d,
+            cargo: &mut cargo,
+            credits: &mut credits,
+            life_ok: true,
+            life_capacity: 9.0,
+            crew_cap: 9.0,
+            food_per_day: 0.0,
+            medbay: 0.0,
+            workshop: 0.0,
+            overheating: false,
+            seed: 1,
+            needs: false,
+            event_freq: 0.0,
+        };
+        s.crew.update(&mut ctx, 3600.0);
+        assert!(s.crew.members[0].hacked);
+        assert_eq!(
+            s.crew.members[0].implant_effect(&d, skill_key),
+            0.0,
+            "hacked implants stop"
+        );
+        assert!(s.crew.members[0].implant_strain(&d) > 0.25);
+        // Without life support power they stop too, hacked or not.
+        s.crew.members[0].hacked_until = 0.0;
+        let mut ctx2 = crate::crew::CrewCtx {
+            life_ok: false,
+            ..ctx
+        };
+        s.crew.update(&mut ctx2, 7200.0);
+        assert!(!s.crew.members[0].cyber_ok);
     }
 }

@@ -9,6 +9,7 @@ mod scene;
 mod script;
 mod settings;
 mod surface_view;
+mod tech_view;
 mod tutorial;
 mod ui;
 

@@ -1472,41 +1472,73 @@ impl Game {
     }
 
     /// Tech indices in display order: by field, then by cost.
-    pub fn tech_order(&self) -> Vec<usize> {
-        let mut v: Vec<usize> = (0..self.data.techs.len()).collect();
-        v.sort_by(|&a, &b| {
-            let (ta, tb) = (&self.data.techs[a], &self.data.techs[b]);
-            ta.field
-                .cmp(&tb.field)
-                .then(ta.cost.total_cmp(&tb.cost))
-                .then(ta.id.cmp(&tb.id))
-        });
-        v
-    }
-
     fn open_tech(&mut self) {
-        self.tech_sel = 0;
+        // Start on what is being researched, else on the first technology within reach.
+        self.tech_sel = self
+            .sim
+            .current_research
+            .or_else(|| (0..self.data.techs.len()).find(|&t| self.sim.tech_available(t)))
+            .unwrap_or(0);
         self.screen = Screen::Tech;
     }
 
+    /// Move the selection on the technology graph. `dx` walks to a prerequisite (-1) or to what
+    /// the technology opens (+1), `dy` to the neighbour above or below in the same column.
+    pub fn tech_walk(&mut self, dx: i32, dy: i32) {
+        use crate::tech_view::{layout, TechLayout};
+        let lay = layout(&self.data);
+        let t = self.tech_sel.min(self.data.techs.len() - 1);
+        let next = match (dx, dy) {
+            (-1, _) => TechLayout::requires(&self.data, t).first().copied(),
+            (1, _) => TechLayout::dependents(&self.data, t).first().copied(),
+            (_, d) => {
+                let col = &lay.layers[lay.layer[t]];
+                let i = lay.row[t] as i32 + d;
+                (!col.is_empty()).then(|| col[i.rem_euclid(col.len() as i32) as usize])
+            }
+        };
+        if let Some(n) = next {
+            self.tech_sel = n;
+        }
+    }
+
+    /// Select a technology and, if it can be researched, start it.
+    pub fn tech_start(&mut self, t: usize) {
+        match self.sim.start_research(t) {
+            Ok(()) => {
+                let name = self.data.techs[t].name.to_uppercase();
+                self.say(format!("RECHERCHE LANCEE : {name}"));
+            }
+            Err(e) => self.say(e.to_uppercase()),
+        }
+    }
+
     fn tech_key(&mut self, code: KeyCode) {
-        let order = self.tech_order();
-        let n = order.len();
+        let n = self.data.techs.len();
         match code {
-            KeyCode::ArrowUp => self.tech_sel = (self.tech_sel + n - 1) % n,
-            KeyCode::ArrowDown => self.tech_sel = (self.tech_sel + 1) % n,
+            KeyCode::ArrowUp => self.tech_walk(0, -1),
+            KeyCode::ArrowDown => self.tech_walk(0, 1),
+            KeyCode::ArrowLeft => self.tech_walk(-1, 0),
+            KeyCode::ArrowRight => self.tech_walk(1, 0),
             KeyCode::PageUp => self.tech_sel = self.tech_sel.saturating_sub(10),
             KeyCode::PageDown => self.tech_sel = (self.tech_sel + 10).min(n - 1),
-            KeyCode::Enter => {
-                let t = order[self.tech_sel.min(n - 1)];
-                match self.sim.start_research(t) {
-                    Ok(()) => {
-                        let name = self.data.techs[t].name.to_uppercase();
-                        self.say(format!("RECHERCHE LANCEE : {name}"));
-                    }
-                    Err(e) => self.say(e.to_uppercase()),
+            KeyCode::Tab => {
+                // Jump to what is being researched, else to the next technology within reach.
+                let from = self.tech_sel;
+                let found = self
+                    .sim
+                    .current_research
+                    .filter(|&t| t != from)
+                    .or_else(|| {
+                        (1..=n)
+                            .map(|k| (from + k) % n)
+                            .find(|&t| self.sim.tech_available(t))
+                    });
+                if let Some(t) = found {
+                    self.tech_sel = t;
                 }
             }
+            KeyCode::Enter => self.tech_start(self.tech_sel.min(n - 1)),
             KeyCode::Escape | KeyCode::F4 => {
                 self.screen = if self.sim.docked.is_some() {
                     self.dock_screen()
@@ -2104,6 +2136,48 @@ mod tests {
         assert!(g.family_ped.is_some());
         g.key(KeyCode::Escape, None, true);
         assert_eq!(g.screen, Screen::Crew);
+    }
+
+    #[test]
+    fn the_tech_graph_is_walked_with_the_arrows_and_research_starts_with_enter() {
+        let mut g = Game::new(data(), 1);
+        g.key(KeyCode::Enter, None, true);
+        g.key(KeyCode::F4, None, true);
+        assert_eq!(g.screen, Screen::Tech);
+        // It opens on something within reach.
+        assert!(g.sim.tech_available(g.tech_sel) || g.sim.current_research == Some(g.tech_sel));
+        let start = g.tech_sel;
+        // Right goes to what it opens, Left comes back to a prerequisite of it.
+        g.key(KeyCode::ArrowRight, None, true);
+        if g.tech_sel != start {
+            assert!(crate::tech_view::TechLayout::requires(&g.data, g.tech_sel).contains(&start));
+            let opened = g.tech_sel;
+            g.key(KeyCode::ArrowLeft, None, true);
+            assert!(
+                crate::tech_view::TechLayout::requires(&g.data, opened).contains(&g.tech_sel),
+                "Left walks back to a prerequisite"
+            );
+        }
+        // Up and Down stay in the same column.
+        let lay = crate::tech_view::layout(&g.data);
+        let col = lay.layer[g.tech_sel];
+        g.key(KeyCode::ArrowDown, None, true);
+        assert_eq!(lay.layer[g.tech_sel], col);
+        // A locked technology cannot be started, an available one can.
+        let locked = (0..g.data.techs.len())
+            .find(|&t| !g.sim.tech_available(t) && !g.sim.researched[t])
+            .expect("a locked tech");
+        g.tech_sel = locked;
+        g.key(KeyCode::Enter, None, true);
+        assert!(g.sim.current_research != Some(locked));
+        let open = (0..g.data.techs.len())
+            .find(|&t| g.sim.tech_available(t))
+            .expect("an available tech");
+        g.tech_sel = open;
+        g.key(KeyCode::Enter, None, true);
+        assert_eq!(g.sim.current_research, Some(open));
+        g.key(KeyCode::Escape, None, true);
+        assert_ne!(g.screen, Screen::Tech);
     }
 
     #[test]

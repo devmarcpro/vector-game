@@ -38,7 +38,7 @@ pub fn draw(fb: &mut Framebuffer, g: &Game) {
         Screen::Empire => draw_empire(fb, g),
         Screen::Colony => draw_colony(fb, g),
         Screen::Fleet => draw_fleet(fb, g),
-        Screen::Tech => draw_tech(fb, g),
+        Screen::Tech => crate::tech_view::draw(fb, g),
         Screen::Rules => draw_rules(fb, g),
         Screen::Options => draw_options(fb, g),
         Screen::Codex => draw_codex(fb, g),
@@ -1521,120 +1521,6 @@ fn draw_fleet(fb: &mut Framebuffer, g: &Game) {
     }
     let b = fb.rows() - 4;
     fb.text(1, b, "TAB:LISTE  N:NOUVELLE ROUTE  A:AFFECTER  U:RETIRER  X:SUPPRIMER/VENDRE  B:ACHETER (A QUAI)  F2:EMPIRE  ECHAP:RETOUR", DIM);
-    msgs(fb, g, b + 1);
-}
-
-fn draw_tech(fb: &mut Framebuffer, g: &Game) {
-    let s = &g.sim;
-    fb.text(1, 1, "ARBRE TECHNOLOGIQUE", AMBER);
-    fb.text(
-        1,
-        2,
-        &format!(
-            "RESERVE {:.0} PTS   LABOS DE BORD {:.1} PTS/J   CONNUES {}/{}",
-            s.research_pool,
-            s.ship_research_rate().max(0.0),
-            s.researched.iter().filter(|&&r| r).count(),
-            s.researched.len()
-        ),
-        GREEN,
-    );
-    if let Some(t) = s.current_research {
-        let tech = &g.data.techs[t];
-        fb.text(
-            1,
-            3,
-            &format!(
-                "EN COURS : {}  {} {:.0}/{:.0}",
-                tech.name.to_uppercase(),
-                bar(s.research_progress / tech.cost.max(1.0), 20),
-                s.research_progress,
-                tech.cost
-            ),
-            AMBER,
-        );
-    }
-    let order = g.tech_order();
-    let top = 5;
-    let rows = fb.rows().saturating_sub(top + 5);
-    let start = g
-        .tech_sel
-        .saturating_sub(rows / 2)
-        .min(order.len().saturating_sub(rows));
-    fb.text(
-        1,
-        top,
-        "CHAMP          TECHNOLOGIE                         COUT   ETAT",
-        DIM,
-    );
-    for (line, k) in (start..(start + rows).min(order.len())).enumerate() {
-        let t = order[k];
-        let tech = &g.data.techs[t];
-        let (state, col) = if s.researched[t] {
-            ("ACQUISE", DIM)
-        } else if s.current_research == Some(t) {
-            ("EN COURS", AMBER)
-        } else if s.tech_available(t) {
-            ("DISPONIBLE", GREEN)
-        } else {
-            ("VERROUILLEE", RED)
-        };
-        let sel = k == g.tech_sel;
-        fb.text(
-            1,
-            top + 1 + line,
-            &format!(
-                "{}{:<13.13} {:<34.34} {:>6.0} {}",
-                if sel { ">" } else { " " },
-                tech.field,
-                tech.name,
-                tech.cost,
-                state
-            ),
-            if sel { AMBER } else { col },
-        );
-    }
-    if let Some(&t) = order.get(g.tech_sel) {
-        let tech = &g.data.techs[t];
-        let x = 80;
-        fb.text(x, top, "DETAIL", DIM);
-        let reqs: Vec<String> = tech
-            .requires
-            .iter()
-            .map(|r| {
-                g.data.tech_index(r).map_or(r.clone(), |i| {
-                    format!(
-                        "{}{}",
-                        g.data.techs[i].name,
-                        if s.researched[i] { "" } else { " (!)" }
-                    )
-                })
-            })
-            .collect();
-        fb.text(
-            x,
-            top + 1,
-            &format!(
-                "PREREQUIS : {}",
-                if reqs.is_empty() {
-                    "AUCUN".to_string()
-                } else {
-                    reqs.join(", ")
-                }
-            ),
-            GREEN,
-        );
-        for (i, (k, id)) in tech.unlocks.iter().enumerate() {
-            fb.text(
-                x,
-                top + 3 + i,
-                &format!("DEBLOQUE {} : {}", k.to_uppercase(), id),
-                GREEN,
-            );
-        }
-    }
-    let b = fb.rows() - 4;
-    fb.text(1, b, "HAUT/BAS:CHOISIR  ENTREE:LANCER LA RECHERCHE  F4/ECHAP:RETOUR   (SOURCES : LABOS, COLONIES, ANOMALIES, SCANS)", DIM);
     msgs(fb, g, b + 1);
 }
 

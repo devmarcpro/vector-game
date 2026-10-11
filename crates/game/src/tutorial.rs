@@ -155,7 +155,7 @@ pub fn hint_line(g: &Game) -> String {
             "TAB LISTE  N ROUTE  A AFFECTER  U RETIRER  X SUPPRIMER  B ACHETER  ECHAP RETOUR"
         }
         Screen::Destroyed => "ENTREE CONTINUER",
-        Screen::Tech => "HAUT/BAS TECHNO  PGUP/PGDN SAUT DE 10  ENTREE RECHERCHER  ECHAP RETOUR",
+        Screen::Tech => "FLECHES GRAPHE (GAUCHE PREREQUIS, DROITE SUITE)  TAB RECHERCHE OU SUIVANTE  ENTREE RECHERCHER  ECHAP RETOUR",
         Screen::Rules => "HAUT/BAS REGLE  GAUCHE/DROITE MODIFIER  R DEFAUTS  ECHAP RETOUR",
         Screen::Options => "HAUT/BAS REGLAGE  GAUCHE/DROITE CHANGER  ENTREE/ECHAP RETOUR",
         Screen::Codex => "GAUCHE/DROITE CATEGORIE  HAUT/BAS ENTREE  ECHAP RETOUR",
@@ -232,7 +232,13 @@ pub fn help_lines(screen: Screen) -> &'static [&'static str] {
             "Tab : liste   N : nouvelle route   A : affecter",
             "U : retirer   X : supprimer   B : acheter un navire",
         ],
-        Screen::Tech => &["Haut/Bas : technologie   Entree : lancer la recherche"],
+        Screen::Tech => &[
+            "Graphe : une case par technologie, colonnes = profondeur des prerequis",
+            "Fleches : Gauche = un prerequis, Droite = ce qu'elle ouvre, Haut/Bas = voisin",
+            "Tab : recherche en cours ou technologie suivante a portee",
+            "Entree : lancer la recherche   Echap ou F4 : retour",
+            "Vert : a portee  Ambre : en cours  Sombre : acquise  Rouge : verrouillee",
+        ],
         Screen::Rules => &[
             "Gauche/Droite : modifier   R : valeurs par defaut",
             "Depuis la pause, les changements sont immediats.",

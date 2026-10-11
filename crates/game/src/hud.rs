@@ -123,11 +123,72 @@ pub fn draw(fb: &mut Framebuffer, v: &View) {
     draw_console(fb, v.console);
 }
 
+/// Colour that tells the type of a body at a glance. Only used once the body has been surveyed.
+pub fn kind_color(k: BodyKind) -> u32 {
+    use vector_world::{AstType, PlanetKind as P, StarClass as S};
+    match k {
+        BodyKind::Star(S::O) => 0x0080_A0FF,
+        BodyKind::Star(S::B) => 0x00A0_C0FF,
+        BodyKind::Star(S::A) => 0x00D0_E0FF,
+        BodyKind::Star(S::F) => 0x00F8_F8E0,
+        BodyKind::Star(S::G) => 0x00FF_E060,
+        BodyKind::Star(S::K) => 0x00FF_A040,
+        BodyKind::Star(S::M) => 0x00FF_6040,
+        BodyKind::Star(S::D) => 0x00E8_E8FF,
+        BodyKind::Planet(p) | BodyKind::Moon(p) => match p {
+            P::Barren => 0x00A8_A8A8,
+            P::Dwarf => 0x0088_90A0,
+            P::Desert => 0x00E8_B060,
+            P::Terran => 0x0050_E070,
+            P::Ocean => 0x0040_90FF,
+            P::Tundra => 0x0090_D8C8,
+            P::Ice => 0x00C8_F0FF,
+            P::Lava => 0x00FF_5020,
+            P::Venusian => 0x00E8_D040,
+            P::GasGiant => 0x00E8_9050,
+            P::IceGiant => 0x0060_A8F0,
+            P::HotJupiter => 0x00FF_3080,
+        },
+        BodyKind::Asteroid(t) => match t {
+            AstType::C => 0x00A0_9078,
+            AstType::S => 0x00C8_A870,
+            AstType::M => 0x00B8_C8D8,
+            AstType::I => 0x0088_C8FF,
+        },
+        BodyKind::Station => 0x0040_E8E8,
+        BodyKind::Anomaly(_) => 0x00C0_60FF,
+    }
+}
+
+fn dimmed(c: u32, k: f32) -> u32 {
+    let ch = |s: u32| (((c >> s) & 0xFF) as f32 * k) as u32;
+    (ch(16) << 16) | (ch(8) << 8) | ch(0)
+}
+
 fn body_color(v: &View, i: usize) -> u32 {
+    if v.sim.scan[i] >= SCAN_SURVEYED {
+        kind_color(v.sim.bodies[i].kind)
+    } else {
+        GREEN
+    }
+}
+
+/// Map and radar markers: the type colour, amber for the selected target.
+fn marker_color(v: &View, i: usize) -> u32 {
     if Some(i) == v.sim.target {
         AMBER
     } else {
-        GREEN
+        body_color(v, i)
+    }
+}
+
+/// Corner brackets around the selected object.
+fn draw_reticle(fb: &mut Framebuffer, x: f32, y: f32, r: f32) {
+    let (r, t) = (r.max(10.0) + 6.0, 6.0);
+    for (sx, sy) in [(-1.0, -1.0), (1.0, -1.0), (-1.0, 1.0), (1.0, 1.0)] {
+        let (cx, cy) = (x + sx * r, y + sy * r);
+        fb.line(cx, cy, cx - sx * t, cy, AMBER);
+        fb.line(cx, cy, cx, cy - sy * t, AMBER);
     }
 }
 
@@ -155,7 +216,15 @@ fn draw_cockpit(fb: &mut Framebuffer, v: &View) {
         let px = b.radius / dist.max(1.0) * focal;
         let spin = Mat3::rot_y(v.sim.time * 2.0e-5 + i as f64);
         match b.kind {
-            BodyKind::Star(_) => cam.draw_sphere(fb, b.pos, b.radius, &spin, 4, 8, SUN),
+            BodyKind::Star(c) => cam.draw_sphere(
+                fb,
+                b.pos,
+                b.radius,
+                &spin,
+                4,
+                8,
+                kind_color(BodyKind::Star(c)),
+            ),
             BodyKind::Planet(k) if k.is_giant() => {
                 cam.draw_sphere(fb, b.pos, b.radius, &spin, 12, 6, col)
             }
@@ -180,10 +249,27 @@ fn draw_cockpit(fb: &mut Framebuffer, v: &View) {
                 fb.line(x - 3.0, y, x + 3.0, y, col);
                 fb.line(x, y - 3.0, x, y + 3.0, col);
             }
-            if Some(i) == v.sim.target
-                || (matches!(b.kind, BodyKind::Planet(_) | BodyKind::Station) && px < 40.0)
-            {
-                fb.text_at(x as i32 + 8, y as i32 - 12, body_label(v, i), col);
+            // Atmosphere halo and giant rings, once the body is big enough to show them.
+            if px > 10.0 && v.sim.scan[i] >= SCAN_SURVEYED {
+                if let BodyKind::Planet(k) | BodyKind::Moon(k) = b.kind {
+                    use vector_world::PlanetKind as P;
+                    let r = px as f32;
+                    if matches!(k, P::Terran | P::Ocean | P::Venusian | P::Tundra) || k.is_giant() {
+                        ellipse(fb, x, y, r * 1.08, r * 1.08, dimmed(col, 0.5));
+                    }
+                    if k.is_giant() && i % 2 == 0 {
+                        ellipse(fb, x, y, r * 1.9, r * 0.45, dimmed(col, 0.7));
+                        ellipse(fb, x, y, r * 2.2, r * 0.52, dimmed(col, 0.4));
+                    }
+                }
+            }
+            let target = Some(i) == v.sim.target;
+            if target {
+                draw_reticle(fb, x, y, px as f32);
+            }
+            if target || (matches!(b.kind, BodyKind::Planet(_) | BodyKind::Station) && px < 40.0) {
+                let tc = if target { AMBER } else { col };
+                fb.text_at(x as i32 + 8, y as i32 - 12, body_label(v, i), tc);
             }
         }
     }
@@ -342,7 +428,7 @@ fn draw_map(fb: &mut Framebuffer, v: &View) {
     };
     for (i, cb) in sim.system.bodies.iter().enumerate() {
         let b = &sim.bodies[i];
-        let col = body_color(v, i);
+        let col = marker_color(v, i);
         if let Some(o) = &cb.orbit {
             if o.a / v.map_scale > 3.0 {
                 let parent = sim.bodies[o.parent].pos;
@@ -863,7 +949,7 @@ pub fn kind_label(k: BodyKind) -> String {
 
 fn draw_radar(fb: &mut Framebuffer, v: &View) {
     let ship = &v.sim.ship;
-    let (cx, cy) = (fb.w as f32 / 2.0, fb.h as f32 - 34.0);
+    let (cx, cy) = (fb.w as f32 / 2.0, fb.h as f32 - 44.0);
     let (rx, ry) = (80.0f32, 26.0f32);
     let range = 20_000.0f64;
     for k in [1.0, 0.5] {
@@ -883,7 +969,7 @@ fn draw_radar(fb: &mut Framebuffer, v: &View) {
         let px = cx + (l.x * scale / range) as f32 * rx;
         let py = cy - (l.z * scale / range) as f32 * ry;
         let top = py - (l.y * scale / range) as f32 * ry * 1.5;
-        let col = body_color(v, i);
+        let col = marker_color(v, i);
         fb.line(px, py, px, top, col);
         fb.plot(px as i32, top as i32, col);
         fb.plot(px as i32 + 1, top as i32, col);

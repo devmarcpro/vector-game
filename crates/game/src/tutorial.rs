@@ -98,6 +98,68 @@ pub const STEPS: [Step; 16] = [
     },
 ];
 
+/// One-line summary of the keys that work right now, for the permanent command bar.
+/// It follows the screen and its sub-state (map, module picker, jump charge, autopilot...).
+pub fn hint_line(g: &Game) -> String {
+    if g.console.open {
+        return "ENTREE EXECUTER  ~ FERMER LA CONSOLE  (HELP POUR LA LISTE)".into();
+    }
+    let s = match g.screen {
+        Screen::MainMenu => "HAUT/BAS CHOISIR  ENTREE VALIDER  TAPER UNE GRAINE AVANT NOUVELLE PARTIE",
+        Screen::Flight if g.map => {
+            "M FERMER LA CARTE  +/- ZOOM  C CENTRE ETOILE/VAISSEAU  TAB CIBLE  G AUTO  PGUP/PGDN TEMPS  F1 AIDE"
+        }
+        Screen::Flight if g.sim.is_charging_jump() => {
+            "SAUT EN CHARGE  RETOUR ARRIERE ANNULER  PGUP/PGDN TEMPS  F1 AIDE"
+        }
+        Screen::Flight if g.sim.in_transit() => "TRANSIT FTL  P PAUSE  F1 AIDE",
+        Screen::Flight if g.sim.autopilot.is_some() => {
+            "PILOTE AUTO ACTIF  G ANNULER  PGUP/PGDN TEMPS  TAB CIBLE  M CARTE  P PAUSE  F1 AIDE"
+        }
+        Screen::Flight => {
+            "WASD/QE ROT  ESP/X POUSSEE  MAJ BOOST  C FREIN  F ASSIST  TAB CIBLE  G AUTO  D AMARRER  V LASER  CTRL TIR  M CARTE  F1 AIDE"
+        }
+        Screen::Station => {
+            "HAUT/BAS CHOIX  ENTREE VENDRE  S/B 100  F PLEIN  R REPARER  H NAVIRE  Y CHANTIER  N RECRUTER  C CONTRATS  E BANQUE  U DECOLLER"
+        }
+        Screen::Inventory => "HAUT/BAS CHOISIR  J JETER  I/ECHAP RETOUR",
+        Screen::Pause => "HAUT/BAS CHOISIR  ENTREE VALIDER  ECHAP REPRENDRE",
+        Screen::Ship if g.picker => {
+            "HAUT/BAS MODULE  ENTREE INSTALLER OU REMPLACER (ACHAT AUTO)  ECHAP ANNULER"
+        }
+        Screen::Ship if g.sim.docked.is_some() => {
+            "HAUT/BAS EMPLACEMENT  ENTREE INSTALLER/REMPLACER  X RETIRER  Y CHANTIER NAVAL  H/ECHAP RETOUR"
+        }
+        Screen::Ship => "HAUT/BAS EMPLACEMENT  H/ECHAP RETOUR",
+        Screen::Shipyard => "HAUT/BAS COQUE  ENTREE ACHETER (REPRISE 50%)  ECHAP RETOUR",
+        Screen::Crew => {
+            "HAUT/BAS PERSONNE  GAUCHE/DROITE POSTE  T QUART  X DEBARQUER  N RECRUTER  J JOURNAL  K/ECHAP RETOUR"
+        }
+        Screen::Recruit => "HAUT/BAS CANDIDAT  ENTREE EMBAUCHER  K EQUIPAGE  ECHAP RETOUR",
+        Screen::Journal => "HAUT/BAS DEFILER  K EQUIPAGE  J/ECHAP RETOUR",
+        Screen::Galaxy => {
+            "HAUT/BAS ETOILE  +/- ZOOM  ENTREE SAUT FTL  L/ECHAP RETOUR  (RETOUR ARRIERE ANNULE UNE CHARGE)"
+        }
+        Screen::Contracts => "HAUT/BAS CONTRAT  ENTREE ACCEPTER/LIVRER  X ABANDONNER  ECHAP RETOUR",
+        Screen::Bank => {
+            "HAUT EMPRUNTER 1000  BAS REMBOURSER 1000  ENTREE TOUT REMBOURSER  ECHAP RETOUR"
+        }
+        Screen::Empire => "HAUT/BAS COLONIE  ENTREE DETAIL  F3 FLOTTE  ECHAP RETOUR",
+        Screen::Colony => {
+            "TAB ZONE  HAUT/BAS  ESP ON/OFF  R RECETTE  X DEMOLIR  D DEPOSER  W RETIRER  </> POLITIQUE  ENTREE BATIR  T CAISSE  U DECOLLER"
+        }
+        Screen::Fleet => {
+            "TAB LISTE  N ROUTE  A AFFECTER  U RETIRER  X SUPPRIMER  B ACHETER  ECHAP RETOUR"
+        }
+        Screen::Destroyed => "ENTREE CONTINUER",
+        Screen::Tech => "HAUT/BAS TECHNO  PGUP/PGDN SAUT DE 10  ENTREE RECHERCHER  ECHAP RETOUR",
+        Screen::Rules => "HAUT/BAS REGLE  GAUCHE/DROITE MODIFIER  R DEFAUTS  ECHAP RETOUR",
+        Screen::Options => "HAUT/BAS REGLAGE  GAUCHE/DROITE CHANGER  ENTREE/ECHAP RETOUR",
+        Screen::Codex => "GAUCHE/DROITE CATEGORIE  HAUT/BAS ENTREE  ECHAP RETOUR",
+    };
+    s.to_string()
+}
+
 /// Contextual help lines for a screen (what the player can do here).
 pub fn help_lines(screen: Screen) -> &'static [&'static str] {
     match screen {

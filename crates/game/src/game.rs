@@ -1732,6 +1732,62 @@ mod tests {
     }
 
     #[test]
+    fn command_bar_follows_the_screen_and_can_be_switched_off() {
+        let mut g = Game::new(data(), 1);
+        g.key(KeyCode::Enter, None, true);
+        let flight = crate::tutorial::hint_line(&g);
+        assert!(flight.contains("BOOST") && flight.contains("FREIN"));
+        g.key(KeyCode::KeyM, None, true);
+        let map = crate::tutorial::hint_line(&g);
+        assert_ne!(map, flight, "the map has its own keys");
+        assert!(map.contains("ZOOM"));
+        g.key(KeyCode::KeyM, None, true);
+        // Every screen has a bar that fits a 1024 px wide window (128 columns).
+        for s in [
+            Screen::MainMenu,
+            Screen::Flight,
+            Screen::Station,
+            Screen::Inventory,
+            Screen::Pause,
+            Screen::Ship,
+            Screen::Shipyard,
+            Screen::Crew,
+            Screen::Recruit,
+            Screen::Journal,
+            Screen::Galaxy,
+            Screen::Contracts,
+            Screen::Bank,
+            Screen::Empire,
+            Screen::Colony,
+            Screen::Fleet,
+            Screen::Destroyed,
+            Screen::Tech,
+            Screen::Rules,
+            Screen::Options,
+            Screen::Codex,
+        ] {
+            g.screen = s;
+            let line = crate::tutorial::hint_line(&g);
+            assert!(
+                !line.is_empty() && line.len() <= 126,
+                "{s:?}: {} chars",
+                line.len()
+            );
+        }
+        // Drawn on the last row by default, absent when the option is off.
+        let lit = |g: &Game| {
+            let mut fb = vector_render::Framebuffer::new(1024, 576);
+            crate::ui::draw_overlay(&mut fb, g);
+            let y0 = (fb.rows() - 1) * 10;
+            (y0..y0 + 10).any(|y| (0..fb.w).any(|x| fb.px[y * fb.w + x] != 0))
+        };
+        g.screen = Screen::Flight;
+        assert!(lit(&g));
+        g.settings.hints = false;
+        assert!(!lit(&g));
+    }
+
+    #[test]
     fn menus_reach_rules_options_and_codex() {
         let mut g = Game::new(data(), 1);
         // Main menu: REGLES (index 2) -> raise damage x -> back -> new game uses it.

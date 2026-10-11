@@ -221,6 +221,21 @@ fn snapshot(path: &str, scene: &str, data: Arc<GameData>) {
             g.sel_res = iron;
             g.screen = Screen::Inventory;
         }
+        "planet" | "giant" => {
+            g.sim.reveal_all();
+            let giant = scene == "giant";
+            let i = g
+                .sim
+                .bodies
+                .iter()
+                .position(|b| matches!(b.kind, vector_world::BodyKind::Planet(p) if p.is_giant() == giant))
+                .expect("a planet of that class");
+            let b = &g.sim.bodies[i];
+            g.sim.ship.pos = b.pos - vector_core::Vec3::new(0.0, 0.0, b.radius * 3.5);
+            g.sim.ship.vel = b.vel;
+            g.sim.target = Some(i);
+            g.sim.update_ref_pub();
+        }
         "speed" => {
             g.sim.ship.vel = g
                 .sim

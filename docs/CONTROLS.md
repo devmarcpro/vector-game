@@ -1,4 +1,4 @@
-# CONTROLES (touches physiques, positions QWERTY ; sur AZERTY : ZQSD = WASD)
+﻿# CONTROLES (touches physiques, positions QWERTY ; sur AZERTY : ZQSD = WASD)
 | Touche | Action |
 |---|---|
 | W / S | Tangage (piquer / cabrer) |
@@ -56,5 +56,11 @@ Ecran flotte : Tab liste, N nouvelle route (Gauche/Droite valeur, Tab champ, Ent
 ## Menus
 Menu principal : Nouvelle partie / Continuer / Regles de partie / Options / Codex-Aide / Quitter. Menu pause : Reprendre / Sauvegarder / Charger / Regles / Options / Codex-Aide / Menu principal / Quitter.
 Regles : Haut/Bas, Gauche/Droite modifier, R valeurs par defaut ; depuis la pause elles s'appliquent immediatement.
-Options : lignes de balayage, halo, palette (couleur, vert, ambre, blanc, bleu), volume, tutoriel ; sauvegardees dans saves/settings.cfg.
+Options : lignes de balayage, halo, palette (couleur, vert, ambre, blanc, bleu), volume, tutoriel, barre des commandes ; sauvegardees dans saves/settings.cfg.
 
+
+## Barre des commandes
+La dernière ligne de l'écran affiche en permanence les touches utiles ici et maintenant (vol, carte, saut en charge, pilote automatique, station, module, colonie, menus...). Elle suit l'écran et son sous-état ; Options > Barre des commandes la coupe. Le bandeau du tutoriel passe alors en haut des écrans hors vol.
+
+## Couleurs
+Une fois un corps relevé (niveau 2), sa couleur donne son type : étoiles par classe (O bleu à M rouge), planètes (aride gris, désert sable, terrestre vert, océan bleu, toundra turquoise, glace blanc-bleu, lave rouge-orangé, vénusienne ocre, géante gazeuse orange, géante de glace bleue, Jupiter chaud magenta), astéroïdes par type (C brun, S sable, M métal, I glace), stations cyan. Non relevé : vert neutre. La cible est entourée de crochets ambre ; atmosphères et géantes ont un halo, certaines géantes des anneaux.

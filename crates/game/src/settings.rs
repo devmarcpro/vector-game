@@ -13,6 +13,8 @@ pub struct Settings {
     pub volume: u8,
     /// Guided tutorial on new games.
     pub tutorial: bool,
+    /// Permanent command bar on the last screen row.
+    pub hints: bool,
 }
 
 impl Default for Settings {
@@ -23,12 +25,13 @@ impl Default for Settings {
             scheme: 0,
             volume: 6,
             tutorial: true,
+            hints: true,
         }
     }
 }
 
 impl Settings {
-    pub const COUNT: usize = 5;
+    pub const COUNT: usize = 6;
 
     pub fn describe(&self) -> Vec<(&'static str, String)> {
         let yn = |b: bool| if b { "OUI" } else { "NON" }.to_string();
@@ -41,6 +44,7 @@ impl Settings {
             ),
             ("Volume sonore", format!("{}/10", self.volume)),
             ("Tutoriel guide", yn(self.tutorial)),
+            ("Barre des commandes", yn(self.hints)),
         ]
     }
 
@@ -58,18 +62,20 @@ impl Settings {
                 }
             }
             4 => self.tutorial = !self.tutorial,
+            5 => self.hints = !self.hints,
             _ => {}
         }
     }
 
     pub fn to_text(&self) -> String {
         format!(
-            "scanlines={}\nglow={}\nscheme={}\nvolume={}\ntutorial={}\n",
+            "scanlines={}\nglow={}\nscheme={}\nvolume={}\ntutorial={}\nhints={}\n",
             u8::from(self.scanlines),
             u8::from(self.glow),
             self.scheme,
             self.volume,
-            u8::from(self.tutorial)
+            u8::from(self.tutorial),
+            u8::from(self.hints)
         )
     }
 
@@ -87,6 +93,7 @@ impl Settings {
                 "glow" => s.glow = n != 0,
                 "scheme" => s.scheme = n.min(SCHEMES.len() - 1),
                 "tutorial" => s.tutorial = n != 0,
+                "hints" => s.hints = n != 0,
                 "volume" => s.volume = n.min(10) as u8,
                 _ => {}
             }

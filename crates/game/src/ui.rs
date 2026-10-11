@@ -93,10 +93,28 @@ pub fn draw_overlay(fb: &mut Framebuffer, g: &Game) {
         for (k, r) in rows.iter().enumerate() {
             if flight {
                 fb.text(40, 5 + k, r, AMBER);
+            } else if g.settings.hints {
+                // The last row belongs to the command bar and the rows above to messages.
+                fb.text(1, k, r, AMBER);
             } else {
                 fb.text(1, fb.rows().saturating_sub(rows.len() - k), r, AMBER);
             }
         }
+    }
+    // Permanent command bar on the last row (option "Barre des commandes").
+    if g.settings.hints {
+        let line: String = crate::tutorial::hint_line(g)
+            .chars()
+            .take(fb.cols().saturating_sub(2))
+            .collect();
+        // The bar replaces whatever the screen drew on that row (its own footer is redundant).
+        let y0 = (fb.rows().saturating_sub(1) * 10) as i32;
+        for y in y0..y0 + 10 {
+            for x in 0..fb.w as i32 {
+                fb.px_set(x, y, 0);
+            }
+        }
+        fb.text(1, fb.rows().saturating_sub(1), &line, 0x0040_A058);
     }
     if g.help_open && g.screen != Screen::MainMenu {
         let lines = crate::tutorial::help_lines(g.screen);

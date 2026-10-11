@@ -162,10 +162,6 @@ pub struct Disease {
 pub struct Culture {
     pub id: String,
     pub name: String,
-    pub first_start: Vec<String>,
-    pub first_end: Vec<String>,
-    pub last_start: Vec<String>,
-    pub last_end: Vec<String>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

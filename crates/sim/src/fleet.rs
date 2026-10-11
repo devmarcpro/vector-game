@@ -169,7 +169,17 @@ impl Sim {
         self.next_fleet += 1;
         self.fleet.push(FleetShip {
             id,
-            name: format!("{} #{}", h.name, id),
+            name: {
+                let nh = hash_coord(self.system.seed, i64::from(id), 0x5417, 0);
+                let culture = self.faction.map(|f| self.data.factions[f].culture.as_str());
+                vector_world::names::Spec::new(if nh & 1 == 0 {
+                    "ship_civil_m"
+                } else {
+                    "ship_civil_f"
+                })
+                .culture(culture)
+                .name(nh >> 1)
+            },
             hull,
             capacity_kg: (h.mass * mult).round(),
             upkeep: h.cost * PURCHASE_FACTOR * UPKEEP_RATE,

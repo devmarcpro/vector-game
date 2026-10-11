@@ -2,7 +2,7 @@
 //! weapon, faction, anomaly and condition, generated from the real data (no hand-written numbers).
 use vector_data::GameData;
 
-pub const CATEGORIES: [&str; 31] = [
+pub const CATEGORIES: [&str; 32] = [
     "RESSOURCES",
     "MODULES",
     "ARMES",
@@ -34,6 +34,7 @@ pub const CATEGORIES: [&str; 31] = [
     "MATERIAUX",
     "LOIS",
     "PHENOMENES EXOTIQUES",
+    "NOMS",
 ];
 
 /// Index in the source table of entry `k` of a category (modules and weapons share a table).
@@ -88,6 +89,7 @@ fn entries(data: &GameData, cat: usize) -> Vec<usize> {
         28 => (0..data.materials.len()).collect(),
         29 => (0..data.laws.len()).collect(),
         30 => (0..data.exotics.len()).collect(),
+        31 => (0..data.cultures.len()).collect(),
         _ => Vec::new(),
     }
 }
@@ -124,6 +126,7 @@ pub fn names(data: &GameData, cat: usize) -> Vec<String> {
             28 => data.materials[i].name.clone(),
             29 => data.laws[i].name.clone(),
             30 => data.exotics[i].name.clone(),
+            31 => format!("Noms : {}", data.cultures[i].name),
             18 => format!(
                 "Appeler : {}",
                 vector_data::dialogue::ROLES[i].to_lowercase()
@@ -570,6 +573,62 @@ pub fn entry(data: &GameData, cat: usize, k: usize) -> Vec<String> {
             if l.severity >= 2 {
                 out.push("Crime grave : suivi chez les allies (extradition)".to_string());
             }
+        }
+        31 => {
+            use vector_world::names::{self, Spec};
+            let c = &data.cultures[i];
+            let id = c.id.as_str();
+            let n = |f: &dyn Fn(u64) -> String| (0..4u64).map(f).collect::<Vec<_>>().join(", ");
+            out.push(format!(
+                "{} : les noms de personnes et de lieux de cette culture suivent ses propres syllabes.",
+                c.name
+            ));
+            out.push(format!(
+                "{} combinaisons de prenoms et de noms de famille.",
+                names::combinations(id)
+            ));
+            out.push(format!(
+                "Prenoms d'hommes : {}",
+                n(&|h| names::given_name(id, false, h * 5 + 1))
+            ));
+            out.push(format!(
+                "Prenoms de femmes : {}",
+                n(&|h| names::given_name(id, true, h * 5 + 2))
+            ));
+            out.push(format!(
+                "Noms de famille : {}",
+                n(&|h| names::surname(id, h * 5 + 3))
+            ));
+            out.push(format!(
+                "Surnoms : {}",
+                n(&|h| names::nickname(id, h % 2 == 1, h * 5 + 4))
+            ));
+            out.push(format!(
+                "Titres : {}",
+                n(&|h| names::title(id, h % 2 == 1, h * 5 + 5))
+            ));
+            for (label, kind) in [
+                ("Villes", "city"),
+                ("Colonies", "colony"),
+                ("Stations", "station"),
+                ("Fleuves", "river"),
+                ("Montagnes", "mountain"),
+                ("Regions", "region"),
+                ("Entreprises", "company"),
+                ("Vaisseaux", "ship_civil_f"),
+            ] {
+                out.push(format!(
+                    "{label} : {}",
+                    n(&|h| Spec::new(kind)
+                        .culture(Some(id))
+                        .host("Karon")
+                        .name(h * 7 + 11))
+                ));
+            }
+            out.push(
+                "Les mondes morts portent un nom de catalogue (etoile + chiffre romain), les mondes vivants un nom evocateur, les geantes un nom de titan."
+                    .to_string(),
+            );
         }
         28 => {
             let m = &data.materials[i];
@@ -1153,6 +1212,58 @@ mod tests {
     fn data() -> GameData {
         GameData::load(&std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../data"))
             .expect("data")
+    }
+
+    /// A character the font draws: a glyph of its own, or a French accent over a letter.
+    fn drawable(c: char) -> bool {
+        c == '0'
+            || vector_render::font::decompose(c).is_some()
+            || vector_render::font::glyph(c) != vector_render::font::glyph('\u{1}')
+    }
+
+    #[test]
+    fn generated_names_only_use_glyphs_of_the_font() {
+        use vector_world::names::{self, Spec, KINDS};
+        let d = data();
+        for c in &d.cultures {
+            for k in KINDS {
+                for h in 0..300u64 {
+                    let n = Spec::new(k)
+                        .culture(Some(&c.id))
+                        .host("Karon")
+                        .label("Epave")
+                        .name(h);
+                    assert!(n.chars().all(drawable), "{k} ({}): {n:?}", c.id);
+                }
+            }
+            for h in 0..300u64 {
+                for s in [
+                    names::given_name(&c.id, h % 2 == 0, h),
+                    names::surname(&c.id, h),
+                    names::nickname(&c.id, h % 2 == 0, h),
+                    names::title(&c.id, h % 2 == 0, h),
+                ] {
+                    assert!(s.to_uppercase().chars().all(drawable), "{s:?}");
+                }
+            }
+        }
+        for k in 0..count(&d, 29) {
+            for l in entry(&d, 29, k) {
+                assert!(l.chars().all(drawable), "{l:?}");
+            }
+        }
+    }
+
+    #[test]
+    fn every_culture_of_the_data_has_a_name_grammar() {
+        let d = data();
+        for c in &d.cultures {
+            assert!(
+                vector_world::names::book().culture(&c.id).is_some(),
+                "culture {} absente de names.ron",
+                c.id
+            );
+        }
     }
 
     #[test]

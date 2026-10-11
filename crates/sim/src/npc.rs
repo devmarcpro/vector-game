@@ -123,6 +123,7 @@ fn smooth(u: f64) -> (f64, f64) {
 
 impl Sim {
     fn npc_name(&self, role: NpcRole, rng: &mut Rng, faction: Option<usize>) -> String {
+        use vector_world::names::{self, Spec};
         let culture = faction
             .and_then(|f| {
                 self.data
@@ -131,10 +132,35 @@ impl Sim {
                     .position(|c| c.id == self.data.factions[f].culture)
             })
             .unwrap_or((rng.next_u64() % self.data.cultures.len() as u64) as usize);
-        let c = &self.data.cultures[culture];
-        let a = &c.first_start[(rng.next_u64() % c.first_start.len() as u64) as usize];
-        let b = &c.first_end[(rng.next_u64() % c.first_end.len() as u64) as usize];
-        format!("{} {}{}", role.label(), a, b).to_uppercase()
+        let c = self.data.cultures[culture].id.as_str();
+        let h = rng.next_u64();
+        // Two draws, as the former syllable name did: the rest of the traffic stays the same.
+        let h2 = rng.next_u64();
+        // Pirates and traders sail named ships; miners and patrols are known by their captain.
+        let who = match role {
+            NpcRole::Pirate => Spec::new(if h & 1 == 0 {
+                "ship_pirate_m"
+            } else {
+                "ship_pirate_f"
+            })
+            .name(h >> 1),
+            NpcRole::Trader => Spec::new(if h & 1 == 0 {
+                "ship_civil_m"
+            } else {
+                "ship_civil_f"
+            })
+            .culture(Some(c))
+            .name(h >> 1),
+            NpcRole::Miner => names::given_name(c, h & 1 == 1, h >> 1),
+            NpcRole::Patrol => {
+                format!(
+                    "{} {}",
+                    names::title(c, h & 1 == 1, h >> 1),
+                    names::surname(c, h2)
+                )
+            }
+        };
+        format!("{} {}", role.label(), who).to_uppercase()
     }
 
     /// Populate the freshly entered system with traffic (deterministic from the system and the date).

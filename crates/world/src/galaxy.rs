@@ -56,6 +56,45 @@ impl Galaxy {
         Galaxy { seed }
     }
 
+    /// Name of this galaxy, from its seed.
+    pub fn name(&self) -> String {
+        crate::names::Spec::new("galaxy").name(self.seed)
+    }
+
+    /// Name of a galaxy far away (the `i`-th of the catalogue seen from this one).
+    pub fn distant_galaxy_name(&self, i: u64) -> String {
+        crate::names::Spec::new("galaxy").name(hash_coord(self.seed, i as i64, 0, 0x6A1A))
+    }
+
+    /// Name of the 8x8x8-sector block (80 ly) a sector belongs to: the "secteur" of the maps.
+    pub fn region_name(&self, coord: SectorCoord) -> String {
+        let (x, y, z) = (
+            coord.0.div_euclid(8),
+            coord.1.div_euclid(8),
+            coord.2.div_euclid(8),
+        );
+        crate::names::Spec::new("sector").name(hash_coord(self.seed, x, y, z ^ 0x5EC7))
+    }
+
+    /// Name of the nebula (or cluster) of the 8x8x8-sector block holding `coord`, if it has one
+    /// (about one block in five).
+    pub fn nebula_name(&self, coord: SectorCoord) -> Option<String> {
+        let (x, y, z) = (
+            coord.0.div_euclid(8),
+            coord.1.div_euclid(8),
+            coord.2.div_euclid(8),
+        );
+        let h = hash_coord(self.seed, x, y, z ^ 0x4E0B);
+        (h.is_multiple_of(5)).then(|| {
+            let kind = if h.is_multiple_of(2) {
+                "nebula"
+            } else {
+                "cluster"
+            };
+            crate::names::Spec::new(kind).name(h >> 8)
+        })
+    }
+
     /// Mean number of stars in a sector centred at `c` (ly).
     pub fn density(c: [f64; 3]) -> f64 {
         // The galactic centre sits 26 000 ly to the -X side of the origin.
@@ -197,6 +236,24 @@ impl Galaxy {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn regions_and_galaxies_have_stable_names() {
+        use super::*;
+        let g = Galaxy::new(5);
+        assert_eq!(g.name(), Galaxy::new(5).name());
+        assert_ne!(g.name(), Galaxy::new(6).name());
+        // Every sector of an 8x8x8 block shares one region name; the next block differs.
+        assert_eq!(g.region_name((0, 0, 0)), g.region_name((7, 7, 7)));
+        assert_eq!(g.region_name((-1, 0, 0)), g.region_name((-8, 0, 0)));
+        let names: std::collections::HashSet<String> =
+            (0..200).map(|i| g.region_name((i * 8, 0, 0))).collect();
+        assert!(names.len() > 180, "{}", names.len());
+        let nebulae = (0..400)
+            .filter(|&i| g.nebula_name((i * 8, 3, 0)).is_some())
+            .count();
+        assert!((40..130).contains(&nebulae), "{nebulae}");
+        assert_ne!(g.distant_galaxy_name(1), g.distant_galaxy_name(2));
+    }
     use super::*;
 
     #[test]

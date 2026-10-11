@@ -128,3 +128,5 @@ Par défaut AZERTY : tangage Z/S, lacet Q/D, roulis A/E. Options > Clavier bascu
 
 ## Relations et surprises
 Ecran Factions (X) : Tab ouvre le registre des relations (Haut/Bas choisir, PgUp/PgDn sauter, Tab retour a l'anneau, X/Echap quitter). Journal (J) : quand une surprise attend un choix, elle s'affiche en bas ; touches 1 a 3 pour repondre.
+
+- **Couche BIOSPHERE** (écran de surface F8, Tab jusqu'à la dernière couche) : la carte montre la densité de l'espèce choisie ; V / Maj+V changent d'espèce, un clic sur une espèce de la liste « ICI » l'affiche, Entrée ouvre et ferme la fiche de sa variante locale (générée depuis les données et l'état du monde), F ouvre le codex.

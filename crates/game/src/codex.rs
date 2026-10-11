@@ -2,7 +2,7 @@
 //! weapon, faction, anomaly and condition, generated from the real data (no hand-written numbers).
 use vector_data::GameData;
 
-pub const CATEGORIES: [&str; 38] = [
+pub const CATEGORIES: [&str; 39] = [
     "RESSOURCES",
     "MODULES",
     "ARMES",
@@ -41,6 +41,7 @@ pub const CATEGORIES: [&str; 38] = [
     "AGENTS PATHOGENES",
     "MONNAIES",
     "SURPRISES",
+    "XENOBIOLOGIE",
 ];
 
 /// The category of the reactions: the laboratory.
@@ -104,6 +105,7 @@ fn entries(data: &GameData, cat: usize) -> Vec<usize> {
         31 => (0..data.cultures.len()).collect(),
         35 => (0..data.pathogens.len()).collect(),
         37 => (0..data.surprises.len()).collect(),
+        38 => (0..data.chemistries.len()).collect(),
         _ => Vec::new(),
     }
 }
@@ -147,6 +149,7 @@ pub fn names(data: &GameData, cat: usize) -> Vec<String> {
             35 => data.pathogens[i].name.clone(),
             36 => vector_sim::macroeco::currency_name(data, Some(i)),
             37 => data.surprises[i].name.clone(),
+            38 => data.chemistries[i].name.clone(),
             18 => format!(
                 "Appeler : {}",
                 vector_data::dialogue::ROLES[i].to_lowercase()
@@ -1050,6 +1053,25 @@ pub fn entry(data: &GameData, cat: usize, k: usize) -> Vec<String> {
                 "Laboratoire du bord : hors de portee du reacteur (2400 K / 300 bar max) ou substance sans ressource".to_string()
             });
         }
+        38 => {
+            let c = &data.chemistries[i];
+            out.push(format!("{}  (biochimie)", c.name));
+            out.push(c.text.clone());
+            out.push(format!(
+                "Squelette : {}   solvant : {}   energie : {}",
+                c.backbone, c.solvent, c.energy
+            ));
+            out.push(format!(
+                "Temperature viable : {:.0} a {:.0} K",
+                c.t.0, c.t.1
+            ));
+            let names: Vec<String> = c
+                .species
+                .iter()
+                .filter_map(|s| data.species_index(s).map(|k| data.species[k].name.clone()))
+                .collect();
+            out.push(format!("Especes : {}", names.join(", ")));
+        }
         28 => {
             let m = &data.materials[i];
             out.push(format!(
@@ -1639,6 +1661,7 @@ pub fn entry(data: &GameData, cat: usize, k: usize) -> Vec<String> {
             if s.domestic {
                 out.push("Domesticable : oui (voir les colonies)".to_string());
             }
+            out.extend(biology_lines(data, i));
         }
         11 => {
             let b = &data.biomes[i];
@@ -1682,6 +1705,94 @@ pub fn entry(data: &GameData, cat: usize, k: usize) -> Vec<String> {
                 names_of(data, &n.consumes, res_name)
             ));
         }
+    }
+    out
+}
+
+/// Biology of a species, from its mass and its place in the web: metabolism, life cycle,
+/// behaviour and, for the life that is not carbon-water, its biochemistry.
+fn biology_lines(data: &GameData, i: usize) -> Vec<String> {
+    use vector_sim::biosphere::{behavior_of, life_of};
+    let s = &data.species[i];
+    let (l, b) = (life_of(s), behavior_of(data, s));
+    let mut out = Vec::new();
+    if let Some(c) = data.chemistry_of(i) {
+        let c = &data.chemistries[c];
+        out.push(format!(
+            "Biochimie : {} (solvant {}, energie : {}), viable de {:.0} a {:.0} K",
+            c.name, c.solvent, c.energy, c.t.0, c.t.1
+        ));
+    }
+    out.push(format!(
+        "Metabolisme {:.2} W (masse^0,75)   vie {:.1} ans   maturite {:.2} an   portee {}   reproduction {}",
+        l.watts,
+        l.lifespan_days / 365.25,
+        l.maturity_days / 365.25,
+        l.litter,
+        if l.sexual { "sexuee" } else { "clonale" }
+    ));
+    let mut ways: Vec<String> = Vec::new();
+    if b.pack {
+        ways.push(format!("meute de {}", b.herd));
+    } else if b.herd > 1 {
+        ways.push(format!("troupeau de {}", b.herd));
+    }
+    if b.territory_km2 > 0.0 {
+        ways.push(format!("territoire {:.1} km2", b.territory_km2));
+    }
+    if b.nocturnal {
+        ways.push("nocturne".into());
+    }
+    if b.hibernates {
+        ways.push(format!(
+            "hiberne sous {:.0} K",
+            vector_sim::biosphere::HIBERNATION_K
+        ));
+    }
+    if !ways.is_empty() {
+        out.push(format!("Comportement : {}", ways.join(", ")));
+    }
+    out
+}
+
+/// The card of a local variant of a species, generated from the data and the state of the world
+/// (how long it has been isolated, what its place selected): the species' own entry follows.
+pub fn variant_card(
+    data: &GameData,
+    v: &vector_sim::biosphere::Variant,
+    world: &str,
+) -> Vec<String> {
+    let s = &data.species[v.species];
+    let mut out = vec![
+        format!(
+            "{}  [{}]",
+            v.name(data),
+            if v.speciated() {
+                "variante distincte"
+            } else {
+                "population locale"
+            }
+        ),
+        format!(
+            "Population de {} sur {} (biome : {}), isolee depuis {:.0} generations ; divergence {:.0} % du seuil de speciation.",
+            s.name,
+            world,
+            data.biomes[v.biome].name,
+            v.generations,
+            v.divergence * 100.0
+        ),
+        format!(
+            "Masse x{:.2} ({:.3} kg)   pelage {} {:.0} %   durcissement aux radiations {:.0} %",
+            v.mass_factor(),
+            s.body * v.mass_factor(),
+            if v.tint >= 0.0 { "pale" } else { "sombre" },
+            v.tint.abs() * 100.0,
+            v.resist * 100.0
+        ),
+    ];
+    let cat = if s.is_producer() { 12 } else { 13 };
+    if let Some(k) = entries(data, cat).iter().position(|&x| x == v.species) {
+        out.extend(entry(data, cat, k));
     }
     out
 }
@@ -1770,6 +1881,42 @@ mod tests {
             }
         }
         assert!(total > 350, "{total}");
+    }
+
+    #[test]
+    fn species_cards_carry_biology_and_xenobiology_has_its_own_category() {
+        let d = data();
+        let wolf = d.species_index("loup_des_steppes").expect("wolf");
+        let k = entries(&d, 13)
+            .iter()
+            .position(|&x| x == wolf)
+            .expect("fauna");
+        let card = entry(&d, 13, k).join("\n");
+        assert!(
+            card.contains("Metabolisme") && card.contains("Comportement"),
+            "{card}"
+        );
+        let worm = d.species_index("serpent_de_scorie").expect("xeno");
+        let k = entries(&d, 13)
+            .iter()
+            .position(|&x| x == worm)
+            .expect("fauna");
+        assert!(entry(&d, 13, k)
+            .join("\n")
+            .contains("Silicones thermophiles"));
+        assert_eq!(count(&d, 29), d.chemistries.len());
+        let chem = entry(&d, 29, 0).join("\n");
+        assert!(
+            chem.contains("Serpent de scorie") && chem.contains("K"),
+            "{chem}"
+        );
+        // A variant card is generated from the state of the world and embeds the species' entry.
+        let steppe = d.biome_index("steppe").expect("biome");
+        let v = vector_sim::biosphere::variant_after(&d, 5, 0.0, wolf, steppe, 1.0e5);
+        let card = variant_card(&d, &v, "Kepler").join("\n");
+        assert!(
+            card.contains("Kepler") && card.contains("generations") && card.contains("Metabolisme")
+        );
     }
 
     #[test]

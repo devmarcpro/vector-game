@@ -407,6 +407,39 @@ fn mon_from_species(data: &GameData, sp: usize, x: i32, y: i32) -> Mon {
     }
 }
 
+/// Where and when an animal is met: what the biology of its species makes of the place.
+struct Ambient {
+    temp: f64,
+    night: bool,
+    world: u64,
+    radiation: f64,
+    biome: usize,
+    now: f64,
+}
+
+/// An animal of a planet as its population has become (size of the local variant) and as it
+/// lives (asleep in the cold season if it hibernates, asleep by day if it is nocturnal).
+fn mon_adapted(data: &GameData, sp: usize, x: i32, y: i32, amb: &Ambient) -> Mon {
+    use crate::biosphere::{behavior_of, variant_now};
+    let mut m = mon_from_species(data, sp, x, y);
+    let v = variant_now(data, amb.world, amb.radiation, sp, amb.biome, amb.now);
+    let f = v.mass_factor();
+    m.hp *= f.cbrt();
+    m.attack *= f.cbrt();
+    for d in &mut m.drops {
+        d.1 *= f;
+        d.2 *= f;
+    }
+    if v.speciated() {
+        m.name = v.name(data);
+    }
+    if behavior_of(data, &data.species[sp]).asleep(amb.temp, amb.night) {
+        m.sleeper = true;
+        m.awake = false;
+    }
+    m
+}
+
 fn vnoise(seed: u64, x: f64, y: f64) -> f64 {
     let (ix, iy) = (x.floor(), y.floor());
     let (fx, fy) = (x - ix, y - iy);
@@ -1436,18 +1469,64 @@ impl Sim {
         } else {
             8 + (rng.next_u64() % 8) as usize
         };
+        let amb = Ambient {
+            temp: self.temp_now(&map, cx, cy),
+            night: self.is_night(&map),
+            world: map.seed,
+            radiation: crate::biosphere::surface_radiation(map.pressure),
+            biome,
+            now: self.time,
+        };
+        // The trophic pyramid: grazers are met more often than the omnivores and the
+        // carnivores that live off them.
+        let weight = |sp: usize| match self.data.species[sp].trophic.as_str() {
+            "herbivore" => 4.0,
+            "omnivore" => 2.0,
+            _ => 1.0,
+        };
+        let total_w: f64 = fauna.iter().map(|&s| weight(s)).sum();
         for _ in 0..n_fauna {
             let (x, y) = (
                 (rng.next_u64() % MAP_W as u64) as i32,
                 (rng.next_u64() % MAP_H as u64) as i32,
             );
+            let mut pick = rng.f64() * total_w;
+            let sp = fauna
+                .iter()
+                .copied()
+                .find(|&s| {
+                    pick -= weight(s);
+                    pick < 0.0
+                })
+                .unwrap_or(fauna[0]);
             // Not on top of the landing party.
             if !busy(&tiles, &monsters, &items, x, y)
                 && !avoided(x, y)
                 && (x - lx).abs() + (y - ly).abs() > 8
             {
-                let sp = fauna[(rng.next_u64() % fauna.len() as u64) as usize];
-                monsters.push(mon_from_species(&self.data, sp, x, y));
+                let first = mon_adapted(&self.data, sp, x, y, &amb);
+                // Herds, packs and swarms come in groups, side by side.
+                let group = crate::biosphere::behavior_of(&self.data, &self.data.species[sp])
+                    .group_on_grid();
+                monsters.push(first.clone());
+                let mut placed = 1;
+                for (dx, dy) in [(1, 0), (0, 1), (-1, 0), (0, -1), (1, 1), (-1, -1)] {
+                    let (gx, gy) = (x + dx, y + dy);
+                    if placed < group
+                        && gx >= 0
+                        && gy >= 0
+                        && gx < w
+                        && gy < h
+                        && !busy(&tiles, &monsters, &items, gx, gy)
+                        && !avoided(gx, gy)
+                        && (gx - lx).abs() + (gy - ly).abs() > 8
+                    {
+                        let mut mate = first.clone();
+                        (mate.x, mate.y) = (gx, gy);
+                        monsters.push(mate);
+                        placed += 1;
+                    }
+                }
             }
         }
         // Sites of interest: 2 to 4, by weight, away from the landing.
@@ -4782,5 +4861,37 @@ mod tests {
             .yields
             .push(("pas_une_ressource".to_string(), 1.0, 0.5));
         assert!(bad.validate().is_err());
+    }
+
+    #[test]
+    fn animals_live_by_their_biology_asleep_in_the_cold_and_sized_by_their_variant() {
+        let d = data();
+        let elk = d.species_index("elan_des_neiges").expect("species");
+        let biome = d.biome_index("taiga").expect("biome");
+        let amb = |temp: f64| Ambient {
+            temp,
+            night: true,
+            world: 11,
+            radiation: 0.0,
+            biome,
+            now: 0.0,
+        };
+        let warm = mon_adapted(&d, elk, 3, 3, &amb(285.0));
+        let cold = mon_adapted(&d, elk, 3, 3, &amb(250.0));
+        assert!(!warm.sleeper, "not asleep in the warm season");
+        assert!(cold.sleeper && !cold.awake, "hibernating in the cold");
+        // The local variant sets the size: hit points follow the cube root of the mass factor.
+        let base = mon_from_species(&d, elk, 3, 3);
+        let v = crate::biosphere::variant_now(&d, 11, 0.0, elk, biome, 0.0);
+        assert!((warm.hp - base.hp * v.mass_factor().cbrt()).abs() < 1e-9);
+        // A variant diverged enough carries its own name.
+        let named = (0..300u64)
+            .map(|w| Ambient {
+                world: w,
+                ..amb(285.0)
+            })
+            .find(|a| crate::biosphere::variant_now(&d, a.world, 0.0, elk, biome, 0.0).speciated())
+            .expect("some world has a diverged population");
+        assert!(mon_adapted(&d, elk, 0, 0, &named).name.contains("variante"));
     }
 }

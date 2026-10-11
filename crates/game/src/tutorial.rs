@@ -178,10 +178,10 @@ pub fn hint_line(g: &Game) -> String {
             "HAUT/BAS RESSOURCE  TAB PERIODE  B HAUSSE  N BAISSE  C CLORE  E ENTREPRISES (ACTIONS)  T/ECHAP RETOUR"
         }
         Screen::Surface if g.surf_globe => {
-            "GLOBE  GAUCHE/DROITE TOURNER  TAB COUCHE  G CARTE  F CODEX  F8/ECHAP RETOUR"
+            "GLOBE  GAUCHE/DROITE TOURNER  TAB COUCHE  V ESPECE (BIOSPHERE)  G CARTE  F CODEX  F8/ECHAP RETOUR"
         }
         Screen::Surface => {
-            "FLECHES CURSEUR (MAJ x4)  TAB COUCHE  G GLOBE  + ZOOM (A PIED)  F CODEX  F8/ECHAP RETOUR"
+            "FLECHES CURSEUR (MAJ x4)  TAB COUCHE  V ESPECE ET ENTREE FICHE (BIOSPHERE)  G GLOBE  + ZOOM (A PIED)  F CODEX  F8/ECHAP RETOUR"
         }
     };
     s.to_string()
@@ -204,7 +204,7 @@ pub fn help_lines(screen: Screen) -> &'static [&'static str] {
             "H vaisseau  K equipage  I soute  J journal  X factions",
             "L galaxie  F2 empire  F3 flotte  F4 techno  F6 codex  Entree : appeler le vaisseau cible",
             "O : fonder une colonie   Z tribut   N epave   U abordage",
-            "F8 : surface de la planete ou lune ciblee (releve niveau 2)",
+            "F8 : surface de la planete ou lune ciblee (releve niveau 2) ; Tab y change de couche (BIOSPHERE : V espece, Entree fiche de la variante)",
             "Souris : clic = cibler un objet, double clic = y aller ; molette = temps ; clic droit = retour",
         ],
         Screen::Station => &[

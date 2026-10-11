@@ -1,0 +1,9 @@
+// Chemistries of life other than carbon-water (E2b). `t`: viable temperature range of the
+// biochemistry, K. `species`: ids of data/species_xeno.ron that run on it. The validation checks
+// that each species lives in biomes whose temperature overlaps the range.
+[
+ (id:"silicones", name:"Silicones thermophiles", backbone:"silicium", solvent:"silicones et silicates fondus", energy:"oxydation du soufre et des roches", t:(450.0, 1400.0), species:["lichen_de_silice", "cristal_vivant", "broyeur_de_basalte", "serpent_de_scorie"], text:"Chaînes silicium-oxygène stables là où le carbone se décompose : la vie des plaines brûlantes et des coulées de lave."),
+ (id:"ammoniac", name:"Cryochimie de l'ammoniac", backbone:"carbone", solvent:"ammoniac liquide", energy:"gradients chimiques sous la glace", t:(150.0, 255.0), species:["frange_d_ammoniac", "glissant_cryogene", "traqueur_des_glaces"], text:"L'ammoniac reste liquide bien en dessous de zéro ; le métabolisme y est très lent."),
+ (id:"radiotrophes", name:"Radiotrophes", backbone:"carbone", solvent:"eau liée en saumures", energy:"rayonnement ionisant (mélanine)", t:(3.0, 400.0), species:["melanine_rayonnante", "brouteur_de_regolithe", "predateur_de_roche"], text:"Sans air ni champ magnétique, le rayonnement devient la source d'énergie : des pigments le convertissent."),
+ (id:"sulfureux", name:"Chimiosynthèse sulfureuse", backbone:"carbone", solvent:"eau surchauffée sous pression", energy:"oxydation de l'hydrogène sulfuré", t:(330.0, 420.0), species:["tapis_sulfureux", "ver_de_fumeur", "crabe_thermal"], text:"Autour des sources hydrothermales, la vie se passe de lumière."),
+]

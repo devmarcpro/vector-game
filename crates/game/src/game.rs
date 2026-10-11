@@ -207,6 +207,12 @@ pub struct Game {
     pub surf_civ: Option<vector_sim::civ::Civ>,
     /// Food web of the world on the surface screen (settled balance, or the colony's own).
     pub surf_eco: Option<vector_sim::ecology::Ecosystem>,
+    /// BIOSPHERE layer: position of the shown species in `surface_view::alive_species`, whether
+    /// the full card of its local variant is open, and the populations of the world with the day
+    /// they were computed for.
+    pub surf_species: usize,
+    pub surf_card: bool,
+    pub surf_variants: std::cell::RefCell<(i64, Vec<vector_sim::biosphere::Variant>)>,
     /// Exchange screen: station, selected resource, range (index into `BOURSE_RANGES`), the
     /// price series `[resource][day]` and the world events of the period.
     pub bourse_station: usize,
@@ -348,6 +354,9 @@ impl Game {
             surf_cities: Vec::new(),
             surf_civ: None,
             surf_eco: None,
+            surf_species: 0,
+            surf_card: false,
+            surf_variants: std::cell::RefCell::new((i64::MIN, Vec::new())),
             bourse_station: 0,
             bourse_sel: 0,
             bourse_range: 1,
@@ -1271,6 +1280,21 @@ impl Game {
                 self.surf_layer = (self.surf_layer + 1) % crate::surface_view::LAYERS.len()
             }
             KeyCode::KeyG => self.surf_globe = !self.surf_globe,
+            // BIOSPHERE layer: V / Maj+V pick the species, Enter opens the card of its variant.
+            KeyCode::KeyV if self.surf_layer == crate::surface_view::BIOSPHERE => {
+                let n = self
+                    .surf_eco
+                    .as_ref()
+                    .map_or(1, |e| crate::surface_view::alive_species(e).len().max(1));
+                self.surf_species = if self.keys.contains(&KeyCode::ShiftLeft) {
+                    (self.surf_species + n - 1) % n
+                } else {
+                    (self.surf_species + 1) % n
+                };
+            }
+            KeyCode::Enter if self.surf_layer == crate::surface_view::BIOSPHERE => {
+                self.surf_card = !self.surf_card
+            }
             // Zoom in: from the map of the region to the grid of the ground, on foot.
             KeyCode::KeyE | KeyCode::Equal | KeyCode::NumpadAdd => self.open_expedition(),
             KeyCode::KeyF => self.open_codex(Screen::Surface),
@@ -2731,6 +2755,17 @@ mod tests {
         let layer = g.surf_layer;
         g.key(KeyCode::Tab, None, true);
         assert_ne!(g.surf_layer, layer);
+        // The BIOSPHERE layer: V changes the species, Enter opens the card and back.
+        g.surf_layer = crate::surface_view::BIOSPHERE;
+        let sp = g.surf_species;
+        g.key(KeyCode::KeyV, None, true);
+        let alive = crate::surface_view::alive_species(g.surf_eco.as_ref().expect("eco")).len();
+        assert_eq!(g.surf_species, (sp + 1) % alive.max(1));
+        g.key(KeyCode::Enter, None, true);
+        assert!(g.surf_card);
+        g.key(KeyCode::Enter, None, true);
+        assert!(!g.surf_card);
+        g.surf_layer = layer;
         g.key(KeyCode::KeyG, None, true);
         assert!(g.surf_globe);
         g.key(KeyCode::ArrowRight, None, true);

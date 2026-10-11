@@ -579,7 +579,8 @@ fn snapshot(path: &str, scene: &str, data: Arc<GameData>) {
             g.sim.target = Some(i);
             g.sim.update_ref_pub();
         }
-        "surface" | "globe" | "walk" | "walk_fpv" | "expedition" => {
+        "surface" | "biosphere" | "biosphere_card" | "globe" | "walk" | "walk_fpv"
+        | "expedition" => {
             g.sim.reveal_all();
             let i = g
                 .sim
@@ -605,6 +606,10 @@ fn snapshot(path: &str, scene: &str, data: Arc<GameData>) {
             g.sim.target = Some(i);
             g.open_surface();
             g.surf_globe = scene == "globe";
+            if scene.starts_with("biosphere") {
+                g.surf_layer = surface_view::BIOSPHERE;
+                g.surf_card = scene == "biosphere_card";
+            }
             g.surf_spin = 0.9;
             if scene.starts_with("walk") || scene == "expedition" {
                 let body = g.surf.as_ref().map(|m| m.body).expect("map");

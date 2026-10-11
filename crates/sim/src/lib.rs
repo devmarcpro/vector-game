@@ -3,6 +3,7 @@
 pub mod arms;
 pub mod atmosphere;
 pub mod autopilot;
+pub mod biosphere;
 pub mod births;
 pub mod blackmarket;
 pub mod bourse;

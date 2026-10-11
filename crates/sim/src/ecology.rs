@@ -35,8 +35,11 @@ pub fn has_life(kind: PlanetKind, seed: u64) -> bool {
         Desert => 0.40,
         Ice => 0.25,
         Venusian => 0.05,
-        Lava => 0.02,
-        Barren | Dwarf | GasGiant | IceGiant | HotJupiter => 0.0,
+        Lava => 0.06,
+        // Airless rock: only radiotrophs (see data/xenobio.ron) can live there.
+        Barren => 0.08,
+        Dwarf => 0.03,
+        GasGiant | IceGiant | HotJupiter => 0.0,
     };
     (hash_coord(seed, 0x11FE, 1, 1) >> 11) as f64 / (1u64 << 53) as f64 <= p
 }
@@ -63,6 +66,25 @@ pub struct Ecosystem {
     diet: Vec<Vec<usize>>,
     producer: Vec<bool>,
     growth: Vec<f64>,
+    /// Share of a species' biomass that crosses to a neighbouring biome per day (animals only).
+    mobility: Vec<f64>,
+    /// Pairs of neighbouring biomes: (a, b, border cells / cells of a, border cells / cells of b).
+    border: Vec<(usize, usize, f64, f64)>,
+}
+
+/// Share of a species' biomass that moves per day toward a neighbouring biome, by invasiveness.
+fn mobility_of(sp: &vector_data::Species) -> f64 {
+    if sp.is_producer() {
+        0.0
+    } else {
+        0.01 * (1.0 + 2.0 * sp.invasive)
+    }
+}
+
+/// Carrying capacity factor of a world's air: thin air lets the ionising radiation through and
+/// the producers of the open ground suffer (at most half of the capacity is lost).
+fn air_factor(pressure: f64) -> f64 {
+    1.0 - 0.5 * crate::biosphere::surface_radiation(pressure)
 }
 
 impl Ecosystem {
@@ -107,7 +129,33 @@ impl Ecosystem {
         }
         let area: Vec<f64> = weight.iter().map(|w| w / total * sphere).collect();
         let cap: Vec<f64> = (0..nb)
-            .map(|b| area[b] * (5.0e4 + 4.0e5 * data.biomes[b].fertility))
+            .map(|b| {
+                let air = if data.biomes[b].p.0 >= 0.01 {
+                    air_factor(map.pressure)
+                } else {
+                    1.0
+                };
+                area[b] * (5.0e4 + 4.0e5 * data.biomes[b].fertility) * air
+            })
+            .collect();
+        // Which biomes touch (the world wraps in longitude): where animals can walk to.
+        let mut cells = vec![0.0f64; nb];
+        let mut edges: std::collections::BTreeMap<(usize, usize), f64> = Default::default();
+        for y in 0..H {
+            for x in 0..W {
+                let a = map.biome_at(x, y);
+                cells[a] += 1.0;
+                for (nx, ny) in [((x + 1) % W, y), (x, (y + 1).min(H - 1))] {
+                    let b = map.biome_at(nx, ny);
+                    if a != b {
+                        *edges.entry((a.min(b), a.max(b))).or_default() += 1.0;
+                    }
+                }
+            }
+        }
+        let border = edges
+            .into_iter()
+            .map(|((a, b), c)| (a, b, c / cells[a], c / cells[b]))
             .collect();
         let mut live = vec![false; nb * ns];
         for (s, sp) in data.species.iter().enumerate() {
@@ -138,6 +186,8 @@ impl Ecosystem {
                 .collect(),
             producer: data.species.iter().map(|s| s.is_producer()).collect(),
             growth: data.species.iter().map(|s| s.growth).collect(),
+            mobility: data.species.iter().map(mobility_of).collect(),
+            border,
         };
         if eco.life {
             for s in 0..ns {
@@ -165,7 +215,12 @@ impl Ecosystem {
     /// catches invasive species in; it is the only ecology that is saved.
     pub fn region(data: &GameData, map: &PlanetMap, biome: usize, settle: bool) -> Ecosystem {
         let (ns, id) = (data.species.len(), &data.biomes[biome].id);
-        let cap = REGION_KM2 * (5.0e4 + 4.0e5 * data.biomes[biome].fertility);
+        let air = if data.biomes[biome].p.0 >= 0.01 {
+            air_factor(map.pressure)
+        } else {
+            1.0
+        };
+        let cap = REGION_KM2 * (5.0e4 + 4.0e5 * data.biomes[biome].fertility) * air;
         let mut eco = Ecosystem {
             body: map.body,
             life: has_life(map.kind, map.seed),
@@ -193,6 +248,8 @@ impl Ecosystem {
                 .collect(),
             producer: data.species.iter().map(|s| s.is_producer()).collect(),
             growth: data.species.iter().map(|s| s.growth).collect(),
+            mobility: data.species.iter().map(mobility_of).collect(),
+            border: Vec::new(),
         };
         if eco.life {
             for s in 0..ns {
@@ -290,11 +347,56 @@ impl Ecosystem {
                 delta[s * nb + b] -= eaten[s];
             }
         }
+        // Migration: animals diffuse between neighbouring biomes where they can live (what is
+        // lost on one side is gained on the other), which also recolonises a biome emptied
+        // by hunting or famine from its neighbours, and spreads the invasive.
+        for &(a, b, ra, rb) in &self.border {
+            for s in (0..ns).filter(|&s| self.mobility[s] > 0.0) {
+                if !(self.live[s * nb + a] && self.live[s * nb + b]) {
+                    continue;
+                }
+                let flow =
+                    self.mobility[s] * dt * (self.bio[s * nb + a] * ra - self.bio[s * nb + b] * rb);
+                delta[s * nb + a] -= flow;
+                delta[s * nb + b] += flow;
+            }
+        }
         for (i, d) in delta.iter().enumerate() {
             let b = i % nb;
             let v = self.bio[i] + d;
             self.bio[i] = if v < EXTINCT * self.cap[b] { 0.0 } else { v };
         }
+    }
+
+    /// What happened to the web between a past state of the biomass and now, as journal lines:
+    /// a native species gone (extinction), one fallen to a hair of its capacity (famine, decline),
+    /// an introduced one that came to hold a tenth of all the living mass (invasion).
+    pub fn events_since(&self, before: &[f64], data: &GameData) -> Vec<String> {
+        const CRITICAL: f64 = 1e-4;
+        const INVADES: f64 = 0.10;
+        let mut out = Vec::new();
+        if before.len() != self.bio.len() || self.nb != 1 {
+            return out;
+        }
+        let k = self.cap[0].max(1.0);
+        let (old_total, total) = (before.iter().sum::<f64>(), self.living());
+        for (s, &was) in before.iter().enumerate() {
+            let now = self.bio[s];
+            let name = &data.species[s].name;
+            let native = self.native.get(s).copied().unwrap_or(true);
+            if was > 0.0 && now == 0.0 && native {
+                out.push(format!("Extinction : {name} a disparu du territoire"));
+            } else if !self.producer[s] && was >= CRITICAL * k && now > 0.0 && now < CRITICAL * k {
+                out.push(format!("Famine : {name} décline, au bord de l'extinction"));
+            } else if !native
+                && total > 0.0
+                && now / total >= INVADES
+                && (old_total <= 0.0 || was / old_total < INVADES)
+            {
+                out.push(format!("Espèce envahissante : {name} prolifère"));
+            }
+        }
+        out
     }
 
     /// Take `kg` of biomass from a species in a biome (hunting, gathering); returns what was
@@ -368,7 +470,9 @@ impl Sim {
             return;
         };
         let before = eco.time;
+        let bio_before = eco.bio.clone();
         eco.advance_to(now);
+        let events = eco.events_since(&bio_before, &data);
         let days = ((eco.time - before) / 86_400.0).max(0.0);
         // Introduced species crowd out the natives and ruin crops: the more of the living
         // mass they make up, the more production the colony loses.
@@ -384,6 +488,9 @@ impl Sim {
         };
         let life = eco.life;
         self.colonies[ci].pest = pest;
+        for e in events {
+            self.colonies[ci].log_line(now, e);
+        }
         if days < 1.0 || !life || level == 0 {
             return;
         }
@@ -554,8 +661,10 @@ mod tests {
     #[test]
     fn dead_worlds_stay_dead_and_life_depends_on_the_kind_of_world() {
         let lives = |k| (0..400u64).filter(|&s| has_life(k, s)).count();
-        assert_eq!(lives(PlanetKind::Barren), 0);
-        assert_eq!(lives(PlanetKind::Dwarf), 0);
+        // Airless worlds only carry the radiotrophs of the xenobiology, rarely.
+        assert!(lives(PlanetKind::Barren) > 5 && lives(PlanetKind::Barren) < 70);
+        assert!(lives(PlanetKind::Dwarf) < lives(PlanetKind::Barren));
+        assert_eq!(lives(PlanetKind::GasGiant), 0);
         assert!(lives(PlanetKind::Terran) > 340);
         assert!(lives(PlanetKind::Desert) > 100 && lives(PlanetKind::Desert) < 220);
         assert!(lives(PlanetKind::Lava) < 40);
@@ -902,5 +1011,124 @@ mod tests {
         assert!(eco.bio.iter().all(|v| v.is_finite() && *v >= 0.0));
         assert!(s.colonies[ci].pop.is_finite() && s.colonies[ci].pest.is_finite());
         assert!(eco.living() > 0.0, "life goes on");
+    }
+
+    #[test]
+    fn airless_worlds_hold_only_radiotrophs_and_hostile_worlds_other_chemistries() {
+        let (s, _, eco) = living_world(PlanetKind::Barren);
+        let alive: Vec<usize> = (0..eco.ns).filter(|&sp| eco.total(sp) > 0.0).collect();
+        assert!(alive.len() >= 3, "a food web of {} species", alive.len());
+        for &sp in &alive {
+            let c = s
+                .data
+                .chemistry_of(sp)
+                .expect("only xenobiology lives here");
+            assert_eq!(s.data.chemistries[c].id, "radiotrophes");
+        }
+        // The chain is whole: a producer, a grazer and a hunter.
+        for t in ["producer", "herbivore", "carnivore"] {
+            assert!(
+                alive.iter().any(|&sp| s.data.species[sp].trophic == t),
+                "{t}"
+            );
+        }
+        // Lava worlds hold silicon life, when they hold any.
+        let (s, _, lava) = living_world(PlanetKind::Lava);
+        let xeno = (0..lava.ns)
+            .filter(|&sp| lava.total(sp) > 0.0)
+            .filter_map(|sp| s.data.chemistry_of(sp))
+            .any(|c| s.data.chemistries[c].id == "silicones");
+        assert!(xeno, "silicones on a lava world");
+    }
+
+    #[test]
+    fn animals_migrate_between_neighbouring_biomes_and_recolonise_an_emptied_one() {
+        let (s, _, eco) = living_world(PlanetKind::Terran);
+        assert!(!eco.border.is_empty(), "biomes touch");
+        // An animal that lives, and is established, on both sides of a border.
+        let mut found = None;
+        'o: for &(a, b, _, _) in &eco.border {
+            for sp in 0..eco.ns {
+                if eco.mobility[sp] > 0.0 && eco.at(sp, a) > 0.0 && eco.at(sp, b) > 0.0 {
+                    found = Some((sp, a, b));
+                    break 'o;
+                }
+            }
+        }
+        let (sp, a, _) = found.expect("an animal on both sides of a border");
+        let mut with = eco.clone();
+        let mut without = eco.clone();
+        without.border.clear();
+        with.bio[sp * with.nb + a] = 0.0;
+        without.bio[sp * without.nb + a] = 0.0;
+        for _ in 0..40 {
+            with.step(1.0);
+            without.step(1.0);
+        }
+        // Without migration the emptied biome stays empty; with it the neighbours refill it.
+        assert_eq!(without.at(sp, a), 0.0, "{}", s.data.species[sp].id);
+        assert!(with.at(sp, a) > 0.0, "{}", s.data.species[sp].id);
+        // The move itself creates no biomass: with no growth and no predation the total of
+        // the species is unchanged by a step.
+        let mut m = eco.clone();
+        let total = |e: &Ecosystem| e.bio[sp * e.nb..(sp + 1) * e.nb].iter().sum::<f64>();
+        m.growth.iter_mut().for_each(|g| *g = 0.0);
+        m.diet.iter_mut().for_each(|d| d.clear());
+        let before = total(&m);
+        m.step(1.0);
+        assert!(
+            (total(&m) - before).abs() < 1e-6 * before,
+            "{} {}",
+            total(&m),
+            before
+        );
+    }
+
+    #[test]
+    fn thin_air_costs_capacity_and_the_journal_reports_extinctions_and_invasions() {
+        assert!(air_factor(0.05) < air_factor(0.5) && air_factor(0.5) < air_factor(1.0));
+        assert!(air_factor(1.0) > 0.99 && air_factor(0.0) == 0.5);
+        let (mut s, ci, _) = colony_on_living_world();
+        let data = Arc::clone(&s.data);
+        let id = s.colonies[ci].id;
+        s.colony_ecology(ci);
+        let eco = s.ecologies.get_mut(&id).expect("eco");
+        let before = eco.bio.clone();
+        let native = (0..eco.ns)
+            .find(|&sp| eco.native[sp] && eco.bio[sp] > 0.0)
+            .expect("a native species");
+        assert!(
+            eco.events_since(&before, &data).is_empty(),
+            "nothing happened"
+        );
+        eco.bio[native] = 0.0;
+        let lines = eco.events_since(&before, &data);
+        assert!(
+            lines
+                .iter()
+                .any(|l| l.starts_with("Extinction") && l.contains(&data.species[native].name)),
+            "{lines:?}"
+        );
+        // A predator reduced to a hair of the capacity is a famine.
+        let pred = (0..eco.ns)
+            .find(|&sp| !eco.producer[sp] && eco.bio[sp] > 1e-3 * eco.cap[0])
+            .expect("a consumer");
+        let before = eco.bio.clone();
+        eco.bio[pred] = 1e-6 * eco.cap[0];
+        assert!(eco
+            .events_since(&before, &data)
+            .iter()
+            .any(|l| l.starts_with("Famine")));
+        // An introduced species taking a fifth of the living mass is an invasion.
+        let exotic = (0..eco.ns)
+            .find(|&sp| eco.live[sp] && eco.bio[sp] == 0.0 && eco.producer[sp])
+            .expect("a species that could be introduced");
+        eco.native[exotic] = false;
+        let before = eco.bio.clone();
+        eco.bio[exotic] = 0.25 * eco.living();
+        assert!(eco
+            .events_since(&before, &data)
+            .iter()
+            .any(|l| l.starts_with("Espèce envahissante")));
     }
 }

@@ -180,6 +180,11 @@ impl Game {
         self.surf_layer = i;
     }
 
+    /// A click on a species of the BIOSPHERE panel shows it on the map.
+    pub fn click_surface_species(&mut self, i: usize) {
+        self.surf_species = i;
+    }
+
     /// A click on the surface map moves the cursor to the cell under it.
     pub fn click_surface_map(&mut self, (px, py): (i32, i32)) {
         use vector_world::surface::{H, W};

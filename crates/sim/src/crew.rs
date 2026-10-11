@@ -144,7 +144,8 @@ impl Person {
                 "defense" => g.defense,
                 _ => g.gather,
             })
-            .sum()
+            .sum::<f64>()
+            + 0.0
     }
 
     /// Constant strain of the implants on their owner (more when they stop).

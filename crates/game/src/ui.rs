@@ -495,15 +495,18 @@ fn draw_station(fb: &mut Framebuffer, g: &Game) {
         ),
         None => "STATION INDEPENDANTE".to_string(),
     };
+    // The market list starts at column 40: keep to the left of it.
+    fb.text(1, 7, &owner.chars().take(37).collect::<String>(), GREEN);
     fb.text(
         1,
-        7,
-        &format!(
-            "{}  |  {}",
-            owner,
-            s.data.industries[m.industry].name.to_uppercase()
-        ),
-        GREEN,
+        8,
+        &s.data.industries[m.industry]
+            .name
+            .to_uppercase()
+            .chars()
+            .take(37)
+            .collect::<String>(),
+        DIM,
     );
     let (x, top) = (40, 3);
     fb.text(
@@ -964,8 +967,8 @@ fn draw_crew(fb: &mut Framebuffer, g: &Game) {
             );
         }
         fb.text(
-            x + 40,
-            top + 19,
+            x,
+            top + 30,
             &format!("INSTABILITE GENETIQUE {:.0} %", p.instability * 100.0),
             if p.instability > 0.5 { RED } else { DIM },
         );

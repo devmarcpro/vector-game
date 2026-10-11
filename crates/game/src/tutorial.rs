@@ -156,7 +156,7 @@ pub fn hint_line(g: &Game) -> String {
         Screen::Codex => "GAUCHE/DROITE CATEGORIE  HAUT/BAS ENTREE  ECHAP RETOUR",
         Screen::Family => "GAUCHE/DROITE PERSONNE SUIVANTE  TAB ARBRE/GENES  G/K/ECHAP RETOUR A L'EQUIPAGE",
         Screen::Bourse => {
-            "HAUT/BAS RESSOURCE  PGUP/PGDN x10  TAB OU GAUCHE/DROITE PERIODE (30/90/180 J)  T/ECHAP RETOUR"
+            "HAUT/BAS RESSOURCE  TAB PERIODE  B HAUSSE  N BAISSE  C CLORE (CONTRATS A TERME)  T/ECHAP RETOUR"
         }
         Screen::Surface if g.surf_globe => {
             "GLOBE  GAUCHE/DROITE TOURNER  TAB COUCHE  G CARTE  F CODEX  F8/ECHAP RETOUR"
@@ -278,6 +278,8 @@ pub fn help_lines(screen: Screen) -> &'static [&'static str] {
         ],
         Screen::Bourse => &[
             "Haut/Bas : ressource   PgUp/PgDn : sauter de 10",
+            "B / N : contrat a terme a la hausse / baisse (100 kg, 30 j, marge 25 %)",
+            "C : clore un contrat (gain ou perte au prix de reference du jour)",
             "Tab ou Gauche/Droite : periode du graphique (30, 90, 180 jours)",
             "Courbe pleine : prix de reference ; ligne ambre : moyenne sur 7 jours",
             "Bandes colorees : evenements du monde qui touchent cette ressource",

@@ -201,6 +201,10 @@ pub struct Game {
 }
 
 /// Ranges of the exchange charts, days.
+/// What the quick futures keys of the exchange sign: kilograms and days.
+pub const FUTURE_KG: f64 = 100.0;
+pub const FUTURE_DAYS: f64 = 30.0;
+
 pub const BOURSE_RANGES: [usize; 3] = [30, 90, 180];
 
 pub fn parse_seed(text: &str) -> u64 {
@@ -998,6 +1002,38 @@ impl Game {
                 self.bourse_range =
                     (self.bourse_range + BOURSE_RANGES.len() - 1) % BOURSE_RANGES.len();
                 self.refresh_bourse();
+            }
+            KeyCode::KeyB | KeyCode::KeyN => {
+                let long = code == KeyCode::KeyB;
+                match self
+                    .sim
+                    .open_future(self.bourse_sel, FUTURE_KG, FUTURE_DAYS, long)
+                {
+                    Ok(_) => self.say(if long {
+                        "CONTRAT A TERME A LA HAUSSE SIGNE (MARGE BLOQUEE)"
+                    } else {
+                        "CONTRAT A TERME A LA BAISSE SIGNE (MARGE BLOQUEE)"
+                    }),
+                    Err(e) => self.say(e.to_uppercase()),
+                }
+            }
+            KeyCode::KeyC => {
+                // Close the oldest contract on the selected good, or the oldest of all.
+                let idx = self
+                    .sim
+                    .futures
+                    .iter()
+                    .position(|f| f.res == self.bourse_sel)
+                    .or(if self.sim.futures.is_empty() {
+                        None
+                    } else {
+                        Some(0)
+                    });
+                match idx.map(|i| self.sim.close_future(i)) {
+                    Some(Ok(p)) => self.say(format!("CONTRAT CLOS : {p:.0} CR RECUPERES")),
+                    Some(Err(e)) => self.say(e.to_uppercase()),
+                    None => self.say("AUCUN CONTRAT OUVERT"),
+                }
             }
             KeyCode::Escape | KeyCode::KeyT => self.screen = Screen::Station,
             _ => {}
@@ -3008,6 +3044,34 @@ mod tests {
         assert!(g.dlg_log.iter().any(|l| l.starts_with("VOUS")));
         g.key(KeyCode::Escape, None, true);
         assert_eq!(g.screen, Screen::Flight);
+    }
+
+    #[test]
+    fn the_exchange_keys_sign_and_close_futures() {
+        let mut g = Game::new(data(), 1);
+        g.key(KeyCode::Enter, None, true);
+        let (st, _) = g.sim.nearest_station().expect("station");
+        g.sim.spawn_near(st, g.sim.bodies[st].radius + 200.0);
+        g.sim.try_dock().expect("dock");
+        g.sim.credits = 1.0e6;
+        g.screen = Screen::Station;
+        g.open_bourse();
+        assert_eq!(g.screen, Screen::Bourse);
+        let credits = g.sim.credits;
+        g.key(KeyCode::KeyB, None, true);
+        assert_eq!(g.sim.futures.len(), 1);
+        assert!(
+            g.sim.futures[0].long && g.sim.credits < credits,
+            "margin locked"
+        );
+        g.key(KeyCode::KeyN, None, true);
+        assert_eq!(g.sim.futures.len(), 2);
+        assert!(!g.sim.futures[1].long);
+        frame(&g);
+        // The clickable word does the same as the key.
+        let n = g.sim.futures.len();
+        g.key(KeyCode::KeyC, None, true);
+        assert_eq!(g.sim.futures.len(), n - 1, "C closes one");
     }
 
     #[test]

@@ -12,6 +12,7 @@ pub mod dialogue;
 pub mod ecology;
 pub mod economy;
 pub mod fleet;
+pub mod futures;
 pub mod genealogy;
 pub mod market;
 pub mod npc;
@@ -263,6 +264,9 @@ pub struct Sim {
     pub ride: Option<(usize, Vec3, Vec3)>,
     /// Goodwill of the native civilisations met, by world key (see `civ`).
     pub civ_rep: BTreeMap<u64, f32>,
+    /// Futures signed at the exchange.
+    pub futures: Vec<futures::Future>,
+    pub next_future: u32,
     /// Body used as velocity reference for flight assist (within its influence radius).
     pub ref_body: Option<usize>,
     pub target: Option<usize>,
@@ -388,6 +392,8 @@ impl Sim {
             parked: None,
             ride: None,
             civ_rep: BTreeMap::new(),
+            futures: Vec::new(),
+            next_future: 0,
             ref_body: None,
             target: None,
             credits: START_CREDITS,
@@ -738,6 +744,7 @@ impl Sim {
             self.expire_contracts();
             self.bank_tick();
             self.market_news_tick();
+            self.futures_tick();
             self.refresh_bodies();
             self.update_npcs();
             self.hazard_tick(dt);

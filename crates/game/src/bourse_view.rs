@@ -5,6 +5,7 @@ use crate::game::{Game, BOURSE_RANGES};
 use crate::hud::{AMBER, DIM, GREEN, RED};
 use crate::mouse::Act;
 use vector_render::Framebuffer;
+use winit::keyboard::KeyCode;
 
 const WHITE: u32 = 0x00FF_FFFF;
 const UP: u32 = 0x0040_E070;
@@ -165,7 +166,49 @@ pub fn draw(fb: &mut Framebuffer, g: &Game) {
         );
     }
     draw_chart(fb, g, sel, x0);
+    draw_futures(fb, g, sel, x0);
     draw_news(fb, g, sel, x0);
+}
+
+/// Futures: three clickable words and the list of open contracts with what each would pay now.
+fn draw_futures(fb: &mut Framebuffer, g: &Game, sel: usize, col: usize) {
+    let acts: [(&str, KeyCode); 3] = [
+        ("[B] PARIER A LA HAUSSE (100 KG, 30 J)", KeyCode::KeyB),
+        ("[N] PARIER A LA BAISSE", KeyCode::KeyN),
+        ("[C] CLORE UN CONTRAT", KeyCode::KeyC),
+    ];
+    let mut x = col;
+    for (label, key) in acts {
+        let hover = g.hit_cells(x, 20, label.len(), 1, Act::Key(key), None);
+        fb.text(x, 20, label, if hover { AMBER } else { GREEN });
+        x += label.len() + 3;
+    }
+    fb.text(
+        col,
+        21,
+        "CONTRATS A TERME (MARGE 25 %, REGLEMENT EN CREDITS)",
+        DIM,
+    );
+    for (i, f) in g.sim.futures.iter().enumerate().take(5) {
+        let now = g.sim.reference_price(f.pos, g.sim.time, f.res);
+        let pnl = (now - f.strike) * f.kg * if f.long { 1.0 } else { -1.0 };
+        let left = (f.expiry - g.sim.time) / vector_sim::bourse::DAY;
+        fb.text(
+            col,
+            22 + i,
+            &format!(
+                "{}{} {:<14.14} {:>6.0} KG  PRIX {:>8.2}  {:>3.0} J  {:+9.0} CR",
+                if f.res == sel { ">" } else { " " },
+                if f.long { "HAUSSE" } else { "BAISSE" },
+                g.data.resources[f.res].name.to_uppercase(),
+                f.kg,
+                f.strike,
+                left,
+                pnl
+            ),
+            if pnl >= 0.0 { UP } else { DOWN },
+        );
+    }
 }
 
 fn draw_chart(fb: &mut Framebuffer, g: &Game, sel: usize, col: usize) {
@@ -297,7 +340,7 @@ fn draw_chart(fb: &mut Framebuffer, g: &Game, sel: usize, col: usize) {
 }
 
 fn draw_news(fb: &mut Framebuffer, g: &Game, sel: usize, col: usize) {
-    let top = 21usize;
+    let top = 28usize;
     fb.text(col, top, "ACTUALITES DU MONDE", AMBER);
     let now = g.sim.time;
     let max_rows = fb.rows().saturating_sub(top + 4);

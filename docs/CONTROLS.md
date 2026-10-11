@@ -100,3 +100,5 @@ Ecran de préparation : Haut/Bas, Espace coche un équipier ou le rover, Entrée
 - **Maj + Tab** : cible la planète ou lune suivante. **Pilote auto (G)** : transfert assisté vers la cible, le vaisseau reste garé à l'arrivée (une poussée le libère) ; refusé pour les géantes gazeuses (approche à la main). **Galaxie (L) puis Entrée** : le vaisseau s'éloigne seul des corps massifs puis saute.
 
 - **Entrée sur une planète ciblée** (Maj+Tab, assez près) : parler à son peuple s'il en a un (voir la ligne CIVILISATION de l'écran de surface F8).
+
+- **Bourse** : B / N contrat à terme à la hausse / à la baisse sur la ressource choisie (100 kg, 30 j, marge 25 %), C clôt un contrat.

@@ -132,3 +132,6 @@ Un implant actif ajoute ses effets (clés de traits ou `skill:<id>`). Par jour i
 
 ## Épidémies de colonie (E6)
 Sans épidémie en cours et au-delà de 20 habitants : probabilité par jour 0.004 x clamp(pop/100, 0.2, 6) x (1 - 0.7 x soins) x max(0.2, 1 - 0.2 x niveau de quarantaine). Maladie tirée au poids de sa contagion (>= 0.05), force 0.5-1, durée 1.5 x la durée de la maladie. En cours : morts = pop x létalité x 0.04 x force x (1 - 0.7 x soins) par jour, productivité x (1 - 0.4 x force), durée consommée à (1 + 2 x soins) par jour.
+
+## Contrats à terme
+Prix de référence = valeur de la ressource x facteur mondial de la région à la date (événements, dérive). Marge = 25 % de la valeur au prix d'ouverture. Règlement : marge + (prix - prix d'ouverture) x kg x (+1 hausse, -1 baisse), jamais négatif. Les gains ne dépendent que de la date et du lieu de signature : déterministes.

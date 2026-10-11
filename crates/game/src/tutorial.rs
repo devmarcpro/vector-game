@@ -151,6 +151,9 @@ pub fn hint_line(g: &Game) -> String {
         Screen::Trading => {
             "GAUCHE/DROITE ONGLET  HAUT/BAS CHOIX  +/- MISE  ENTREE AGIR  ECHAP RETOUR"
         }
+        Screen::Rogue => {
+            "FLECHES/PAV. NUM. DEPLACER (FONCER = ATTAQUER)  CLIC MARCHER  ENTREE ESCALIER  ESP ATTENDRE  TAB CHEF"
+        }
         Screen::Cosmos => {
             "ENTREE PORTAIL  A ANCRE  R REMONTER  X LEVER  HAUT/BAS CHOIX  +/- JOURS  S STASE  ECHAP RETOUR"
         }
@@ -263,6 +266,11 @@ pub fn help_lines(screen: Screen) -> &'static [&'static str] {
         Screen::Trading => &[
             "Gauche/Droite : onglet (rumeurs, arbitrage, cartels, appels d'offres, assurance)",
             "Entree : agir   +/- : mise de l'offre",
+        ],
+        Screen::Rogue => &[
+            "Fin : explorer a pied un lieu a portee (station, epave, ruine, grotte, portail...)",
+            "Fleches ou pave numerique : deplacer ; foncer sur un monstre l'attaque ; clic : marcher jusque-la",
+            "Entree sur < sort (butin a bord) ou sur > descend ; Tab change de chef",
         ],
         Screen::Cosmos => &[
             "Entree : franchir le portail   A : poser une ancre temporelle   R : remonter",

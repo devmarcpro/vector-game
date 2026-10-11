@@ -51,6 +51,7 @@ pub enum Screen {
     Casino,
     Trading,
     Cosmos,
+    Rogue,
     Empire,
     Colony,
     Fleet,
@@ -200,6 +201,7 @@ pub struct Game {
     pub farm: crate::farm_view::FarmUi,
     pub trade_ui: crate::trade_view::TradeUi,
     pub cosmos_ui: crate::cosmos_view::CosmosUi,
+    pub rogue_ui: crate::rogue_view::RogueUi,
     pub comp_series: Vec<Vec<f64>>,
     pub bourse_live: Vec<f64>,
     pub bourse_news: Vec<vector_sim::bourse::ActiveEvent>,
@@ -326,6 +328,7 @@ impl Game {
             bourse_tab: 0,
             comp_sel: 0,
             farm: Default::default(),
+            rogue_ui: Default::default(),
             cosmos_ui: crate::cosmos_view::CosmosUi {
                 stasis: 3,
                 ..Default::default()
@@ -795,6 +798,7 @@ impl Game {
             Screen::Casino => self.casino_key(code),
             Screen::Trading => self.trade_key(code),
             Screen::Cosmos => self.cosmos_key(code),
+            Screen::Rogue => self.rogue_key(code),
             Screen::Empire => self.empire_key(code),
             Screen::Colony => self.colony_key(code),
             Screen::Fleet => self.fleet_key(code),
@@ -1327,6 +1331,10 @@ impl Game {
             }
             KeyCode::Home => {
                 self.screen = Screen::Cosmos;
+                return;
+            }
+            KeyCode::End => {
+                self.screen = Screen::Rogue;
                 return;
             }
             KeyCode::KeyD => {
@@ -2178,6 +2186,7 @@ impl Game {
     fn flight_key(&mut self, code: KeyCode) {
         match code {
             KeyCode::Home => self.screen = Screen::Cosmos,
+            KeyCode::End => self.screen = Screen::Rogue,
             KeyCode::Escape => {
                 self.screen = Screen::Pause;
                 self.menu_sel = 0;
@@ -2417,6 +2426,7 @@ mod tests {
             Screen::Casino,
             Screen::Trading,
             Screen::Cosmos,
+            Screen::Rogue,
             Screen::Empire,
             Screen::Colony,
             Screen::Fleet,
@@ -3144,9 +3154,9 @@ mod tests {
         g.key(KeyCode::Escape, None, true);
         assert_eq!(g.screen, Screen::Flight);
         // Holding a control word holds the key, and releasing the button lets go.
-        // The controls heading is at row 21, their entries from row 22.
+        // The controls heading is at row 22, their entries from row 23.
         frame(&g);
-        let brake_row = 22 + 10; // the 11th control, FREIN (MAINT.)
+        let brake_row = 23 + 10; // the 11th control, FREIN (MAINT.)
         click(&mut g, brake_row, 20_000);
         assert!(g.keys.contains(&KeyCode::KeyC), "the brake key is held");
         g.pointer_release();
@@ -3308,6 +3318,65 @@ mod tests {
         }
         g.key(KeyCode::KeyE, None, true);
         assert_eq!(g.bourse_tab, 0);
+    }
+
+    #[test]
+    fn the_roguelike_screen_explores_a_station_with_keys_and_the_mouse() {
+        let mut g = Game::new(data(), 1);
+        g.key(KeyCode::Enter, None, true);
+        let (st, _) = g.sim.nearest_station().expect("station");
+        g.sim.spawn_near(st, g.sim.bodies[st].radius + 200.0);
+        g.key(KeyCode::End, None, true);
+        assert_eq!(g.screen, Screen::Rogue);
+        frame(&g);
+        g.key(KeyCode::Enter, None, true);
+        assert!(g.sim.rogue.is_some(), "set out");
+        frame(&g);
+        let (x0, y0) = {
+            let r = g.sim.rogue.as_ref().unwrap();
+            (r.x, r.y)
+        };
+        // Some direction is open from the entrance room: walk it with the arrows.
+        for k in [
+            KeyCode::ArrowRight,
+            KeyCode::ArrowLeft,
+            KeyCode::ArrowDown,
+            KeyCode::ArrowUp,
+        ] {
+            g.key(k, None, true);
+        }
+        let turns = g.sim.rogue.as_ref().unwrap().turn;
+        assert!(turns >= 1, "turns passed ({turns})");
+        let _ = (x0, y0);
+        // Clicking on a seen floor cell walks toward it.
+        let (cx, cy) = {
+            let r = g.sim.rogue.as_ref().unwrap();
+            let mut best = (r.x, r.y);
+            let mut d = 0;
+            for y in 0..r.h as i32 {
+                for x in 0..r.w as i32 {
+                    if r.floor().seen[r.idx(x, y)] && r.tile(x, y) == 1 {
+                        let dd = (x - r.x).abs().max((y - r.y).abs());
+                        if dd > d {
+                            d = dd;
+                            best = (x, y);
+                        }
+                    }
+                }
+            }
+            best
+        };
+        frame(&g);
+        let before = g.sim.rogue.as_ref().unwrap().turn;
+        g.pointer_click(8 + 16 * cx + 3, 30 + 20 * cy + 3, 1_000);
+        assert!(g.sim.rogue.as_ref().unwrap().turn > before, "walked");
+        frame(&g);
+        g.sim.rogue.as_mut().unwrap().over = true;
+        frame(&g);
+        g.key(KeyCode::Enter, None, true);
+        assert!(g.sim.rogue.is_none(), "closed");
+        g.key(KeyCode::Escape, None, true);
+        assert_eq!(g.screen, Screen::Flight);
     }
 
     #[test]
@@ -3520,6 +3589,7 @@ mod tests {
             Screen::Casino,
             Screen::Trading,
             Screen::Cosmos,
+            Screen::Rogue,
             Screen::Empire,
             Screen::Colony,
             Screen::Fleet,

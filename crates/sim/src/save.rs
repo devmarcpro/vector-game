@@ -6,7 +6,7 @@ use vector_data::GameData;
 use vector_world::generate_system;
 
 pub const MAGIC: [u8; 4] = *b"VECT";
-pub const VERSION: u32 = 29;
+pub const VERSION: u32 = 30;
 
 #[derive(Debug)]
 pub enum SaveError {
@@ -85,6 +85,8 @@ pub struct SaveGame {
     pub casino_round: i64,
     pub trade: crate::trading::TradeState,
     pub multiverse: crate::multiverse::Multiverse,
+    pub rogue: Option<crate::rogue::Rogue>,
+    pub rogue_visits: Vec<(u64, u32)>,
     pub last_livestock_day: i64,
     pub shares: Vec<(usize, f64)>,
     pub last_dividend_month: i64,
@@ -141,6 +143,8 @@ impl Sim {
             casino_round: self.casino_round,
             trade: self.trade.clone(),
             multiverse: self.multiverse.clone(),
+            rogue: self.rogue.clone(),
+            rogue_visits: self.rogue_visits.clone(),
             last_livestock_day: self.last_livestock_day,
             shares: self.shares.clone(),
             last_dividend_month: self.last_dividend_month,
@@ -227,6 +231,8 @@ impl Sim {
         sim.casino_round = save.casino_round;
         sim.trade = save.trade;
         sim.multiverse = save.multiverse;
+        sim.rogue = save.rogue;
+        sim.rogue_visits = save.rogue_visits;
         sim.last_livestock_day = save.last_livestock_day;
         sim.shares = save.shares;
         sim.last_dividend_month = save.last_dividend_month;

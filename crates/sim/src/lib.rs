@@ -24,6 +24,7 @@ pub mod market;
 pub mod multiverse;
 pub mod npc;
 pub mod planet;
+pub mod rogue;
 pub mod rules;
 #[cfg(test)]
 mod rules_effects;
@@ -289,6 +290,9 @@ pub struct Sim {
     pub trade: trading::TradeState,
     /// Portals, dimensions and time travel.
     pub multiverse: multiverse::Multiverse,
+    /// The roguelike exploration under way, and how many times each place was entered.
+    pub rogue: Option<rogue::Rogue>,
+    pub rogue_visits: Vec<(u64, u32)>,
     pub last_livestock_day: i64,
     /// Body used as velocity reference for flight assist (within its influence radius).
     pub ref_body: Option<usize>,
@@ -425,6 +429,8 @@ impl Sim {
             casino_round: 0,
             trade: Default::default(),
             multiverse: Default::default(),
+            rogue: None,
+            rogue_visits: Vec::new(),
             last_livestock_day: i64::MIN,
             ref_body: None,
             target: None,

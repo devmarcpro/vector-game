@@ -12,7 +12,7 @@ const HOVER: u32 = 0x00D0_FFD0;
 /// (label, key shown, action)
 type Entry = (&'static str, &'static str, Act);
 
-fn menus() -> [Entry; 14] {
+fn menus() -> [Entry; 15] {
     [
         ("CARTE SYSTEME", "M", Act::Key(KeyCode::KeyM)),
         ("GALAXIE", "L", Act::Key(KeyCode::KeyL)),
@@ -28,6 +28,7 @@ fn menus() -> [Entry; 14] {
         ("SURFACE", "F8", Act::Key(KeyCode::F8)),
         ("APPELER (RADIO)", "ENTR", Act::Key(KeyCode::Enter)),
         ("PORTAIL / TEMPS", "ACCUEIL", Act::Key(KeyCode::Home)),
+        ("EXPLORER A PIED", "FIN", Act::Key(KeyCode::End)),
     ]
 }
 

@@ -2,7 +2,7 @@
 //! weapon, faction, anomaly and condition, generated from the real data (no hand-written numbers).
 use vector_data::GameData;
 
-pub const CATEGORIES: [&str; 26] = [
+pub const CATEGORIES: [&str; 28] = [
     "RESSOURCES",
     "MODULES",
     "ARMES",
@@ -29,6 +29,8 @@ pub const CATEGORIES: [&str; 26] = [
     "ENTREPRISES",
     "CARTELS",
     "DIMENSIONS",
+    "LIEUX A EXPLORER",
+    "CREATURES",
 ];
 
 /// Index in the source table of entry `k` of a category (modules and weapons share a table).
@@ -78,6 +80,8 @@ fn entries(data: &GameData, cat: usize) -> Vec<usize> {
         23 => (0..data.companies.len()).collect(),
         24 => (0..data.cartels.len()).collect(),
         25 => (0..data.dimensions.len()).collect(),
+        26 => (0..data.rogue_themes.len()).collect(),
+        27 => (0..data.rogue_monsters.len()).collect(),
         _ => Vec::new(),
     }
 }
@@ -109,6 +113,8 @@ pub fn names(data: &GameData, cat: usize) -> Vec<String> {
             23 => data.companies[i].name.clone(),
             24 => data.cartels[i].name.clone(),
             25 => data.dimensions[i].name.clone(),
+            26 => data.rogue_themes[i].name.clone(),
+            27 => data.rogue_monsters[i].name.clone(),
             18 => format!(
                 "Appeler : {}",
                 vector_data::dialogue::ROLES[i].to_lowercase()
@@ -517,6 +523,60 @@ pub fn entry(data: &GameData, cat: usize, k: usize) -> Vec<String> {
                     res_name(data, &d.cure).unwrap_or_else(|| d.cure.clone())
                 }
             ));
+        }
+        27 => {
+            let m = &data.rogue_monsters[i];
+            out.push(format!("{} ({})", m.name, m.glyph));
+            out.push(m.text.clone());
+            out.push(format!(
+                "Points de vie {:.0}   attaque {:.2}   defense {:.0} %   vue {} cases   apparait des l'etage {}",
+                m.hp,
+                m.attack,
+                m.defense * 100.0,
+                m.sight,
+                m.min_depth + 1
+            ));
+            if let Some(n) = res_name(data, &m.loot.0) {
+                out.push(format!("Butin : {n}"));
+            }
+            let places: Vec<&str> = data
+                .rogue_themes
+                .iter()
+                .filter(|t| t.monsters.iter().any(|x| x.0 == m.id))
+                .map(|t| t.name.as_str())
+                .collect();
+            out.push(format!("Se rencontre : {}", places.join(", ")));
+        }
+        26 => {
+            let t = &data.rogue_themes[i];
+            out.push(t.name.clone());
+            out.push(t.text.clone());
+            out.push(format!(
+                "{} etages de {}x{} cases ; {} a {} salles par etage",
+                t.floors, t.size.0, t.size.1, t.rooms.0, t.rooms.1
+            ));
+            if t.hazard > 0.0 {
+                out.push(format!("Danger : {}", t.hazard_name));
+            }
+            let monsters: Vec<String> = t
+                .monsters
+                .iter()
+                .filter_map(|(m, _)| {
+                    data.rogue_monster_index(m)
+                        .map(|k| data.rogue_monsters[k].name.clone())
+                })
+                .collect();
+            out.push(format!("Creatures : {}", monsters.join(", ")));
+            let loot: Vec<String> = t
+                .loot
+                .iter()
+                .filter_map(|(r, ..)| res_name(data, r))
+                .collect();
+            out.push(format!("Butin : {}", loot.join(", ")));
+            out.push(
+                "On y va depuis le menu de vol (EXPLORER A PIED) ou avec la touche Fin."
+                    .to_string(),
+            );
         }
         25 => {
             let d = &data.dimensions[i];

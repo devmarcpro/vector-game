@@ -520,6 +520,42 @@ pub struct Company {
     pub text: String,
 }
 
+/// Features a floor of the roguelike exploration can hold.
+pub const ROGUE_FEATURES: [&str; 9] = [
+    "terminal", "medbay", "cache", "altar", "mutagen", "fountain", "trap", "portal", "vault",
+];
+
+/// A creature or machine of the roguelike exploration (see `data/rogue_monsters.ron`).
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct RogueMonster {
+    pub id: String,
+    pub name: String,
+    pub glyph: String,
+    pub hp: f64,
+    pub attack: f64,
+    pub defense: f64,
+    pub sight: i32,
+    pub min_depth: u32,
+    pub loot: (String, f64, f64),
+    pub text: String,
+}
+
+/// A place explorable on foot (see `data/rogue_themes.ron`).
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct RogueTheme {
+    pub id: String,
+    pub name: String,
+    pub floors: u32,
+    pub size: (usize, usize),
+    pub rooms: (usize, usize),
+    pub monsters: Vec<(String, f64)>,
+    pub loot: Vec<(String, f64, f64, f64)>,
+    pub features: Vec<(String, f64)>,
+    pub hazard: f64,
+    pub hazard_name: String,
+    pub text: String,
+}
+
 /// A dimension behind a portal (see `data/dimensions.ron`).
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Dimension {
@@ -701,6 +737,8 @@ pub struct GameData {
     pub religions: Vec<Religion>,
     pub cartels: Vec<Cartel>,
     pub dimensions: Vec<Dimension>,
+    pub rogue_monsters: Vec<RogueMonster>,
+    pub rogue_themes: Vec<RogueTheme>,
     pub companies: Vec<Company>,
 }
 
@@ -744,6 +782,8 @@ impl GameData {
             religions: read(&dir.join("religions.ron"))?,
             cartels: read(&dir.join("cartels.ron"))?,
             dimensions: read(&dir.join("dimensions.ron"))?,
+            rogue_monsters: read(&dir.join("rogue_monsters.ron"))?,
+            rogue_themes: read(&dir.join("rogue_themes.ron"))?,
             companies: read(&dir.join("companies.ron"))?,
         };
         // Generated extension files (tools/gen_scale.py) extend the hand-written tables.
@@ -1173,6 +1213,7 @@ impl GameData {
         self.validate_religions()?;
         self.validate_cartels()?;
         self.validate_dimensions()?;
+        self.validate_rogue()?;
         self.validate_companies()
     }
 
@@ -1211,6 +1252,91 @@ impl GameData {
     }
 
     /// Beliefs: unique ids, sane ranges, and every possible faith has at least one belief.
+    pub fn rogue_monster_index(&self, id: &str) -> Option<usize> {
+        self.rogue_monsters.iter().position(|m| m.id == id)
+    }
+
+    pub fn rogue_theme_index(&self, id: &str) -> Option<usize> {
+        self.rogue_themes.iter().position(|t| t.id == id)
+    }
+
+    /// Roguelike content: unique ids, one-character glyphs, known monsters, resources and
+    /// features, sane sizes, and a theme for every kind of place the game sends you to.
+    fn validate_rogue(&self) -> Result<(), DataError> {
+        let bad = |s: String| Err(DataError::Invalid(s));
+        let mut seen = std::collections::HashSet::new();
+        for m in &self.rogue_monsters {
+            if !seen.insert(m.id.as_str()) {
+                return bad(format!("monstre {} en double", m.id));
+            }
+            if m.glyph.chars().count() != 1 || m.hp <= 0.0 || !(0.0..=0.9).contains(&m.defense) {
+                return bad(format!("monstre {}: valeurs invalides", m.id));
+            }
+            if self.resource_index(&m.loot.0).is_none() || m.attack <= 0.0 || m.sight < 1 {
+                return bad(format!("monstre {}: butin ou attaque invalide", m.id));
+            }
+        }
+        let mut seen = std::collections::HashSet::new();
+        for t in &self.rogue_themes {
+            if !seen.insert(t.id.as_str()) {
+                return bad(format!("lieu {} en double", t.id));
+            }
+            let ok = (1..=6).contains(&t.floors)
+                && (40..=100).contains(&t.size.0)
+                && (20..=50).contains(&t.size.1)
+                && t.rooms.0 >= 3
+                && t.rooms.0 <= t.rooms.1
+                && t.rooms.1 <= 20
+                && (0.0..=2.0).contains(&t.hazard);
+            if !ok {
+                return bad(format!("lieu {}: tailles invalides", t.id));
+            }
+            if t.monsters.is_empty() || t.loot.is_empty() || t.features.is_empty() {
+                return bad(format!("lieu {}: monstres, butin ou lieux vides", t.id));
+            }
+            for (m, w) in &t.monsters {
+                if self.rogue_monster_index(m).is_none() || *w <= 0.0 {
+                    return bad(format!("lieu {}: monstre {m} inconnu", t.id));
+                }
+            }
+            for (r, lo, hi, w) in &t.loot {
+                if self.resource_index(r).is_none() || lo > hi || *w <= 0.0 {
+                    return bad(format!("lieu {}: butin {r} invalide", t.id));
+                }
+            }
+            for (f, w) in &t.features {
+                if !ROGUE_FEATURES.contains(&f.as_str()) || *w <= 0.0 {
+                    return bad(format!("lieu {}: element {f} inconnu", t.id));
+                }
+            }
+        }
+        for needed in [
+            "station",
+            "colonie",
+            "epave",
+            "station_ancienne",
+            "ruche",
+            "grotte_cristal",
+            "depot",
+            "portail",
+            "reve",
+            "grotte",
+            "ruines",
+            "glace",
+            "base_pirate",
+            "reacteur",
+            "laboratoire",
+        ] {
+            if self.rogue_theme_index(needed).is_none() {
+                return bad(format!("lieu {needed} manquant"));
+            }
+        }
+        if self.rogue_monsters.len() < 15 {
+            return bad("moins de 15 monstres".into());
+        }
+        Ok(())
+    }
+
     /// Dimensions: unique ids, scales in sane ranges, and a portal definition for the gates.
     fn validate_dimensions(&self) -> Result<(), DataError> {
         let bad = |s: String| Err(DataError::Invalid(s));
@@ -2058,6 +2184,27 @@ mod tests {
         let mut d = ok;
         d.companies[0].yield_year = 0.9;
         assert!(d.validate().is_err(), "sane yield");
+    }
+
+    #[test]
+    fn rogue_content_is_validated() {
+        let ok = GameData::load(&dir()).expect("data loads");
+        assert!(ok.rogue_themes.len() >= 15 && ok.rogue_monsters.len() >= 15);
+        let mut d = ok.clone();
+        d.rogue_themes[0].monsters.push(("dragon".into(), 1.0));
+        assert!(d.validate().is_err(), "unknown monster");
+        let mut d = ok.clone();
+        d.rogue_themes[1].features.push(("piscine".into(), 1.0));
+        assert!(d.validate().is_err(), "unknown feature");
+        let mut d = ok.clone();
+        d.rogue_monsters[0].glyph = "rr".into();
+        assert!(d.validate().is_err(), "one glyph");
+        let mut d = ok.clone();
+        d.rogue_themes[2].loot[0].0 = "unobtainium".into();
+        assert!(d.validate().is_err(), "unknown loot");
+        let mut d = ok;
+        d.rogue_themes.retain(|t| t.id != "reve");
+        assert!(d.validate().is_err(), "every needed place exists");
     }
 
     #[test]

@@ -56,6 +56,7 @@ pub fn draw(fb: &mut Framebuffer, g: &Game) {
         Screen::Casino => crate::farm_view::draw_casino(fb, g),
         Screen::Trading => crate::trade_view::draw(fb, g),
         Screen::Cosmos => crate::cosmos_view::draw(fb, g),
+        Screen::Rogue => crate::rogue_view::draw(fb, g),
         Screen::Empire => draw_empire(fb, g),
         Screen::Colony => draw_colony(fb, g),
         Screen::Fleet => draw_fleet(fb, g),

@@ -16,6 +16,7 @@ mod hud;
 mod mouse;
 mod power_view;
 mod proto_view;
+mod rogue_view;
 mod scene;
 mod script;
 mod settings;
@@ -273,6 +274,81 @@ fn snapshot(path: &str, scene: &str, data: Arc<GameData>) {
             g.sim.target_npc = Some(k);
             g.open_dialogue();
             g.dlg_sel = 1;
+        }
+        "rogue0" => {
+            let (st, _) = g.sim.nearest_station().expect("station");
+            g.sim.spawn_near(st, g.sim.bodies[st].radius + 200.0);
+            g.screen = Screen::Rogue;
+        }
+        s if s.starts_with("rogue_") => {
+            let id = &s[6..];
+            let theme = g.data.rogue_theme_index(id).expect("a known place");
+            for p in &mut g.sim.crew.members {
+                p.health = 1.0;
+            }
+            g.sim.ship.cargo.cap_mass = 1.0e7;
+            let party = g.sim.rogue_squad();
+            g.sim.rogue_begin(theme, 12345, party);
+            // Explore: walk to the farthest known cell, again and again.
+            for _ in 0..9 {
+                let target = {
+                    let r = g.sim.rogue.as_ref().expect("a run");
+                    let mut best = (r.x, r.y);
+                    let mut d = 0;
+                    for y in 0..r.h as i32 {
+                        for x in 0..r.w as i32 {
+                            if r.floor().seen[r.idx(x, y)] && r.tile(x, y) != 0 {
+                                let dd = (x - r.x).abs().max((y - r.y).abs());
+                                if dd > d {
+                                    d = dd;
+                                    best = (x, y);
+                                }
+                            }
+                        }
+                    }
+                    best
+                };
+                let _ = g.sim.rogue_travel(target.0, target.1, 30);
+                if g.sim.rogue.as_ref().is_some_and(|r| r.over) {
+                    break;
+                }
+            }
+            g.screen = Screen::Rogue;
+        }
+        "cosmos" => {
+            g.sim.credits = 100_000.0;
+            let _ = g.sim.set_anchor();
+            g.sim.time += 5.0 * 86_400.0;
+            let _ = g.sim.rewind(0);
+            g.screen = Screen::Cosmos;
+        }
+        "courtage" => {
+            let (st, _) = g.sim.nearest_station().expect("station");
+            g.sim.spawn_near(st, g.sim.bodies[st].radius + 200.0);
+            g.sim.try_dock().expect("dock");
+            g.sim.time = 120.0 * 86_400.0;
+            g.screen = Screen::Trading;
+            g.trade_ui.tab = 0;
+        }
+        "elevage" | "casino" => {
+            let (st, _) = g.sim.nearest_station().expect("station");
+            g.sim.spawn_near(st, g.sim.bodies[st].radius + 200.0);
+            g.sim.try_dock().expect("dock");
+            g.sim.credits = 100_000.0;
+            if scene == "elevage" {
+                g.screen = Screen::Livestock;
+                for _ in 0..4 {
+                    g.key(KeyCode::KeyB, None, true);
+                }
+                g.key(KeyCode::ArrowRight, None, true);
+                for _ in 0..4 {
+                    g.key(KeyCode::KeyB, None, true);
+                }
+            } else {
+                g.screen = Screen::Casino;
+                g.key(KeyCode::Enter, None, true);
+                g.key(KeyCode::Enter, None, true);
+            }
         }
         "proto0" | "proto1" => {
             g.proto = if scene == "proto0" { 0 } else { 1 };

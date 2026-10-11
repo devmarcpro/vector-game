@@ -119,3 +119,5 @@
 - Haute SF (`multiverse.rs`, `data/dimensions.ron`) : portails (1 systeme sur 10), trous de ver, 6 dimensions (autre version de l'etoile, regles et dilatation du temps), ancres temporelles + remontee (souvenirs du futur = rumeurs certaines, paradoxes), stase. Save v28.
 
 - Haute SF (suite) : modules exotiques (6, trouves en explorant des anomalies dans les dimensions), boucles de temps (4 % des systemes, optionnelles : on part quand on veut, 5 artefacts les brisent), echos d'une ligne abandonnee (aider / combattre / fusionner), avant-postes dimensionnels (terres rares), portail relais (batiment de colonie, voyage entre colonies pour des credits). Save v29.
+
+- Exploration roguelike (`rogue.rs`, `data/rogue_themes.ron`, `data/rogue_monsters.ron`) : tout lieu a portee s'explore a pied (15 lieux, 18 creatures, 9 elements, boss, danger propre), equipe jusqu'a 4, FOV, marche a la souris, butin a bord. Touche Fin. Save v30.

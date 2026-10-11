@@ -655,6 +655,7 @@ fn draw_ship(fb: &mut Framebuffer, g: &Game) {
     for (i, l) in lines.iter().enumerate() {
         fb.text(x, top + i, l, GREEN);
     }
+    draw_ship_schematic(fb, g);
     if g.picker {
         let list = g.compatible_modules(g.ship_sel);
         let y0 = top + hull.slots.len() + 3;
@@ -1727,4 +1728,89 @@ fn draw_fleet(fb: &mut Framebuffer, g: &Game) {
 
 fn s_unlocked(g: &Game, hull_id: &str) -> bool {
     g.sim.is_unlocked("hull", hull_id)
+}
+
+/// Schematic of the ship: every slot is a box wired to the power bus in the middle (green =
+/// powered, red = off or damaged, dim = empty). Click a box to select the slot.
+fn draw_ship_schematic(fb: &mut Framebuffer, g: &Game) {
+    let ship = &g.sim.ship;
+    let hull = &g.data.hulls[ship.design.hull];
+    let (x0, y0) = (960i32, 80i32);
+    let bus = x0 + 152;
+    fb.text_at(x0 + 62, y0 - 12, "SCHEMA DU VAISSEAU", DIM);
+    let n = hull.slots.len();
+    let per_side = n.div_ceil(2);
+    // Left side takes the first half of the slots, right side the rest.
+    let box_w = 128;
+    let step = 28;
+    fb.line(
+        bus as f32,
+        y0 as f32,
+        bus as f32,
+        (y0 + per_side as i32 * step) as f32,
+        if ship.sys.overheating { RED } else { GREEN },
+    );
+    for (i, &(ty, size)) in hull.slots.iter().enumerate() {
+        let left = i < per_side;
+        let row = if left { i } else { i - per_side } as i32;
+        let bx = if left { x0 } else { bus + 24 };
+        let by = y0 + row * step;
+        let filled = ship.design.slots[i].is_some();
+        let health = ship.sys.health[i];
+        let col = if !filled {
+            DIM
+        } else if !ship.sys.powered[i] || health < 0.3 {
+            RED
+        } else if i == g.ship_sel {
+            AMBER
+        } else {
+            GREEN
+        };
+        let hover = g.hit(
+            (bx, by, bx + box_w, by + step - 4),
+            Act::Call(Game::click_ship_slot, i),
+            Some(Act::Key(KeyCode::Enter)),
+        );
+        let col = if hover && col != AMBER { HOVER } else { col };
+        let (l, t, r, b) = (
+            bx as f32,
+            by as f32,
+            (bx + box_w) as f32,
+            (by + step - 4) as f32,
+        );
+        fb.line(l, t, r, t, col);
+        fb.line(r, t, r, b, col);
+        fb.line(r, b, l, b, col);
+        fb.line(l, b, l, t, col);
+        // Wire to the bus.
+        let wy = (by + (step - 4) / 2) as f32;
+        let (wx0, wx1) = if left {
+            (r, bus as f32)
+        } else {
+            (bus as f32, l)
+        };
+        fb.line(wx0, wy, wx1, wy, if filled { col } else { DIM });
+        let name = ship.design.slots[i].map_or("(VIDE)", |m| g.data.modules[m].name.as_str());
+        let label: String = format!(
+            "{}{} {}",
+            ty.label().chars().next().unwrap_or('?'),
+            size,
+            name
+        )
+        .chars()
+        .take(15)
+        .collect();
+        fb.text_at(bx + 4, by + 3, &label, col);
+        if filled {
+            // Health bar along the bottom of the box.
+            let w = ((box_w - 8) as f64 * health.clamp(0.0, 1.0)) as i32;
+            fb.line(
+                (bx + 4) as f32,
+                (by + 16) as f32,
+                (bx + 4 + w) as f32,
+                (by + 16) as f32,
+                col,
+            );
+        }
+    }
 }

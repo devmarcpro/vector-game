@@ -153,7 +153,7 @@ pub fn hint_line(g: &Game) -> String {
             "TAB ZONE  ESP ON/OFF  R RECETTE  X DEMOLIR  D DEPOSER  W RETIRER  </> POLITIQUE  ENTREE BATIR  T CAISSE  U DECOLLER  F CHAINES"
         }
         Screen::Fleet => {
-            "TAB LISTE  N ROUTE  A AFFECTER  U RETIRER  X SUPPRIMER  B ACHETER  ECHAP RETOUR"
+            "TAB LISTE  N ROUTE  A AFFECTER  U RETIRER  X SUPPRIMER  B ACHETER  M CARTE  ECHAP RETOUR"
         }
         Screen::Destroyed => "ENTREE CONTINUER",
         Screen::Tech => "FLECHES GRAPHE (GAUCHE PREREQUIS, DROITE SUITE)  TAB RECHERCHE OU SUIVANTE  ENTREE RECHERCHER  ECHAP RETOUR",
@@ -241,6 +241,7 @@ pub fn help_lines(screen: Screen) -> &'static [&'static str] {
         Screen::Fleet => &[
             "Tab : liste   N : nouvelle route   A : affecter",
             "U : retirer   X : supprimer   B : acheter un navire",
+            "M : carte des colonies et des routes",
         ],
         Screen::Tech => &[
             "Graphe : une case par technologie, colonnes = profondeur des prerequis",

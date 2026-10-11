@@ -1630,6 +1630,10 @@ fn draw_fleet(fb: &mut Framebuffer, g: &Game) {
         ),
         GREEN,
     );
+    if g.fleet_map {
+        crate::fleet_map_view::draw(fb, g);
+        return;
+    }
     let top = 4;
     let focus = |f: u8| if g.fleet_focus == f { AMBER } else { GREEN };
     fb.text(1, top, "VAISSEAUX", focus(0));

@@ -55,3 +55,5 @@
 - 2026-10-11 : Plan de soute visuel (écran I) : une case = un volume égal, remplissage de la case selon la densité, couleur par catégorie, jauges volume/masse, blocs cliquables.
 
 - 2026-10-11 : Passe visuelle : réseau des relations de l'équipage (V dans l'écran équipage) : anneau de boîtes, fils verts/rouges selon l'amitié, pointillés ambre pour la parenté, liens détaillés de la personne choisie.
+
+- 2026-10-11 : Passe visuelle : carte de la flotte (M dans l'écran flotte) : systèmes à leur vraie position, colonies, routes (vert actif, gris arrêté, ambre choisie).

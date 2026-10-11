@@ -116,6 +116,8 @@ pub struct Game {
     pub fac_sel: usize,
     /// Crew screen: relations network instead of the table.
     pub crew_net: bool,
+    /// Fleet screen: map of colonies and routes instead of the lists.
+    pub fleet_map: bool,
     pub b_sel: usize,
     pub s_sel: usize,
     pub p_sel: usize,
@@ -223,6 +225,7 @@ impl Game {
             col_flow: false,
             fac_sel: 0,
             crew_net: false,
+            fleet_map: false,
             b_sel: 0,
             s_sel: 0,
             p_sel: 0,
@@ -1433,6 +1436,7 @@ impl Game {
         }
         let (ns, nr) = (self.sim.fleet.len(), self.sim.routes.len());
         match code {
+            KeyCode::KeyM => self.fleet_map = !self.fleet_map,
             KeyCode::Tab => self.fleet_focus = 1 - self.fleet_focus,
             KeyCode::ArrowUp => {
                 if self.fleet_focus == 0 && ns > 0 {
@@ -2462,6 +2466,19 @@ mod tests {
         assert_eq!(g.crew_sel, n - 1);
         g.key(KeyCode::KeyV, None, true);
         assert!(!g.crew_net);
+    }
+
+    #[test]
+    fn the_fleet_map_toggles_with_m_and_draws_without_routes() {
+        let mut g = Game::new(data(), 1);
+        g.key(KeyCode::Enter, None, true);
+        g.key(KeyCode::F3, None, true);
+        assert_eq!(g.screen, Screen::Fleet);
+        g.key(KeyCode::KeyM, None, true);
+        assert!(g.fleet_map);
+        frame(&g);
+        g.key(KeyCode::KeyM, None, true);
+        assert!(!g.fleet_map);
     }
 
     #[test]

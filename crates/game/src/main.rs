@@ -5,6 +5,7 @@ mod console;
 mod crew_net_view;
 mod faction_view;
 mod family_view;
+mod fleet_map_view;
 mod flow_view;
 mod game;
 mod hud;
@@ -473,7 +474,7 @@ fn snapshot(path: &str, scene: &str, data: Arc<GameData>) {
                 g.advance(1.0 / 30.0);
             }
         }
-        "empire" | "colony" | "fleet" | "flow" => {
+        "empire" | "colony" | "fleet" | "fleetmap" | "flow" => {
             let data = Arc::clone(&g.data);
             let planet = g
                 .sim
@@ -558,11 +559,12 @@ fn snapshot(path: &str, scene: &str, data: Arc<GameData>) {
             if scene == "empire" {
                 g.screen = Screen::Empire;
             }
-            if scene == "fleet" {
+            if scene == "fleet" || scene == "fleetmap" {
                 let (st, _) = g.sim.nearest_station().expect("station");
                 g.sim.spawn_near(st, g.sim.bodies[st].radius + 200.0);
                 g.sim.try_dock().expect("dock");
                 let hauler = data.hull_index("hauler").expect("hull");
+                g.sim.researched.iter_mut().for_each(|r| *r = true);
                 g.sim.buy_fleet_ship(hauler).expect("ship");
                 g.sim
                     .buy_fleet_ship(data.hull_index("freighter").expect("hull"))
@@ -575,6 +577,8 @@ fn snapshot(path: &str, scene: &str, data: Arc<GameData>) {
                 g.sim.assign_route(0, 0).expect("assign");
                 g.sim.advance(3.0 * 86_400.0, &ShipInput::default());
                 g.screen = Screen::Fleet;
+                g.fleet_map = scene == "fleetmap";
+                g.fleet_focus = 1;
             }
         }
         "contracts" | "bank" | "market" => {

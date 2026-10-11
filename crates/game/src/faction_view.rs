@@ -30,7 +30,7 @@ pub fn draw(fb: &mut Framebuffer, g: &Game) {
     let s = &g.sim;
     let fs = &g.data.factions;
     let n = fs.len();
-    fb.text(1, 1, "FACTIONS ET MOEURS", AMBER);
+    fb.text(1, 1, "FACTIONS, MOEURS ET LOIS", AMBER);
     fb.text(
         1,
         2,
@@ -169,4 +169,59 @@ pub fn draw(fb: &mut Framebuffer, g: &Game) {
         },
         if f.contraband.is_empty() { DIM } else { RED },
     );
+    justice(fb, g, x);
+}
+
+/// The local law of the selected people and the legal situation of the player there.
+fn justice(fb: &mut Framebuffer, g: &Game, x: usize) {
+    let s = &g.sim;
+    let sel = g.fac_sel;
+    fb.text(x, 27, "LOIS EN VIGUEUR (CHEZ EUX SEULEMENT)", AMBER);
+    let laws = s.laws_in_force(sel);
+    for (k, &l) in laws.iter().enumerate() {
+        let law = &g.data.laws[l];
+        let col = if law.severity >= 2 { RED } else { GREEN };
+        fb.text(
+            x,
+            28 + k,
+            &format!(
+                "{:<26.26} {:>6.0} CR  GRAVITE {}",
+                law.name.to_uppercase(),
+                law.fine,
+                law.severity
+            ),
+            col,
+        );
+    }
+    let y = 29 + laws.len();
+    let (owed, noto) = (s.fines_owed(sel), s.notoriety_in(sel));
+    fb.text(x, y, "MA SITUATION JURIDIQUE", AMBER);
+    let state = if s.has_warrant(sel) {
+        "MANDAT D'ARRET : PORTS FERMES"
+    } else if noto > 0.0 {
+        "FICHE"
+    } else {
+        "CASIER VIERGE"
+    };
+    fb.text(
+        x,
+        y + 1,
+        &format!("{state}   NOTORIETE {noto:.1}   AMENDES DUES {owed:.0} CR"),
+        if noto > 0.0 || owed > 0.0 { RED } else { GREEN },
+    );
+    let (cost, chance) = s.bribe_terms(sel);
+    let by = (y as i32 + 3) * 10;
+    let xs = x as i32 * 8;
+    let items = [
+        ("PAYER LES AMENDES (P)".to_string(), 0usize),
+        (
+            format!("POT-DE-VIN {cost:.0} CR, {:.0}% (B)", chance * 100.0),
+            1,
+        ),
+        (format!("AVOCAT {:.0} CR (L)", s.lawyer_fee(sel)), 2),
+    ];
+    for (k, (label, code)) in items.iter().enumerate() {
+        let rc = (xs, by + k as i32 * 12, xs + 40 * 8, by + k as i32 * 12 + 12);
+        crate::proto_view::button(fb, g, rc, label, Act::Call(Game::click_justice, *code));
+    }
 }

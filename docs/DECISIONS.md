@@ -90,3 +90,5 @@ ponderees par `ground_of`), la neige et la glace apparaissent quand il fait froi
 lave remplace l'eau selon la temperature. Les lieux construits nomment leur matiere (`floor_mat`,
 `wall_mat`). La matiere agit : `slow` multiplie le temps de marche (boue x2, neige x1,5, glace x0,8) et
 un rover la ressent 2,5 fois moins. Sauvegardes : version 35.
+
+- Droit : les lois dérivent des axes de mœurs existants (`ethos.ron`) au lieu d'une table de lois par faction : une seule représentation de la morale, et une faction nouvelle ou une colonie qui dérive change de lois sans contenu à écrire. Le casier vit dans `TradeState` (pas de nouvelle structure de sauvegarde de premier niveau). Pas de prison pour l'instant : mandat d'arrêt (ports fermés) et saisie, pour ne jamais bloquer le joueur ; les amendes se paient de partout.

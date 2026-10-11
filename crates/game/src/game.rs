@@ -1682,6 +1682,9 @@ impl Game {
         match code {
             KeyCode::ArrowRight | KeyCode::ArrowDown => self.fac_sel = (self.fac_sel + 1) % n,
             KeyCode::ArrowLeft | KeyCode::ArrowUp => self.fac_sel = (self.fac_sel + n - 1) % n,
+            KeyCode::KeyP => self.click_justice(0),
+            KeyCode::KeyB => self.click_justice(1),
+            KeyCode::KeyL => self.click_justice(2),
             KeyCode::Escape | KeyCode::KeyX => self.screen = Screen::Flight,
             _ => {}
         }

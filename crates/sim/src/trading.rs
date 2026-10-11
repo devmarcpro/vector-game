@@ -131,6 +131,8 @@ pub struct TradeState {
     pub last_cartel_month: i64,
     /// Trust of the contraband contacts, per faction: (faction, 0..1).
     pub contacts: Vec<(usize, f32)>,
+    /// The legal record of the player, per jurisdiction (see `law`).
+    pub record: Vec<crate::law::Record>,
 }
 
 /// One line of the arbitrage board.

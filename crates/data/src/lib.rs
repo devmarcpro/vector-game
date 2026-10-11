@@ -385,6 +385,37 @@ pub struct MoralTag {
     pub ban: Vec<(String, String, f64)>,
 }
 
+/// A law (see `data/laws.ron`): in force in the space of every faction whose mores satisfy ANY of
+/// its conditions (no condition = everywhere). Its id is the act the simulation reports.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct Law {
+    pub id: String,
+    pub name: String,
+    pub text: String,
+    pub when: Vec<(String, String, f64)>,
+    pub fine: f64,
+    pub severity: u8,
+}
+
+impl Law {
+    /// Whether a people with these mores (one value per ethos axis) has this law.
+    pub fn in_force(&self, ethos: &Ethos, values: &[f64]) -> bool {
+        self.when.is_empty()
+            || self.when.iter().any(|(axis, op, limit)| {
+                let v = ethos
+                    .axis(axis)
+                    .and_then(|a| values.get(a))
+                    .copied()
+                    .unwrap_or(0.0);
+                if op == "<" {
+                    v < *limit
+                } else {
+                    v > *limit
+                }
+            })
+    }
+}
+
 /// Customs and morals of the factions, and what they do to trade.
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct Ethos {
@@ -799,6 +830,7 @@ pub struct GameData {
     pub rogue_themes: Vec<RogueTheme>,
     pub materials: Vec<Material>,
     pub companies: Vec<Company>,
+    pub laws: Vec<Law>,
 }
 
 fn read<T: for<'a> Deserialize<'a>>(path: &Path) -> Result<T, DataError> {
@@ -845,6 +877,7 @@ impl GameData {
             rogue_themes: read(&dir.join("rogue_themes.ron"))?,
             materials: read(&dir.join("materials.ron"))?,
             companies: read(&dir.join("companies.ron"))?,
+            laws: read(&dir.join("laws.ron"))?,
         };
         // Generated extension files (tools/gen_scale.py) extend the hand-written tables.
         let mut extra_resources: Vec<Resource> = read(&dir.join("resources_organs.ron"))?;
@@ -893,6 +926,10 @@ impl GameData {
             return self.disease_index(d).is_some();
         }
         PERSON_FIELDS.contains(&f)
+    }
+
+    pub fn law_index(&self, id: &str) -> Option<usize> {
+        self.laws.iter().position(|l| l.id == id)
     }
 
     pub fn faction_index(&self, id: &str) -> Option<usize> {
@@ -1271,6 +1308,7 @@ impl GameData {
         self.validate_civilisations()?;
         self.validate_gear()?;
         self.validate_religions()?;
+        self.validate_laws()?;
         self.validate_cartels()?;
         self.validate_dimensions()?;
         self.validate_materials()?;
@@ -1526,6 +1564,38 @@ impl GameData {
         }
         if self.cartels.len() < 4 {
             return bad("moins de 4 cartels".into());
+        }
+        Ok(())
+    }
+
+    /// Laws: unique ids, known axes, sane fines and severities, and every law is in force
+    /// somewhere (a dead law is a data error) but not everywhere unless it has no condition.
+    fn validate_laws(&self) -> Result<(), DataError> {
+        let bad = |s: String| Err(DataError::Invalid(s));
+        let mut ids = std::collections::HashSet::new();
+        for l in &self.laws {
+            if !ids.insert(l.id.as_str()) {
+                return bad(format!("loi {} en double", l.id));
+            }
+            if !(1..=3).contains(&l.severity) || l.fine < 0.0 || l.name.is_empty() {
+                return bad(format!("loi {}: valeurs invalides", l.id));
+            }
+            for (a, op, limit) in &l.when {
+                if self.ethos.axis(a).is_none()
+                    || !["<", ">"].contains(&op.as_str())
+                    || limit.abs() > 1.0
+                {
+                    return bad(format!("loi {}: condition invalide", l.id));
+                }
+            }
+            let places = self
+                .factions
+                .iter()
+                .filter(|f| l.in_force(&self.ethos, &self.ethos.profile(Some(f.id.as_str()))))
+                .count();
+            if places == 0 {
+                return bad(format!("loi {}: en vigueur nulle part", l.id));
+            }
         }
         Ok(())
     }

@@ -212,6 +212,7 @@ impl Sim {
         if first_provocation {
             self.change_reputation(faction, -10.0);
             self.mark_wanted(faction, 3.0);
+            self.offend(faction, "agression");
             self.events.push(Event::CrimeCommitted);
         }
         let n = &mut self.npcs[k];
@@ -310,6 +311,7 @@ impl Sim {
         } else if !n.hostile && n.role != NpcRole::Pirate {
             self.change_reputation(n.faction, -15.0);
             self.mark_wanted(n.faction, 7.0);
+            self.offend(n.faction, "meurtre");
         }
         self.events.push(Event::NpcDestroyed);
     }

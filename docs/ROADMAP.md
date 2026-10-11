@@ -25,3 +25,7 @@ Vue en quadrillage de caractères (déjà compatible avec la grille texte 8x10 d
 
 ## Principes à conserver
 Données `.ron` validées au chargement ; génération déterministe par hachage ; sim/rendu/UI séparés ; chaque règle testée ; tout nouveau système a une entrée de codex générée depuis les données ; pas de dépendances nouvelles sans raison ; saves = graine + deltas.
+
+## Idées en attente (demandées par l'utilisateur)
+- Rendus wireframe pour les objets (modules, ressources, cargaisons, équipements) : une icône ou un modèle en fil de fer par objet dans l'inventaire, le codex, le chantier naval et les boutiques (demandé le 2026-10-11, à planifier après E1 ; à relier à la vue roguelike E5 pour les objets au sol).
+- Couleurs par type de corps et barre des commandes permanente : faits (voir PROGRESS).

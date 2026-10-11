@@ -15,7 +15,7 @@ Mesures prises sur la machine de développement (Windows 11, build `--release`),
 | Tutoriel | atteint | 16 étapes pilotées par l'état ; `tutorial_advances_on_actions_and_can_be_skipped` |
 | Aide contextuelle | atteint | F1 sur chaque écran ; `f1_toggles_contextual_help_on_every_screen` |
 | Performance | atteint | rendu 1280×720 : 0,67 ms/image ; pas de simulation : 0,028 ms ; sauvegarde : 2,9 Ko en 0,22 ms (`vector-game --bench`) |
-| Tests automatisés | 156 verts | `cargo test` ; `cargo clippy --all-targets -- -D warnings` propre ; `cargo fmt` appliqué |
+| Tests automatisés | 171 verts | `cargo test` ; `cargo clippy --all-targets -- -D warnings` propre ; `cargo fmt` appliqué |
 | Vérification sans voir la fenêtre | atteint | `--snapshot` (PNG, `docs/snap_*.png`), `--script` (scripts rejoués par `cargo test`) |
 | Documentation | atteint | `README.md`, `docs/` (PROGRESS, DECISIONS, CONTENT, CONTROLS, SIM_MODEL, ACCEPTANCE) |
 | Paquet livrable | atteint | `tools/package.ps1` → `dist/VECTOR/` et `dist/VECTOR.zip` (1,8 Mo) |

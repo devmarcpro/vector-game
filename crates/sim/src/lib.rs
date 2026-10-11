@@ -1,4 +1,4 @@
-//! Deterministic simulation: flight model, modular ships, gravity, collisions, autopilot, mining, trade, saves.
+﻿//! Deterministic simulation: flight model, modular ships, gravity, collisions, autopilot, mining, trade, saves.
 //! Units: SI (m, s, kg, N). See docs/SIM_MODEL.md.
 pub mod autopilot;
 pub mod cargo;
@@ -284,6 +284,9 @@ pub struct Sim {
     pub next_route: u32,
     /// Integration steps executed since creation (diagnostic only, never saved).
     pub steps: u64,
+    /// Surface maps of colonised worlds and city sites (derived data, never saved).
+    pub(crate) world_cache: std::collections::HashMap<(u64, usize), Option<Arc<planet::PlanetMap>>>,
+    pub(crate) city_cache: std::collections::HashMap<u32, (usize, usize)>,
     pub fleet_paid_day: i64,
     pub projectiles: Vec<combat::Projectile>,
     pub wrecks: Vec<combat::Wreck>,
@@ -392,6 +395,8 @@ impl Sim {
             next_fleet: 1,
             next_route: 1,
             steps: 0,
+            world_cache: std::collections::HashMap::new(),
+            city_cache: std::collections::HashMap::new(),
             fleet_paid_day: 0,
             projectiles: Vec::new(),
             wrecks: Vec::new(),

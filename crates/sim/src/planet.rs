@@ -1,7 +1,8 @@
-﻿//! Detailed planets (E1): the surface map with its biomes, the seasons, the weather and the
+//! Detailed planets (E1): the surface map with its biomes, the seasons, the weather and the
 //! catastrophes of a solid world. Nothing here is stored: the map comes from the body's seed and
 //! the weather from (seed, day, region), so a save only needs the game time.
 use crate::Sim;
+use std::sync::Arc;
 use vector_core::hash_coord;
 use vector_world::surface::{self, Surface, H, W};
 use vector_world::{BodyKind, PlanetKind};
@@ -91,34 +92,43 @@ fn unit(h: u64) -> f64 {
     (h >> 11) as f64 / (1u64 << 53) as f64
 }
 
+/// The surface map of a solid planet or moon of system (None for anything else).
+pub fn build_map(
+    data: &vector_data::GameData,
+    system: &vector_world::System,
+    body: usize,
+) -> Option<PlanetMap> {
+    let b = system.bodies.get(body)?;
+    let kind = match b.kind {
+        BodyKind::Planet(k) | BodyKind::Moon(k) => k,
+        _ => return None,
+    };
+    let seed = hash_coord(system.seed, body as i64, 0xB10E, 1);
+    let surface = surface::generate(seed, kind, b.temp)?;
+    let mut biome = vec![0u8; W * H];
+    for (i, cell) in biome.iter_mut().enumerate() {
+        let idx = data.classify_biome(
+            f64::from(surface.temp[i]),
+            f64::from(surface.hum[i]),
+            f64::from(surface.elev[i]),
+            b.pressure,
+        )?;
+        *cell = idx as u8;
+    }
+    Some(PlanetMap {
+        body,
+        kind,
+        seed,
+        surface,
+        biome,
+        pressure: b.pressure,
+    })
+}
+
 impl Sim {
     /// The surface map of a solid planet or moon of the current system (None for anything else).
     pub fn planet_map(&self, body: usize) -> Option<PlanetMap> {
-        let b = self.system.bodies.get(body)?;
-        let kind = match b.kind {
-            BodyKind::Planet(k) | BodyKind::Moon(k) => k,
-            _ => return None,
-        };
-        let seed = hash_coord(self.system.seed, body as i64, 0xB10E, 1);
-        let surface = surface::generate(seed, kind, b.temp)?;
-        let mut biome = vec![0u8; W * H];
-        for (i, cell) in biome.iter_mut().enumerate() {
-            let idx = self.data.classify_biome(
-                f64::from(surface.temp[i]),
-                f64::from(surface.hum[i]),
-                f64::from(surface.elev[i]),
-                b.pressure,
-            )?;
-            *cell = idx as u8;
-        }
-        Some(PlanetMap {
-            body,
-            kind,
-            seed,
-            surface,
-            biome,
-            pressure: b.pressure,
-        })
+        build_map(&self.data, &self.system, body)
     }
 
     /// Length of the year of a body (a moon shares its planet's), s.
@@ -200,66 +210,81 @@ impl Sim {
         }
     }
 
-    /// Where the city of colony `colony_id` stands on this world. Each colony of the body, in id
-    /// order, takes the best remaining land cell: the biome's appeal, a bonus for a coast within a
-    /// few cells, and a little noise to break ties; never within 14 cells of an earlier city.
-    /// Pure function of the map and the colonies present, so a city never moves.
+    /// Where the city of colony `colony_id` stands on this world (see `city_site_in`).
     pub fn city_site(&self, map: &PlanetMap, colony_id: u32) -> Option<(usize, usize)> {
-        let mut ids: Vec<u32> = self
+        let ids: Vec<u32> = self
             .colonies
             .iter()
             .filter(|c| c.star == self.here && c.body == map.body)
             .map(|c| c.id)
             .collect();
-        ids.sort_unstable();
-        let mut taken: Vec<(usize, usize)> = Vec::new();
-        for id in ids {
-            let mut best: Option<(f64, (usize, usize))> = None;
-            for y in 2..H - 2 {
-                for x in 0..W {
-                    if map.surface.is_sea(x, y) {
-                        continue;
-                    }
-                    let near = |a: (usize, usize)| {
-                        let dx = (x as isize - a.0 as isize).unsigned_abs();
-                        let dx = dx.min(W - dx);
-                        dx.max((y as isize - a.1 as isize).unsigned_abs()) < 14
-                    };
-                    if taken.iter().any(|&a| near(a)) {
-                        continue;
-                    }
-                    let habit = self.data.biomes[map.biome_at(x, y)].habit;
-                    if habit <= 0.0 {
-                        continue;
-                    }
-                    let coast = (-4isize..=4).any(|dy| {
-                        (-4isize..=4).any(|dx| {
-                            let (xx, yy) = (
-                                (x as isize + dx).rem_euclid(W as isize) as usize,
-                                y as isize + dy,
-                            );
-                            (0..H as isize).contains(&yy) && map.surface.is_sea(xx, yy as usize)
-                        })
-                    });
-                    let noise = unit(hash_coord(
-                        map.seed ^ 0xC17E,
-                        x as i64,
-                        y as i64,
-                        i64::from(id),
-                    ));
-                    let score = habit * if coast { 1.5 } else { 1.0 } + 0.05 * noise;
-                    if best.is_none_or(|(s, _)| score > s) {
-                        best = Some((score, (x, y)));
-                    }
-                }
-            }
-            let site = best?.1;
-            if id == colony_id {
-                return Some(site);
-            }
-            taken.push(site);
+        city_site_in(&self.data, map, &ids, colony_id)
+    }
+
+    /// The map and city site of colony `ci`, cached (maps of other systems are regenerated from
+    /// their seed). None for asteroids and anything without a solid surface.
+    pub(crate) fn colony_world(&mut self, ci: usize) -> Option<(Arc<PlanetMap>, (usize, usize))> {
+        let c = &self.colonies[ci];
+        let (seed, body, id) = (c.system_seed, c.body, c.id);
+        let key = (seed, body);
+        if !self.world_cache.contains_key(&key) {
+            let map = if seed == self.system.seed {
+                build_map(&self.data, &self.system, body)
+            } else {
+                build_map(&self.data, &vector_world::generate_system(seed), body)
+            };
+            self.world_cache.insert(key, map.map(Arc::new));
         }
-        None
+        let map = self.world_cache.get(&key)?.clone()?;
+        if !self.city_cache.contains_key(&id) {
+            let ids: Vec<u32> = self
+                .colonies
+                .iter()
+                .filter(|c| c.system_seed == seed && c.body == body)
+                .map(|c| c.id)
+                .collect();
+            let site = city_site_in(&self.data, &map, &ids, id)?;
+            self.city_cache.insert(id, site);
+        }
+        Some((map, self.city_cache[&id]))
+    }
+
+    /// Catastrophes that struck colony `ci` between its previous and current update: the days in
+    /// (t0, t1], at most the last 60 (the rest is skipped like any LOD catch-up).
+    pub(crate) fn apply_catastrophes(&mut self, ci: usize, t0: f64, t1: f64) {
+        let (d0, d1) = (
+            (t0 / 86_400.0).floor() as i64,
+            (t1 / 86_400.0).floor() as i64,
+        );
+        if d1 <= d0 {
+            return;
+        }
+        let Some((map, city)) = self.colony_world(ci) else {
+            return;
+        };
+        for day in (d0 + 1).max(d1 - 59)..=d1 {
+            let Some(c) = self.catastrophe_on(&map, day) else {
+                continue;
+            };
+            let hit = catastrophe_impact(city, &c);
+            if hit <= 0.0 {
+                continue;
+            }
+            let col = &mut self.colonies[ci];
+            let dead = col.pop * 0.06 * hit;
+            col.pop = (col.pop - dead).max(0.0);
+            col.happiness = (col.happiness - 0.2 * hit).max(0.0);
+            col.treasury -= col.treasury.max(0.0) * 0.1 * hit;
+            col.log_line(
+                day as f64 * 86_400.0,
+                format!(
+                    "Catastrophe : {} (gravité {:.0} %), {:.0} morts, dégâts à la ville",
+                    c.kind.label(),
+                    c.severity * 100.0,
+                    dead.ceil()
+                ),
+            );
+        }
     }
 
     /// The catastrophe of the day on this world, if any (at most one). Rare by construction:
@@ -310,6 +335,80 @@ impl Sim {
             y,
             severity,
         })
+    }
+}
+
+/// Where a colony's city stands: each colony of the body, in id order, takes the best remaining
+/// land cell (the biome's appeal, a bonus for a coast within a few cells, a little noise to break
+/// ties), never within 14 cells of an earlier city. Pure function of the map and the colony ids.
+pub fn city_site_in(
+    data: &vector_data::GameData,
+    map: &PlanetMap,
+    ids: &[u32],
+    colony_id: u32,
+) -> Option<(usize, usize)> {
+    let mut ids = ids.to_vec();
+    ids.sort_unstable();
+    let mut taken: Vec<(usize, usize)> = Vec::new();
+    for id in ids {
+        let mut best: Option<(f64, (usize, usize))> = None;
+        for y in 2..H - 2 {
+            for x in 0..W {
+                if map.surface.is_sea(x, y) {
+                    continue;
+                }
+                let near = |a: (usize, usize)| {
+                    let dx = (x as isize - a.0 as isize).unsigned_abs();
+                    let dx = dx.min(W - dx);
+                    dx.max((y as isize - a.1 as isize).unsigned_abs()) < 14
+                };
+                if taken.iter().any(|&a| near(a)) {
+                    continue;
+                }
+                let habit = data.biomes[map.biome_at(x, y)].habit;
+                if habit <= 0.0 {
+                    continue;
+                }
+                let coast = (-4isize..=4).any(|dy| {
+                    (-4isize..=4).any(|dx| {
+                        let xx = (x as isize + dx).rem_euclid(W as isize) as usize;
+                        let yy = y as isize + dy;
+                        (0..H as isize).contains(&yy) && map.surface.is_sea(xx, yy as usize)
+                    })
+                });
+                let noise = unit(hash_coord(
+                    map.seed ^ 0xC17E,
+                    x as i64,
+                    y as i64,
+                    i64::from(id),
+                ));
+                let score = habit * if coast { 1.5 } else { 1.0 } + 0.05 * noise;
+                if best.is_none_or(|(s, _)| score > s) {
+                    best = Some((score, (x, y)));
+                }
+            }
+        }
+        let site = best?.1;
+        if id == colony_id {
+            return Some(site);
+        }
+        taken.push(site);
+    }
+    None
+}
+
+/// How much of a catastrophe a city at `city` feels, 0..1: the severity, fading to nothing at the
+/// edge of its reach (5 to 20 cells depending on the severity, wrapped in longitude).
+pub fn catastrophe_impact(city: (usize, usize), c: &Catastrophe) -> f64 {
+    let dx = (city.0 as isize - c.x as isize).unsigned_abs();
+    let dx = dx.min(W - dx) as f64;
+    let dy = (city.1 as isize - c.y as isize).unsigned_abs() as f64;
+    let reach = 5.0 + 15.0 * c.severity;
+    let d = (dx * dx + dy * dy).sqrt();
+    if d >= reach {
+        0.0
+    } else {
+        c.severity * (1.0 - d / reach)
     }
 }
 
@@ -445,5 +544,78 @@ mod tests {
         let (sl, il) = sim_with(PlanetKind::Lava);
         let ml = sl.planet_map(il).expect("map");
         assert!(count(&sl, &ml) > n);
+    }
+
+    #[test]
+    fn impact_fades_with_distance_and_wraps_around_the_date_line() {
+        let c = Catastrophe {
+            kind: CatastropheKind::Earthquake,
+            x: 2,
+            y: 30,
+            severity: 0.8,
+        };
+        assert!((catastrophe_impact((2, 30), &c) - 0.8).abs() < 1e-9);
+        let near = catastrophe_impact((5, 30), &c);
+        assert!(near > 0.0 && near < 0.8);
+        assert_eq!(catastrophe_impact((60, 30), &c), 0.0, "out of reach");
+        // Column 126 is 4 cells from column 2 across the seam, like column 6.
+        assert!(
+            (catastrophe_impact((W - 2, 30), &c) - catastrophe_impact((6, 30), &c)).abs() < 1e-9
+        );
+    }
+
+    #[test]
+    fn a_catastrophe_on_the_city_kills_people_and_is_logged_once() {
+        let (mut s, body) = sim_with(PlanetKind::Terran);
+        let data = Arc::clone(&s.data);
+        s.reveal_all();
+        s.ship.cargo.cap_mass = 1.0e6;
+        s.ship.cargo.cap_vol = 1.0e6;
+        for (id, kg) in [
+            ("construction_materials", 3000.0),
+            ("colonists", 400.0),
+            ("food", 300.0),
+            ("water", 600.0),
+        ] {
+            s.ship
+                .cargo
+                .add(&data, data.resource_index(id).expect("res"), kg);
+        }
+        s.credits = 100_000.0;
+        let b = &s.bodies[body];
+        s.ship.pos = b.pos - vector_core::Vec3::new(0.0, 0.0, b.radius + 5000.0);
+        s.ship.vel = b.vel;
+        s.update_ref_pub();
+        let ci = s.found_colony(body, None).expect("found");
+        let map = s.planet_map(body).expect("map");
+        let city = s.city_site(&map, s.colonies[ci].id).expect("a city site");
+        assert!(!map.surface.is_sea(city.0, city.1), "cities stand on land");
+        // The first day a catastrophe really reaches the city.
+        let (day, cat) = (1..60_000)
+            .find_map(|d| {
+                s.catastrophe_on(&map, d)
+                    .filter(|c| catastrophe_impact(city, c) > 0.05)
+                    .map(|c| (d, c))
+            })
+            .expect("a catastrophe hits the city eventually");
+        let lines = |s: &Sim| {
+            s.colonies[ci]
+                .log
+                .iter()
+                .filter(|(_, l)| l.starts_with("Catastrophe"))
+                .count()
+        };
+        // Live the day before (nothing logged), then the day itself.
+        s.time = (day - 1) as f64 * 86_400.0 + 100.0;
+        s.colonies[ci].last_tick = s.time;
+        s.colonies[ci].pop = 200.0;
+        let before = lines(&s);
+        s.time = day as f64 * 86_400.0 + 100.0;
+        s.update_colonies();
+        assert_eq!(lines(&s), before + 1, "{cat:?}");
+        assert!(s.colonies[ci].pop < 200.0, "pop {}", s.colonies[ci].pop);
+        // Updating again without time passing does not repeat it.
+        s.update_colonies();
+        assert_eq!(lines(&s), before + 1);
     }
 }

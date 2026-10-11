@@ -1,4 +1,4 @@
-# CONTENT (inventaire réel — vérifié par `data_check`)
+﻿# CONTENT (inventaire réel — vérifié par `data_check`)
 
 | Élément | Actuel | Cible |
 |---|---|---|
@@ -25,3 +25,5 @@ Chaque ressource, module, arme, coque, bâtiment, recette, technologie, faction,
 Régénération : `python tools/gen_content.py && python tools/gen_colony.py && python tools/gen_science.py && python tools/gen_scale.py` (dans cet ordre).
 
 Régénération complète : python tools/gen_content.py ; python tools/gen_colony.py ; python tools/gen_science.py ; python tools/gen_scale.py ; python tools/accents.py (le résultat est identique octet pour octet à data/).
+
+Biomes : 20 entrées dans data/biomes.ron (catégorie BIOMES du codex, entièrement générée depuis les données ; la table est validée par couverture complète).

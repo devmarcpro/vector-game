@@ -888,9 +888,25 @@ impl Sim {
         }
         let data = std::sync::Arc::clone(&self.data);
         let now = self.time;
-        for c in &mut self.colonies {
-            let before = c.log.len();
+        let mut advanced = Vec::new();
+        for (ci, c) in self.colonies.iter_mut().enumerate() {
+            let (before, t0) = (c.log.len(), c.last_tick);
             c.update(&data, now);
+            if c.last_tick > t0 {
+                advanced.push((ci, t0, c.last_tick));
+            }
+            if c.log.len() > before && c.star == self.here {
+                if let Some((_, text)) = c.log.last() {
+                    self.events
+                        .push(Event::ColonyNews(format!("{}: {}", c.name, text)));
+                }
+            }
+        }
+        // Catastrophes of the days each colony just lived through (see `planet`).
+        for (ci, t0, t1) in advanced {
+            let before = self.colonies[ci].log.len();
+            self.apply_catastrophes(ci, t0, t1);
+            let c = &self.colonies[ci];
             if c.log.len() > before && c.star == self.here {
                 if let Some((_, text)) = c.log.last() {
                     self.events

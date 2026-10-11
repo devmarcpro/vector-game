@@ -146,3 +146,5 @@ ne pas heurter les autres ajouts de ressources). Le laboratoire reutilise le cod
 lieu d'un nouvel ecran. Le reacteur du bord monte a 2400 K et 300 bar ; l'efficacite electrique est de 0,6 ;
 l'impulsion specifique reelle = 0,78 x sqrt(2 q) / g0 (q = chaleur par kg d'ejecta). Sauvegardes : aucune
 structure sauvegardee n'a change (corrosion = sante des modules existante ; stock = soute existante).
+## Epidemies : un modele, trois sortes de lieux
+Un seul modele SEIR (`epidemic::step`) sert les colonies (etat sauvegarde), les secteurs (fonction de la graine, rien de stocke, comme `politics` et `incidents`) et le vaisseau (les symptomes sont des maladies de `diseases.ron` portees par des personnes). Pas de seconde representation de la maladie : l'agent pathogene reference la maladie, la maladie d'equipage dit si une personne est porteuse. Les effets locaux (prix, nouvelles, import dans les colonies) ne dependent que du secteur de l'observateur. Limite assumee : le joueur contamine les colonies qu'il visite mais pas les secteurs (sans etat, rien a ecrire).

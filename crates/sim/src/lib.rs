@@ -10,6 +10,7 @@ pub mod casino;
 pub mod chemistry;
 pub mod civ;
 pub mod colony;
+pub mod colony_life;
 pub mod combat;
 pub mod companies;
 pub mod crew;
@@ -18,6 +19,7 @@ pub mod dialogue;
 pub mod ecology;
 pub mod economy;
 pub mod exotic;
+pub mod epidemic;
 pub mod fleet;
 pub mod futures;
 pub mod gear;
@@ -358,6 +360,8 @@ pub struct Sim {
     pub steps: u64,
     /// Day number of the last market-news check (not saved).
     pub(crate) last_news_day: i64,
+    /// Day number of the last epidemic travel check (not saved).
+    pub(crate) epi_day: i64,
     /// Surface maps of colonised worlds and city sites (derived data, never saved).
     pub(crate) world_cache: std::collections::HashMap<(u64, usize), Option<Arc<planet::PlanetMap>>>,
     pub(crate) city_cache: std::collections::HashMap<u32, (usize, usize)>,
@@ -487,6 +491,7 @@ impl Sim {
             next_route: 1,
             steps: 0,
             last_news_day: i64::MIN,
+            epi_day: i64::MIN,
             world_cache: std::collections::HashMap::new(),
             city_cache: std::collections::HashMap::new(),
             ecologies: BTreeMap::new(),
@@ -763,6 +768,7 @@ impl Sim {
         self.ship.refresh_stats(&self.data);
         self.update_crew();
         self.update_colonies();
+        self.epidemic_tick();
         self.update_fleet();
         self.tick_research(dt);
         self.tick_antimatter(dt);

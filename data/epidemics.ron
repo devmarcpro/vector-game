@@ -1,0 +1,28 @@
+// Pathogens: the agents of the epidemics (see crates/sim/src/epidemic.rs). Each one is a
+// compartmental model (susceptible -> exposed -> infectious -> recovered) shared by colonies,
+// sectors of the galaxy and the ship; the symptoms in a person are the `disease` of
+// diseases.ron (one system of illness, not two).
+//   origin: natural | lab | alien
+//   trigger: what makes a spontaneous outbreak likelier in a colony: any | crowd | hunger |
+//            water | wild (invasive species, gathering) | lab (research) | alien
+//   r0: people infected by one case in a fully susceptible, uncontrolled population
+//   incubation_days / infectious_days: mean durations of the E and I compartments
+//   immunity_days: how long the immunity of the recovered lasts (0 = for life)
+//   fatality: share of the infectious who die (halved by good care)
+//   vaccine_eff: how well a vaccine works against it (0 = no vaccine can)
+//   prod_hit: share of production lost at 10 % of the people infectious
+//   prices: (resource, change) at 10 % of the people infectious
+[
+ (id:"grippe_coloniale", name:"Grippe coloniale", origin:"natural", trigger:"crowd", disease:"grippe", r0:1.9, incubation_days:2.0, infectious_days:5.0, immunity_days:200.0, fatality:0.002, weight:3.0, vaccine_eff:0.8, prod_hit:0.25, prices:[("medicine",0.25)], text:"Un virus banal, rapide, qui revient chaque saison dans les dortoirs bondés."),
+ (id:"rhume_soutes", name:"Rhume des soutes", origin:"natural", trigger:"any", disease:"rhume", r0:1.35, incubation_days:2.0, infectious_days:4.0, immunity_days:60.0, fatality:0.0, weight:2.0, vaccine_eff:0.5, prod_hit:0.08, prices:[], text:"Presque inoffensif ; sa transmissibilité est si basse qu'il s'éteint souvent seul."),
+ (id:"fievre_bleue_epidemique", name:"Fièvre bleue", origin:"natural", trigger:"water", disease:"fievre_bleue", r0:2.6, incubation_days:3.0, infectious_days:6.0, immunity_days:400.0, fatality:0.03, weight:1.6, vaccine_eff:0.85, prod_hit:0.35, prices:[("medicine",0.4)], text:"Fièvre des eaux stagnantes ; la peau bleuit, les rangs des travailleurs s'éclaircissent."),
+ (id:"variole_epidemique", name:"Variole spatiale", origin:"natural", trigger:"crowd", disease:"variole_spatiale", r0:5.0, incubation_days:10.0, infectious_days:14.0, immunity_days:0.0, fatality:0.12, weight:0.5, vaccine_eff:0.95, prod_hit:0.4, prices:[("medicine",0.8),("food",0.1)], text:"Le fléau d'avant les vaccins : très contagieuse, longue incubation, immunité à vie pour les survivants."),
+ (id:"cholera_citernes", name:"Choléra des citernes", origin:"natural", trigger:"water", disease:"cholera", r0:2.2, incubation_days:2.0, infectious_days:5.0, immunity_days:300.0, fatality:0.08, weight:1.2, vaccine_eff:0.7, prod_hit:0.35, prices:[("water",0.25),("medicine",0.5)], text:"Né d'une citerne mal entretenue ; l'eau potable devient une denrée de luxe."),
+ (id:"typhoide_eau", name:"Typhoïde", origin:"natural", trigger:"hunger", disease:"typhoide", r0:1.6, incubation_days:8.0, infectious_days:12.0, immunity_days:700.0, fatality:0.04, weight:1.0, vaccine_eff:0.8, prod_hit:0.2, prices:[("medicine",0.3)], text:"Lente et sournoise, elle prospère quand les rations manquent et que l'hygiène recule."),
+ (id:"tuberculose_serree", name:"Tuberculose des dortoirs", origin:"natural", trigger:"crowd", disease:"tuberculose", r0:1.3, incubation_days:20.0, infectious_days:45.0, immunity_days:0.0, fatality:0.05, weight:0.8, vaccine_eff:0.6, prod_hit:0.15, prices:[("medicine",0.2)], text:"Incubation de semaines, malades de longs mois : un feu qui couve dans les logements surpeuplés."),
+ (id:"meningite_dortoirs", name:"Méningite", origin:"natural", trigger:"crowd", disease:"meningite", r0:1.7, incubation_days:4.0, infectious_days:7.0, immunity_days:500.0, fatality:0.10, weight:0.7, vaccine_eff:0.9, prod_hit:0.3, prices:[("medicine",0.5)], text:"Rare mais mortelle ; elle frappe d'abord les équipes qui partagent les mêmes couchettes."),
+ (id:"spores_fongiques", name:"Spores fongiques", origin:"natural", trigger:"wild", disease:"spores_fongiques", r0:1.8, incubation_days:5.0, infectious_days:14.0, immunity_days:150.0, fatality:0.03, weight:1.3, vaccine_eff:0.4, prod_hit:0.2, prices:[("food",0.2),("organics",0.15)], text:"Une moisissure de la faune et de la flore locales qui passe à l'humain ; gâte aussi les récoltes."),
+ (id:"peste_des_cales", name:"Peste des cales", origin:"natural", trigger:"wild", disease:"peste_des_cales", r0:2.8, incubation_days:4.0, infectious_days:8.0, immunity_days:0.0, fatality:0.15, weight:0.5, vaccine_eff:0.75, prod_hit:0.4, prices:[("medicine",0.7),("food",0.15)], text:"Elle voyage avec la vermine des soutes et les cargaisons de vivres ; les ports s'en méfient."),
+ (id:"virus_chimere", name:"Virus chimère", origin:"lab", trigger:"lab", disease:"virus_chimere", r0:3.4, incubation_days:1.5, infectious_days:7.0, immunity_days:90.0, fatality:0.09, weight:0.35, vaccine_eff:0.6, prod_hit:0.45, prices:[("medicine",0.9),("electronics",0.12)], text:"Fuite d'un laboratoire : une souche assemblée par des mains humaines, rapide et à l'immunité fugace."),
+ (id:"fievre_vitreuse", name:"Fièvre vitreuse", origin:"alien", trigger:"alien", disease:"fievre_vitreuse", r0:2.0, incubation_days:8.0, infectious_days:12.0, immunity_days:0.0, fatality:0.07, weight:0.3, vaccine_eff:0.0, prod_hit:0.3, prices:[("medicine",0.6),("artifacts",0.2)], text:"Rapportée d'un monde que personne n'a compris ; aucun vaccin connu, seule l'immunité des survivants l'arrête."),
+]

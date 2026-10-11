@@ -126,6 +126,8 @@ pub struct Game {
     pub col_focus: u8,
     /// Colony screen: production-chain diagram instead of the lists.
     pub col_flow: bool,
+    /// Colony screen: health tracking (epidemics) instead of the lists.
+    pub col_health: bool,
     pub fac_sel: usize,
     /// Crew screen: relations network instead of the table.
     pub crew_net: bool,
@@ -289,6 +291,7 @@ impl Game {
             col_idx: 0,
             col_focus: 0,
             col_flow: false,
+            col_health: false,
             fac_sel: 0,
             crew_net: false,
             organ_mode: false,
@@ -1818,7 +1821,14 @@ impl Game {
         let nres = self.data.resources.len();
         let np = self.data.policies.len();
         match code {
-            KeyCode::KeyF => self.col_flow = !self.col_flow,
+            KeyCode::KeyF => {
+                self.col_flow = !self.col_flow;
+                self.col_health = false;
+            }
+            KeyCode::KeyH => {
+                self.col_health = !self.col_health;
+                self.col_flow = false;
+            }
             KeyCode::Tab => self.col_focus = (self.col_focus + 1) % 4,
             KeyCode::ArrowUp => match self.col_focus {
                 0 if nb > 0 => self.b_sel = (self.b_sel + nb - 1) % nb,

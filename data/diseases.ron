@@ -38,4 +38,8 @@
  (id:"addiction", name:"Addiction", severity:0.01, duration_days:80.0, contagion:0.0, lethality:0.01, cure:""),
  (id:"allergie", name:"Allergie sévère", severity:0.04, duration_days:2.0, contagion:0.0, lethality:0.01, cure:"medicine"),
  (id:"cancer_precoce", name:"Cancer précoce", severity:0.02, duration_days:120.0, contagion:0.0, lethality:0.08, cure:"medicine"),
+ (id:"spores_fongiques", name:"Mycose pulmonaire", severity:0.06, duration_days:14.0, contagion:0.08, lethality:0.03, cure:"medicine"),
+ (id:"peste_des_cales", name:"Peste des cales", severity:0.13, duration_days:8.0, contagion:0.1, lethality:0.14, cure:"medicine"),
+ (id:"virus_chimere", name:"Fièvre chimère", severity:0.11, duration_days:7.0, contagion:0.3, lethality:0.09, cure:"medicine"),
+ (id:"fievre_vitreuse", name:"Fièvre vitreuse", severity:0.1, duration_days:12.0, contagion:0.12, lethality:0.07, cure:""),
 ]

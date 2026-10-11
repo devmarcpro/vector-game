@@ -161,7 +161,7 @@ pub fn hint_line(g: &Game) -> String {
         }
         Screen::Empire => "HAUT/BAS COLONIE  ENTREE DETAIL  F3 FLOTTE  ECHAP RETOUR",
         Screen::Colony => {
-            "TAB ZONE  ESP ON/OFF  R RECETTE  X DEMOLIR  D DEPOSER  W RETIRER  </> POLITIQUE  ENTREE BATIR  T CAISSE  U DECOLLER  F CHAINES"
+            "TAB ZONE  ESP ON/OFF  R RECETTE  X DEMOL  D DEPOT  W RETRAIT  </> POLIT.  ENT BATIR  T CAISSE  U DECOLLER  F CHAINES  H SANTE"
         }
         Screen::Fleet => {
             "TAB LISTE  N ROUTE  A AFFECTER  U RETIRER  X SUPPRIMER  B ACHETER  M CARTE  ECHAP RETOUR"
@@ -280,7 +280,7 @@ pub fn help_lines(screen: Screen) -> &'static [&'static str] {
             "Tab : zone   Haut/Bas : choix   Espace : on/off",
             "R recette   X demolir   Entree construire",
             "D deposer / W retirer (amarre)   T caisse   U decoller",
-            "F : schema des chaines de production",
+            "F : schema des chaines de production   H : suivi sanitaire (epidemies)",
         ],
         Screen::Fleet => &[
             "Tab : liste   N : nouvelle route   A : affecter",

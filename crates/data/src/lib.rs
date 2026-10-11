@@ -101,6 +101,15 @@ pub struct Module {
     pub ammo_use: f64,
     /// Missile turn rate (rad/s).
     pub guidance: f64,
+    /// Projectile mass (kg): kinetic energy 1/2 m v^2 is what a hit delivers.
+    pub proj_mass: f64,
+    /// Angular dispersion of the weapon (mrad): the miss distance grows with the range.
+    pub spread: f64,
+    /// Wavelength of a beam (nm) and exit aperture (m): diffraction makes it diverge.
+    pub wavelength: f64,
+    pub aperture: f64,
+    /// Heat radiated while firing (kW): a firing ship is seen by passive sensors.
+    pub flash: f64,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -765,6 +774,9 @@ pub struct Gear {
     pub warmth: f64,
     pub value: f64,
     pub text: String,
+    /// Radius (cells) at which a shot wakes sleeping monsters.
+    #[serde(default)]
+    pub noise: f64,
 }
 
 impl Gear {
@@ -1163,6 +1175,18 @@ impl GameData {
                 }
                 if m.weapon != "ecm" && m.range <= 0.0 {
                     return bad(format!("arme {}: portee nulle", m.id));
+                }
+                if m.weapon == "kinetic" && (m.proj_mass <= 0.0 || m.speed <= 0.0) {
+                    return bad(format!(
+                        "arme {}: masse ou vitesse du projectile nulle",
+                        m.id
+                    ));
+                }
+                if m.weapon == "beam" && (m.wavelength <= 0.0 || m.aperture <= 0.0) {
+                    return bad(format!("arme {}: longueur d'onde ou ouverture nulle", m.id));
+                }
+                if m.spread < 0.0 || m.flash < 0.0 {
+                    return bad(format!("arme {}: dispersion ou chaleur negative", m.id));
                 }
             }
             let produces = matches!(m.category.as_str(), "reactor" | "solar");

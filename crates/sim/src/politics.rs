@@ -59,7 +59,7 @@ pub fn cells_around(c: Cell, r: i64) -> Vec<Cell> {
     out
 }
 
-fn neighbours(c: Cell) -> [Cell; 6] {
+pub(crate) fn neighbours(c: Cell) -> [Cell; 6] {
     [
         [c[0] + 1, c[1], c[2]],
         [c[0] - 1, c[1], c[2]],
@@ -70,7 +70,7 @@ fn neighbours(c: Cell) -> [Cell; 6] {
     ]
 }
 
-fn key(c: Cell) -> i64 {
+pub(crate) fn key(c: Cell) -> i64 {
     hash_coord(0x5EC7, c[0], c[1], c[2]) as i64
 }
 
@@ -210,7 +210,7 @@ fn enemies(data: &GameData, a: Option<usize>, b: Option<usize>) -> bool {
 }
 
 /// Whether the two neighbouring sectors are at war during period `m`.
-fn war_in_period(
+pub(crate) fn war_in_period(
     data: &GameData,
     seed: u64,
     a: Cell,
@@ -356,6 +356,8 @@ pub fn sector_at_war(data: &GameData, galaxy: &Galaxy, seed: u64, c: Cell, t: f6
 pub struct Turmoil {
     pub at_war: bool,
     pub unrest: f64,
+    /// Blockaded by a victorious fleet (see `arms::fronts`).
+    pub besieged: bool,
 }
 
 pub fn turmoil(data: &GameData, galaxy: &Galaxy, seed: u64, pos: [f64; 3], t: f64) -> Turmoil {
@@ -363,6 +365,7 @@ pub fn turmoil(data: &GameData, galaxy: &Galaxy, seed: u64, pos: [f64; 3], t: f6
     Turmoil {
         at_war: sector_at_war(data, galaxy, seed, c, t),
         unrest: unrest(seed, c, t),
+        besieged: crate::arms::is_besieged(data, galaxy, seed, c, t),
     }
 }
 
@@ -374,6 +377,9 @@ impl Turmoil {
         let mut mult = 1.0;
         if war_good && self.at_war {
             mult *= 1.0 + WAR_MARKUP;
+        }
+        if self.besieged {
+            mult *= 1.0 + crate::arms::BLOCKADE_MARKUP;
         }
         if self.unrest > 0.0 {
             mult *= 1.0 + 0.08 * self.unrest * if war_good { 1.0 } else { 0.4 };
@@ -515,10 +521,12 @@ mod tests {
         let calm = Turmoil {
             at_war: false,
             unrest: 0.0,
+            besieged: false,
         };
         let shaken = Turmoil {
             at_war: false,
             unrest: 1.0,
+            besieged: false,
         };
         assert!(shaken.factor(&d, arms) > calm.factor(&d, arms));
         let found = cells_around([0, 0, 0], 2).into_iter().find_map(|c| {

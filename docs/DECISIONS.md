@@ -148,3 +148,8 @@ l'impulsion specifique reelle = 0,78 x sqrt(2 q) / g0 (q = chaleur par kg d'ejec
 structure sauvegardee n'a change (corrosion = sante des modules existante ; stock = soute existante).
 ## Epidemies : un modele, trois sortes de lieux
 Un seul modele SEIR (`epidemic::step`) sert les colonies (etat sauvegarde), les secteurs (fonction de la graine, rien de stocke, comme `politics` et `incidents`) et le vaisseau (les symptomes sont des maladies de `diseases.ron` portees par des personnes). Pas de seconde representation de la maladie : l'agent pathogene reference la maladie, la maladie d'equipage dit si une personne est porteuse. Les effets locaux (prix, nouvelles, import dans les colonies) ne dependent que du secteur de l'observateur. Limite assumee : le joueur contamine les colonies qu'il visite mais pas les secteurs (sans etat, rien a ecrire).
+## Militaire : physique des armes et campagnes
+- Pas de `weapons.ron` parallele : les armes restent des modules (`modules.ron`), etendus par `proj_mass`, `spread`, `wavelength`, `aperture`, `flash` ; une arme a pied est un `Gear` avec `noise`. Un test verifie que 1/2 m v^2 / 10 kJ ~ degats des donnees (une constante, `arms::DAMAGE_J`).
+- Les guerres de `politics.rs` ne sont pas dupliquees : `arms::fronts` resout chaque front par la loi carree de Lanchester, avec une brume de guerre hachee (graine, cellules, periode), identique vue des deux camps. Le vaincu est assiege (`Turmoil::besieged`).
+- Detection : la signature thermique est calculee (moitie de la puissance consommee + flash des armes qui viennent de tirer), jamais stockee.
+- Non fait : escadres du joueur, mercenariat, agents persistants, leurres thermiques en vol, abordage a grille de coque (voir PROGRESS).

@@ -146,6 +146,7 @@ impl Person {
                 "attack" => g.attack,
                 "defense" => g.defense,
                 "warmth" => g.warmth,
+                "noise" => g.noise,
                 _ => g.gather,
             })
             .sum::<f64>()

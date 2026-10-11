@@ -363,7 +363,6 @@ impl Sim {
                 }
                 "ecm" if powered => self.ecm_range = self.ecm_range.max(m.range),
                 "beam" if input.fire && powered => {
-                    let dmg = m.damage * health * dt;
                     let from = self.ship.pos + fwd * SHIP_RADIUS;
                     let mut best: Option<(usize, f64)> = None;
                     for (k, n) in self.npcs.iter().enumerate().filter(|(_, n)| n.visible()) {
@@ -375,7 +374,15 @@ impl Sim {
                     }
                     let end = from + fwd * best.map_or(m.range, |b| b.1);
                     self.beams.push((from, end, true));
-                    if let Some((k, _)) = best {
+                    if let Some((k, t)) = best {
+                        // Diffraction widens the spot with the distance: less energy per area.
+                        let dmg = crate::arms::beam_dps(
+                            m.damage * health,
+                            m.wavelength,
+                            m.aperture,
+                            t,
+                            0.0,
+                        ) * dt;
                         self.damage_npc(k, dmg);
                     }
                 }
@@ -417,7 +424,7 @@ impl Sim {
             slot as i64,
             29,
         ));
-        let spread = 0.0015;
+        let spread = m.spread * 1e-3;
         let jitter = Vec3::new(
             rng.range(-spread, spread),
             rng.range(-spread, spread),

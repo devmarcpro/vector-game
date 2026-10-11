@@ -511,7 +511,9 @@ impl Sim {
         {
             return;
         }
-        if (self.npcs[k].pos - self.ship.pos).length() > PIRATE_ALERT_RANGE {
+        // A pirate sees a ship by its heat: a cold ship passes unseen beyond the active sensors.
+        let dist = (self.npcs[k].pos - self.ship.pos).length();
+        if dist > PIRATE_ALERT_RANGE || dist > self.detection_range() {
             return;
         }
         let value: f64 = (0..self.ship.cargo.kg.len())
@@ -772,7 +774,16 @@ mod tests {
         let data = Arc::clone(&s.data);
         s.ship.cargo.add(&data, gold, 100.0);
         s.ship.pos = s.npcs[k].pos + Vec3::new(10_000.0, 0.0, 0.0);
+        // Cold, the ship is lost against the background: no sensor but the active ones see it.
+        let all = s.ship.sys.powered.len();
+        s.ship.sys.powered = vec![false; all];
         s.events.clear();
+        s.time += 2.0 * DAY;
+        s.update_npcs();
+        assert!(!s.events.iter().any(|e| matches!(e, Event::PirateAlert)));
+        // With its systems running it glows in the infrared and is noticed.
+        s.ship.sys.powered = vec![true; all];
+        assert!(s.detection_range() > 10_000.0, "{}", s.detection_range());
         s.time += 2.0 * DAY;
         s.update_npcs();
         assert!(s.events.iter().any(|e| matches!(e, Event::PirateAlert)));

@@ -3,6 +3,7 @@ mod console;
 mod game;
 mod hud;
 mod scene;
+mod script;
 mod settings;
 mod tutorial;
 mod ui;
@@ -501,6 +502,24 @@ fn main() {
             .unwrap_or("snapshot.png");
         let scene = args.get(i + 2).map(String::as_str).unwrap_or("cockpit");
         snapshot(path, scene, data);
+        return;
+    }
+    if let Some(i) = args.iter().position(|a| a == "--script") {
+        let Some(path) = args.get(i + 1) else {
+            eprintln!("usage: vector-game --script <file>");
+            std::process::exit(2);
+        };
+        match script::run(path, data, draw_frame) {
+            Ok(0) => println!("SCRIPT OK"),
+            Ok(n) => {
+                println!("SCRIPT FAILED: {n} expectation(s)");
+                std::process::exit(1);
+            }
+            Err(e) => {
+                eprintln!("SCRIPT ERROR: {e}");
+                std::process::exit(2);
+            }
+        }
         return;
     }
     if args.iter().any(|a| a == "--bench") {

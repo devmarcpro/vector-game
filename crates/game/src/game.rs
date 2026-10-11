@@ -122,6 +122,9 @@ pub struct Game {
     pub crew_net: bool,
     /// Crew screen: the organ list of the selected person has the keys.
     pub organ_mode: bool,
+    /// Crew screen: the equipment list of the selected person has the keys.
+    pub gear_mode: bool,
+    pub gear_sel: usize,
     pub organ_sel: usize,
     /// The piloting menu column is unfolded.
     pub flight_menu_open: bool,
@@ -259,6 +262,8 @@ impl Game {
             fac_sel: 0,
             crew_net: false,
             organ_mode: false,
+            gear_mode: false,
+            gear_sel: 0,
             organ_sel: 0,
             flight_menu_open: true,
             exp_party: Vec::new(),
@@ -1314,9 +1319,58 @@ impl Game {
         self.organ_sel = i;
     }
 
+    /// Keys of the equipment list of the crew screen.
+    fn gear_key(&mut self, code: KeyCode) {
+        let ng = self.data.gear.len().max(1);
+        let n = self.sim.crew.members.len();
+        let member = self.crew_sel.min(n.saturating_sub(1));
+        let result = match code {
+            KeyCode::ArrowUp | KeyCode::ArrowLeft => {
+                self.gear_sel = (self.gear_sel + ng - 1) % ng;
+                return;
+            }
+            KeyCode::ArrowDown | KeyCode::ArrowRight => {
+                self.gear_sel = (self.gear_sel + 1) % ng;
+                return;
+            }
+            KeyCode::Escape | KeyCode::KeyE => {
+                self.gear_mode = false;
+                return;
+            }
+            KeyCode::Enter if n > 0 => self.sim.equip(member, self.gear_sel),
+            KeyCode::KeyU if n > 0 => {
+                let slot = self.data.gear[self.gear_sel.min(ng - 1)].slot_index();
+                self.sim.unequip(member, slot)
+            }
+            _ => return,
+        };
+        match result {
+            Ok(r) => self.say(r.to_uppercase()),
+            Err(e) => self.say(e.to_uppercase()),
+        }
+    }
+
+    /// Click on a slot line: open the equipment list on what is worn there (or the first item).
+    pub fn click_gear_slot(&mut self, slot: usize) {
+        self.gear_mode = true;
+        let worn = self
+            .sim
+            .crew
+            .members
+            .get(self.crew_sel)
+            .and_then(|p| p.gear.get(slot).copied().flatten());
+        self.gear_sel = worn
+            .or_else(|| self.data.gear.iter().position(|g| g.slot_index() == slot))
+            .unwrap_or(0);
+    }
+
     fn crew_key(&mut self, code: KeyCode) {
         if self.organ_mode {
             self.organ_key(code);
+            return;
+        }
+        if self.gear_mode {
+            self.gear_key(code);
             return;
         }
         let n = self.sim.crew.members.len();
@@ -1336,6 +1390,7 @@ impl Game {
             }
             KeyCode::KeyV => self.crew_net = !self.crew_net,
             KeyCode::KeyO if n > 0 => self.organ_mode = true,
+            KeyCode::KeyE if n > 0 => self.gear_mode = true,
             KeyCode::KeyT if n > 0 => {
                 let p = &mut self.sim.crew.members[self.crew_sel.min(n - 1)];
                 p.shift = (p.shift + 1) % 3;
@@ -3072,6 +3127,32 @@ mod tests {
         let n = g.sim.futures.len();
         g.key(KeyCode::KeyC, None, true);
         assert_eq!(g.sim.futures.len(), n - 1, "C closes one");
+    }
+
+    #[test]
+    fn the_equipment_keys_equip_from_the_hold_and_unequip() {
+        let mut g = Game::new(data(), 1);
+        g.key(KeyCode::Enter, None, true);
+        let d = Arc::clone(&g.data);
+        g.sim.ship.cargo.cap_mass = 1.0e6;
+        g.sim.ship.cargo.cap_vol = 1.0e6;
+        let item = d.resource_index("gear_fusil").unwrap();
+        g.sim.ship.cargo.add(&d, item, 1.0);
+        g.screen = Screen::Crew;
+        g.crew_sel = 0;
+        g.key(KeyCode::KeyE, None, true);
+        assert!(g.gear_mode);
+        g.gear_sel = d.gear_index("fusil").unwrap();
+        g.key(KeyCode::Enter, None, true);
+        assert_eq!(g.sim.crew.members[0].gear[0], Some(g.gear_sel));
+        assert!(g.sim.ship.cargo.kg[item] < 0.5);
+        frame(&g);
+        g.key(KeyCode::KeyU, None, true);
+        assert!(g.sim.crew.members[0].gear[0].is_none());
+        assert!(g.sim.ship.cargo.kg[item] >= 0.99, "back in the hold");
+        g.key(KeyCode::Escape, None, true);
+        assert!(!g.gear_mode);
+        assert_eq!(g.screen, Screen::Crew);
     }
 
     #[test]

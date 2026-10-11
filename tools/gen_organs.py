@@ -27,9 +27,17 @@ for i, n, v in cyber:
     out.append(
         f' (id:"cyber_{i}", name:"Implant : {n}", category:"cybernetique", density:2500.0, value:{float(v):.1f}),'
     )
+gear = re.findall(
+    r'\(id:"(\w+)", name:"([^"]+)", slot:"\w+".*?value:([\d.]+)',
+    (root / "data" / "gear.ron").read_text(encoding="utf-8"),
+)
+for i, n, v in gear:
+    out.append(
+        f' (id:"gear_{i}", name:"Equipement : {n}", category:"equipement", density:1800.0, value:{float(v):.1f}),'
+    )
 out.append(
     ' (id:"mutagen", name:"Mutagene", category:"chimie", density:1200.0, value:900.0),'
 )
 out.append("]")
 (root / "data" / "resources_organs.ron").write_bytes(("\n".join(out) + "\n").encode("utf-8"))
-print(len(organs) * 2 + len(cyber) + 1, "resources")
+print(len(organs) * 2 + len(cyber) + len(gear) + 1, "resources")

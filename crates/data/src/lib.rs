@@ -507,6 +507,28 @@ pub struct Cybernetic {
     pub hackable: bool,
 }
 
+/// Slots of personal equipment, in the order of `Person::gear`.
+pub const GEAR_SLOTS: [&str; 3] = ["weapon", "armor", "tool"];
+
+/// A piece of personal equipment (see `data/gear.ron`).
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct Gear {
+    pub id: String,
+    pub name: String,
+    pub slot: String,
+    pub attack: f64,
+    pub defense: f64,
+    pub gather: f64,
+    pub value: f64,
+    pub text: String,
+}
+
+impl Gear {
+    pub fn slot_index(&self) -> usize {
+        GEAR_SLOTS.iter().position(|s| *s == self.slot).unwrap_or(0)
+    }
+}
+
 /// A kind of native civilisation (see `data/civilisations.ron`).
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Civilisation {
@@ -620,6 +642,7 @@ pub struct GameData {
     pub dialogues: dialogue::Dialogues,
     pub sites: Vec<Site>,
     pub civilisations: Vec<Civilisation>,
+    pub gear: Vec<Gear>,
 }
 
 fn read<T: for<'a> Deserialize<'a>>(path: &Path) -> Result<T, DataError> {
@@ -658,6 +681,7 @@ impl GameData {
             dialogues: read(&dir.join("dialogues.ron"))?,
             sites: read(&dir.join("sites.ron"))?,
             civilisations: read(&dir.join("civilisations.ron"))?,
+            gear: read(&dir.join("gear.ron"))?,
         };
         // Generated extension files (tools/gen_scale.py) extend the hand-written tables.
         let mut extra_resources: Vec<Resource> = read(&dir.join("resources_organs.ron"))?;
@@ -1081,7 +1105,43 @@ impl GameData {
         self.validate_cybernetics()?;
         self.validate_dialogues()?;
         self.validate_sites()?;
-        self.validate_civilisations()
+        self.validate_civilisations()?;
+        self.validate_gear()
+    }
+
+    pub fn gear_index(&self, id: &str) -> Option<usize> {
+        self.gear.iter().position(|g| g.id == id)
+    }
+
+    /// Equipment: unique ids, known slots, sane stats, something for every slot.
+    fn validate_gear(&self) -> Result<(), DataError> {
+        let bad = |s: String| Err(DataError::Invalid(s));
+        let mut seen = std::collections::HashSet::new();
+        for g in &self.gear {
+            if !seen.insert(g.id.as_str()) {
+                return bad(format!("equipement {} en double", g.id));
+            }
+            if !GEAR_SLOTS.contains(&g.slot.as_str()) {
+                return bad(format!(
+                    "equipement {}: emplacement {} inconnu",
+                    g.id, g.slot
+                ));
+            }
+            if g.attack < 0.0
+                || !(0.0..0.9).contains(&g.defense)
+                || g.gather < 0.0
+                || g.value <= 0.0
+                || g.attack + g.defense + g.gather <= 0.0
+            {
+                return bad(format!("equipement {}: valeurs invalides", g.id));
+            }
+        }
+        for slot in GEAR_SLOTS {
+            if !self.gear.iter().any(|g| g.slot == slot) {
+                return bad(format!("aucun equipement pour {slot}"));
+            }
+        }
+        Ok(())
     }
 
     /// Native civilisations: mores on every ethos axis, known goods, enough syllables.
@@ -1803,6 +1863,30 @@ mod tests {
             d.unlocking_tech("module", "fusion_mk1").is_none(),
             "tier 1 is free"
         );
+    }
+
+    #[test]
+    fn gear_is_validated_and_sold_as_goods() {
+        let ok = GameData::load(&dir()).expect("data loads");
+        for slot in GEAR_SLOTS {
+            assert!(ok.gear.iter().any(|g| g.slot == slot), "{slot}");
+        }
+        for g in &ok.gear {
+            assert!(
+                ok.resource_index(&format!("gear_{}", g.id)).is_some(),
+                "{}",
+                g.id
+            );
+        }
+        let mut d = ok.clone();
+        d.gear[0].slot = "chapeau".into();
+        assert!(d.validate().is_err(), "unknown slot");
+        let mut d = ok.clone();
+        d.gear[0].defense = 0.95;
+        assert!(d.validate().is_err(), "defense must leave some damage");
+        let mut d = ok;
+        d.gear.retain(|g| g.slot != "armor");
+        assert!(d.validate().is_err(), "every slot needs an item");
     }
 
     #[test]

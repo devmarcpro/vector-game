@@ -40,3 +40,6 @@ Mœurs : data/ethos.ron (8 axes, 8 étiquettes morales, 8 profils de faction), g
 
 ## Civilisations
 `data/civilisations.ron` : id, nom, technologie 1-4, description, mœurs (une valeur par axe de ethos.ron), biens offerts et demandés, syllabes des noms. Dialogues : rôle CIVILISATION, effets `mores` et `civgift`.
+
+## Équipement
+`data/gear.ron` : id, nom, emplacement (weapon, armor, tool), attaque, défense (0 à 0.9), récolte, valeur, texte. Chaque objet est aussi une marchandise `gear_<id>` générée par `tools/gen_organs.py`.

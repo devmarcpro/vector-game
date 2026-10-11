@@ -54,7 +54,7 @@ impl Market {
             // Grafts and prostheses are counted in pieces, not tonnes.
             if matches!(
                 data.resources[i].category.as_str(),
-                "organes" | "protheses" | "cybernetique"
+                "organes" | "protheses" | "cybernetique" | "equipement"
             ) {
                 reference = rng.range(1.5, 5.0);
             }

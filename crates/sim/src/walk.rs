@@ -359,13 +359,13 @@ impl Sim {
         self.walk_end_turn(w);
     }
 
-    fn walk_attack(&mut self, w: &mut Walk, c: usize) {
+    pub(crate) fn walk_attack(&mut self, w: &mut Walk, c: usize) {
         let me = w.party[w.active];
         let skill = self
             .data
             .skill_index("combat")
             .map_or(0.0, |s| f64::from(self.crew.members[me].skills[s]));
-        let dmg = 0.8 + 0.3 * skill;
+        let dmg = 0.8 + 0.3 * skill + self.crew.members[me].gear_stat(&self.data, "attack");
         let sp = w.creatures[c].species;
         w.creatures[c].hp -= dmg;
         let name = self.data.species[sp].name.to_lowercase();
@@ -425,8 +425,10 @@ impl Sim {
                     "Recolte : {}.",
                     self.data.species[sp].name.to_lowercase()
                 ));
+                let bonus =
+                    1.0 + self.crew.members[w.party[w.active]].gear_stat(&self.data, "gather");
                 for (res, kg) in yields {
-                    self.walk_loot(w, &res, kg);
+                    self.walk_loot(w, &res, kg * bonus);
                 }
                 self.walk_end_turn(w);
             }
@@ -439,8 +441,9 @@ impl Sim {
         let data = std::sync::Arc::clone(&self.data);
         let site = &data.sites[w.sites[k].def];
         w.say(format!("{} : {}", site.name, site.text));
+        let bonus = 1.0 + self.crew.members[w.party[w.active]].gear_stat(&self.data, "gather");
         for (res, kg) in &site.loot {
-            self.walk_loot(w, res, *kg);
+            self.walk_loot(w, res, *kg * bonus);
         }
         if site.heal {
             for &m in &w.party {
@@ -565,12 +568,17 @@ impl Sim {
     }
 
     /// Hurt crew member `who`: health and one organ (a vital one at 0 kills).
-    fn walk_hurt(&mut self, w: &mut Walk, who: usize, dmg: f64, by: &str) {
+    pub(crate) fn walk_hurt(&mut self, w: &mut Walk, who: usize, dmg: f64, by: &str) {
         let n_org = self.data.organs.len();
         let pick =
             (hash_coord(w.seed, i64::from(w.turn), who as i64, 57) % n_org.max(1) as u64) as usize;
         let organ = self.data.organs[pick].name.to_lowercase();
         let vital = self.data.organs[pick].vital;
+        let dmg = dmg
+            * (1.0
+                - self.crew.members[who]
+                    .gear_stat(&self.data, "defense")
+                    .min(0.9));
         let p = &mut self.crew.members[who];
         p.organs.resize(n_org, 1.0);
         p.health = (p.health - dmg as f32).max(0.0);
@@ -804,6 +812,75 @@ mod tests {
         s.walk_gather(&mut w);
         assert!(s.crew.members[me].health > 0.5);
         assert!(s.crew.members[me].organs[lungs] > 0.55);
+    }
+
+    #[test]
+    fn weapons_hit_harder_armour_stops_damage_and_tools_find_more() {
+        let (mut s, body, cx, cy) = setup();
+        let d = Arc::clone(&s.data);
+        let rifle = d.gear_index("fusil_plasma").unwrap();
+        let suit = d.gear_index("exosquelette").unwrap();
+        let pick = d.gear_index("pioche").unwrap();
+
+        // A blow: the damage done to the same animal depends on the weapon.
+        let blow = |s: &mut Sim, armed: bool| -> f64 {
+            let mut w = s.walk_start(body, cx, cy, vec![0], false).unwrap();
+            s.crew.members[0].gear = vec![None; 3];
+            if armed {
+                s.crew.members[0].gear[0] = Some(rifle);
+            }
+            let (lx, ly) = Walk::landing();
+            w.creatures[0].x = lx + 1;
+            w.creatures[0].y = ly;
+            w.creatures[0].hp = 1000.0;
+            w.creatures[0].alive = true;
+            s.walk_attack(&mut w, 0);
+            1000.0 - w.creatures[0].hp
+        };
+        let bare = blow(&mut s, false);
+        let armed = blow(&mut s, true);
+        assert!(
+            armed > bare + d.gear[rifle].attack - 1e-9,
+            "{armed} vs {bare}"
+        );
+
+        // A wound: the same hit costs less health in armour.
+        let wound = |s: &mut Sim, armoured: bool| -> f32 {
+            let mut w = s.walk_start(body, cx, cy, vec![0], false).unwrap();
+            s.crew.members[0].gear = vec![None; 3];
+            s.crew.members[0].health = 1.0;
+            if armoured {
+                s.crew.members[0].gear[1] = Some(suit);
+            }
+            s.walk_hurt(&mut w, 0, 0.4, "test");
+            1.0 - s.crew.members[0].health
+        };
+        let naked = wound(&mut s, false);
+        let dressed = wound(&mut s, true);
+        assert!((naked - 0.4).abs() < 1e-3);
+        assert!(dressed < naked * 0.6, "{dressed} vs {naked}");
+
+        // A harvest: the tool adds its share.
+        let harvest = |s: &mut Sim, tool: bool| -> f64 {
+            let mut w = s.walk_start(body, cx, cy, vec![0], false).unwrap();
+            s.crew.members[0].gear = vec![None; 3];
+            if tool {
+                s.crew.members[0].gear[2] = Some(pick);
+            }
+            w.plants[0].x = w.pos[0].0 + 1;
+            w.plants[0].y = w.pos[0].1;
+            w.plants[0].taken = false;
+            w.sites.clear();
+            s.walk_gather(&mut w);
+            w.loot_mass()
+        };
+        let plain = harvest(&mut s, false);
+        let tooled = harvest(&mut s, true);
+        assert!(plain > 0.0);
+        assert!(
+            (tooled / plain - (1.0 + d.gear[pick].gather)).abs() < 1e-6,
+            "{tooled} / {plain}"
+        );
     }
 
     #[test]

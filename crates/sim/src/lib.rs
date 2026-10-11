@@ -13,6 +13,7 @@ pub mod ecology;
 pub mod economy;
 pub mod fleet;
 pub mod futures;
+pub mod gear;
 pub mod genealogy;
 pub mod market;
 pub mod npc;

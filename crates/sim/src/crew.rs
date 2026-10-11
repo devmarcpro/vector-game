@@ -65,6 +65,8 @@ pub struct Person {
     /// Genetic instability 0..1: radiation and mutagens raise it, time lowers it; high values
     /// mutate genes and bring cancers.
     pub instability: f32,
+    /// Equipment worn, one per slot of `vector_data::GEAR_SLOTS` (index into `GameData::gear`).
+    pub gear: Vec<Option<usize>>,
 }
 
 impl Person {
@@ -128,6 +130,20 @@ impl Person {
             .map(|&i| &data.cybernetics[i])
             .filter(|c| !(c.hackable && self.hacked))
             .flat_map(|c| c.effects.iter().filter(|(k, _)| k == key).map(|(_, w)| *w))
+            .sum()
+    }
+
+    /// Total of a stat of the equipment worn: "attack", "defense" or "gather".
+    pub fn gear_stat(&self, data: &GameData, stat: &str) -> f64 {
+        self.gear
+            .iter()
+            .flatten()
+            .filter_map(|&g| data.gear.get(g))
+            .map(|g| match stat {
+                "attack" => g.attack,
+                "defense" => g.defense,
+                _ => g.gather,
+            })
             .sum()
     }
 
@@ -326,6 +342,7 @@ pub fn person_from_kin(
         hacked: false,
         hacked_until: 0.0,
         instability: 0.0,
+        gear: vec![None; 3],
     }
 }
 

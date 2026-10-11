@@ -102,3 +102,5 @@ Ecran de préparation : Haut/Bas, Espace coche un équipier ou le rover, Entrée
 - **Entrée sur une planète ciblée** (Maj+Tab, assez près) : parler à son peuple s'il en a un (voir la ligne CIVILISATION de l'écran de surface F8).
 
 - **Bourse** : B / N contrat à terme à la hausse / à la baisse sur la ressource choisie (100 kg, 30 j, marge 25 %), C clôt un contrat.
+
+- **Equipage, E** : liste de l'équipement (flèches pour choisir, Entrée équipe depuis la soute, U retire, E ou Echap revient). Clic sur une ligne ARME / ARMURE / OUTIL.

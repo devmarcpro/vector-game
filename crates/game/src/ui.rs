@@ -969,6 +969,59 @@ fn draw_crew(fb: &mut Framebuffer, g: &Game) {
             &format!("INSTABILITE GENETIQUE {:.0} %", p.instability * 100.0),
             if p.instability > 0.5 { RED } else { DIM },
         );
+        // Equipment: what each slot holds and what it brings.
+        let ey = top + 40;
+        fb.text(x, ey, "EQUIPEMENT", AMBER);
+        for (slot, label) in ["ARME", "ARMURE", "OUTIL"].iter().enumerate() {
+            let worn = p.gear.get(slot).copied().flatten();
+            g.hit_cells(
+                x,
+                ey + 1 + slot,
+                44,
+                1,
+                Act::Call(Game::click_gear_slot, slot),
+                None,
+            );
+            fb.text(
+                x,
+                ey + 1 + slot,
+                &format!(
+                    "{:<7}{}",
+                    label,
+                    worn.map_or("-".to_string(), |gi| g.data.gear[gi].name.to_uppercase())
+                ),
+                if worn.is_some() { GREEN } else { DIM },
+            );
+        }
+        fb.text(
+            x,
+            ey + 4,
+            &format!(
+                "ATTAQUE +{:.1}  DEFENSE {:.0} %  RECOLTE +{:.0} %",
+                p.gear_stat(&g.data, "attack"),
+                p.gear_stat(&g.data, "defense") * 100.0,
+                p.gear_stat(&g.data, "gather") * 100.0
+            ),
+            DIM,
+        );
+        if g.gear_mode {
+            if let Some(it) = g.data.gear.get(g.gear_sel) {
+                let held = g
+                    .data
+                    .resource_index(&format!("gear_{}", it.id))
+                    .map_or(0.0, |r| g.sim.ship.cargo.kg[r]);
+                fb.text(
+                    x,
+                    ey + 5,
+                    &format!(
+                        "< {} >  EN SOUTE : {:.0}  ENTREE EQUIPER  U RETIRER",
+                        it.name.to_uppercase(),
+                        held
+                    ),
+                    AMBER,
+                );
+            }
+        }
         // Implants installed, and the type picked with Left/Right in the organ list.
         let iy = top + 31;
         fb.text(x, iy, "IMPLANTS", AMBER);

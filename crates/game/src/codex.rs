@@ -2,7 +2,7 @@
 //! weapon, faction, anomaly and condition, generated from the real data (no hand-written numbers).
 use vector_data::GameData;
 
-pub const CATEGORIES: [&str; 21] = [
+pub const CATEGORIES: [&str; 22] = [
     "RESSOURCES",
     "MODULES",
     "ARMES",
@@ -24,6 +24,7 @@ pub const CATEGORIES: [&str; 21] = [
     "COMMUNICATIONS",
     "SITES",
     "CIVILISATIONS",
+    "EQUIPEMENT",
 ];
 
 /// Index in the source table of entry `k` of a category (modules and weapons share a table).
@@ -68,6 +69,7 @@ fn entries(data: &GameData, cat: usize) -> Vec<usize> {
         18 => (0..vector_data::dialogue::ROLES.len()).collect(),
         19 => (0..data.sites.len()).collect(),
         20 => (0..data.civilisations.len()).collect(),
+        21 => (0..data.gear.len()).collect(),
         _ => Vec::new(),
     }
 }
@@ -94,6 +96,7 @@ pub fn names(data: &GameData, cat: usize) -> Vec<String> {
             17 => data.cybernetics[i].name.clone(),
             19 => data.sites[i].name.clone(),
             20 => data.civilisations[i].name.clone(),
+            21 => data.gear[i].name.clone(),
             18 => format!(
                 "Appeler : {}",
                 vector_data::dialogue::ROLES[i].to_lowercase()
@@ -502,6 +505,36 @@ pub fn entry(data: &GameData, cat: usize, k: usize) -> Vec<String> {
                     res_name(data, &d.cure).unwrap_or_else(|| d.cure.clone())
                 }
             ));
+        }
+        21 => {
+            let g = &data.gear[i];
+            let slot = match g.slot.as_str() {
+                "weapon" => "arme",
+                "armor" => "armure",
+                _ => "outil",
+            };
+            out.push(format!("{}  ({slot})", g.name));
+            out.push(g.text.clone());
+            if g.attack > 0.0 {
+                out.push(format!("Attaque : +{:.1} de degats par coup", g.attack));
+            }
+            if g.defense > 0.0 {
+                out.push(format!(
+                    "Defense : {:.0} % des degats subis arretes",
+                    g.defense * 100.0
+                ));
+            }
+            if g.gather > 0.0 {
+                out.push(format!(
+                    "Recolte : +{:.0} % de ce que donnent plantes et sites",
+                    g.gather * 100.0
+                ));
+            }
+            out.push(format!(
+                "Valeur : {:.0} cr (se vend et s'achete comme marchandise, equipement : gear_{})",
+                g.value, g.id
+            ));
+            out.push("Equiper : ecran equipage, touche E (il faut l'objet en soute). Sert pendant les expeditions a pied.".to_string());
         }
         20 => {
             let c = &data.civilisations[i];

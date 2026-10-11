@@ -294,18 +294,24 @@ fn snapshot(path: &str, scene: &str, data: Arc<GameData>) {
         }
         s if s.starts_with("world") => {
             let near = s.ends_with("near");
+            let giant = s.ends_with("giant");
             g.sim.reveal_all();
             let i = g
                 .sim
                 .bodies
                 .iter()
                 .position(|b| {
-                    matches!(
-                        b.kind,
-                        vector_world::BodyKind::Planet(
-                            vector_world::PlanetKind::Terran | vector_world::PlanetKind::Ocean
+                    giant && matches!(b.kind, vector_world::BodyKind::Planet(p) if p.is_giant())
+                })
+                .or_else(|| {
+                    g.sim.bodies.iter().position(|b| {
+                        matches!(
+                            b.kind,
+                            vector_world::BodyKind::Planet(
+                                vector_world::PlanetKind::Terran | vector_world::PlanetKind::Ocean
+                            )
                         )
-                    )
+                    })
                 })
                 .or_else(|| {
                     g.sim.bodies.iter().position(

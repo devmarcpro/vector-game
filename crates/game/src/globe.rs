@@ -140,7 +140,8 @@ fn scale_color(c: u32, k: f32) -> u32 {
 
 /// What to paint on a world: its map and the colour of a cell.
 pub struct Paint<'a> {
-    pub map: &'a PlanetMap,
+    /// The relief of the world (a gas giant has none: bands only).
+    pub map: Option<&'a PlanetMap>,
     pub color: &'a dyn Fn(usize, usize) -> u32,
     /// Air pressure (bar): above a trace, a bright rim of atmosphere is drawn.
     pub air: f64,
@@ -159,6 +160,30 @@ fn elev_at(map: &PlanetMap, fx: f64, fy: f64) -> f32 {
     let a = at(x0, y0) + (at(x0 + 1.0, y0) - at(x0, y0)) * tx;
     let b = at(x0, y0 + 1.0) + (at(x0 + 1.0, y0 + 1.0) - at(x0, y0 + 1.0)) * tx;
     a + (b - a) * ty
+}
+
+/// Smooth value noise in [-1, 1] on a grid of hashed values.
+fn noise2(x: f64, y: f64) -> f32 {
+    let (ix, iy) = (x.floor(), y.floor());
+    let (fx, fy) = ((x - ix) as f32, (y - iy) as f32);
+    let (fx, fy) = (fx * fx * (3.0 - 2.0 * fx), fy * fy * (3.0 - 2.0 * fy));
+    let v = |dx: i64, dy: i64| {
+        let h = vector_core::hash_coord(11, ix as i64 + dx, iy as i64 + dy, 9);
+        ((h >> 11) as f64 / (1u64 << 53) as f64) as f32 * 2.0 - 1.0
+    };
+    let a = v(0, 0) + (v(1, 0) - v(0, 0)) * fx;
+    let b = v(0, 1) + (v(1, 1) - v(0, 1)) * fx;
+    a + (b - a) * fy
+}
+
+/// Ground height at a fractional cell, with finer relief than the map when the world is close:
+/// two octaves of noise lie on the elevation of the map, in proportion to how high it is.
+fn height(map: &PlanetMap, fx: f64, fy: f64, detail: bool) -> f32 {
+    let e = elev_at(map, fx, fy);
+    if !detail || e <= 0.0 {
+        return e;
+    }
+    e + e.min(0.6) * (0.10 * noise2(fx * 5.0, fy * 5.0) + 0.04 * noise2(fx * 21.0, fy * 21.0))
 }
 
 /// Paint a solid world as a lit ball: the colour of each cell, sunlight and a terminator, relief
@@ -227,25 +252,29 @@ pub fn fill_world(
                     (fy.round() as i64).clamp(0, H as i64 - 1) as usize,
                 );
                 let base = (paint.color)(cxi, cyi);
-                let e = elev_at(paint.map, fx, fy);
+                let e = paint.map.map_or(0.0, |m| elev_at(m, fx, fy));
                 // Relief: the slope of the ground against the light, on land only.
                 let mut shade = 1.0f32;
-                if e > 0.0 {
+                if let (true, Some(map)) = (e > 0.0, paint.map) {
+                    // Close up the slope is read over a fraction of a cell, on the finer relief.
+                    let detail = r_px > 90.0;
+                    let d = if detail { 0.3 } else { 1.0 };
+                    let h = |x: f64, y: f64| height(map, x, y, detail);
                     let (ge, gn) = (
-                        elev_at(paint.map, fx + 1.0, fy) - elev_at(paint.map, fx - 1.0, fy),
-                        elev_at(paint.map, fx, fy - 1.0) - elev_at(paint.map, fx, fy + 1.0),
+                        (h(fx + d, fy) - h(fx - d, fy)) / (2.0 * d as f32),
+                        (h(fx, fy - d) - h(fx, fy + d)) / (2.0 * d as f32),
                     );
                     let east = Vec3::new(-lon.sin(), 0.0, lon.cos());
                     let north =
                         Vec3::new(-lat.sin() * lon.cos(), lat.cos(), -lat.sin() * lon.sin());
                     let toward =
                         (sun_b.dot(east) * f64::from(ge) + sun_b.dot(north) * f64::from(gn)) as f32;
-                    shade += (toward * 2.5).clamp(-0.45, 0.45);
+                    shade += (toward * 5.0).clamp(-0.5, 0.5);
                     // Height itself: peaks brighter.
                     shade += e * 0.25;
                 }
                 // Grain when close: the cells are big on the screen, the ground is not smooth.
-                if r_px > 140.0 {
+                if r_px > 140.0 && paint.map.is_some() {
                     let g = vector_core::hash_coord(
                         7,
                         (fx * 6.0).floor() as i64,

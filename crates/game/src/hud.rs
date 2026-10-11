@@ -1,7 +1,6 @@
 //! Cockpit view and system map: 3D scene + ASCII HUD.
 use crate::console::Console;
 use crate::game::Game;
-use crate::globe::Globe;
 use crate::mouse::Act;
 use vector_core::{Mat3, Vec3};
 use vector_render::{Camera, Framebuffer, Wireframe};
@@ -170,10 +169,9 @@ fn dimmed(c: u32, k: f32) -> u32 {
     (ch(16) << 16) | (ch(8) << 8) | ch(0)
 }
 
-/// Draw the topography of solid world `i` as seen from the cockpit: a dot per cell in the colour
-/// of its biome (dimmed on the night side), contour lines, and the graticule when it is big.
-/// Returns false when the world has no surface to show.
-fn draw_world(fb: &mut Framebuffer, cam: &Camera, v: &View, i: usize, px: f64) -> bool {
+/// Draw solid world `i` as seen from the cockpit: a lit ball in the colours of its biomes with
+/// its relief shaded and its air at the rim. Returns false when the world has no surface to show.
+fn draw_world(fb: &mut Framebuffer, cam: &Camera, v: &View, i: usize) -> bool {
     let Some(map) = v.game.flight_map(i) else {
         return false;
     };
@@ -182,27 +180,7 @@ fn draw_world(fb: &mut Framebuffer, cam: &Camera, v: &View, i: usize, px: f64) -
     // The world turns on its tilted axis once per day of its own.
     let angle = std::f64::consts::TAU * v.sim.time / sys.rotation_period.max(60.0);
     let orient = Mat3::rot_z(f64::from(map.surface.tilt)).mul(&Mat3::rot_y(angle));
-    let to_cam = cam.pos - b.pos;
     let sun = (b.pos * -1.0).normalized();
-    let (fw, fh) = (fb.w as f64, fb.h as f64);
-    let focal = fh * 0.5 / (cam.fov_y * 0.5).tan();
-    let to_view = |lat: f64, lon: f64| -> Vec3 {
-        orient.mul_vec(Vec3::new(
-            lat.cos() * lon.cos(),
-            lat.sin(),
-            lat.cos() * lon.sin(),
-        ))
-    };
-    let visible = |p: Vec3| p.dot(to_cam) > b.radius;
-    let project = |p: Vec3| -> Option<(f32, f32)> {
-        let vw = cam.to_view(b.pos + p * b.radius);
-        (vw.z > vector_render::NEAR).then(|| {
-            (
-                (fw * 0.5 + vw.x / vw.z * focal) as f32,
-                (fh * 0.5 - vw.y / vw.z * focal) as f32,
-            )
-        })
-    };
     let data = &v.sim.data;
     // The ball itself, in plain colours: lit by the star, relief shaded, air at the rim.
     crate::globe::fill_world(
@@ -213,25 +191,47 @@ fn draw_world(fb: &mut Framebuffer, cam: &Camera, v: &View, i: usize, px: f64) -
         &orient,
         sun,
         &crate::globe::Paint {
-            map: &map,
+            map: Some(&map),
             color: &|x, y| data.biomes[map.biome_at(x, y)].color,
             air: map.pressure,
         },
     );
-    // Coasts and the graticule stay as thin lines over it when the world is big.
-    let globe = Globe {
-        map: &map,
-        to_view: &to_view,
-        visible: &visible,
-        project: &project,
-    };
-    if px > 60.0 {
-        globe.contours(fb, if px > 160.0 { 1 } else { 2 });
-    }
-    if px > 220.0 {
-        globe.graticule(fb, 0x0018_3040);
-    }
     true
+}
+
+/// A world as a lit ball of one colour, or with the bands of a gas giant.
+fn draw_ball(fb: &mut Framebuffer, cam: &Camera, v: &View, i: usize, col: u32, bands: bool) {
+    let b = &v.sim.bodies[i];
+    let sys = &v.sim.system.bodies[i];
+    let angle = std::f64::consts::TAU * v.sim.time / sys.rotation_period.max(60.0);
+    let orient = Mat3::rot_y(angle);
+    let sun = (b.pos * -1.0).normalized();
+    let seed = v.sim.system.seed ^ (i as u64) << 8;
+    crate::globe::fill_world(
+        fb,
+        cam,
+        b.pos,
+        b.radius,
+        &orient,
+        sun,
+        &crate::globe::Paint {
+            map: None,
+            color: &|x, y| {
+                if !bands {
+                    return col;
+                }
+                // Bands by latitude, each a little lighter or darker than the base colour.
+                let band = (y / 4) as i64;
+                let h = vector_core::hash_coord(seed, band, 3, 1);
+                let k = 1.1 + 1.0 * ((h >> 11) as f64 / (1u64 << 53) as f64) as f32;
+                let wobble = 1.0 + 0.06 * (((x as f32) * 0.2 + band as f32).sin());
+                let ch =
+                    |s: u32| ((((col >> s) & 0xFF) as f32) * k * wobble).clamp(0.0, 255.0) as u32;
+                (ch(16) << 16) | (ch(8) << 8) | ch(0)
+            },
+            air: if bands { 1.0 } else { sys.pressure },
+        },
+    );
 }
 
 fn body_color(v: &View, i: usize) -> u32 {
@@ -294,17 +294,12 @@ fn draw_cockpit(fb: &mut Framebuffer, v: &View) {
                 8,
                 kind_color(BodyKind::Star(c)),
             ),
-            BodyKind::Planet(k) if k.is_giant() => {
-                cam.draw_sphere(fb, b.pos, b.radius, &spin, 12, 6, col)
-            }
+            BodyKind::Planet(k) if k.is_giant() => draw_ball(fb, &cam, v, i, col, true),
             BodyKind::Planet(_) | BodyKind::Moon(_) => {
-                // A surveyed solid world close enough to see: its relief, seas and continents.
-                if px > 22.0 && v.sim.scan[i] >= SCAN_SURVEYED && draw_world(fb, &cam, v, i, px) {
-                    cam.draw_sphere(fb, b.pos, b.radius, &spin, 0, 0, col);
-                } else if matches!(b.kind, BodyKind::Planet(_)) {
-                    cam.draw_sphere(fb, b.pos, b.radius, &spin, 8, 14, col)
-                } else {
-                    cam.draw_sphere(fb, b.pos, b.radius, &spin, 5, 8, col)
+                // A surveyed solid world close enough to see: its relief, seas and continents;
+                // otherwise a plain lit ball of its colour. No wireframe on worlds.
+                if !(px > 22.0 && v.sim.scan[i] >= SCAN_SURVEYED && draw_world(fb, &cam, v, i)) {
+                    draw_ball(fb, &cam, v, i, col, false);
                 }
             }
             BodyKind::Anomaly(_) => {

@@ -49,3 +49,6 @@ Mœurs : data/ethos.ron (8 axes, 8 étiquettes morales, 8 profils de faction), g
 
 ## Entreprises
 `data/companies.ron` : id, nom, siège (faction), cours de base, rendement annuel, volatilité, biens (id, poids, total 1), texte.
+
+## Phenomenes exotiques
+`data/exotic.ron` : id, nom, genre (matter, propulsion, field, entity, precursor, fermi), danger 0..1, recherche (min,max), credits (min,max), butin (ressource, min kg, max kg), texte. Les entrees `fermi` sont les reponses possibles au paradoxe de Fermi (une seule vraie par galaxie). Valide au chargement.

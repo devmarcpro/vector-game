@@ -81,6 +81,9 @@ pub struct Multiverse {
     pub echo: Option<(f64, f64)>,
     /// Outposts in dimensions: (star, dimension, kg waiting).
     pub outposts: Vec<(vector_world::galaxy::StarRef, u32, f64)>,
+    /// Clues found in precursor ruins about the Fermi paradox.
+    #[serde(default)]
+    pub exotic_clues: u32,
 }
 
 /// Where a portal leads.

@@ -90,3 +90,6 @@ ponderees par `ground_of`), la neige et la glace apparaissent quand il fait froi
 lave remplace l'eau selon la temperature. Les lieux construits nomment leur matiere (`floor_mat`,
 `wall_mat`). La matiere agit : `slow` multiplie le temps de marche (boue x2, neige x1,5, glace x0,8) et
 un rover la ressent 2,5 fois moins. Sauvegardes : version 35.
+
+## Haute science-fiction
+Un seul systeme : les phenomenes exotiques sont des resultats d'exploration d'anomalies (`science.rs`) et ne creent aucun systeme parallele; les modules exotiques restent les `exo_*` de `multiverse.rs`. Rien n'est scripte : le phenomene, les vestiges (20 % des systemes) et la reponse au paradoxe de Fermi sortent de `hash(graine, coordonnees)`. Antimatiere : E = 2 m c2 exact; un piege magnetique non alimente la laisse fuir et s'annihiler contre la coque. Cout du warp : m c2 v2 (1 + v2/4), plus que quadratique. Sauvegardes : `Multiverse.exotic_clues` (serde default) ; le coordinateur bumpe VERSION.

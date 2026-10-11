@@ -627,6 +627,20 @@ pub struct Dimension {
     pub text: String,
 }
 
+/// An exotic phenomenon, or a possible answer to the Fermi paradox (see `data/exotic.ron`).
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct Exotic {
+    pub id: String,
+    pub name: String,
+    /// "matter", "propulsion", "field", "entity", "precursor" or "fermi".
+    pub kind: String,
+    pub danger: f64,
+    pub research: (f64, f64),
+    pub credits: (f64, f64),
+    pub loot: Vec<(String, f64, f64)>,
+    pub text: String,
+}
+
 /// A cartel of the exchange (see `data/cartels.ron`).
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Cartel {
@@ -795,6 +809,7 @@ pub struct GameData {
     pub religions: Vec<Religion>,
     pub cartels: Vec<Cartel>,
     pub dimensions: Vec<Dimension>,
+    pub exotics: Vec<Exotic>,
     pub rogue_monsters: Vec<RogueMonster>,
     pub rogue_themes: Vec<RogueTheme>,
     pub materials: Vec<Material>,
@@ -841,6 +856,7 @@ impl GameData {
             religions: read(&dir.join("religions.ron"))?,
             cartels: read(&dir.join("cartels.ron"))?,
             dimensions: read(&dir.join("dimensions.ron"))?,
+            exotics: read(&dir.join("exotic.ron"))?,
             rogue_monsters: read(&dir.join("rogue_monsters.ron"))?,
             rogue_themes: read(&dir.join("rogue_themes.ron"))?,
             materials: read(&dir.join("materials.ron"))?,
@@ -1273,6 +1289,7 @@ impl GameData {
         self.validate_religions()?;
         self.validate_cartels()?;
         self.validate_dimensions()?;
+        self.validate_exotics()?;
         self.validate_materials()?;
         self.validate_rogue()?;
         self.validate_companies()
@@ -1476,6 +1493,46 @@ impl GameData {
         }
         if self.rogue_monsters.len() < 15 {
             return bad("moins de 15 monstres".into());
+        }
+        Ok(())
+    }
+
+    /// Exotic phenomena: unique ids, known kinds and loot, sane ranges, enough fermi answers.
+    fn validate_exotics(&self) -> Result<(), DataError> {
+        let bad = |s: String| Err(DataError::Invalid(s));
+        let mut seen = std::collections::HashSet::new();
+        for e in &self.exotics {
+            if !seen.insert(e.id.as_str()) {
+                return bad(format!("exotique {} en double", e.id));
+            }
+            if ![
+                "matter",
+                "propulsion",
+                "field",
+                "entity",
+                "precursor",
+                "fermi",
+            ]
+            .contains(&e.kind.as_str())
+            {
+                return bad(format!("exotique {}: genre inconnu {}", e.id, e.kind));
+            }
+            let ranges = [e.research, e.credits];
+            if !(0.0..=1.0).contains(&e.danger)
+                || ranges.iter().any(|r| r.0 < 0.0 || r.1 < r.0)
+                || e.text.is_empty()
+            {
+                return bad(format!("exotique {}: valeurs hors limites", e.id));
+            }
+            for (r, lo, hi) in &e.loot {
+                if self.resource_index(r).is_none() || *lo < 0.0 || hi < lo {
+                    return bad(format!("exotique {}: butin invalide {r}", e.id));
+                }
+            }
+        }
+        let n = |k: &str| self.exotics.iter().filter(|e| e.kind == k).count();
+        if n("fermi") < 4 || n("precursor") < 1 || n("entity") < 1 || n("matter") < 1 {
+            return bad("exotic.ron: genres insuffisants".into());
         }
         Ok(())
     }
@@ -2361,6 +2418,21 @@ mod tests {
         let mut d = ok;
         d.rogue_themes.retain(|t| t.id != "reve");
         assert!(d.validate().is_err(), "every needed place exists");
+    }
+
+    #[test]
+    fn exotics_are_validated() {
+        let ok = GameData::load(&dir()).expect("data loads");
+        assert!(ok.exotics.len() >= 18);
+        let mut d = ok.clone();
+        d.exotics[0].loot.push(("nope".into(), 1.0, 2.0));
+        assert!(d.validate().is_err(), "unknown loot");
+        let mut d = ok.clone();
+        d.exotics[1].kind = "magic".into();
+        assert!(d.validate().is_err(), "unknown kind");
+        let mut d = ok;
+        d.exotics.retain(|e| e.kind != "fermi");
+        assert!(d.validate().is_err(), "fermi answers needed");
     }
 
     #[test]

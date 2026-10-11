@@ -168,3 +168,5 @@ Tout est derive (rien n'est stocke, meme graine = memes nombres) et une seule fo
 - Interieur : fraction du noyau selon la densite, flux de chaleur ~ R / age (+ chauffage de maree selon
   l'excentricite), activite (inerte, couvercle fige, plaques, volcanique, fluide), champ magnetique
   (dynamo : noyau fluide + rotation + taille).
+
+- Exotique (`exotic.rs`) : annihilation E = 2 m c2 (c = 299 792 458 m/s), degats de coque = E / 2e11 J; fuite d'un piege eteint 0,2 %/s du stock; cout warp E = m c2 v2 (1 + v2/4); dose du sillage 0,002 v2 Gy; vestiges des anciens dans 20 % des systemes (x2 recherche), phenomene dans ~34 % des anomalies, gains x(1 + 0,1 paradoxe), entites : comprehension = traduction (efficacite scientifique) contre etrangete; 5 indices = reponse de Fermi.

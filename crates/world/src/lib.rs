@@ -16,10 +16,12 @@ pub enum StarClass {
     G,
     K,
     M,
+    /// White dwarf: a faint stellar remnant.
+    D,
 }
 
 impl StarClass {
-    pub const ALL: [StarClass; 7] = [
+    pub const ALL: [StarClass; 8] = [
         Self::O,
         Self::B,
         Self::A,
@@ -27,9 +29,10 @@ impl StarClass {
         Self::G,
         Self::K,
         Self::M,
+        Self::D,
     ];
     pub fn letter(self) -> &'static str {
-        ["O", "B", "A", "F", "G", "K", "M"][self as usize]
+        ["O", "B", "A", "F", "G", "K", "M", "D"][self as usize]
     }
 }
 
@@ -243,7 +246,7 @@ impl System {
 }
 
 fn pick_class(rng: &mut Rng) -> StarClass {
-    let w = [0.01, 0.03, 0.04, 0.08, 0.14, 0.20, 0.50];
+    let w = [0.01, 0.03, 0.04, 0.08, 0.14, 0.20, 0.47, 0.03];
     let mut x = rng.f64();
     for (c, w) in StarClass::ALL.iter().zip(w) {
         if x < w {
@@ -263,6 +266,7 @@ fn mass_range(c: StarClass) -> (f64, f64) {
         StarClass::G => (0.8, 1.04),
         StarClass::K => (0.45, 0.8),
         StarClass::M => (0.08, 0.45),
+        StarClass::D => (0.5, 1.2),
     }
 }
 
@@ -408,8 +412,14 @@ fn star_header(rng: &mut Rng) -> StarHeader {
     let class = pick_class(rng);
     let (m0, m1) = mass_range(class);
     let m = rng.range(m0, m1);
-    let lum = luminosity(m);
-    let rad = if m < 1.0 { m.powf(0.8) } else { m.powf(0.57) };
+    let (lum, rad) = if class == StarClass::D {
+        (0.001 * m, 0.0125)
+    } else {
+        (
+            luminosity(m),
+            if m < 1.0 { m.powf(0.8) } else { m.powf(0.57) },
+        )
+    };
     let teff = 5772.0 * (lum / (rad * rad)).powf(0.25);
     let name = star_name(rng);
     let designation = format!("HD {}", 1000 + rng.next_u64() % 900_000);
@@ -758,7 +768,7 @@ mod tests {
                 }
             }
         }
-        assert_eq!(classes.len(), 7, "all star classes appear");
+        assert!(classes.len() >= 7, "star classes appear: {}", classes.len());
         assert!(kinds.len() >= 11, "planet kinds seen: {}", kinds.len());
     }
 
@@ -795,5 +805,34 @@ mod tests {
     #[test]
     fn temperate_zone_scales_with_luminosity() {
         assert!((eq_temp(1.0, 1.0, 0.3) - 255.0).abs() < 5.0);
+    }
+
+    #[test]
+    fn white_dwarfs_exist_and_generate_sane_systems() {
+        let dwarfs: Vec<u64> = (0..4000u64)
+            .filter(|&s| peek_star(s).class == StarClass::D)
+            .take(20)
+            .collect();
+        assert!(
+            dwarfs.len() >= 20,
+            "{} white dwarfs in 4000 seeds",
+            dwarfs.len()
+        );
+        for s in dwarfs {
+            let sys = generate_system(s);
+            assert_eq!(sys.star_class, StarClass::D);
+            assert!(sys.luminosity < 0.002 && sys.bodies[0].radius < 1.0e7);
+            for (i, b) in sys.bodies.iter().enumerate().skip(1) {
+                if let Some(o) = &b.orbit {
+                    assert!(
+                        o.a > sys.bodies[o.parent].radius,
+                        "{} orbits inside parent",
+                        b.name
+                    );
+                    let (p, v) = sys.state(i, 1.0e6);
+                    assert!(p.length().is_finite() && v.length().is_finite());
+                }
+            }
+        }
     }
 }

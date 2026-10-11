@@ -339,7 +339,7 @@ fn read<T: for<'a> Deserialize<'a>>(path: &Path) -> Result<T, DataError> {
 
 impl GameData {
     pub fn load(dir: &Path) -> Result<GameData, DataError> {
-        let d = GameData {
+        let mut d = GameData {
             resources: read(&dir.join("resources.ron"))?,
             asteroids: read(&dir.join("worldgen/asteroids.ron"))?,
             modules: read(&dir.join("modules.ron"))?,
@@ -359,6 +359,18 @@ impl GameData {
             techs: read(&dir.join("techs.ron"))?,
             anomalies_def: read(&dir.join("worldgen/anomalies.ron"))?,
         };
+        // Generated extension files (tools/gen_scale.py) extend the hand-written tables.
+        let mut extra_events: Vec<EventDef> = read(&dir.join("events_extra.ron"))?;
+        d.events.append(&mut extra_events);
+        let mut extra_recipes: Vec<Recipe> = read(&dir.join("recipes_extra.ron"))?;
+        d.recipes.append(&mut extra_recipes);
+        let extra_texts: Vec<(String, Vec<String>)> = read(&dir.join("text/extra.ron"))?;
+        for (k, mut v) in extra_texts {
+            match d.texts.iter_mut().find(|(key, _)| *key == k) {
+                Some((_, cur)) => cur.append(&mut v),
+                None => d.texts.push((k, v)),
+            }
+        }
         d.validate()?;
         Ok(d)
     }
@@ -791,11 +803,13 @@ mod tests {
             d.anomalies_def.len(),
             d.diseases.len()
         );
-        assert!(d.recipes.len() >= 35 && d.buildings.len() >= 25 && d.policies.len() >= 4);
+        assert!(d.recipes.len() >= 100 && d.buildings.len() >= 25 && d.policies.len() >= 4);
         let defences = d.modules.iter().filter(|m| !m.weapon.is_empty()).count();
         assert!(defences >= 20, "{defences}");
-        assert!(d.skills.len() >= 12 && d.traits.len() >= 30 && d.events.len() >= 25);
+        assert!(d.skills.len() >= 12 && d.traits.len() >= 30 && d.events.len() >= 150);
         assert!(d.resource_index("food").is_some() && !d.text("hire").is_empty());
+        let variants: usize = d.texts.iter().map(|(_, v)| v.len()).sum();
+        assert!(variants >= 300, "{variants} text templates");
     }
 
     #[test]

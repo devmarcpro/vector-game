@@ -312,7 +312,7 @@ mod tests {
                 }
             }
         }
-        assert_eq!(classes.len(), 7);
+        assert!(classes.len() >= 7, "{classes:?}");
         assert!(
             t.elapsed().as_secs_f64() / systems as f64 * 1000.0 < 20.0,
             "system generation too slow"

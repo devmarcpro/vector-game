@@ -757,6 +757,7 @@ fn class_color(c: vector_world::StarClass) -> u32 {
         G => 0x00F0_D860,
         K => 0x00F0_9040,
         M => 0x00FF_5040,
+        D => 0x00C8_D0E0,
     }
 }
 

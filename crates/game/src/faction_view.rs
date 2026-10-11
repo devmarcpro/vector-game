@@ -26,11 +26,116 @@ fn edge(cx: f32, cy: f32, tx: f32, ty: f32) -> (f32, f32) {
     (cx + dx * t, cy + dy * t)
 }
 
+/// The registry of relations: every faction, people, cartel, contact and company that has an
+/// opinion of you, the ties between them, and what changed lately.
+fn draw_relations(fb: &mut Framebuffer, g: &Game) {
+    let s = &g.sim;
+    let rows = s.relation_rows();
+    fb.text(1, 1, "RELATIONS", AMBER);
+    fb.text(20, 1, "[TAB] FACTIONS ET MOEURS", DIM);
+    fb.text(
+        1,
+        2,
+        "CE QUE CHACUN PENSE DE VOUS ; CE QUE VOUS FAITES A L'UN SE REPERCUTE, ATTENUE, SUR SES ALLIES ET SES RIVAUX",
+        DIM,
+    );
+    let sel = g.rel_sel.min(rows.len().saturating_sub(1));
+    let visible = fb.rows().saturating_sub(10).max(1);
+    let start = sel
+        .saturating_sub(visible / 2)
+        .min(rows.len().saturating_sub(visible));
+    for (i, r) in rows.iter().enumerate().skip(start).take(visible) {
+        let y = 4 + i - start;
+        let col = if i == sel {
+            AMBER
+        } else if r.value < -0.2 {
+            RED
+        } else if r.value > 0.2 {
+            GREEN
+        } else {
+            DIM
+        };
+        let cell = (((r.value.clamp(-1.0, 1.0) + 1.0) * 10.0).round()) as usize;
+        let mut bar = ['-'; 21];
+        bar[10] = '|';
+        bar[cell.min(20)] = '#';
+        let name: String = r.name.to_uppercase().chars().take(30).collect();
+        fb.text(
+            1,
+            y,
+            &format!(
+                "{}{:<13}{:<31}{}  {:+.2}",
+                if i == sel { ">" } else { " " },
+                r.who.kind.label(),
+                name,
+                bar.iter().collect::<String>(),
+                r.value
+            ),
+            col,
+        );
+    }
+    // The selected entity: its ties, then what changed lately (echoes in dim).
+    let x = 90;
+    if let Some(r) = rows.get(sel) {
+        fb.text(x, 4, &r.name.to_uppercase(), AMBER);
+        let (friends, foes) = s.ties_of(r.who);
+        fb.text(x, 6, "ALLIES", GREEN);
+        for (k, n) in friends.iter().take(6).enumerate() {
+            fb.text(x + 2, 7 + k, &n.to_uppercase(), GREEN);
+        }
+        fb.text(x, 14, "RIVAUX", RED);
+        for (k, n) in foes.iter().take(6).enumerate() {
+            fb.text(x + 2, 15 + k, &n.to_uppercase(), RED);
+        }
+    }
+    let y0 = fb.rows().saturating_sub(5);
+    fb.text(
+        1,
+        y0.saturating_sub(7),
+        "DERNIERS CHANGEMENTS (ECHO = REPERCUSSION D'UN AUTRE)",
+        AMBER,
+    );
+    for (k, c) in s.relations.history.iter().rev().take(5).enumerate() {
+        fb.text(
+            1,
+            y0.saturating_sub(6) + k,
+            &format!(
+                "{:<30}{:+.3}{}",
+                s.entity_name(c.who)
+                    .to_uppercase()
+                    .chars()
+                    .take(29)
+                    .collect::<String>(),
+                c.delta,
+                if c.echo { "  (ECHO)" } else { "" }
+            ),
+            if c.echo {
+                DIM
+            } else if c.delta > 0.0 {
+                GREEN
+            } else {
+                RED
+            },
+        );
+    }
+    fb.text(
+        1,
+        fb.rows() - 3,
+        "HAUT/BAS:CHOISIR  PGUP/PGDN:SAUTER  TAB:FACTIONS  X/ECHAP:RETOUR",
+        DIM,
+    );
+}
+
 pub fn draw(fb: &mut Framebuffer, g: &Game) {
+    if g.rel_page {
+        draw_relations(fb, g);
+        return;
+    }
     let s = &g.sim;
     let fs = &g.data.factions;
     let n = fs.len();
     fb.text(1, 1, "FACTIONS ET MOEURS", AMBER);
+    fb.text(40, 1, "[TAB] RELATIONS", DIM);
     fb.text(
         1,
         2,

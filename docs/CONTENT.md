@@ -49,3 +49,6 @@ Mœurs : data/ethos.ron (8 axes, 8 étiquettes morales, 8 profils de faction), g
 
 ## Entreprises
 `data/companies.ron` : id, nom, siège (faction), cours de base, rendement annuel, volatilité, biens (id, poids, total 1), texte.
+
+## Surprises
+`data/surprises.ron` : id, nom, etiquette (une du fil de nouvelles), poids, delai (jours), `when` (conditions toutes vraies : WorldEvent, AtWar, Unrest, CartelHere, Incident, Epidemic, ColonyNear, ColonyUnrest, Territory, Claimed, Civ, Anomaly, AnomalyOf, Docked, InFlight, Credits, Contracts, Rel, Morale, Crew, Hold, Seat, Wanted, InDebt, Shares, Herd), `effects` (Credits, Rel, Bond, Shock, Cargo, Morale, Contract, Research, ColonyHappiness), `choices` (libelle, resultat, effets ; au plus 3, avec `window` jours pour repondre), texte avec {here} {ally} {rival} {place}. Cibles : Here, Ally, Rival, Contact, Civ, Faction(id), Cartel(id), Company(id). Validation au chargement : ids connus, bornes des effets, au moins une condition, un effet ou un choix. Chaque surprise a une entree SURPRISES du codex (conditions et effets decrits depuis les donnees) et un test qui la rend vraie, la declenche et verifie qu'elle change le monde.

@@ -1,6 +1,7 @@
 //! Native civilisations (E4): living worlds with enough habitable land may hold one. Which one,
 //! its name, mores and size come from the world's seed (nothing is stored); only what the player
 //! did to its goodwill is saved.
+use crate::relations::Entity;
 use crate::Sim;
 use vector_core::{hash_coord, Rng};
 use vector_world::surface::{H, W};
@@ -24,7 +25,7 @@ pub struct Civ {
 }
 
 impl Sim {
-    fn civ_key(&self, body: usize) -> u64 {
+    pub(crate) fn civ_key(&self, body: usize) -> u64 {
         hash_coord(self.system.seed, body as i64, 0, 71)
     }
 
@@ -77,17 +78,20 @@ impl Sim {
         })
     }
 
+    /// Goodwill of the people of `body` toward the player (a view of the relations registry).
     pub fn civ_reputation(&self, body: usize) -> f32 {
-        self.civ_rep
-            .get(&self.civ_key(body))
-            .copied()
-            .unwrap_or(0.0)
+        self.rel(Entity::civ(self.civ_key(body)))
     }
 
+    /// Change the goodwill of the people of `body`; the territory it lies in feels it a little.
     pub fn change_civ_reputation(&mut self, body: usize, delta: f32) {
-        let key = self.civ_key(body);
-        let v = self.civ_rep.entry(key).or_insert(0.0);
-        *v = (*v + delta).clamp(-1.0, 1.0);
+        let e = Entity::civ(self.civ_key(body));
+        if !self.relations.labels.iter().any(|(k, _)| *k == e) {
+            if let Some(c) = self.civilisation(body) {
+                self.relations.label(e, &c.name);
+            }
+        }
+        self.relate(e, delta);
     }
 
     /// Whether the ship is near enough to a world to talk to its people.

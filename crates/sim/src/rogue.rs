@@ -1610,6 +1610,7 @@ impl Sim {
         }
         let m = r.floor_mut().monsters.remove(k);
         r.kills += 1;
+        self.kill_relations(r.body, m.hunts, m.boss);
         r.say(format!("{name} est abattu."));
         let mult = if m.boss { 3.0 } else { 1.0 } * (1.0 + 0.3 * r.depth() as f64);
         for (res, lo, hi) in &m.drops {
@@ -3261,6 +3262,32 @@ mod tests {
             r.loot.iter().any(|l| l.0 == 0 && l.1 >= 7.0),
             "what was found comes up"
         );
+    }
+
+    #[test]
+    fn a_kill_in_the_field_changes_the_standing_with_the_territory() {
+        let (mut s, body, cx, cy) = landing_site();
+        s.faction = Some(0);
+        s.rogue = None;
+        s.rogue_land(body, cx, cy, vec![0], false).unwrap();
+        let (lx, ly) = {
+            let r = s.rogue.as_ref().unwrap();
+            (r.x, r.y)
+        };
+        let prey = (0..s.data.species.len())
+            .find(|&i| !s.data.species[i].is_producer())
+            .unwrap();
+        let mut a = mon_from_species(&s.data, prey, lx + 1, ly);
+        a.hp = 0.001;
+        a.hunts = true;
+        let mut r = s.rogue.take().unwrap();
+        r.floors[0].monsters.clear();
+        r.floors[0].monsters.push(a);
+        let rep = s.reputation_with(Some(0));
+        s.rogue_attack(&mut r, 0);
+        assert_eq!(r.kills, 1);
+        assert!(s.reputation_with(Some(0)) > rep, "the kill was thanked");
+        s.rogue = Some(r);
     }
 
     #[test]

@@ -121,3 +121,6 @@ Par défaut AZERTY : tangage Z/S, lacet Q/D, roulis A/E. Options > Clavier bascu
 - Exploration à pied (un seul système pour les mondes, stations, épaves, ruines, grottes, portails, dimensions) : touche Fin en vol ou à quai, ou E sur la carte de surface (F8). Mondes : « Atterrir » ; la surface a ses sites qui mènent aux étages des lieux.
 - Pilotage : Inser (ou « ORBITE CIRCULAIRE » du menu) met le vaisseau sur une orbite circulaire autour du monde le plus proche (dans 12 rayons), payee en carburant. Un contact a moins de 25 m/s avec un monde solide est un atterrissage (le vaisseau reste pose jusqu'a la poussee ; Fin pour explorer a pied) ; plus vite, c'est un impact. L'air des mondes freine les plongees.
 - Exploration a pied : F bascule la vue a la premiere personne (prototype a la Daggerfall : memes etages, memes tours ; gauche/droite tournent d'un huitieme de tour, haut/bas avancent et reculent ; creatures, gens, arbres, plantes, bornes et escaliers sont des panneaux faits d'ASCII).
+
+## Relations et surprises
+Ecran Factions (X) : Tab ouvre le registre des relations (Haut/Bas choisir, PgUp/PgDn sauter, Tab retour a l'anneau, X/Echap quitter). Journal (J) : quand une surprise attend un choix, elle s'affiche en bas ; touches 1 a 3 pour repondre.

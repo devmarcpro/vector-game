@@ -1,5 +1,6 @@
 //! Factions, reputation, customs, emergent contracts and the bank.
 use crate::crew::DAY;
+use crate::relations::Entity;
 use crate::{Event, Sim};
 use serde::{Deserialize, Serialize};
 use vector_core::{hash_coord, Rng};
@@ -48,17 +49,28 @@ impl Sim {
         self.faction = self.galaxy.territory(self.here_pos, n);
     }
 
+    /// Standing with a faction on the old -100 .. 100 scale: a view of the relations registry.
     pub fn reputation_with(&self, faction: Option<usize>) -> f32 {
         faction
-            .and_then(|f| self.reputation.get(f))
-            .copied()
-            .unwrap_or(0.0)
+            .filter(|f| *f < self.data.factions.len())
+            .map_or(0.0, |f| {
+                self.rel(Entity::faction(f)) * crate::relations::FACTION_SCALE
+            })
     }
 
+    /// Change the standing with a faction (old scale); its allies and rivals feel it too.
     pub fn change_reputation(&mut self, faction: Option<usize>, delta: f32) {
-        if let Some(r) = faction.and_then(|f| self.reputation.get_mut(f)) {
-            *r = (*r + delta).clamp(REP_MIN, REP_MAX);
+        if let Some(f) = faction.filter(|f| *f < self.data.factions.len()) {
+            self.relate(Entity::faction(f), delta / crate::relations::FACTION_SCALE);
         }
+    }
+
+    /// Set the standing with a faction outright (old scale; scenes and tests).
+    pub fn set_reputation(&mut self, faction: usize, rep: f32) {
+        self.relations.set(
+            Entity::faction(faction),
+            (rep / crate::relations::FACTION_SCALE).clamp(REP_MIN / 100.0, REP_MAX / 100.0),
+        );
     }
 
     /// Price multiplier for the player in the current territory: good standing earns better prices.
@@ -256,6 +268,7 @@ impl Sim {
                 faction,
             });
         }
+        out.extend(self.surprise_offers_here(st));
         out.retain(|c| {
             !self.contracts.iter().any(|a| a.id == c.id) && !self.done_contracts.contains(&c.id)
         });
@@ -284,9 +297,15 @@ impl Sim {
         let data = std::sync::Arc::clone(&self.data);
         self.ship.cargo.remove(&data, c.resource, c.kg);
         self.market(st).stock[c.resource] += c.kg;
-        let pay = c.reward * (1.0 - self.tax_rate());
+        // Whoever ordered the goods pays better the more it likes you (+-10 % at +-100).
+        let issuer = c.faction.or(self.faction);
+        let edge = 1.0 + 0.001 * f64::from(self.reputation_with(issuer));
+        let pay = c.reward * edge * (1.0 - self.tax_rate());
         self.credits += pay;
         self.change_reputation(self.faction, 3.0);
+        if issuer != self.faction {
+            self.change_reputation(issuer, 1.5);
+        }
         self.done_contracts.push(c.id);
         if self.done_contracts.len() > 200 {
             self.done_contracts.remove(0);
@@ -318,9 +337,11 @@ impl Sim {
         BASE_CREDIT_LIMIT
             + 200.0
                 * self
-                    .reputation
+                    .data
+                    .factions
                     .iter()
-                    .map(|r| f64::from(r.max(0.0)))
+                    .enumerate()
+                    .map(|(i, _)| f64::from(self.reputation_with(Some(i)).max(0.0)))
                     .sum::<f64>()
     }
 
@@ -428,7 +449,7 @@ mod tests {
     #[test]
     fn faction_and_industry_are_assigned() {
         let s = docked_at_hub();
-        assert_eq!(s.reputation.len(), s.data.factions.len());
+        assert!(s.reputation_with(Some(s.data.factions.len() - 1)).abs() < 1e-3);
         assert!(s.station_industry(0) < s.data.industries.len());
         assert_eq!(s.station_industry(3), s.station_industry(3));
         let mut seen = std::collections::BTreeSet::new();
@@ -445,11 +466,11 @@ mod tests {
         let iron = s.data.resource_index("iron").expect("iron");
         let data = Arc::clone(&s.data);
         s.ship.cargo.add(&data, iron, 400.0);
-        s.reputation[0] = 0.0;
+        s.set_reputation(0, 0.0);
         let before = s.market(s.docked.expect("d")).clone();
         let neutral = s.sell(iron, Some(200.0)).expect("sell");
         *s.market(s.docked.expect("d")) = before;
-        s.reputation[0] = 80.0;
+        s.set_reputation(0, 80.0);
         let friendly = s.sell(iron, Some(200.0)).expect("sell");
         assert!(
             friendly > neutral,
@@ -462,7 +483,7 @@ mod tests {
         let free = s.sell(iron, Some(100.0)).expect("sell");
         *s.market(st) = m;
         s.faction = Some(4);
-        s.reputation[4] = 0.0;
+        s.set_reputation(4, 0.0);
         let taxed = s.sell(iron, Some(100.0)).expect("sell");
         assert!(taxed < free, "10% tax must bite: {taxed} vs {free}");
     }
@@ -472,11 +493,11 @@ mod tests {
         let mut s = docked_at_hub();
         s.undock();
         s.faction = Some(2);
-        s.reputation[2] = -70.0;
+        s.set_reputation(2, -70.0);
         let st = s.nearest_station().expect("station").0;
         s.spawn_near(st, s.bodies[st].radius + 200.0);
         assert!(s.try_dock().is_err());
-        s.reputation[2] = -10.0;
+        s.set_reputation(2, -10.0);
         assert!(s.try_dock().is_ok());
     }
 
@@ -532,11 +553,11 @@ mod tests {
                     50.0
                 },
             );
-            let rep0 = s.reputation[conc];
+            let rep0 = s.reputation_with(Some(conc));
             if let Some((kg, fine)) = s.customs_check() {
                 assert!(kg > 0.0 && fine >= 0.0);
                 assert_eq!(s.ship.cargo.kg[gold], 0.0, "contraband confiscated");
-                assert!(s.reputation[conc] < rep0);
+                assert!(s.reputation_with(Some(conc)) < rep0);
                 caught = true;
                 break;
             }
@@ -545,9 +566,12 @@ mod tests {
             caught,
             "an aggressive faction should catch a smuggler within a few inspections"
         );
-        let rep0 = s.reputation[conc];
+        let rep0 = s.reputation_with(Some(conc));
         assert!(s.customs_check().is_none());
-        assert!(s.reputation[conc] > rep0, "clean cargo earns trust");
+        assert!(
+            s.reputation_with(Some(conc)) > rep0,
+            "clean cargo earns trust"
+        );
     }
 
     #[test]
@@ -597,10 +621,10 @@ mod tests {
         s.faction = Some(0);
         c2.faction = Some(0);
         s.accept_contract(c2).expect("accept");
-        s.reputation[0] = 10.0;
+        s.set_reputation(0, 10.0);
         s.time += 100.0;
         s.expire_contracts();
-        assert!(s.contracts.is_empty() && s.reputation[0] < 10.0);
+        assert!(s.contracts.is_empty() && s.reputation_with(Some(0)) < 10.0);
         // Never more than the cap.
         for k in 0..10u64 {
             let mut c3 = a[0].clone();
@@ -633,7 +657,7 @@ mod tests {
         s.bank.loan = s.credit_limit() * 1.5;
         s.credits = 20_000.0;
         s.faction = Some(0);
-        s.reputation[0] = 0.0;
+        s.set_reputation(0, 0.0);
         let mut seized = false;
         for _ in 0..40 {
             s.events.clear();
@@ -647,7 +671,7 @@ mod tests {
             }
         }
         assert!(seized, "a loan far above the limit is eventually collected");
-        assert!(s.reputation[0] < 0.0);
+        assert!(s.reputation_with(Some(0)) < 0.0);
         let _ = Vec3::ZERO;
     }
 

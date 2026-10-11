@@ -1,5 +1,6 @@
 //! Data schemas and loading/validation of `data/*.ron`. Content lives in data, not code.
 pub mod dialogue;
+pub mod surprise;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
@@ -799,6 +800,7 @@ pub struct GameData {
     pub rogue_themes: Vec<RogueTheme>,
     pub materials: Vec<Material>,
     pub companies: Vec<Company>,
+    pub surprises: Vec<surprise::Surprise>,
 }
 
 fn read<T: for<'a> Deserialize<'a>>(path: &Path) -> Result<T, DataError> {
@@ -845,6 +847,7 @@ impl GameData {
             rogue_themes: read(&dir.join("rogue_themes.ron"))?,
             materials: read(&dir.join("materials.ron"))?,
             companies: read(&dir.join("companies.ron"))?,
+            surprises: read(&dir.join("surprises.ron"))?,
         };
         // Generated extension files (tools/gen_scale.py) extend the hand-written tables.
         let mut extra_resources: Vec<Resource> = read(&dir.join("resources_organs.ron"))?;
@@ -1262,6 +1265,7 @@ impl GameData {
         self.validate_biomes()?;
         self.validate_species()?;
         self.validate_world_events()?;
+        self.validate_surprises()?;
         self.validate_ethos()?;
         self.validate_genes()?;
         self.validate_organs()?;
@@ -1900,6 +1904,105 @@ impl GameData {
         for (id, _) in &e.profiles {
             if !self.factions.iter().any(|f| f.id == *id) {
                 return bad(format!("mœurs: profil pour la faction inconnue {id}"));
+            }
+        }
+        Ok(())
+    }
+
+    /// Surprises: every id they name exists, effects are bounded, choices are complete.
+    fn validate_surprises(&self) -> Result<(), DataError> {
+        use surprise::{Cond, Effect, Target};
+        let bad = |s: String| Err(DataError::Invalid(s));
+        let res_ok = |id: &str| self.resource_index(id).is_some();
+        let fac_ok = |id: &str| self.factions.iter().any(|f| f.id == id);
+        let target_ok = |t: &Target| match t {
+            Target::Faction(f) => fac_ok(f),
+            Target::Cartel(c) => self.cartels.iter().any(|k| k.id == *c),
+            Target::Company(c) => self.companies.iter().any(|k| k.id == *c),
+            _ => true,
+        };
+        let mut seen = std::collections::HashSet::new();
+        for s in &self.surprises {
+            let id = &s.id;
+            if !seen.insert(id.as_str()) {
+                return bad(format!("surprise {id} en double"));
+            }
+            if s.weight <= 0.0 || !(0.0..=730.0).contains(&s.cooldown) {
+                return bad(format!("surprise {id}: poids ou delai invalide"));
+            }
+            if s.name.is_empty() || s.text.is_empty() || s.tag.is_empty() {
+                return bad(format!("surprise {id}: nom, texte ou etiquette vide"));
+            }
+            if s.when.is_empty() {
+                return bad(format!("surprise {id}: sans condition (rien de gratuit)"));
+            }
+            if s.effects.is_empty() && s.choices.is_empty() {
+                return bad(format!("surprise {id}: ni effet ni choix"));
+            }
+            if s.choices.is_empty() != (s.window == 0.0) || s.window > 60.0 || s.window < 0.0 {
+                return bad(format!("surprise {id}: delai de choix incoherent"));
+            }
+            if s.choices.len() > 3 {
+                return bad(format!("surprise {id}: trois choix au plus"));
+            }
+            for c in &s.when {
+                let ok = match c {
+                    Cond::WorldEvent(e) => self.world_events.iter().any(|w| w.id == *e),
+                    Cond::CartelHere(k) | Cond::Seat(k) => self.cartels.iter().any(|c| c.id == *k),
+                    Cond::Territory(f) => fac_ok(f),
+                    Cond::AnomalyOf(a) => self.anomaly_def(a).is_some(),
+                    Cond::Hold(r, kg) => res_ok(r) && *kg > 0.0,
+                    Cond::Rel(t, _, v) => target_ok(t) && (-1.0..=1.0).contains(v),
+                    Cond::Unrest(v) | Cond::ColonyUnrest(v) => (0.0..=1.0).contains(v),
+                    Cond::Epidemic(d) | Cond::ColonyNear(d) => *d > 0.0,
+                    Cond::Morale(_, v) => (0.0..=1.0).contains(v),
+                    _ => true,
+                };
+                if !ok {
+                    return bad(format!("surprise {id}: condition {c:?} invalide"));
+                }
+            }
+            let lists = std::iter::once(&s.effects).chain(s.choices.iter().map(|c| &c.effects));
+            for list in lists {
+                for e in list {
+                    let ok = match e {
+                        Effect::Credits(v) => v.abs() <= 20_000.0 && *v != 0.0,
+                        Effect::Rel(t, d) => target_ok(t) && d.abs() <= 0.5 && *d != 0.0,
+                        Effect::Bond(a, b, w, days) => {
+                            target_ok(a)
+                                && target_ok(b)
+                                && a != b
+                                && (-1.0..=1.0).contains(w)
+                                && *w != 0.0
+                                && (1.0..=365.0).contains(days)
+                        }
+                        Effect::Shock(k, m, days) => {
+                            let known = match k.strip_prefix("cat:") {
+                                Some(c) => self.resources.iter().any(|r| r.category == c),
+                                None => res_ok(k),
+                            };
+                            known
+                                && (0.3..=3.0).contains(m)
+                                && (m - 1.0).abs() >= 0.02
+                                && (1.0..=120.0).contains(days)
+                        }
+                        Effect::Cargo(r, kg) => res_ok(r) && kg.abs() <= 5000.0 && *kg != 0.0,
+                        Effect::Morale(v) => v.abs() <= 0.5 && *v != 0.0,
+                        Effect::Contract(r, kg, m) => {
+                            res_ok(r) && (50.0..=5000.0).contains(kg) && (0.8..=4.0).contains(m)
+                        }
+                        Effect::Research(v) => (0.0..=500.0).contains(v) && *v != 0.0,
+                        Effect::ColonyHappiness(v) => v.abs() <= 0.5 && *v != 0.0,
+                    };
+                    if !ok {
+                        return bad(format!("surprise {id}: effet {e:?} invalide"));
+                    }
+                }
+            }
+            for c in &s.choices {
+                if c.label.is_empty() || c.result.is_empty() {
+                    return bad(format!("surprise {id}: choix sans libelle ou resultat"));
+                }
             }
         }
         Ok(())

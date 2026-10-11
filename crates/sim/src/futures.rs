@@ -29,7 +29,9 @@ pub struct Future {
 impl Sim {
     /// Reference price of a good in the region around `pos` at time `t`, credits per kg.
     pub fn reference_price(&self, pos: [f64; 3], t: f64, res: usize) -> f64 {
-        self.data.resources[res].value * world_factors(&self.data, self.galaxy.seed, pos, t)[res]
+        self.data.resources[res].value
+            * world_factors(&self.data, self.galaxy.seed, pos, t)[res]
+            * self.shock_factor(pos, t, res)
     }
 
     /// What closing the contract now would pay out (margin plus gain or loss, never below 0).

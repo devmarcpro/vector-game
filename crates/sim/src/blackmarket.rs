@@ -1,6 +1,7 @@
 //! The black market: where a good is banned (by the mores or the contraband list of the people
 //! whose station you are at) a contact trades it anyway, at a premium, away from the customs.
 //! Every deal may end in a raid: the goods and a fine are lost and the people's trust with them.
+use crate::relations::Entity;
 use crate::{Event, Sim};
 use vector_core::{hash_coord, Rng};
 
@@ -15,21 +16,25 @@ pub const RAID_FINE: f64 = 600.0;
 /// Trust of a contact grows with every clean deal and falls with a raid; it improves the terms.
 pub const TRUST_STEP: f32 = 0.04;
 pub const TRUST_RAID: f32 = 0.3;
+/// Reputation lost with the local people at each clean deal (old -100..100 scale).
+pub const DEAL_STAIN: f32 = 0.3;
 
 impl Sim {
     /// Trust (0..1) of the contact of the people whose station this is.
     pub fn contact_trust(&self) -> f32 {
         self.faction
-            .and_then(|f| self.trade.contacts.iter().find(|c| c.0 == f))
-            .map_or(0.0, |c| c.1)
+            .map_or(0.0, |f| self.rel(Entity::contact(f)).clamp(0.0, 1.0))
     }
 
     fn set_trust(&mut self, delta: f32) {
         let Some(f) = self.faction else { return };
-        match self.trade.contacts.iter_mut().find(|c| c.0 == f) {
-            Some(c) => c.1 = (c.1 + delta).clamp(0.0, 1.0),
-            None => self.trade.contacts.push((f, delta.clamp(0.0, 1.0))),
-        }
+        self.relate_alone(Entity::contact(f), delta, false);
+    }
+
+    /// A clean deal is still smuggling: the authorities like you a little less, and so do their
+    /// friends; their enemies, who care nothing for their laws, a little more.
+    fn stain(&mut self) {
+        self.change_reputation(self.faction, -DEAL_STAIN);
     }
 
     /// (price asked per reference unit, price paid, chance of a raid) with the contact's trust.
@@ -92,6 +97,7 @@ impl Sim {
         let pay = self.reference_price(self.here_pos, self.time, res) * kg * self.black_terms().1;
         self.credits += pay;
         self.set_trust(TRUST_STEP);
+        self.stain();
         Ok(pay)
     }
 
@@ -113,6 +119,7 @@ impl Sim {
         // Whatever the hold could not take is paid back.
         self.credits += price * (kg - got);
         self.set_trust(TRUST_STEP);
+        self.stain();
         Ok(price * got)
     }
 }
@@ -197,6 +204,45 @@ mod tests {
             raided > 0 && (rate - RAID_CHANCE).abs() < 0.08,
             "raid rate {rate}"
         );
+    }
+
+    #[test]
+    fn a_clean_deal_builds_the_contact_and_stains_the_standing_with_echoes_on_rivals() {
+        let (mut s, res) = docked("verdant");
+        let f = s.faction.unwrap();
+        let foe = s.data.factions.iter().position(|x| x.id == "hegemonie");
+        let enemies: Vec<usize> = s.data.factions[f]
+            .enemies
+            .iter()
+            .filter_map(|id| s.data.factions.iter().position(|x| x.id == *id))
+            .collect();
+        s.ship.cargo.add(&std::sync::Arc::clone(&s.data), res, 50.0);
+        let (trust, rep) = (s.contact_trust(), s.reputation_with(Some(f)));
+        let enemy_before: Vec<f32> = enemies
+            .iter()
+            .map(|e| s.reputation_with(Some(*e)))
+            .collect();
+        let mut done = false;
+        for t in 0..40 {
+            s.time += f64::from(t) * 977.0;
+            if s.black_sell(res, 10.0).is_ok() {
+                done = true;
+                break;
+            }
+        }
+        assert!(done, "a deal went through");
+        assert!(s.contact_trust() > trust, "the contact trusts you more");
+        assert!(
+            s.reputation_with(Some(f)) < rep,
+            "but the authorities like you less"
+        );
+        if !enemies.is_empty() {
+            let grew = enemies
+                .iter()
+                .zip(&enemy_before)
+                .any(|(e, b)| s.reputation_with(Some(*e)) > *b);
+            assert!(grew, "their enemies take note kindly {foe:?}");
+        }
     }
 
     #[test]

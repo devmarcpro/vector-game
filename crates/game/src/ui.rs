@@ -1266,6 +1266,32 @@ fn draw_recruit(fb: &mut Framebuffer, g: &Game) {
     }
 }
 
+/// What waits for an answer (a surprise with choices): its words and the keys to answer.
+/// Returns the number of rows taken at the bottom of the screen.
+fn draw_pending(fb: &mut Framebuffer, g: &Game) -> usize {
+    let Some((text, labels)) = g.sim.pending_surprise(0) else {
+        return 0;
+    };
+    let waiting = g.sim.surprises.pending.len();
+    let top = fb.rows().saturating_sub(10);
+    fb.text(
+        1,
+        top,
+        &format!("SURPRISE ({waiting} EN ATTENTE) : REPONDRE PAR LES TOUCHES 1 A 3"),
+        AMBER,
+    );
+    fb.text(1, top + 1, &text.to_uppercase(), GREEN);
+    for (k, l) in labels.iter().enumerate() {
+        fb.text(
+            3,
+            top + 2 + k,
+            &format!("{} : {}", k + 1, l.to_uppercase()),
+            AMBER,
+        );
+    }
+    5
+}
+
 fn draw_journal(fb: &mut Framebuffer, g: &Game) {
     if g.journal_tab == 1 {
         draw_news(fb, g);
@@ -1274,7 +1300,8 @@ fn draw_journal(fb: &mut Framebuffer, g: &Game) {
     fb.text(1, 1, "JOURNAL DE BORD", AMBER);
     fb.text(30, 1, "[TAB] NOUVELLES DU MONDE", DIM);
     let log = &g.sim.crew.log;
-    let rows = fb.rows().saturating_sub(6);
+    let taken = draw_pending(fb, g);
+    let rows = fb.rows().saturating_sub(6 + taken + 1);
     let end = log.len().saturating_sub(g.journal_scroll.min(log.len()));
     let start = end.saturating_sub(rows);
     for (i, e) in log[start..end].iter().enumerate() {
@@ -1286,7 +1313,7 @@ fn draw_journal(fb: &mut Framebuffer, g: &Game) {
     fb.text(
         1,
         fb.rows() - 3,
-        "HAUT/BAS:DEFILER  K:EQUIPAGE  J/ECHAP:RETOUR",
+        "HAUT/BAS:DEFILER  1-3:REPONDRE A UNE SURPRISE  K:EQUIPAGE  J/ECHAP:RETOUR",
         DIM,
     );
 }
@@ -1301,7 +1328,8 @@ fn draw_news(fb: &mut Framebuffer, g: &Game) {
         "TOUT CE QUI SE DIT EST VRAI ; PLUS C'EST LOIN, PLUS CA ARRIVE TARD.",
         DIM,
     );
-    let rows = fb.rows().saturating_sub(7);
+    let taken = draw_pending(fb, g);
+    let rows = fb.rows().saturating_sub(7 + taken + 1);
     let list: Vec<_> = g.sim.news.iter().rev().collect();
     let start = g.journal_scroll.min(list.len().saturating_sub(1));
     for (i, n) in list.iter().skip(start).take(rows).enumerate() {
@@ -1325,7 +1353,7 @@ fn draw_news(fb: &mut Framebuffer, g: &Game) {
     fb.text(
         1,
         fb.rows() - 4,
-        "HAUT/BAS:DEFILER  TAB:JOURNAL  J/ECHAP:RETOUR",
+        "HAUT/BAS:DEFILER  1-3:REPONDRE A UNE SURPRISE  TAB:JOURNAL  J/ECHAP:RETOUR",
         DIM,
     );
 }

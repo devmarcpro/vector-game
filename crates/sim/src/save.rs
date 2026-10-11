@@ -52,7 +52,6 @@ pub struct SaveGame {
     pub scan: Vec<u8>,
     pub scan_progress: Vec<f32>,
     pub jump: Option<crate::voyage::JumpState>,
-    pub reputation: Vec<f32>,
     pub contracts: Vec<crate::economy::Contract>,
     pub done_contracts: Vec<u64>,
     pub bank: crate::economy::Bank,
@@ -76,8 +75,9 @@ pub struct SaveGame {
     pub rules: crate::rules::Rules,
     /// Food web of each colony's territory: (colony id, game time, biomass in kg).
     pub ecologies: Vec<(u32, f64, Vec<f32>, Vec<bool>)>,
-    /// Goodwill of the native civilisations (world key, value).
-    pub civ_rep: Vec<(u64, f32)>,
+    /// Every relation of the world with the player (see `relations`).
+    pub relations: crate::relations::Relations,
+    pub surprises: crate::surprises::SurpriseState,
     pub futures: Vec<crate::futures::Future>,
     pub next_future: u32,
     pub herd: Vec<crate::livestock::Animal>,
@@ -116,7 +116,6 @@ impl Sim {
             scan: self.scan.clone(),
             scan_progress: self.scan_progress.clone(),
             jump: self.jump.clone(),
-            reputation: self.reputation.clone(),
             contracts: self.contracts.clone(),
             done_contracts: self.done_contracts.clone(),
             bank: self.bank.clone(),
@@ -138,7 +137,8 @@ impl Sim {
             research_progress: self.research_progress,
             explored: self.explored.clone(),
             rules: self.rules.clone(),
-            civ_rep: self.civ_rep.iter().map(|(k, v)| (*k, *v)).collect(),
+            relations: self.relations.clone(),
+            surprises: self.surprises.clone(),
             futures: self.futures.clone(),
             next_future: self.next_future,
             herd: self.herd.clone(),
@@ -206,9 +206,6 @@ impl Sim {
             sim.scan_progress = save.scan_progress;
         }
         sim.jump = save.jump;
-        if save.reputation.len() == sim.reputation.len() {
-            sim.reputation = save.reputation;
-        }
         sim.contracts = save.contracts;
         sim.done_contracts = save.done_contracts;
         sim.bank = save.bank;
@@ -229,7 +226,8 @@ impl Sim {
             sim.researched = save.researched;
         }
         sim.rules = save.rules;
-        sim.civ_rep = save.civ_rep.into_iter().collect();
+        sim.relations = save.relations;
+        sim.surprises = save.surprises;
         sim.futures = save.futures;
         sim.next_future = save.next_future;
         sim.herd = save.herd;

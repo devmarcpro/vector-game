@@ -3,6 +3,7 @@ mod bourse_view;
 mod codex;
 mod console;
 mod crew_net_view;
+mod dialogue_view;
 mod faction_view;
 mod family_view;
 mod fleet_map_view;
@@ -243,6 +244,19 @@ fn snapshot(path: &str, scene: &str, data: Arc<GameData>) {
         "map" => {
             g.map = true;
             g.cycle_target(|_| true);
+        }
+        "dialogue" => {
+            g.sim.spawn_traffic();
+            let k = g
+                .sim
+                .npcs
+                .iter()
+                .position(|n| n.role == vector_sim::npc::NpcRole::Patrol)
+                .unwrap_or(0);
+            g.sim.npcs[k].faction = g.data.factions.iter().position(|f| f.id == "hegemonie");
+            g.sim.target_npc = Some(k);
+            g.open_dialogue();
+            g.dlg_sel = 1;
         }
         "proto0" | "proto1" => {
             g.proto = if scene == "proto0" { 0 } else { 1 };

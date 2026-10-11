@@ -1,0 +1,151 @@
+// Dialogues over the radio. Each node has texts by tone: formel (authoritarian factions),
+// cordial (open ones), mefiant (xenophobic ones), neutre (everybody else, and the fallback).
+// Placeholders: {name} {faction} {system} {cargo} {result}.
+// Conditions (joined by &): rep>x rep<x credits>x cargo:<res>>x ethos:<axis><x role:<ROLE> hostile !hostile
+// Effects: rep:+x credits:-x give:<res>:<kg> news region tip peace hostile bluff bribe
+(
+ starts: [("CARGO","trader_start"),("MINEUR","miner_start"),("PIRATE","pirate_start"),("PATROUILLE","patrol_start")],
+ nodes: [
+  (id:"trader_start",
+   text:[
+    ("formel","Ici le cargo {name}, immatriculé {faction}. Identifiez-vous et précisez l'objet de votre appel."),
+    ("cordial","Ohé, {name} à l'écoute ! Content de croiser un autre vaisseau par ici. Qu'est-ce que je peux faire pour vous ?"),
+    ("mefiant","...{name}. Je ne cherche pas d'ennuis. Restez à distance et dites ce que vous voulez."),
+    ("neutre","{name}, cargo de {faction}. Je vous écoute."),
+   ],
+   options:[
+    (label:"Demander les nouvelles", cond:"", effects:["news"], next:"news_reply"),
+    (label:"Que se dit-il dans la région ?", cond:"", effects:["region"], next:"region_reply"),
+    (label:"Un bon tuyau sur les prix ?", cond:"", effects:["tip"], next:"tip_reply"),
+    (label:"Offrir 20 kg de vivres", cond:"cargo:food>20", effects:["give:food:20","rep:+0.08"], next:"gift_reply"),
+    (label:"Menacer", cond:"!hostile", effects:["rep:-0.15"], next:"threat_reply"),
+    (label:"Terminer", cond:"", effects:[], next:"end"),
+   ]),
+  (id:"miner_start",
+   text:[
+    ("formel","Mineur {name}, concession {faction}. Je suis en service, soyez bref."),
+    ("cordial","Salut ! {name}, mineur. Le rocher est généreux aujourd'hui, venez voir si vous voulez !"),
+    ("mefiant","{name}. C'est mon rocher. Gardez vos distances."),
+    ("neutre","{name}, mineur pour {faction}. Qu'est-ce qu'il y a ?"),
+   ],
+   options:[
+    (label:"Demander les nouvelles", cond:"", effects:["news"], next:"news_reply"),
+    (label:"Que se dit-il dans la région ?", cond:"", effects:["region"], next:"region_reply"),
+    (label:"Un bon tuyau sur les prix ?", cond:"", effects:["tip"], next:"tip_reply"),
+    (label:"Offrir 20 kg d'eau", cond:"cargo:water>20", effects:["give:water:20","rep:+0.08"], next:"gift_reply"),
+    (label:"Menacer", cond:"!hostile", effects:["rep:-0.15"], next:"threat_reply"),
+    (label:"Terminer", cond:"", effects:[], next:"end"),
+   ]),
+  (id:"patrol_start",
+   text:[
+    ("formel","Ici {name}, de {faction}. Vous êtes dans notre espace. Déclarez votre cargaison et vos intentions."),
+    ("cordial","{name}, bonjour. Rien d'inquiétant, c'est un contrôle de routine. Tout va bien à bord ?"),
+    ("mefiant","{name}. Étranger, cette zone est surveillée. Ne faites pas un geste brusque."),
+    ("neutre","{name}, {faction}. Contrôle de routine."),
+   ],
+   options:[
+    (label:"Coopérer et décliner mon identité", cond:"", effects:["rep:+0.04"], next:"patrol_ok"),
+    (label:"Demander les nouvelles", cond:"", effects:["news"], next:"news_reply"),
+    (label:"Que se dit-il dans la région ?", cond:"", effects:["region"], next:"region_reply"),
+    (label:"Glisser 200 CR pour un contrôle plus court", cond:"credits>200", effects:["bribe"], next:"bribe_reply"),
+    (label:"Terminer", cond:"", effects:[], next:"end"),
+   ]),
+  (id:"pirate_start",
+   text:[
+    ("neutre","Eh toi ! Lâche ta soute ou on te troue. Paye le tribut et tu repars entier."),
+    ("mefiant","Tu as l'air d'un type qui tient à sa coque. Paye le tribut."),
+   ],
+   options:[
+    (label:"Payer le tribut", cond:"", effects:["peace"], next:"pirate_paid"),
+    (label:"Bluffer : une escadre arrive", cond:"", effects:["bluff"], next:"bluff_reply"),
+    (label:"Insulter", cond:"", effects:["hostile","rep:-0.1"], next:"pirate_angry"),
+    (label:"Terminer", cond:"", effects:[], next:"end"),
+   ]),
+  (id:"news_reply",
+   text:[
+    ("formel","Communiqué des autorités : {result}"),
+    ("cordial","Ah oui, ça jase beaucoup : {result}"),
+    ("mefiant","On raconte que {result} Je n'en sais pas plus."),
+    ("neutre","{result}"),
+   ],
+   options:[
+    (label:"Merci. Autre chose.", cond:"", effects:[], next:"back"),
+    (label:"Terminer", cond:"", effects:[], next:"end"),
+   ]),
+  (id:"region_reply",
+   text:[
+    ("formel","Renseignement de navigation : {result}"),
+    ("cordial","Vous cherchez de la compagnie ? {result}"),
+    ("mefiant","{result} Et n'allez pas dire que c'est moi qui vous l'ai dit."),
+    ("neutre","{result}"),
+   ],
+   options:[
+    (label:"Merci. Autre chose.", cond:"", effects:[], next:"back"),
+    (label:"Terminer", cond:"", effects:[], next:"end"),
+   ]),
+  (id:"tip_reply",
+   text:[
+    ("formel","Information commerciale, sans engagement : {result}"),
+    ("cordial","Entre nous, les affaires, ça se partage : {result}"),
+    ("mefiant","Pour ce que ça vaut : {result}"),
+    ("neutre","{result}"),
+   ],
+   options:[
+    (label:"Merci. Autre chose.", cond:"", effects:[], next:"back"),
+    (label:"Terminer", cond:"", effects:[], next:"end"),
+   ]),
+  (id:"gift_reply",
+   text:[
+    ("formel","Un geste apprécié. {faction} s'en souviendra."),
+    ("cordial","Oh, c'est généreux ! Je vous revaudrai ça, promis."),
+    ("mefiant","...Pourquoi ce cadeau ? Enfin. Merci."),
+    ("neutre","Merci, c'est correct de votre part."),
+   ],
+   options:[
+    (label:"De rien. Autre chose.", cond:"", effects:[], next:"back"),
+    (label:"Terminer", cond:"", effects:[], next:"end"),
+   ]),
+  (id:"threat_reply",
+   text:[
+    ("formel","Vous venez de commettre une faute grave envers {faction}. Cet échange est clos."),
+    ("cordial","Hé ! Pas de ça entre nous, calmez-vous."),
+    ("mefiant","Je prends note de vos menaces. Cette conversation est terminée."),
+    ("neutre","Très bien, très bien... laissez-moi tranquille."),
+   ],
+   options:[(label:"Terminer", cond:"", effects:[], next:"end")]),
+  (id:"patrol_ok",
+   text:[
+    ("formel","Identité enregistrée. Circulez, et respectez les règlements de {faction}."),
+    ("cordial","Parfait, merci de votre coopération. Bon vol !"),
+    ("mefiant","Noté. Nous gardons un oeil sur vous."),
+    ("neutre","Noté. Vous pouvez circuler."),
+   ],
+   options:[
+    (label:"Autre chose.", cond:"", effects:[], next:"back"),
+    (label:"Terminer", cond:"", effects:[], next:"end"),
+   ]),
+  (id:"bribe_reply",
+   text:[
+    ("formel","{result}"),
+    ("cordial","{result}"),
+    ("mefiant","{result}"),
+    ("neutre","{result}"),
+   ],
+   options:[(label:"Terminer", cond:"", effects:[], next:"end")]),
+  (id:"pirate_paid",
+   text:[
+    ("neutre","{result}"),
+   ],
+   options:[(label:"Terminer", cond:"", effects:[], next:"end")]),
+  (id:"bluff_reply",
+   text:[
+    ("neutre","{result}"),
+   ],
+   options:[(label:"Terminer", cond:"", effects:[], next:"end")]),
+  (id:"pirate_angry",
+   text:[
+    ("neutre","Tu vas le regretter, charogne !"),
+   ],
+   options:[(label:"Terminer", cond:"", effects:[], next:"end")]),
+ ],
+)

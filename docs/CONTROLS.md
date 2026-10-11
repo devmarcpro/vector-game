@@ -84,3 +84,5 @@ Tout se fait aussi à la souris (hors visée F7, où la souris pilote le vaissea
 - **Equipage, O, puis Gauche/Droite** choisit un implant, **I** le pose, **U** le retire (la pièce doit être en soute ; 3000 CR à quai).
 
 - **Liste des organes, M** : injecter une dose de mutagène (0.1 kg) à la personne choisie.
+
+- **Entrée** (en vol, vaisseau ciblé) : appeler ; 1-6 ou clic pour répondre, Haut/Bas + Entrée, Echap coupe.

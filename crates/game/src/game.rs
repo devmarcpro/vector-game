@@ -60,6 +60,7 @@ pub enum Screen {
     Family,
     Factions,
     Proto,
+    Dialogue,
 }
 
 /// Route being composed in the fleet screen.
@@ -120,6 +121,12 @@ pub struct Game {
     /// Crew screen: the organ list of the selected person has the keys.
     pub organ_mode: bool,
     pub organ_sel: usize,
+    /// Radio conversation: who, where in the tree, what just happened, the lines so far.
+    pub dlg_npc: usize,
+    pub dlg_node: String,
+    pub dlg_result: String,
+    pub dlg_log: Vec<String>,
+    pub dlg_sel: usize,
     /// Implant type chosen in the organ list (Left/Right).
     pub cyber_sel: usize,
     /// Interface prototypes (F12): which one, and the implant slot picked in the body one.
@@ -238,6 +245,11 @@ impl Game {
             crew_net: false,
             organ_mode: false,
             organ_sel: 0,
+            dlg_npc: 0,
+            dlg_node: String::new(),
+            dlg_result: String::new(),
+            dlg_log: Vec::new(),
+            dlg_sel: 0,
             cyber_sel: 0,
             proto: 0,
             proto_slot: 0,
@@ -711,6 +723,7 @@ impl Game {
             Screen::Bourse => self.bourse_key(code),
             Screen::Factions => self.factions_key(code),
             Screen::Proto => self.proto_key(code),
+            Screen::Dialogue => self.dialogue_key(code),
             Screen::Family => self.family_key(code),
             Screen::Destroyed => {
                 if code == KeyCode::Enter {
@@ -1991,6 +2004,7 @@ impl Game {
             },
             KeyCode::F5 => self.save_game(),
             KeyCode::F12 => self.screen = Screen::Proto,
+            KeyCode::Enter => self.open_dialogue(),
             KeyCode::F9 => {
                 self.load_game();
             }
@@ -2170,6 +2184,7 @@ mod tests {
             Screen::Family,
             Screen::Factions,
             Screen::Proto,
+            Screen::Dialogue,
         ] {
             g.screen = s;
             let line = crate::tutorial::hint_line(&g);
@@ -2663,6 +2678,43 @@ mod tests {
         g.key(KeyCode::Escape, None, true);
         assert!(!g.organ_mode);
         assert_eq!(g.screen, Screen::Crew, "Escape only left the organ list");
+    }
+
+    #[test]
+    fn enter_calls_the_targeted_ship_and_the_answers_work_by_key_and_mouse() {
+        let mut g = Game::new(data(), 1);
+        g.key(KeyCode::Enter, None, true);
+        assert_eq!(g.screen, Screen::Flight);
+        g.settings.tutorial = false;
+        g.key(KeyCode::Enter, None, true);
+        assert_eq!(g.screen, Screen::Flight, "nobody targeted: nothing happens");
+        g.sim.spawn_traffic();
+        let k = g
+            .sim
+            .npcs
+            .iter()
+            .position(|n| n.role == vector_sim::npc::NpcRole::Trader)
+            .expect("a trader");
+        g.sim.target_npc = Some(k);
+        g.key(KeyCode::Enter, None, true);
+        assert_eq!(g.screen, Screen::Dialogue);
+        let start = g.dlg_node.clone();
+        // Ask for the news by key: we land on the reply node.
+        g.key(KeyCode::Digit1, None, true);
+        assert_eq!(g.dlg_node, "news_reply");
+        assert_ne!(g.dlg_node, start);
+        assert!(!g.dlg_log.is_empty());
+        // "Autre chose" goes back to the start by mouse (first button).
+        frame(&g);
+        let (x, y) = {
+            let hits = g.pointer.hits.borrow();
+            let h = hits.first().expect("answer buttons are zones");
+            ((h.rect.0 + h.rect.2) / 2, (h.rect.1 + h.rect.3) / 2)
+        };
+        g.pointer_click(x, y, 1_000);
+        assert_eq!(g.dlg_node, start, "back to the start node");
+        g.key(KeyCode::Escape, None, true);
+        assert_eq!(g.screen, Screen::Flight);
     }
 
     #[test]

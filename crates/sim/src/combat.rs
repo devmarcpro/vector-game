@@ -726,7 +726,7 @@ impl Sim {
     }
 
     /// Return a fighter to its normal routine.
-    fn end_combat(&mut self, k: usize) {
+    pub(crate) fn end_combat(&mut self, k: usize) {
         let rocks: Vec<usize> = (0..self.bodies.len())
             .filter(|&i| matches!(self.bodies[i].kind, vector_world::BodyKind::Asteroid(_)))
             .collect();

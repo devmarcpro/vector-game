@@ -7,6 +7,7 @@ pub mod colony;
 pub mod combat;
 pub mod crew;
 pub mod design;
+pub mod dialogue;
 pub mod ecology;
 pub mod economy;
 pub mod fleet;

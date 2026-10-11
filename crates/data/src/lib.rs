@@ -1,4 +1,5 @@
 //! Data schemas and loading/validation of `data/*.ron`. Content lives in data, not code.
+pub mod dialogue;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
@@ -589,6 +590,7 @@ pub struct GameData {
     pub genes: Vec<Gene>,
     pub organs: Vec<Organ>,
     pub cybernetics: Vec<Cybernetic>,
+    pub dialogues: dialogue::Dialogues,
 }
 
 fn read<T: for<'a> Deserialize<'a>>(path: &Path) -> Result<T, DataError> {
@@ -624,6 +626,7 @@ impl GameData {
             genes: read(&dir.join("genes.ron"))?,
             organs: read(&dir.join("organs.ron"))?,
             cybernetics: read(&dir.join("cybernetics.ron"))?,
+            dialogues: read(&dir.join("dialogues.ron"))?,
         };
         // Generated extension files (tools/gen_scale.py) extend the hand-written tables.
         let mut extra_resources: Vec<Resource> = read(&dir.join("resources_organs.ron"))?;
@@ -1044,7 +1047,70 @@ impl GameData {
         self.validate_ethos()?;
         self.validate_genes()?;
         self.validate_organs()?;
-        self.validate_cybernetics()
+        self.validate_cybernetics()?;
+        self.validate_dialogues()
+    }
+
+    /// Dialogues: every node reachable and well formed, conditions and effects that parse and name
+    /// known axes and goods, a neutral text everywhere.
+    fn validate_dialogues(&self) -> Result<(), DataError> {
+        use dialogue::{parse_conds, parse_effect, Cond, Effect, ROLES, TONES};
+        let bad = |s: String| Err(DataError::Invalid(s));
+        let d = &self.dialogues;
+        let mut seen = std::collections::HashSet::new();
+        for n in &d.nodes {
+            if !seen.insert(n.id.as_str()) {
+                return bad(format!("dialogue {} en double", n.id));
+            }
+            if !n.text.iter().any(|(t, _)| t == "neutre") {
+                return bad(format!("dialogue {}: pas de texte neutre", n.id));
+            }
+            for (t, x) in &n.text {
+                if !TONES.contains(&t.as_str()) || x.is_empty() {
+                    return bad(format!("dialogue {}: ton {t} invalide", n.id));
+                }
+            }
+            if n.options.is_empty() {
+                return bad(format!("dialogue {}: aucune option", n.id));
+            }
+            for o in &n.options {
+                if o.next != "end" && o.next != "back" && d.node(&o.next).is_none() {
+                    return bad(format!("dialogue {}: suite {} inconnue", n.id, o.next));
+                }
+                let conds = parse_conds(&o.cond).map_err(DataError::Invalid)?;
+                for c in conds {
+                    let ok = match &c {
+                        Cond::Cargo(r, _, _) => self.resource_index(r).is_some(),
+                        Cond::Ethos(a, _, _) => self.ethos.axis(a).is_some(),
+                        Cond::Role(r) => ROLES.contains(&r.as_str()),
+                        _ => true,
+                    };
+                    if !ok {
+                        return bad(format!("dialogue {}: condition {} inconnue", n.id, o.cond));
+                    }
+                }
+                for e in &o.effects {
+                    let eff = parse_effect(e).map_err(DataError::Invalid)?;
+                    if let Effect::Give(r, kg) = &eff {
+                        if self.resource_index(r).is_none() || *kg <= 0.0 {
+                            return bad(format!("dialogue {}: don {e} invalide", n.id));
+                        }
+                    }
+                }
+            }
+        }
+        for r in ROLES {
+            let Some(start) = d.start_for(r) else {
+                return bad(format!("dialogue: pas de depart pour {r}"));
+            };
+            if d.node(start).is_none() {
+                return bad(format!("dialogue: depart {start} inconnu"));
+            }
+        }
+        if d.nodes.len() < 12 {
+            return bad("moins de 12 noeuds de dialogue".into());
+        }
+        Ok(())
     }
 
     pub fn cyber_index(&self, id: &str) -> Option<usize> {
@@ -1647,6 +1713,30 @@ mod tests {
             d.unlocking_tech("module", "fusion_mk1").is_none(),
             "tier 1 is free"
         );
+    }
+
+    #[test]
+    fn dialogues_are_validated() {
+        let ok = GameData::load(&dir()).expect("data loads");
+        assert!(ok.dialogues.nodes.len() >= 12);
+        let mut d = ok.clone();
+        d.dialogues.nodes[0].options[0].next = "nulle_part".into();
+        assert!(d.validate().is_err(), "unknown next node");
+        let mut d = ok.clone();
+        d.dialogues.nodes[0].options[0].cond = "rep=2".into();
+        assert!(d.validate().is_err(), "bad condition");
+        let mut d = ok.clone();
+        d.dialogues.nodes[0].options[3].cond = "ethos:inconnu>0.1".into();
+        assert!(d.validate().is_err(), "unknown axis");
+        let mut d = ok.clone();
+        d.dialogues.nodes[0].options[0].effects = vec!["give:unobtainium:5".into()];
+        assert!(d.validate().is_err(), "unknown good");
+        let mut d = ok.clone();
+        d.dialogues.nodes[0].text.retain(|(t, _)| t != "neutre");
+        assert!(d.validate().is_err(), "neutral text required");
+        let mut d = ok;
+        d.dialogues.starts.pop();
+        assert!(d.validate().is_err(), "every role needs a start");
     }
 
     #[test]

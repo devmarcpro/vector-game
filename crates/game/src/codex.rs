@@ -2,7 +2,7 @@
 //! weapon, faction, anomaly and condition, generated from the real data (no hand-written numbers).
 use vector_data::GameData;
 
-pub const CATEGORIES: [&str; 18] = [
+pub const CATEGORIES: [&str; 19] = [
     "RESSOURCES",
     "MODULES",
     "ARMES",
@@ -21,6 +21,7 @@ pub const CATEGORIES: [&str; 18] = [
     "GENES",
     "ORGANES",
     "IMPLANTS",
+    "COMMUNICATIONS",
 ];
 
 /// Number of entries in a category.
@@ -57,6 +58,7 @@ fn entries(data: &GameData, cat: usize) -> Vec<usize> {
         15 => (0..data.genes.len()).collect(),
         16 => (0..data.organs.len()).collect(),
         17 => (0..data.cybernetics.len()).collect(),
+        18 => (0..vector_data::dialogue::ROLES.len()).collect(),
         _ => Vec::new(),
     }
 }
@@ -81,6 +83,10 @@ pub fn names(data: &GameData, cat: usize) -> Vec<String> {
             15 => data.genes[i].name.clone(),
             16 => data.organs[i].name.clone(),
             17 => data.cybernetics[i].name.clone(),
+            18 => format!(
+                "Appeler : {}",
+                vector_data::dialogue::ROLES[i].to_lowercase()
+            ),
             _ => data.species[i].name.clone(),
         })
         .collect()
@@ -485,6 +491,33 @@ pub fn entry(data: &GameData, cat: usize, k: usize) -> Vec<String> {
                     res_name(data, &d.cure).unwrap_or_else(|| d.cure.clone())
                 }
             ));
+        }
+        18 => {
+            let role = vector_data::dialogue::ROLES[i];
+            out.push(format!(
+                "Appeler un vaisseau {} (Entree en vol, vaisseau cible)",
+                role.to_lowercase()
+            ));
+            out.push("Le ton de l'interlocuteur suit les moeurs de sa faction : formel (autorite), cordial (ouverture), mefiant (xenophobie), neutre.".to_string());
+            if let Some(start) = data
+                .dialogues
+                .start_for(role)
+                .and_then(|s| data.dialogues.node(s))
+            {
+                out.push(format!(
+                    "{} options au premier echange, {} noeuds de conversation en tout.",
+                    start.options.len(),
+                    data.dialogues.nodes.len()
+                ));
+                for o in &start.options {
+                    let cond = if o.cond.is_empty() {
+                        String::new()
+                    } else {
+                        format!("  [condition : {}]", o.cond)
+                    };
+                    out.push(format!("Option : {}{cond}", o.label));
+                }
+            }
         }
         17 => {
             let c = &data.cybernetics[i];

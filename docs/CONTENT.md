@@ -31,3 +31,6 @@ Espèces : 58 dans data/species.ron (python tools/gen_life.py, à lancer avec le
 Mœurs : data/ethos.ron (8 axes, 8 étiquettes morales, 8 profils de faction), généré à la main et validé par data_check.
 ## Organes
 `data/organs.ron` : coeur, poumons, foie, reins, cerveau (vitaux), estomac, yeux, muscles, os, peau. Chacun : poids dans l'état général, guérison par jour, valeur marchande, effets quand il est détruit, maladies qui l'attaquent. Codex : catégorie ORGANES.
+
+## Dialogues
+`data/dialogues.ron` : noeuds avec textes par ton, options (`cond`, `effects`, `next`). Conditions : rep, credits, cargo:<res>, ethos:<axe>, role:<ROLE>, hostile. Effets : rep, credits, give, news, region, tip, peace, hostile, bluff, bribe.

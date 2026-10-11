@@ -14,6 +14,10 @@ const HOVER: u32 = 0x00D0_FFD0;
 const CYAN: u32 = 0x0050_C0E0;
 
 /// Seconds since the first call: drives the little animations (interface only, never the sim).
+pub fn anim_time() -> f32 {
+    phase()
+}
+
 fn phase() -> f32 {
     static START: OnceLock<Instant> = OnceLock::new();
     START.get_or_init(Instant::now).elapsed().as_secs_f32()

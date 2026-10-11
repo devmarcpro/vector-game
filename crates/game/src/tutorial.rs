@@ -143,6 +143,7 @@ pub fn hint_line(g: &Game) -> String {
         }
         Screen::Recruit => "HAUT/BAS CANDIDAT  ENTREE EMBAUCHER  K EQUIPAGE  ECHAP RETOUR",
         Screen::Journal => "HAUT/BAS DEFILER  K EQUIPAGE  J/ECHAP RETOUR",
+        Screen::Dialogue => "1-6 OU CLIC REPONDRE  HAUT/BAS + ENTREE  ECHAP COUPER LA COMMUNICATION",
         Screen::Proto => "CLIC SUR LES ELEMENTS  GAUCHE/DROITE OU 1-2 PROTOTYPE  F12/ECHAP RETOUR",
         Screen::Factions => "GAUCHE/DROITE FACTION  CLIC : CHOISIR  X/ECHAP RETOUR",
         Screen::Galaxy => {
@@ -192,7 +193,7 @@ pub fn help_lines(screen: Screen) -> &'static [&'static str] {
             "G : pilote auto   D : amarrer   M : carte systeme",
             "PgUp/PgDn : temps   P : pause   Echap : menu",
             "H vaisseau  K equipage  I soute  J journal  X factions",
-            "L galaxie  F2 empire  F3 flotte  F4 techno  F6 codex",
+            "L galaxie  F2 empire  F3 flotte  F4 techno  F6 codex  Entree : appeler le vaisseau cible",
             "O : fonder une colonie   Z tribut   N epave   U abordage",
             "F8 : surface de la planete ou lune ciblee (releve niveau 2)",
             "Souris : clic = cibler un objet, double clic = y aller ; molette = temps ; clic droit = retour",
@@ -223,6 +224,11 @@ pub fn help_lines(screen: Screen) -> &'static [&'static str] {
         ],
         Screen::Recruit => &["Haut/Bas : candidat   Entree : embaucher"],
         Screen::Journal => &["Haut/Bas ou PgUp/PgDn : defiler   Echap : retour"],
+        Screen::Dialogue => &[
+            "Entree en vol : appeler le vaisseau cible (Tab/T/Y/R pour cibler)",
+            "Leur ton depend des moeurs de leur faction ; les reponses aussi",
+            "Cadeaux, nouvelles, tuyaux, corruption, bluff... Echap coupe",
+        ],
         Screen::Proto => &["Prototypes d'interface : le corps (1) et le hall de la station (2)", "Tout est clicable ; rien n'est encore branche"],
         Screen::Factions => &[
             "Gauche/Droite ou clic : choisir une faction",

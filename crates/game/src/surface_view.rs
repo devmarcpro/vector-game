@@ -318,6 +318,42 @@ fn draw_panel(fb: &mut Framebuffer, g: &Game, map: &PlanetMap, col: usize, row: 
         format!("MERS {:.0} % DE LA SURFACE", map.surface.sea_frac * 100.0),
         GREEN,
     );
+    let ph = sim.system.physics(map.body, f64::from(map.surface.tilt));
+    let day = match (ph.locked, ph.solar_day) {
+        (Some((1, 1)), _) | (_, None) => "VERROUILLEE : UNE FACE VERS L'ASTRE".to_string(),
+        (_, Some(d)) => format!("JOUR {:.1} H", d / 3600.0),
+    };
+    for (text, c) in [
+        (day, GREEN),
+        (format!("DENSITE {:.0} KG/M3", ph.density), GREEN),
+        (format!("LIBERATION {:.1} KM/S", ph.escape / 1000.0), GREEN),
+        (
+            format!(
+                "EQUATEUR {:.0} M/S  APLAT. {:.2} %",
+                ph.equator_speed,
+                ph.flattening * 100.0
+            ),
+            GREEN,
+        ),
+        (format!("INERTIE {:.2} MR2", ph.moment_factor), GREEN),
+        (
+            format!("MOMENT CINETIQUE {:.1E}", ph.angular_momentum),
+            GREEN,
+        ),
+        (format!("INTERIEUR : {}", ph.activity.label()), GREEN),
+        (
+            format!(
+                "NOYAU {:.0} %  FLUX {:.0} MW/M2",
+                ph.core_fraction * 100.0,
+                ph.heat_flux * 1000.0
+            ),
+            GREEN,
+        ),
+        (format!("MAGNETISME {:.2} (TERRE=1)", ph.magnetic), GREEN),
+        (format!("MAREE {:.2} M", ph.tide), GREEN),
+    ] {
+        line(fb, text, c);
+    }
     line(fb, String::new(), DIM);
     let (cx, cy) = (g.surf_cx, g.surf_cy);
     let i = Surface::idx(cx, cy);

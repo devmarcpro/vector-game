@@ -386,7 +386,6 @@ pub fn draw_surface(fb: &mut Framebuffer, g: &Game, r: &Rogue, dir: i32) {
         return;
     };
     let b = &g.sim.bodies[body];
-    let sys = &g.sim.system.bodies[body];
     let t = crate::terrain::Terrain::new(&map, b.radius);
     let (lat0, lon0) = (
         vector_world::surface::Surface::lat(cy),
@@ -409,7 +408,7 @@ pub fn draw_surface(fb: &mut Framebuffer, g: &Game, r: &Rogue, dir: i32) {
     let yaw = f64::from(sx).atan2(-f64::from(sy));
     let focal = f64::from(W) / 2.0 / PLANE;
     // The light of the star in the frame of this place.
-    let angle = std::f64::consts::TAU * g.sim.time / sys.rotation_period.max(60.0);
+    let angle = std::f64::consts::TAU * g.sim.time / g.sim.system.spin_period(body).max(60.0);
     let orient =
         vector_core::Mat3::rot_z(f64::from(map.surface.tilt)).mul(&vector_core::Mat3::rot_y(angle));
     let nb = |lat: f64, lon: f64| {

@@ -2,6 +2,7 @@
 pub mod galaxy;
 pub mod names;
 pub mod orbit;
+pub mod physics;
 pub mod surface;
 
 use names::{pick, roman, star_name};

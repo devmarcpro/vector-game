@@ -176,9 +176,8 @@ fn draw_world(fb: &mut Framebuffer, cam: &Camera, v: &View, i: usize) -> bool {
         return false;
     };
     let b = &v.sim.bodies[i];
-    let sys = &v.sim.system.bodies[i];
     // The world turns on its tilted axis once per day of its own.
-    let angle = std::f64::consts::TAU * v.sim.time / sys.rotation_period.max(60.0);
+    let angle = std::f64::consts::TAU * v.sim.time / v.sim.system.spin_period(i).max(60.0);
     let orient = Mat3::rot_z(f64::from(map.surface.tilt)).mul(&Mat3::rot_y(angle));
     let sun = (b.pos * -1.0).normalized();
     let data = &v.sim.data;
@@ -315,7 +314,7 @@ fn sky_view(v: &View) -> (f64, Option<(&'static str, f64)>) {
 fn draw_ball(fb: &mut Framebuffer, cam: &Camera, v: &View, i: usize, col: u32, bands: bool) {
     let b = &v.sim.bodies[i];
     let sys = &v.sim.system.bodies[i];
-    let angle = std::f64::consts::TAU * v.sim.time / sys.rotation_period.max(60.0);
+    let angle = std::f64::consts::TAU * v.sim.time / v.sim.system.spin_period(i).max(60.0);
     let orient = Mat3::rot_y(angle);
     let sun = (b.pos * -1.0).normalized();
     let seed = v.sim.system.seed ^ (i as u64) << 8;

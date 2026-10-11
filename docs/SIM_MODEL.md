@@ -147,3 +147,24 @@ Cours = base x exp(somme des poids x ln(facteur mondial du bien)) x (1 + volatil
 
 ## Elevage et casino
 Un animal a 4 traits de 2 alleles (0..4) ; l'enfant recoit un allele de chaque parent, mutation 2 %. Maturite 12-28 j, femelle au repos 30 j, rations 0,02*masse^0,75 par jour, famine mortelle apres 4-12 j. Casino : roulette 36/37 de retour, machine ~0,93 ; tirages par graine + compteur de parties.
+
+## Physique d'un astre (`world/physics.rs`)
+
+Tout est derive (rien n'est stocke, meme graine = memes nombres) et une seule fonction,
+`System::physics(i, tilt)`, alimente tous les ecrans.
+
+- Densite = M / (4/3 pi R^3); vitesse de liberation = sqrt(2GM/R) = sqrt(2) x vitesse orbitale rasante.
+- Moment d'inertie I = C M R^2 : C = 0,4 (boule homogene) vers 0,3 quand le corps est dense au centre
+  (Terre 0,33), 0,25 pour un geant, 0,07 pour une etoile. Moment cinetique L = I w, energie E = I w^2 / 2.
+- Aplatissement (Darwin-Radau) : f = (5q/2) / (1 + (5/2 (1 - 3C/2))^2), q = w^2 R^3 / GM. Les geants
+  rapides sont nettement plus aplatis que les roches.
+- Verrouillage de maree (Gladman) : t = w a^6 I Q / (3 G m_p^2 k2 R^5) (Q = 100, k2 = 0,3), compare a
+  l'age du systeme (hash de la graine, toujours < duree de vie de l'etoile). Verrouille : rotation =
+  periode orbitale (1:1), ou 2/3 de la periode si e > 0,2 (resonance 3:2 de Mercure). `System::spin_period`
+  remplace la rotation brute dans le cockpit, le sol et la vue a la premiere personne.
+- Jour solaire = 1 / |1/P_rot - 1/P_orbite| (aucun si verrouille), insolation L / 4 pi d^2.
+- Maree d'equilibre = somme (m_perturbateur / m) (R / d)^3 R sur les lunes et l'astre parent.
+- Spheres de Hill et limite de Roche (2,44 R (rho / 3000)^(1/3)); zone habitable 0,95-1,37 sqrt(L) UA.
+- Interieur : fraction du noyau selon la densite, flux de chaleur ~ R / age (+ chauffage de maree selon
+  l'excentricite), activite (inerte, couvercle fige, plaques, volcanique, fluide), champ magnetique
+  (dynamo : noyau fluide + rotation + taille).

@@ -1,0 +1,28 @@
+// Localised injuries. Severity runs 0..1 per wound.
+// bleed: share of the blood volume lost per hour at severity 1 while the wound is not dressed.
+// pain: pain at severity 1.   heal_days: days to mend from severity 1 for a healthy, fed, rested
+// person without care.   infect: chance per day that an untreated open wound gets infected.
+// internal: invisible without a medic (skill 3+) or an infirmary.   dress: needs a dressing,
+// splint or suture (first aid) to heal properly; undressed it mends slowly and may leave a
+// permanent disability.   parts: where it can strike (empty = anywhere).   cause: what makes it
+// (for the codex).
+[
+ (id:"coupure", name:"Coupure", bleed:0.08, pain:0.35, heal_days:8.0, infect:0.10, internal:false, dress:true, parts:[],
+  cause:"Lame, eclat de coque, arete coupante."),
+ (id:"fracture_os", name:"Fracture", bleed:0.01, pain:0.7, heal_days:30.0, infect:0.0, internal:false, dress:true, parts:["bras_g","bras_d","jambe_g","jambe_d","torse"],
+  cause:"Chute, choc, forte acceleration, gravite ecrasante."),
+ (id:"brulure_plaie", name:"Brulure", bleed:0.004, pain:0.6, heal_days:16.0, infect:0.15, internal:false, dress:true, parts:[],
+  cause:"Plasma, feu, surface brulante, coup de chaleur."),
+ (id:"hemorragie_interne", name:"Hemorragie interne", bleed:0.12, pain:0.5, heal_days:12.0, infect:0.0, internal:true, dress:true, parts:["torse","tete"],
+  cause:"Choc violent, acceleration extreme, decompression."),
+ (id:"barotraumatisme", name:"Barotraumatisme", bleed:0.03, pain:0.5, heal_days:7.0, infect:0.0, internal:true, dress:false, parts:["torse","tete"],
+  cause:"Chute rapide de pression : poumons dechires, gaz dissous qui forment des bulles."),
+ (id:"gelure", name:"Gelure", bleed:0.0, pain:0.4, heal_days:20.0, infect:0.12, internal:false, dress:true, parts:["bras_g","bras_d","jambe_g","jambe_d"],
+  cause:"Extremites exposees a un air bien sous zero."),
+ (id:"brulure_rayons_loc", name:"Brulure de rayonnement", bleed:0.0, pain:0.45, heal_days:25.0, infect:0.08, internal:false, dress:true, parts:["bras_g","bras_d","torse","tete"],
+  cause:"Dose de rayonnement forte et rapide, sans blindage."),
+ (id:"contusion", name:"Contusion", bleed:0.005, pain:0.25, heal_days:4.0, infect:0.0, internal:false, dress:false, parts:[],
+  cause:"Choc, chute, acceleration soutenue."),
+ (id:"traumatisme_crane", name:"Traumatisme cranien", bleed:0.02, pain:0.5, heal_days:14.0, infect:0.0, internal:true, dress:false, parts:["tete"],
+  cause:"Choc a la tete, acceleration brutale."),
+]

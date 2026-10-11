@@ -49,3 +49,6 @@ Mœurs : data/ethos.ron (8 axes, 8 étiquettes morales, 8 profils de faction), g
 
 ## Entreprises
 `data/companies.ron` : id, nom, siège (faction), cours de base, rendement annuel, volatilité, biens (id, poids, total 1), texte.
+
+## Corps, blessures, medicaments
+`data/body.ron` : id, nom, chance d'etre touchee (`hit`), extremite, organes abrites, effets du handicap total. `data/wounds.ron` : id, nom, saignement par heure, douleur, jours de guerison, risque d'infection, interne (invisible sans medecin competent ou infirmerie), demande un pansement, parties possibles, cause. `data/drugs.ron` : id, nom, ressource et dose, demi-vie, effets (pain, clot, infection, stress, fatigue, rad, heal, blood_now, resp, liver), tolerance et dependance par dose, interactions, texte. Valides au chargement (`medical.rs`) ; une entree de codex est generee pour chacun.

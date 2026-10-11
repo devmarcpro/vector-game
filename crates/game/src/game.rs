@@ -128,6 +128,10 @@ pub struct Game {
     pub crew_net: bool,
     /// Crew screen: the organ list of the selected person has the keys.
     pub organ_mode: bool,
+    /// Crew screen: the MEDECINE tab (silhouette, wounds, drugs, care).
+    pub med_mode: bool,
+    pub med_drug: usize,
+    pub med_wound: usize,
     /// Crew screen: the equipment list of the selected person has the keys.
     pub gear_mode: bool,
     pub gear_sel: usize,
@@ -289,6 +293,9 @@ impl Game {
             fac_sel: 0,
             crew_net: false,
             organ_mode: false,
+            med_mode: false,
+            med_drug: 0,
+            med_wound: 0,
             gear_mode: false,
             gear_sel: 0,
             organ_sel: 0,
@@ -1586,7 +1593,78 @@ impl Game {
             .unwrap_or(0);
     }
 
+    /// Keys of the MEDECINE tab of the crew screen.
+    fn med_key(&mut self, code: KeyCode) {
+        let n = self.sim.crew.members.len();
+        let member = self.crew_sel.min(n.saturating_sub(1));
+        let nd = self.data.drugs.len().max(1);
+        let result = match code {
+            KeyCode::ArrowUp if n > 0 => {
+                self.crew_sel = (self.crew_sel + n - 1) % n;
+                self.med_wound = 0;
+                return;
+            }
+            KeyCode::ArrowDown if n > 0 => {
+                self.crew_sel = (self.crew_sel + 1) % n;
+                self.med_wound = 0;
+                return;
+            }
+            KeyCode::ArrowLeft => {
+                self.med_drug = (self.med_drug + nd - 1) % nd;
+                return;
+            }
+            KeyCode::ArrowRight => {
+                self.med_drug = (self.med_drug + 1) % nd;
+                return;
+            }
+            KeyCode::Tab => {
+                self.med_wound += 1;
+                return;
+            }
+            KeyCode::Escape | KeyCode::KeyM => {
+                self.med_mode = false;
+                return;
+            }
+            KeyCode::KeyA if n > 0 => self.sim.first_aid(member),
+            KeyCode::KeyS if n > 0 => {
+                // The selected wound as the carer sees it (internal ones may be hidden).
+                let skill = self.sim.carer_skill(member);
+                let (list, _) = self.sim.crew.members[member].body.diagnose(
+                    &self.data,
+                    skill,
+                    self.sim.effective.medbay,
+                );
+                match list.get(self.med_wound.min(list.len().saturating_sub(1))) {
+                    Some((wi, _)) => self.sim.operate_wound(member, *wi),
+                    None => Err("aucune plaie visible a operer"),
+                }
+            }
+            KeyCode::Enter if n > 0 => self.sim.give_drug(member, self.med_drug.min(nd - 1)),
+            KeyCode::KeyR if n > 0 => self.sim.defibrillate(member),
+            KeyCode::KeyC if n > 0 => {
+                if self.sim.crew.members[member].body.cryo {
+                    self.sim.cryo_wake(member)
+                } else {
+                    self.sim.cryo_start(member)
+                }
+            }
+            _ => return,
+        };
+        match result {
+            Ok(r) => self.say(r.to_uppercase()),
+            Err(e) => self.say(e.to_uppercase()),
+        }
+    }
+
+    pub fn click_wound(&mut self, k: usize) {
+        self.med_wound = k;
+    }
+
     fn crew_key(&mut self, code: KeyCode) {
+        if self.med_mode {
+            self.med_key(code);
+            return;
+        }
         if self.organ_mode {
             self.organ_key(code);
             return;
@@ -1612,6 +1690,7 @@ impl Game {
             }
             KeyCode::KeyV => self.crew_net = !self.crew_net,
             KeyCode::KeyO if n > 0 => self.organ_mode = true,
+            KeyCode::KeyM if n > 0 => self.med_mode = true,
             KeyCode::KeyE if n > 0 => self.gear_mode = true,
             KeyCode::KeyT if n > 0 => {
                 let p = &mut self.sim.crew.members[self.crew_sel.min(n - 1)];
@@ -2975,6 +3054,38 @@ mod tests {
         assert_eq!(g.crew_sel, n - 1);
         g.key(KeyCode::KeyV, None, true);
         assert!(!g.crew_net);
+    }
+
+    #[test]
+    fn the_medicine_tab_opens_with_m_dresses_wounds_and_gives_drugs() {
+        let mut g = Game::new(data(), 1);
+        g.key(KeyCode::Enter, None, true);
+        g.screen = Screen::Crew;
+        g.key(KeyCode::KeyM, None, true);
+        assert!(g.med_mode);
+        frame(&g);
+        // Nothing to dress yet.
+        g.key(KeyCode::KeyA, None, true);
+        assert!(g
+            .messages
+            .last()
+            .is_some_and(|m| m.contains("RIEN A PANSER")));
+        let d = std::sync::Arc::clone(&g.data);
+        g.sim.crew.members[0].body.add_wound(&d, "coupure", 2, 0.5);
+        g.key(KeyCode::KeyA, None, true);
+        assert!(g.sim.crew.members[0].body.wounds[0].dressed > 0.0);
+        // A dose of the drug picked with the arrows.
+        g.key(KeyCode::ArrowRight, None, true);
+        assert_eq!(g.med_drug, 1);
+        g.key(KeyCode::Enter, None, true);
+        assert_eq!(g.sim.crew.members[0].body.drugs.len(), 1);
+        frame(&g);
+        assert!(
+            g.pointer.hits.borrow().len() > 5,
+            "the care words are clickable"
+        );
+        g.key(KeyCode::KeyM, None, true);
+        assert!(!g.med_mode);
     }
 
     #[test]

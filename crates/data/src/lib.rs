@@ -1,5 +1,7 @@
 //! Data schemas and loading/validation of `data/*.ron`. Content lives in data, not code.
 pub mod dialogue;
+pub mod medical;
+pub use medical::{BodyPart, Drug, WoundKind};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
@@ -787,6 +789,9 @@ pub struct GameData {
     pub ethos: Ethos,
     pub genes: Vec<Gene>,
     pub organs: Vec<Organ>,
+    pub body_parts: Vec<BodyPart>,
+    pub wounds: Vec<WoundKind>,
+    pub drugs: Vec<Drug>,
     pub cybernetics: Vec<Cybernetic>,
     pub dialogues: dialogue::Dialogues,
     pub sites: Vec<Site>,
@@ -833,6 +838,9 @@ impl GameData {
             ethos: read(&dir.join("ethos.ron"))?,
             genes: read(&dir.join("genes.ron"))?,
             organs: read(&dir.join("organs.ron"))?,
+            body_parts: read(&dir.join("body.ron"))?,
+            wounds: read(&dir.join("wounds.ron"))?,
+            drugs: read(&dir.join("drugs.ron"))?,
             cybernetics: read(&dir.join("cybernetics.ron"))?,
             dialogues: read(&dir.join("dialogues.ron"))?,
             sites: read(&dir.join("sites.ron"))?,
@@ -1265,6 +1273,7 @@ impl GameData {
         self.validate_ethos()?;
         self.validate_genes()?;
         self.validate_organs()?;
+        self.validate_medical()?;
         self.validate_cybernetics()?;
         self.validate_dialogues()?;
         self.validate_sites()?;

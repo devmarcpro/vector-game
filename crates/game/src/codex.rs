@@ -2,7 +2,7 @@
 //! weapon, faction, anomaly and condition, generated from the real data (no hand-written numbers).
 use vector_data::GameData;
 
-pub const CATEGORIES: [&str; 29] = [
+pub const CATEGORIES: [&str; 32] = [
     "RESSOURCES",
     "MODULES",
     "ARMES",
@@ -32,6 +32,9 @@ pub const CATEGORIES: [&str; 29] = [
     "LIEUX A EXPLORER",
     "CREATURES",
     "MATERIAUX",
+    "PARTIES DU CORPS",
+    "BLESSURES",
+    "MEDICAMENTS",
 ];
 
 /// Index in the source table of entry `k` of a category (modules and weapons share a table).
@@ -84,6 +87,9 @@ fn entries(data: &GameData, cat: usize) -> Vec<usize> {
         26 => (0..data.rogue_themes.len()).collect(),
         27 => (0..data.rogue_monsters.len()).collect(),
         28 => (0..data.materials.len()).collect(),
+        29 => (0..data.body_parts.len()).collect(),
+        30 => (0..data.wounds.len()).collect(),
+        31 => (0..data.drugs.len()).collect(),
         _ => Vec::new(),
     }
 }
@@ -118,6 +124,9 @@ pub fn names(data: &GameData, cat: usize) -> Vec<String> {
             26 => data.rogue_themes[i].name.clone(),
             27 => data.rogue_monsters[i].name.clone(),
             28 => data.materials[i].name.clone(),
+            29 => data.body_parts[i].name.clone(),
+            30 => data.wounds[i].name.clone(),
+            31 => data.drugs[i].name.clone(),
             18 => format!(
                 "Appeler : {}",
                 vector_data::dialogue::ROLES[i].to_lowercase()
@@ -837,6 +846,117 @@ pub fn entry(data: &GameData, cat: usize, k: usize) -> Vec<String> {
             } else {
                 "Non piratable (aucune interface sans fil).".to_string()
             });
+        }
+        29 => {
+            let p = &data.body_parts[i];
+            out.push(format!(
+                "{}  ({})",
+                p.name,
+                if p.limb { "extremite" } else { "tronc et tete" }
+            ));
+            out.push(format!(
+                "Part des coups recus : {:.0} %",
+                p.hit / data.body_parts.iter().map(|q| q.hit).sum::<f64>() * 100.0
+            ));
+            let organs: Vec<String> = p
+                .organs
+                .iter()
+                .filter_map(|o| data.organ_index(o).map(|k| data.organs[k].name.clone()))
+                .collect();
+            if !organs.is_empty() {
+                out.push(format!("Abrite : {}", organs.join(", ")));
+            }
+            for (k, w) in &p.effects {
+                out.push(format!("Handicap total : {k} {w:+.2}"));
+            }
+            let wounds: Vec<String> = data
+                .wounds
+                .iter()
+                .filter(|w| w.parts.is_empty() || w.parts.contains(&p.id))
+                .map(|w| w.name.clone())
+                .collect();
+            out.push(format!("Blessures possibles : {}", wounds.join(", ")));
+        }
+        30 => {
+            let w = &data.wounds[i];
+            out.push(format!(
+                "{}  ({})",
+                w.name,
+                if w.internal { "interne" } else { "externe" }
+            ));
+            out.push(format!(
+                "Saignement : {:.1} % du sang par heure au plus grave   douleur : {:.0} %   guerison : {:.0} jours",
+                w.bleed * 100.0,
+                w.pain * 100.0,
+                w.heal_days
+            ));
+            out.push(format!("Cause : {}", w.cause));
+            if w.infect > 0.0 {
+                out.push(format!(
+                    "Risque d'infection : {:.0} % par jour sans pansement",
+                    w.infect * 100.0
+                ));
+            }
+            if w.internal {
+                out.push(
+                    "Invisible sans medecin competent (3) ou infirmerie ; seule la chirurgie la ferme."
+                        .to_string(),
+                );
+            } else if w.dress {
+                out.push(
+                    "Demande un pansement ou une attelle : sans soin elle guerit lentement et laisse une sequelle."
+                        .to_string(),
+                );
+            }
+            let places: Vec<String> = data
+                .body_parts
+                .iter()
+                .filter(|p| w.parts.is_empty() || w.parts.contains(&p.id))
+                .map(|p| p.name.clone())
+                .collect();
+            out.push(format!("Peut toucher : {}", places.join(", ")));
+        }
+        31 => {
+            let d = &data.drugs[i];
+            out.push(format!("{}  ({})", d.name, d.text));
+            out.push(format!(
+                "Dose : {:.2} kg de {}   demi-vie : {:.0} h",
+                d.dose,
+                res_name(data, &d.resource).unwrap_or_else(|| d.resource.clone()),
+                d.half_life_h
+            ));
+            for (k, v) in &d.effects {
+                let what = match k.as_str() {
+                    "pain" => "soulage la douleur",
+                    "clot" => "arrete le saignement",
+                    "infection" => "combat l'infection",
+                    "stress" => "calme (negatif : angoisse)",
+                    "fatigue" => "tient eveille (negatif : endort)",
+                    "rad" => "protege du rayonnement",
+                    "heal" => "accelere la guerison",
+                    "blood_now" => "restitue du sang",
+                    "resp" => "deprime la respiration",
+                    _ => "abime le foie par jour",
+                };
+                out.push(format!("Effet : {what} ({v:.2})"));
+            }
+            out.push(format!(
+                "Tolerance : +{:.0} % par dose   dependance : +{:.0} % par dose",
+                d.tolerance * 100.0,
+                d.dependence * 100.0
+            ));
+            for (o, f) in &d.interactions {
+                if let Some(k) = data.drug_index(o) {
+                    out.push(format!(
+                        "Interaction dangereuse avec {} (+{:.1} de pression de surdose)",
+                        data.drugs[k].name, f
+                    ));
+                }
+            }
+            out.push(format!(
+                "Surdose au-dessus d'un niveau de {:.1} (foie faible ou melange : plus tot).",
+                vector_sim::body::OVERDOSE
+            ));
         }
         16 => {
             let o = &data.organs[i];

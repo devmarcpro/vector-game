@@ -170,6 +170,7 @@ impl Sim {
         ));
         let sick = self.data.disease_index("radiation");
         for p in self.crew.members.iter_mut().filter(|p| p.alive) {
+            p.body.pending_dose += dose as f32;
             p.health = (p.health - (dose * 0.04) as f32).max(0.0);
             if dose > 0.3 && p.disease.is_none() && rng.f64() < dose.min(1.0) {
                 if let Some(d) = sick {
@@ -190,23 +191,38 @@ impl Sim {
             7,
             59,
         ));
-        let injuries: Vec<usize> = [
-            "fracture",
-            "blessure_arme",
-            "brulure",
-            "commotion",
-            "decompression",
-        ]
-        .iter()
-        .filter_map(|id| self.data.disease_index(id))
-        .collect();
+        // What a hit of the hull does to a body: a blow, a cut, a burn, a lung torn by the
+        // sudden drop of pressure when the hit breaches the cabin.
+        let kinds = [
+            "contusion",
+            "coupure",
+            "fracture_os",
+            "brulure_plaie",
+            "traumatisme_crane",
+        ];
+        let data = std::sync::Arc::clone(&self.data);
         let p_hurt = (dmg / 800.0).min(0.5);
-        for p in self.crew.members.iter_mut().filter(|p| p.alive) {
+        for p in self
+            .crew
+            .members
+            .iter_mut()
+            .filter(|p| p.alive && !p.body.cryo)
+        {
             if rng.f64() < p_hurt {
-                p.health = (p.health - rng.range(0.1, 0.4) as f32).max(0.0);
-                if p.disease.is_none() && !injuries.is_empty() && rng.f64() < 0.5 {
-                    let d = injuries[(rng.next_u64() % injuries.len() as u64) as usize];
-                    p.disease = Some((d, self.data.diseases[d].duration_days as f32));
+                let loss = rng.range(0.1, 0.4) as f32;
+                p.health = (p.health - loss).max(0.0);
+                let k = kinds[(rng.next_u64() % kinds.len() as u64) as usize];
+                let pick = rng.next_u64();
+                let mut hurt = Vec::new();
+                hurt.extend(p.body.strike(&data, k, (loss * 2.0).min(1.0), pick));
+                if dmg >= 500.0 && rng.f64() < 0.5 {
+                    let to = 101.3 * (1.0 - (dmg / 1500.0).min(1.0));
+                    hurt.extend(p.body.rapid_decompression(&data, 101.3, to));
+                }
+                for (o, d) in hurt {
+                    if let Some(v) = p.organs.get_mut(o) {
+                        *v = (*v - d).max(0.0);
+                    }
                 }
             }
         }
@@ -723,8 +739,8 @@ mod tests {
         let after: f32 = s.crew.members.iter().map(|p| p.health).sum();
         assert!(after < before - 0.5, "heavy hits hurt people");
         assert!(
-            s.crew.members.iter().any(|p| p.disease.is_some()),
-            "and cause injuries"
+            s.crew.members.iter().any(|p| !p.body.wounds.is_empty()),
+            "and cause localised wounds"
         );
     }
 }

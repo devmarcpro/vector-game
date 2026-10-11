@@ -1,4 +1,5 @@
 //! Crew: individuals with skills, traits, needs, posts, relations; a data-driven event engine and a journal.
+use crate::body::{self, Body, Care, Exposure};
 use crate::cargo::Cargo;
 use crate::genealogy::{self, Families, Genome, Kin};
 use serde::{Deserialize, Serialize};
@@ -67,6 +68,8 @@ pub struct Person {
     pub instability: f32,
     /// Equipment worn, one per slot of `vector_data::GEAR_SLOTS` (index into `GameData::gear`).
     pub gear: Vec<Option<usize>>,
+    /// Wounds, blood, oxygen, temperature, drugs, disabilities (see `body`).
+    pub body: Body,
 }
 
 impl Person {
@@ -174,6 +177,7 @@ impl Person {
             + genealogy::gene_effect(data, &self.genome, key)
             + self.organ_effect(data, key)
             + self.implant_effect(data, key)
+            + self.body.trait_effect(data, key)
     }
 
     /// Chance multiplier of a disease from the genes (predispositions).
@@ -210,6 +214,14 @@ pub struct Crew {
     pub families: Families,
     /// Expected children: (mother id, father id, due date).
     pub pregnancies: Vec<(u32, u32, f64)>,
+    /// What the cabin exposes the crew to (set by the sim every update, never saved).
+    #[serde(skip)]
+    pub env: Exposure,
+    /// People exposed to something else than the cabin (a landing party on foot) until a date.
+    #[serde(skip)]
+    pub away: Vec<(u32, Exposure)>,
+    #[serde(skip)]
+    pub away_until: f64,
 }
 
 /// Everything the crew layer needs from the ship and the world for one update.
@@ -346,6 +358,7 @@ pub fn person_from_kin(
         hacked_until: 0.0,
         instability: 0.0,
         gear: vec![None; 3],
+        body: Body::new(data),
     }
 }
 
@@ -436,10 +449,13 @@ impl Crew {
     pub fn role_efficiency(&self, data: &GameData, role: usize, now: f64) -> f64 {
         let skill_idx = data.skill_index(&data.roles[role].skill);
         let mut best: Option<f64> = None;
-        for p in self
-            .alive()
-            .filter(|p| p.role == role && p.on_duty(now) && p.disease.is_none())
-        {
+        for p in self.alive().filter(|p| {
+            p.role == role
+                && p.on_duty(now)
+                && p.disease.is_none()
+                && !p.body.cryo
+                && !p.body.unconscious()
+        }) {
             let skill = skill_idx.map_or(0.0, |s| {
                 f64::from(p.skills[s])
                     + p.implant_effect(data, &format!("skill:{}", data.skills[s].id))
@@ -579,7 +595,25 @@ impl Crew {
         // Treatment resources and bonuses.
         let medic_on_duty = self
             .alive()
-            .any(|p| data.roles[p.role].id == "medic" && p.on_duty(now));
+            .any(|p| data.roles[p.role].id == "medic" && p.on_duty(now) && !p.body.cryo);
+        let med_skill = data.skill_index("medecine");
+        let medic_skill = self
+            .alive()
+            .filter(|p| {
+                data.roles[p.role].id == "medic"
+                    && p.on_duty(now)
+                    && !p.body.cryo
+                    && !p.body.unconscious()
+            })
+            .filter_map(|p| med_skill.map(|s| f64::from(p.skills[s])))
+            .fold(0.0, f64::max);
+        let env0 = self.env;
+        let away: Vec<(u32, Exposure)> = if now <= self.away_until {
+            self.away.clone()
+        } else {
+            Vec::new()
+        };
+        let mut death_causes: Vec<(usize, &'static str)> = Vec::new();
         let medicine = data.resource_index("medicine");
         let mut medicine_used = 0.0;
 
@@ -618,6 +652,25 @@ impl Crew {
                 p.hacked = false;
                 p.cyber_ok = true;
             }
+            if p.body.cryo {
+                // Frozen: no needs, no age, no wounds. Without the powered infirmary it thaws badly.
+                let _ = p.body.step(
+                    data,
+                    &Exposure::CABIN,
+                    &Care::default(),
+                    hours,
+                    ctx.seed,
+                    now as i64,
+                );
+                if ctx.medbay <= 0.0 {
+                    p.health = sat(p.health - 0.03 * hours);
+                    if p.health <= 0.0 {
+                        deaths.push(idx);
+                        death_causes.push((idx, "decongelation"));
+                    }
+                }
+                continue;
+            }
             let t_sleep = p.trait_sum(data, "sleep_need") as f32;
             let t_social = p.trait_sum(data, "social_need") as f32;
             let t_resist = p.trait_sum(data, "stress_resist") as f32;
@@ -626,15 +679,81 @@ impl Crew {
             p.organs.resize(data.organs.len(), 1.0);
             p.organ_kind.resize(data.organs.len(), 0);
             let mut organ_hit: Option<(usize, f32)> = None;
+            // The body: what the place and the care do to wounds, blood, air, temperature, drugs.
+            let mut env = env0;
+            if let Some((_, e)) = away.iter().find(|(id, _)| *id == p.id) {
+                env = *e;
+            } else if ctx.needs {
+                env.o2_frac *= f64::from((self.air / 0.5).min(1.0));
+                env.insulation = p.gear_stat(data, "defense").clamp(0.0, 0.95);
+            } else {
+                env = Exposure::CABIN;
+            }
+            let liver = data
+                .organ_index("foie")
+                .and_then(|o| p.organs.get(o).copied())
+                .unwrap_or(1.0);
+            let care = Care {
+                medic_skill,
+                medbay: ctx.medbay,
+                hunger: p.hunger,
+                thirst: p.thirst,
+                fatigue: p.fatigue,
+                age: p.age,
+                liver,
+            };
+            let bo = p.body.step(
+                data,
+                &env,
+                &care,
+                hours,
+                ctx.seed ^ u64::from(p.id),
+                now as i64,
+            );
+            for (o, dmg) in &bo.organ_damage {
+                if p.organ_kind.get(*o).copied() != Some(2) {
+                    p.organs[*o] = sat(p.organs[*o] - dmg);
+                }
+            }
+            if bo.radiation_sick && p.disease.is_none() {
+                if let Some(d) = data.disease_index("radiation") {
+                    p.disease = Some((d, data.diseases[d].duration_days as f32));
+                }
+            }
+            if bo.sepsis && p.disease.is_none() {
+                if let Some(d) = data.disease_index("septicemie") {
+                    p.disease = Some((d, data.diseases[d].duration_days as f32));
+                }
+            }
+            if bo.dose > 0.0 {
+                p.instability = sat(p.instability + 0.02 * bo.dose);
+            }
+            for n in bo.notes.iter().filter(|n| *n != "surdose") {
+                log_lines.push(format!("{} : {n}.", p.name));
+            }
+            if let Some(cause) = bo.death {
+                deaths.push(idx);
+                death_causes.push((idx, cause));
+            }
+            // Natural death.
+            {
+                let mut r = Rng::new(hash_coord(ctx.seed, i64::from(p.id), now as i64, 23));
+                if r.f64() < body::natural_death_chance(p.age, f64::from(t_health), days) {
+                    deaths.push(idx);
+                    death_causes.push((idx, "vieillesse"));
+                }
+            }
             // Needs.
             p.fatigue = sat(p.fatigue
                 + hours
-                    * if on_duty {
+                    * (if on_duty {
                         0.045 * (1.0 + t_sleep)
                     } else {
                         -0.12
-                    });
-            p.hunger = sat(p.hunger + hours * ((1.0 - food_frac) * 0.04 - food_frac * 0.15));
+                    } + bo.fatigue_rate));
+            p.hunger =
+                sat(p.hunger
+                    + hours * ((1.0 - food_frac) * 0.04 * bo.hunger_mult - food_frac * 0.15));
             p.thirst = sat(p.thirst + hours * ((1.0 - water_frac) * 0.08 - water_frac * 0.3));
             let others = (n_alive as f32 - 1.0).min(2.0) / 2.0;
             p.social = sat(p.social + hours * (0.02 * (1.0 + t_social).max(0.1) - 0.018 * others));
@@ -644,6 +763,7 @@ impl Crew {
                 + 0.3 * (1.0 - self.air)
                 + if ctx.overheating { 0.3 } else { 0.0 }
                 + p.implant_strain(data)
+                + bo.stress_add
                 - t_resist)
                 .clamp(0.0, 1.0);
             p.stress += (stress_target - p.stress) * (1.0 - (-hours / 8.0).exp());
@@ -662,6 +782,7 @@ impl Crew {
 
             // Health.
             let mut dh = 0.0f32;
+            dh -= bo.health_loss / hours;
             if p.hunger > 0.9 {
                 dh -= 0.01;
             }
@@ -712,6 +833,8 @@ impl Crew {
                     // A prosthesis is neither worn by disease nor mended.
                     continue;
                 }
+                // Old age wears every organ down a little.
+                p.organs[oi] = sat(p.organs[oi] - body::aging_wear(p.age) * days as f32);
                 let hit = organ_hit.filter(|(d, _)| o.afflicted_by.contains(&data.diseases[*d].id));
                 if let Some((_, sev)) = hit {
                     p.organs[oi] = sat(p.organs[oi] - 0.5 * sev * hours);
@@ -812,14 +935,67 @@ impl Crew {
         if !thirsty_before && self.alive().any(|p| p.thirst > 0.7) {
             log_lines.push(render(data, "thirsty", now as u64, "", "", &[]));
         }
-        // Deaths.
+        // Deaths (a medic with an infirmary may bring someone back).
+        deaths.sort_unstable();
+        deaths.dedup();
+        let brain = data.organ_index("cerveau");
         for idx in deaths {
-            let (id, name) = {
+            let cause = death_causes
+                .iter()
+                .find(|(i, _)| *i == idx)
+                .map(|(_, c)| *c);
+            let (id, name, why) = {
                 let p = &mut self.members[idx];
+                let intact = data
+                    .organs
+                    .iter()
+                    .zip(&p.organs)
+                    .all(|(o, v)| !o.vital || *v > 0.05)
+                    && brain.is_none_or(|b| p.organs[b] > 0.2);
+                let mut r = Rng::new(hash_coord(ctx.seed, i64::from(p.id), now as i64, 29));
+                let chance = if matches!(cause, Some("vieillesse" | "decongelation"))
+                    || !intact
+                    || !medic_on_duty
+                {
+                    0.0
+                } else {
+                    body::revive_chance(medic_skill, ctx.medbay, 2.0)
+                };
+                if now - p.body.revived_at > 5.0 * DAY && r.f64() < chance {
+                    p.health = 0.25;
+                    p.body.blood = p.body.blood.max(0.5);
+                    p.body.oxygen = 0.6;
+                    p.body.core_temp = p.body.core_temp.max(33.0);
+                    p.body.revived_at = now;
+                    p.body.trauma = sat(p.body.trauma + 0.3);
+                    if let Some(b) = brain {
+                        p.organs[b] = sat(p.organs[b] - 0.1);
+                    }
+                    if let Some(m) = medicine {
+                        ctx.cargo.remove(data, m, 0.1);
+                    }
+                    log_lines.push(format!("{} est ranime par le medecin de bord.", p.name));
+                    continue;
+                }
+                // What killed them: the cause the body reported, else the organ that failed.
+                let why = match cause {
+                    Some(c) => c.to_string(),
+                    None => match data
+                        .organs
+                        .iter()
+                        .zip(&p.organs)
+                        .find(|(o, v)| o.vital && **v <= 0.0)
+                    {
+                        Some(_) if p.body.oxygen < 0.4 => "asphyxie".to_string(),
+                        Some((o, _)) => format!("defaillance : {}", o.name.to_lowercase()),
+                        None => "epuisement".to_string(),
+                    },
+                };
                 p.alive = false;
                 p.health = 0.0;
-                (p.id, p.name.clone())
+                (p.id, p.name.clone(), why)
             };
+            log_lines.push(format!("{name} : mort ({why})."));
             log_lines.push(render(data, "death", u64::from(id), &name, "", &[]));
             let dead_kin = self.members[idx].kin;
             let fams = &self.families;
@@ -1598,5 +1774,80 @@ mod tests {
             s_brother > s_stranger + 0.2,
             "stress {s_brother} vs {s_stranger}"
         );
+    }
+
+    #[test]
+    fn vacuum_kills_the_exposed_and_spares_the_others() {
+        let d = data();
+        let mut crew = crew_of(&d, 2);
+        let id = crew.members[0].id;
+        crew.away = vec![(
+            id,
+            Exposure {
+                pressure_kpa: 0.0,
+                ..Exposure::CABIN
+            },
+        )];
+        crew.away_until = f64::MAX;
+        let mut cargo = cargo_with(&d, &[("food", 500.0), ("water", 500.0)]);
+        let mut credits = 1.0e6;
+        crew.update(&mut ctx(&d, &mut cargo, &mut credits, true), DAY);
+        assert!(!crew.members[0].alive, "no air, no life");
+        assert!(crew.members[1].alive, "the cabin is fine");
+        assert!(
+            crew.log.iter().any(|l| l.text.contains("asphyxie")),
+            "the journal says why"
+        );
+    }
+
+    #[test]
+    fn very_old_people_die_of_age_and_the_young_do_not() {
+        let d = data();
+        let mut crew = crew_of(&d, 2);
+        crew.members[0].age = 112.0;
+        crew.members[1].age = 25.0;
+        let mut cargo = cargo_with(&d, &[("food", 5.0e4), ("water", 5.0e4)]);
+        let mut credits = 1.0e9;
+        for k in 1..=4 {
+            crew.update(
+                &mut ctx(&d, &mut cargo, &mut credits, true),
+                f64::from(k) * 100.0 * DAY,
+            );
+        }
+        assert!(!crew.members[0].alive, "old age");
+        assert!(crew.members[1].alive);
+    }
+
+    #[test]
+    fn a_medic_with_an_infirmary_brings_back_the_dying_nobody_else_does() {
+        let d = data();
+        let medic = Crew::role_index(&d, "medic");
+        let skill = d.skill_index("medecine").expect("skill");
+        let revived = |with_medic: bool| -> usize {
+            let mut n = 0;
+            for seed in 0..30u64 {
+                let mut crew = crew_of(&d, 2);
+                if with_medic {
+                    crew.members[1].role = medic;
+                    crew.members[1].skills[skill] = 9.0;
+                    crew.members[1].shift = 0;
+                }
+                crew.members[0].body.blood = 0.25;
+                let mut cargo =
+                    cargo_with(&d, &[("food", 500.0), ("water", 500.0), ("medicine", 5.0)]);
+                let mut credits = 1.0e6;
+                let mut c = ctx(&d, &mut cargo, &mut credits, true);
+                c.medbay = 1.0;
+                c.seed = seed;
+                crew.update(&mut c, 700.0);
+                if crew.members[0].alive {
+                    n += 1;
+                }
+            }
+            n
+        };
+        let (alone, with) = (revived(false), revived(true));
+        assert_eq!(alone, 0, "no medic, no resuscitation");
+        assert!(with > 12, "a medic saves most: {with}/30");
     }
 }

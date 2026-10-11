@@ -1,0 +1,29 @@
+// Drugs. dose: kg of the resource `resource` (cargo) per dose.   half_life_h: hours for the level
+// in the blood to halve.   effects at full level (keys: pain = relief, clot = stops bleeding,
+// infection = fights infection, stress = calms (negative raises), fatigue = keeps awake (negative
+// makes sleepy), rad = protects from radiation, heal = speeds healing, blood_now = blood restored
+// at once, resp = breathing depression, liver = liver damage per day).   tolerance: gained per dose
+// (weakens the effects, fades slowly).   dependence: gained per dose (withdrawal when the level
+// drops: pain and stress).   interactions: (other drug, factor added to the overdose pressure of
+// both when taken together).   A level above 1.6 (weighted by interactions and by a weak liver)
+// is an overdose.
+[
+ (id:"antalgique", name:"Antalgique", resource:"medicine", dose:0.02, half_life_h:4.0, effects:[("pain",0.5)],
+  tolerance:0.03, dependence:0.005, interactions:[("opioide",0.3)], text:"Calme la douleur sans trop de risque."),
+ (id:"opioide", name:"Opioide", resource:"medicine", dose:0.02, half_life_h:3.0, effects:[("pain",1.0),("resp",0.35)],
+  tolerance:0.12, dependence:0.10, interactions:[("sedatif",0.9),("antalgique",0.3)], text:"Efface la douleur, deprime la respiration, rend dependant."),
+ (id:"antibiotique", name:"Antibiotique", resource:"medicine", dose:0.03, half_life_h:8.0, effects:[("infection",1.0),("liver",0.01)],
+  tolerance:0.02, dependence:0.0, interactions:[], text:"Combat les infections des plaies."),
+ (id:"coagulant", name:"Coagulant", resource:"medicine", dose:0.02, half_life_h:3.0, effects:[("clot",0.7)],
+  tolerance:0.0, dependence:0.0, interactions:[], text:"Arrete les saignements en quelques minutes."),
+ (id:"stimulant", name:"Stimulant", resource:"medicine", dose:0.02, half_life_h:5.0, effects:[("fatigue",0.5),("stress",-0.1)],
+  tolerance:0.10, dependence:0.08, interactions:[("sedatif",0.4)], text:"Garde eveille ; le coeur et les nerfs le paient."),
+ (id:"sedatif", name:"Sedatif", resource:"medicine", dose:0.02, half_life_h:6.0, effects:[("stress",0.4),("fatigue",-0.3),("resp",0.15)],
+  tolerance:0.05, dependence:0.05, interactions:[("opioide",0.9),("stimulant",0.4)], text:"Apaise l'angoisse et endort."),
+ (id:"antiradiation", name:"Anti-radiations", resource:"medicine", dose:0.04, half_life_h:10.0, effects:[("rad",0.5),("liver",0.02)],
+  tolerance:0.0, dependence:0.0, interactions:[], text:"Protege les cellules d'une dose de rayonnement."),
+ (id:"regenerant", name:"Regenerant", resource:"medicine", dose:0.05, half_life_h:12.0, effects:[("heal",1.0)],
+  tolerance:0.01, dependence:0.0, interactions:[], text:"Acceleratrice de cicatrisation, cher et lent."),
+ (id:"plasma", name:"Plasma sanguin", resource:"medicine", dose:0.1, half_life_h:1.0, effects:[("blood_now",0.2)],
+  tolerance:0.0, dependence:0.0, interactions:[], text:"Retablit le volume sanguin apres une hemorragie."),
+]

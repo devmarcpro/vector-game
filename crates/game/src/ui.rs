@@ -61,6 +61,7 @@ pub fn draw(fb: &mut Framebuffer, g: &Game) {
         Screen::Codex => draw_codex(fb, g),
         Screen::Surface => crate::surface_view::draw(fb, g),
         Screen::Bourse => crate::bourse_view::draw(fb, g),
+        Screen::Factions => crate::faction_view::draw(fb, g),
         Screen::Family => crate::family_view::draw(fb, g),
         Screen::Destroyed => {
             let cols = fb.cols();

@@ -2,6 +2,7 @@ mod audio;
 mod bourse_view;
 mod codex;
 mod console;
+mod faction_view;
 mod family_view;
 mod flow_view;
 mod game;
@@ -238,6 +239,12 @@ fn snapshot(path: &str, scene: &str, data: Arc<GameData>) {
         "map" => {
             g.map = true;
             g.cycle_target(|_| true);
+        }
+        "factions" => {
+            g.sim.reputation[1] = 0.6;
+            g.sim.reputation[4] = -0.7;
+            g.key(KeyCode::KeyX, None, true);
+            g.fac_sel = 4;
         }
         "bourse" => {
             let (st, _) = g.sim.nearest_station().expect("station");

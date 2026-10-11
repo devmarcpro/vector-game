@@ -204,6 +204,10 @@ impl Game {
         self.b_sel = k;
     }
 
+    pub fn click_faction(&mut self, i: usize) {
+        self.fac_sel = i;
+    }
+
     pub fn click_contract(&mut self, i: usize) {
         self.contract_sel = i;
     }

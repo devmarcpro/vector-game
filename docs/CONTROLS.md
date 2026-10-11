@@ -74,3 +74,5 @@ Tout se fait aussi à la souris (hors visée F7, où la souris pilote le vaissea
 - **Molette** : fait défiler la sélection de l'écran (Haut/Bas) ; en vol, change l'accélération du temps ; sur la carte système, zoome.
 - **Barre des commandes** : chaque commande (« TOUCHE ce qu'elle fait ») est un bouton, sauf les touches maintenues en vol (poussée, boost, frein, lasers).
 - Un arbre généalogique : un parent à bord est un bouton qui ouvre son propre arbre.
+
+- **X** (en vol) : écran des factions et de leurs moeurs ; Gauche/Droite ou clic pour choisir, X ou Echap pour revenir.

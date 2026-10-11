@@ -140,6 +140,7 @@ pub fn hint_line(g: &Game) -> String {
         }
         Screen::Recruit => "HAUT/BAS CANDIDAT  ENTREE EMBAUCHER  K EQUIPAGE  ECHAP RETOUR",
         Screen::Journal => "HAUT/BAS DEFILER  K EQUIPAGE  J/ECHAP RETOUR",
+        Screen::Factions => "GAUCHE/DROITE FACTION  CLIC : CHOISIR  X/ECHAP RETOUR",
         Screen::Galaxy => {
             "HAUT/BAS ETOILE  +/- ZOOM  ENTREE SAUT FTL  L/ECHAP RETOUR  (RETOUR ARRIERE ANNULE UNE CHARGE)"
         }
@@ -186,7 +187,7 @@ pub fn help_lines(screen: Screen) -> &'static [&'static str] {
             "V : laser de minage   Ctrl : tir   B : missiles",
             "G : pilote auto   D : amarrer   M : carte systeme",
             "PgUp/PgDn : temps   P : pause   Echap : menu",
-            "H vaisseau  K equipage  I soute  J journal",
+            "H vaisseau  K equipage  I soute  J journal  X factions",
             "L galaxie  F2 empire  F3 flotte  F4 techno  F6 codex",
             "O : fonder une colonie   Z tribut   N epave   U abordage",
             "F8 : surface de la planete ou lune ciblee (releve niveau 2)",
@@ -216,6 +217,12 @@ pub fn help_lines(screen: Screen) -> &'static [&'static str] {
         ],
         Screen::Recruit => &["Haut/Bas : candidat   Entree : embaucher"],
         Screen::Journal => &["Haut/Bas ou PgUp/PgDn : defiler   Echap : retour"],
+        Screen::Factions => &[
+            "Gauche/Droite ou clic : choisir une faction",
+            "Lignes vertes : allies   lignes rouges : ennemis",
+            "A droite : moeurs (8 axes), interdits moraux, contrebande, reputation",
+            "X ou Echap : retour",
+        ],
         Screen::Galaxy => &[
             "Haut/Bas : etoile   +/- : zoom   Entree : saut FTL",
             "Retour arriere : annuler une charge de saut",

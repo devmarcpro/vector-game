@@ -58,6 +58,7 @@ pub enum Screen {
     Surface,
     Bourse,
     Family,
+    Factions,
 }
 
 /// Route being composed in the fleet screen.
@@ -112,6 +113,7 @@ pub struct Game {
     pub col_focus: u8,
     /// Colony screen: production-chain diagram instead of the lists.
     pub col_flow: bool,
+    pub fac_sel: usize,
     pub b_sel: usize,
     pub s_sel: usize,
     pub p_sel: usize,
@@ -217,6 +219,7 @@ impl Game {
             col_idx: 0,
             col_focus: 0,
             col_flow: false,
+            fac_sel: 0,
             b_sel: 0,
             s_sel: 0,
             p_sel: 0,
@@ -683,6 +686,7 @@ impl Game {
             Screen::Codex => self.codex_key(code),
             Screen::Surface => self.surface_key(code),
             Screen::Bourse => self.bourse_key(code),
+            Screen::Factions => self.factions_key(code),
             Screen::Family => self.family_key(code),
             Screen::Destroyed => {
                 if code == KeyCode::Enter {
@@ -1186,6 +1190,16 @@ impl Game {
             }
             KeyCode::KeyK => self.screen = Screen::Crew,
             KeyCode::Escape => self.screen = Screen::Station,
+            _ => {}
+        }
+    }
+
+    fn factions_key(&mut self, code: KeyCode) {
+        let n = self.data.factions.len().max(1);
+        match code {
+            KeyCode::ArrowRight | KeyCode::ArrowDown => self.fac_sel = (self.fac_sel + 1) % n,
+            KeyCode::ArrowLeft | KeyCode::ArrowUp => self.fac_sel = (self.fac_sel + n - 1) % n,
+            KeyCode::Escape | KeyCode::KeyX => self.screen = Screen::Flight,
             _ => {}
         }
     }
@@ -1839,6 +1853,10 @@ impl Game {
             KeyCode::KeyH => self.open_ship(),
             KeyCode::KeyK => self.screen = Screen::Crew,
             KeyCode::KeyJ => self.screen = Screen::Journal,
+            KeyCode::KeyX => {
+                self.fac_sel = self.sim.faction.unwrap_or(self.fac_sel);
+                self.screen = Screen::Factions;
+            }
             KeyCode::KeyD => match self.sim.try_dock() {
                 Ok(_) => self.handle_events(),
                 // D also steers (yaw): stay quiet when no station is anywhere near.
@@ -1936,6 +1954,7 @@ mod tests {
             (KeyCode::F4, Screen::Tech),
             (KeyCode::KeyK, Screen::Crew),
             (KeyCode::KeyJ, Screen::Journal),
+            (KeyCode::KeyX, Screen::Factions),
             (KeyCode::KeyH, Screen::Ship),
             (KeyCode::KeyI, Screen::Inventory),
             (KeyCode::Escape, Screen::Pause),
@@ -2022,6 +2041,7 @@ mod tests {
             Screen::Surface,
             Screen::Bourse,
             Screen::Family,
+            Screen::Factions,
         ] {
             g.screen = s;
             let line = crate::tutorial::hint_line(&g);
@@ -2354,6 +2374,28 @@ mod tests {
             g.pointer_click(x, y, 100_000 + 1_000 * i as u64);
         }
         assert_eq!(g.family_member, 1, "the brother's tree is shown");
+    }
+
+    #[test]
+    fn the_factions_screen_opens_on_x_and_a_click_selects_a_faction() {
+        let mut g = Game::new(data(), 1);
+        g.key(KeyCode::Enter, None, true);
+        g.key(KeyCode::KeyX, None, true);
+        assert_eq!(g.screen, Screen::Factions);
+        frame(&g);
+        let n = g.data.factions.len();
+        let target = n - 1;
+        let (x, y) = {
+            let hits = g.pointer.hits.borrow();
+            let h = hits.get(target).expect("one zone per faction");
+            ((h.rect.0 + h.rect.2) / 2, (h.rect.1 + h.rect.3) / 2)
+        };
+        g.pointer_click(x, y, 1_000);
+        assert_eq!(g.fac_sel, target);
+        g.key(KeyCode::ArrowRight, None, true);
+        assert_eq!(g.fac_sel, 0, "the selection wraps around");
+        g.key(KeyCode::Escape, None, true);
+        assert_eq!(g.screen, Screen::Flight);
     }
 
     #[test]

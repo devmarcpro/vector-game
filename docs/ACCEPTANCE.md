@@ -15,17 +15,17 @@ Mesures prises sur la machine de développement (Windows 11, build `--release`),
 | Tutoriel | atteint | 16 étapes pilotées par l'état ; `tutorial_advances_on_actions_and_can_be_skipped` |
 | Aide contextuelle | atteint | F1 sur chaque écran ; `f1_toggles_contextual_help_on_every_screen` |
 | Performance | atteint | rendu 1280×720 : 0,67 ms/image ; pas de simulation : 0,028 ms ; sauvegarde : 2,9 Ko en 0,22 ms (`vector-game --bench`) |
-| Tests automatisés | 171 verts | `cargo test` ; `cargo clippy --all-targets -- -D warnings` propre ; `cargo fmt` appliqué |
+| Tests automatisés | 265 verts | `cargo test` ; `cargo clippy --all-targets -- -D warnings` propre ; `cargo fmt` appliqué |
 | Vérification sans voir la fenêtre | atteint | `--snapshot` (PNG, `docs/snap_*.png`), `--script` (scripts rejoués par `cargo test`) |
 | Documentation | atteint | `README.md`, `docs/` (PROGRESS, DECISIONS, CONTENT, CONTROLS, SIM_MODEL, ACCEPTANCE) |
 | Paquet livrable | atteint | `tools/package.ps1` → `dist/VECTOR/` et `dist/VECTOR.zip` (1,8 Mo) |
 
 ## Limites connues (honnêtes)
-- Souris uniquement pour la visée en vol (F7) ; le reste de l'interface est au clavier. La police 5×7 est en capitales avec accents (données accentuées par 	ools/accents.py ; les chaînes écrites dans le code Rust sont encore sans accents).
+- La souris fonctionne sur tous les écrans (clic, double clic, molette, clic droit, glisser le globe, menu de pilotage avec clic maintenu) mais n'a été vérifiée que par tests : aucune session humaine. La police 5×7 est en capitales avec accents (données accentuées par 	ools/accents.py ; les chaînes écrites dans le code Rust sont encore sans accents).
 - Équilibrage : `balance_check` : 0 avertissement ; le recyclage est listé à part (perte voulue) et les chaînes très rentables (nanomatériaux, barres de combustible, thorium) sont plafonnées par le débit (profit par bâtiment et par jour < 20 000 cr). Pas de campagne de test humaine : l'équilibrage a été vérifié par simulation, pas par des joueurs.
 - Audio : synthèse procédurale simple (grondement, moteur, minage, alarme, impact, bips) ; pas de musique. Non vérifié à l'oreille dans cet environnement : le test couvre le synthétiseur (borné, silencieux à volume 0, réactif aux paramètres) et l'ouverture du flux a réussi, sans plus.
 - Pas de migration de sauvegarde entre versions du format : une sauvegarde d'une autre version est refusée avec un message qui donne les deux versions et conseille une nouvelle partie.
 - L'ouverture réelle de la fenêtre a été vérifiée en lançant le binaire quelques secondes (processus vivant, aucune erreur) ; le rendu fin et la jouabilité ont été vérifiés par captures et scripts, pas par une session humaine.
 
 ## Session 2 (nouvelle machine)
-Build release, 156 tests, clippy `-D warnings`, `data_check` et les 7 scripts de `scripts/` (first_flight, dock_and_trade, full_loop, ftl_jump, combat, colony, save_reload) passent. Non vérifié : le ressenti du pilotage (boost, frein, visée souris F7) et les couleurs en jeu réel, vérifiés par tests et captures seulement ; aucune session jouée par un humain.
+Build release, 265 tests, clippy `-D warnings`, `data_check`, `balance_check` (0 avertissement), `sim_bench` 1/10/100 ans (stable, sans colonie) et les 10 scripts de `scripts/` (first_flight, dock_and_trade, full_loop, ftl_jump, leave_system, combat, colony, save_reload, surface, bourse) passent. Non vérifié : le ressenti du pilotage et de la souris, les couleurs en jeu réel, l'équilibrage des nouveautés (organes, implants, épidémies, civilisations, contrats à terme, équipement) par des joueurs ; `sim_bench` n'a pas tourné 100 ans avec des colonies. Aucune session jouée par un humain avant le retour du joueur (pilote automatique et sortie de système corrigés à sa suite).

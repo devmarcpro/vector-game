@@ -1,4 +1,4 @@
-﻿//! Guided tutorial (state-driven, skippable) and contextual help (F1) per screen.
+//! Guided tutorial (state-driven, skippable) and contextual help (F1) per screen.
 use crate::game::{Game, Screen};
 use winit::keyboard::KeyCode;
 
@@ -123,7 +123,7 @@ pub fn hint_line(g: &Game) -> String {
             "WASD/QE ROT  ESP/X POUSSEE  MAJ BOOST  C FREIN  F ASSIST  TAB CIBLE  G AUTO  D AMARRER  V LASER  CTRL TIR  M CARTE  F1 AIDE"
         }
         Screen::Station => {
-            "HAUT/BAS CHOIX  ENTREE VENDRE  S/B 100  F PLEIN  R REPARER  H NAVIRE  Y CHANTIER  N RECRUTER  C CONTRATS  E BANQUE  U DECOLLER"
+            "HAUT/BAS CHOIX  ENTREE VENDRE  F PLEIN  R REPARER  H NAVIRE  Y CHANTIER  N RECRUTE  C CONTRATS  E BANQUE  T BOURSE  U DECOLLER"
         }
         Screen::Inventory => "HAUT/BAS CHOISIR  J JETER  I/ECHAP RETOUR",
         Screen::Pause => "HAUT/BAS CHOISIR  ENTREE VALIDER  ECHAP REPRENDRE",
@@ -159,6 +159,9 @@ pub fn hint_line(g: &Game) -> String {
         Screen::Rules => "HAUT/BAS REGLE  GAUCHE/DROITE MODIFIER  R DEFAUTS  ECHAP RETOUR",
         Screen::Options => "HAUT/BAS REGLAGE  GAUCHE/DROITE CHANGER  ENTREE/ECHAP RETOUR",
         Screen::Codex => "GAUCHE/DROITE CATEGORIE  HAUT/BAS ENTREE  ECHAP RETOUR",
+        Screen::Bourse => {
+            "HAUT/BAS RESSOURCE  PGUP/PGDN x10  TAB OU GAUCHE/DROITE PERIODE (30/90/180 J)  T/ECHAP RETOUR"
+        }
         Screen::Surface if g.surf_globe => {
             "GLOBE  GAUCHE/DROITE TOURNER  TAB COUCHE  G CARTE  F CODEX  F8/ECHAP RETOUR"
         }
@@ -192,7 +195,7 @@ pub fn help_lines(screen: Screen) -> &'static [&'static str] {
             "S : vendre 100 kg   B : acheter 100 kg",
             "F : plein de carburant   R : reparer",
             "H : vaisseau   Y : chantier naval   N : recruter",
-            "K : equipage   C : contrats   E : banque",
+            "K : equipage   C : contrats   E : banque   T : bourse (courbes de prix)",
             "F2 : empire   F3 : flotte   U : decoller",
         ],
         Screen::Inventory => &["Haut/Bas : ressource   J : jeter   Echap : retour"],
@@ -237,6 +240,13 @@ pub fn help_lines(screen: Screen) -> &'static [&'static str] {
         Screen::Codex => &[
             "Gauche/Droite : categorie   Haut/Bas : entree",
             "PgUp/PgDn : sauter de 10   Echap ou F6 : retour",
+        ],
+        Screen::Bourse => &[
+            "Haut/Bas : ressource   PgUp/PgDn : sauter de 10",
+            "Tab ou Gauche/Droite : periode du graphique (30, 90, 180 jours)",
+            "Courbe pleine : prix de reference ; ligne ambre : moyenne sur 7 jours",
+            "Bandes colorees : evenements du monde qui touchent cette ressource",
+            "T ou Echap : retour a la station",
         ],
         Screen::Surface => &[
             "Fleches : deplacer le curseur (Maj : x4)",

@@ -1,4 +1,4 @@
-﻿//! Crew: individuals with skills, traits, needs, posts, relations; a data-driven event engine and a journal.
+//! Crew: individuals with skills, traits, needs, posts, relations; a data-driven event engine and a journal.
 use crate::cargo::Cargo;
 use serde::{Deserialize, Serialize};
 use vector_core::{hash_coord, mix64, Rng};

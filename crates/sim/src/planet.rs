@@ -1,4 +1,4 @@
-﻿//! Detailed planets (E1): the surface map with its biomes, the seasons, the weather and the
+//! Detailed planets (E1): the surface map with its biomes, the seasons, the weather and the
 //! catastrophes of a solid world. Nothing here is stored: the map comes from the body's seed and
 //! the weather from (seed, day, region), so a save only needs the game time.
 use crate::Sim;

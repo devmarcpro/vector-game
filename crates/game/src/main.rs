@@ -1,4 +1,5 @@
 mod audio;
+mod bourse_view;
 mod codex;
 mod console;
 mod game;
@@ -203,6 +204,29 @@ fn snapshot(path: &str, scene: &str, data: Arc<GameData>) {
         "map" => {
             g.map = true;
             g.cycle_target(|_| true);
+        }
+        "bourse" => {
+            let (st, _) = g.sim.nearest_station().expect("station");
+            g.sim.spawn_near(st, g.sim.bodies[st].radius + 200.0);
+            g.key(KeyCode::KeyD, None, true);
+            // Several months of history, and a resource that an event moved if there is one.
+            g.sim.time = 400.0 * 86_400.0;
+            g.sim.reveal_all();
+            let ev = g.sim.market_news(180.0);
+            let pick = ev
+                .iter()
+                .flat_map(|e| {
+                    g.data.world_events[e.def]
+                        .effects
+                        .iter()
+                        .filter_map(|(k, _)| g.data.resource_index(k))
+                        .collect::<Vec<_>>()
+                })
+                .next()
+                .unwrap_or(0);
+            g.bourse_sel = pick;
+            g.bourse_range = 1;
+            g.key(KeyCode::KeyT, None, true);
         }
         "station" => {
             let (st, _) = g.sim.nearest_station().expect("station");

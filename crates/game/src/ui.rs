@@ -1,4 +1,4 @@
-﻿//! Text-grid screens: main menu, pause, station market, inventory.
+//! Text-grid screens: main menu, pause, station market, inventory.
 use crate::game::{Game, Screen, MAIN_MENU, PAUSE_MENU};
 use crate::hud::{AMBER, DIM, GREEN, RED};
 use vector_render::Framebuffer;
@@ -43,6 +43,7 @@ pub fn draw(fb: &mut Framebuffer, g: &Game) {
         Screen::Options => draw_options(fb, g),
         Screen::Codex => draw_codex(fb, g),
         Screen::Surface => crate::surface_view::draw(fb, g),
+        Screen::Bourse => crate::bourse_view::draw(fb, g),
         Screen::Destroyed => {
             let cols = fb.cols();
             fb.text_big((fb.w as i32 - 15 * 8 * 4) / 2, 140, "DETRUIT", 8, RED);

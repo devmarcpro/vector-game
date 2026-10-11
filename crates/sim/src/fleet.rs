@@ -294,6 +294,8 @@ impl Sim {
             industry,
         );
         m.relax_to(1.0e9);
+        let pos = self.visited.get(&star).copied().unwrap_or(self.here_pos);
+        m.world = crate::bourse::world_factors(&data, self.galaxy.seed, pos, self.time);
         (m.bid(&data, res), m.ask(&data, res))
     }
 
@@ -728,6 +730,7 @@ mod tests {
                     as usize,
             );
             remote.relax_to(1.0e9);
+            remote.world = crate::bourse::world_factors(&s.data, s.galaxy.seed, s.here_pos, 1.0e9);
             // ...and compare with the live market after a very long wait.
             s.time = 1.0e9;
             let d = Arc::clone(&s.data);

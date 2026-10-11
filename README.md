@@ -1,4 +1,4 @@
-﻿# VECTOR
+# VECTOR
 
 Bac Ã  sable spatial solo pour PC, en lignes vectorielles. Tout est Ã©crit en Rust avec un moteur maison : rasteriseur de lignes sur CPU, police bitmap, simulation dÃ©terministe Ã  pas fixe (30 Hz), galaxie infinie gÃ©nÃ©rÃ©e par fonction de hachage de la graine.
 

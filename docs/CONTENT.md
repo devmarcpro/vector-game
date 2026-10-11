@@ -1,4 +1,4 @@
-﻿# CONTENT (inventaire réel — vérifié par `data_check`)
+# CONTENT (inventaire réel — vérifié par `data_check`)
 
 | Élément | Actuel | Cible |
 |---|---|---|

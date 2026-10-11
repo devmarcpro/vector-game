@@ -1,4 +1,4 @@
-﻿# ACCEPTANCE — critères de la section 12, avec preuves
+# ACCEPTANCE — critères de la section 12, avec preuves
 
 Mesures prises sur la machine de développement (Windows 11, build `--release`), le 2026-10-11.
 

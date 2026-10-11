@@ -1,4 +1,4 @@
-﻿# CONTROLES (touches physiques, positions QWERTY ; sur AZERTY : ZQSD = WASD)
+# CONTROLES (touches physiques, positions QWERTY ; sur AZERTY : ZQSD = WASD)
 | Touche | Action |
 |---|---|
 | W / S | Tangage (piquer / cabrer) |
@@ -48,6 +48,7 @@ Haut/Bas : ressource ; Entree : vendre tout ; S : vendre 100 kg ; B : acheter 10
 Haut/Bas + Entree ; taper une graine (nombre ou texte) avant Nouvelle partie.
 
 Station : N = recruter (Entrée embauche au poste de sa meilleure compétence), K = équipage.
+Station : T = bourse (Haut/Bas ressource, PgUp/PgDn x10, Tab ou Gauche/Droite période 30/90/180 jours, T ou Échap retour).
 Station : C = contrats (Entrée accepter/livrer, X abandonner), E = banque (Haut emprunter 1000, Bas rembourser 1000, Entrée tout rembourser).
 
 Ecran colonie : Tab zone (bâtiments / stocks / politiques / construction), Haut/Bas, Espace on/off, R recette, X démolir, D déposer / W retirer (stocks, amarré), Gauche/Droite politique, Entrée construire, T récupérer la caisse, U décoller.

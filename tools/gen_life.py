@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env python3
+#!/usr/bin/env python3
 """Generate data/species.ron: the flora, fauna and microbes of solid worlds (E2).
 
 Run after gen_content/gen_colony/gen_science/gen_scale and before accents.py is not required:

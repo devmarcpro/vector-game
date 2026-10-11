@@ -23,6 +23,12 @@ pub struct Market {
     pub industry: usize,
     /// Game time of the last relaxation update.
     pub updated: f64,
+    /// What the world is doing to each price right now (events, drift); 1 = nothing. Derived
+    /// from the date and the place (see `bourse`), so it is never saved.
+    #[serde(skip)]
+    pub world: Vec<f64>,
+    #[serde(skip)]
+    pub world_day: i64,
 }
 
 impl Market {
@@ -37,6 +43,8 @@ impl Market {
             modifier: vec![1.0; n],
             industry,
             updated: time,
+            world: Vec::new(),
+            world_day: i64::MIN,
         };
         for i in 0..n {
             let id = data.resources[i].id.as_str();
@@ -72,7 +80,10 @@ impl Market {
     pub fn price(&self, data: &GameData, res: usize) -> f64 {
         let scarcity =
             (self.reference[res] / self.stock[res].max(0.03 * self.reference[res])).powf(0.35);
-        data.resources[res].value * self.modifier[res] * scarcity.clamp(0.25, 4.0)
+        data.resources[res].value
+            * self.modifier[res]
+            * scarcity.clamp(0.25, 4.0)
+            * self.world.get(res).copied().unwrap_or(1.0)
     }
     pub fn bid(&self, data: &GameData, res: usize) -> f64 {
         self.price(data, res) * (1.0 - SPREAD / 2.0)

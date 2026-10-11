@@ -1,4 +1,4 @@
-﻿//! Planet surface maps, generated on demand from the body's seed: elevation, mean annual
+//! Planet surface maps, generated on demand from the body's seed: elevation, mean annual
 //! temperature and humidity on an equirectangular grid. Nothing is stored: the same seed always
 //! gives the same map. Noise is sampled on the unit sphere, so the map has no seam at the
 //! date line and no stretching at the poles.

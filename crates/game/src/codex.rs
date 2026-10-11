@@ -1,8 +1,8 @@
-﻿//! The in-game encyclopedia: one entry per resource, module, hull, building, technology, recipe,
+//! The in-game encyclopedia: one entry per resource, module, hull, building, technology, recipe,
 //! weapon, faction, anomaly and condition, generated from the real data (no hand-written numbers).
 use vector_data::GameData;
 
-pub const CATEGORIES: [&str; 14] = [
+pub const CATEGORIES: [&str; 15] = [
     "RESSOURCES",
     "MODULES",
     "ARMES",
@@ -17,6 +17,7 @@ pub const CATEGORIES: [&str; 14] = [
     "BIOMES",
     "FLORE",
     "FAUNE",
+    "EVENEMENTS",
 ];
 
 /// Number of entries in a category.
@@ -49,6 +50,7 @@ fn entries(data: &GameData, cat: usize) -> Vec<usize> {
         13 => (0..data.species.len())
             .filter(|&i| !data.species[i].is_producer())
             .collect(),
+        14 => (0..data.world_events.len()).collect(),
         _ => Vec::new(),
     }
 }
@@ -69,6 +71,7 @@ pub fn names(data: &GameData, cat: usize) -> Vec<String> {
             9 => data.diseases[i].name.clone(),
             10 => data.industries[i].name.clone(),
             11 => data.biomes[i].name.clone(),
+            14 => data.world_events[i].name.clone(),
             _ => data.species[i].name.clone(),
         })
         .collect()
@@ -420,6 +423,32 @@ pub fn entry(data: &GameData, cat: usize, k: usize) -> Vec<String> {
                     res_name(data, &d.cure).unwrap_or_else(|| d.cure.clone())
                 }
             ));
+        }
+        14 => {
+            let e = &data.world_events[i];
+            out.push(e.name.clone());
+            out.push(e.text.clone());
+            out.push(format!(
+                "Portee : {}   duree {:.0} a {:.0} jours   frequence relative {:.1}",
+                if e.scope == "global" {
+                    "toute la galaxie"
+                } else {
+                    "une region de 60 al"
+                },
+                e.days.0,
+                e.days.1,
+                e.weight
+            ));
+            for (k, m) in &e.effects {
+                let what = match k.strip_prefix("cat:") {
+                    Some(c) => format!("toutes les ressources de categorie {c}"),
+                    None => res_name(data, k).unwrap_or_else(|| k.clone()),
+                };
+                out.push(format!(
+                    "{what} : {:+.0} % au plus fort de l'evenement",
+                    (m - 1.0) * 100.0
+                ));
+            }
         }
         12 | 13 => {
             let s = &data.species[i];

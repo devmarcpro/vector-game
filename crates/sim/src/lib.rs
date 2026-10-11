@@ -1,6 +1,7 @@
-﻿//! Deterministic simulation: flight model, modular ships, gravity, collisions, autopilot, mining, trade, saves.
+//! Deterministic simulation: flight model, modular ships, gravity, collisions, autopilot, mining, trade, saves.
 //! Units: SI (m, s, kg, N). See docs/SIM_MODEL.md.
 pub mod autopilot;
+pub mod bourse;
 pub mod cargo;
 pub mod colony;
 pub mod combat;
@@ -205,6 +206,8 @@ pub enum Event {
         index: usize,
     },
     ColonyNews(String),
+    /// A world event that moves prices has just begun around the player.
+    MarketNews(String),
     FleetDelivery {
         ship: usize,
         revenue: f64,
@@ -288,6 +291,8 @@ pub struct Sim {
     pub next_route: u32,
     /// Integration steps executed since creation (diagnostic only, never saved).
     pub steps: u64,
+    /// Day number of the last market-news check (not saved).
+    pub(crate) last_news_day: i64,
     /// Surface maps of colonised worlds and city sites (derived data, never saved).
     pub(crate) world_cache: std::collections::HashMap<(u64, usize), Option<Arc<planet::PlanetMap>>>,
     pub(crate) city_cache: std::collections::HashMap<u32, (usize, usize)>,
@@ -401,6 +406,7 @@ impl Sim {
             next_fleet: 1,
             next_route: 1,
             steps: 0,
+            last_news_day: i64::MIN,
             world_cache: std::collections::HashMap::new(),
             city_cache: std::collections::HashMap::new(),
             ecologies: BTreeMap::new(),
@@ -692,6 +698,7 @@ impl Sim {
             self.run_systems(&Activity::default(), dt);
             self.expire_contracts();
             self.bank_tick();
+            self.market_news_tick();
             self.refresh_bodies();
             self.update_npcs();
             self.hazard_tick(dt);
@@ -872,6 +879,7 @@ impl Sim {
         self.scan_tick(dt);
         self.expire_contracts();
         self.bank_tick();
+        self.market_news_tick();
         self.update_npcs();
         self.hazard_tick(dt);
         self.drift_wrecks(dt);
@@ -965,10 +973,19 @@ impl Sim {
         let (seed, time) = (self.system.seed, self.time);
         let data = Arc::clone(&self.data);
         let industry = self.station_industry(i);
+        let day = (time / bourse::DAY).floor() as i64;
+        // What the world does to prices changes slowly: refresh it once a day.
+        let stale = self.markets.get(&i).is_none_or(|m| m.world_day != day);
+        let world =
+            stale.then(|| bourse::world_factors(&data, self.galaxy.seed, self.here_pos, time));
         let m = self.markets.entry(i).or_insert_with(|| {
             Market::new(hash_coord(seed, i as i64, 0, 0), i, &data, time, industry)
         });
         m.relax_to(time);
+        if let Some(w) = world {
+            m.world = w;
+            m.world_day = day;
+        }
         m
     }
 

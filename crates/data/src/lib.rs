@@ -337,6 +337,34 @@ impl Species {
     }
 }
 
+/// A world event that moves prices (see `data/world_events.ron`). `scope` is "region" (felt in
+/// one 60 ly cell of space) or "global"; `effects` are (resource id or "cat:<category>", price
+/// multiplier at the peak).
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct WorldEvent {
+    pub id: String,
+    pub name: String,
+    pub scope: String,
+    pub weight: f64,
+    pub days: (f64, f64),
+    pub effects: Vec<(String, f64)>,
+    pub text: String,
+}
+
+impl WorldEvent {
+    /// Price multiplier this event applies to a resource at its peak (1.0 if it does not).
+    pub fn effect_on(&self, resources: &[Resource], res: usize) -> f64 {
+        let r = &resources[res];
+        self.effects
+            .iter()
+            .find(|(k, _)| {
+                k.strip_prefix("cat:")
+                    .map_or(*k == r.id, |c| c == r.category)
+            })
+            .map_or(1.0, |&(_, m)| m)
+    }
+}
+
 const PERSON_FIELDS: [&str; 14] = [
     "morale", "health", "loyalty", "stress", "fatigue", "hunger", "thirst", "social", "relation",
     "age", "credits", "death", "quit", "salary",
@@ -382,6 +410,7 @@ pub struct GameData {
     pub anomalies_def: Vec<AnomalyDef>,
     pub biomes: Vec<Biome>,
     pub species: Vec<Species>,
+    pub world_events: Vec<WorldEvent>,
 }
 
 fn read<T: for<'a> Deserialize<'a>>(path: &Path) -> Result<T, DataError> {
@@ -412,6 +441,7 @@ impl GameData {
             anomalies_def: read(&dir.join("worldgen/anomalies.ron"))?,
             biomes: read(&dir.join("biomes.ron"))?,
             species: read(&dir.join("species.ron"))?,
+            world_events: read(&dir.join("world_events.ron"))?,
         };
         // Generated extension files (tools/gen_scale.py) extend the hand-written tables.
         let mut extra_events: Vec<EventDef> = read(&dir.join("events_extra.ron"))?;
@@ -825,7 +855,47 @@ impl GameData {
             }
         }
         self.validate_biomes()?;
-        self.validate_species()
+        self.validate_species()?;
+        self.validate_world_events()
+    }
+
+    /// World events: known resources and categories, sane multipliers, durations and scopes.
+    fn validate_world_events(&self) -> Result<(), DataError> {
+        let bad = |s: String| Err(DataError::Invalid(s));
+        let mut seen = std::collections::HashSet::new();
+        for e in &self.world_events {
+            if !seen.insert(e.id.as_str()) {
+                return bad(format!("evenement {} en double", e.id));
+            }
+            if !["region", "global"].contains(&e.scope.as_str()) {
+                return bad(format!("evenement {}: portee {} inconnue", e.id, e.scope));
+            }
+            if e.weight <= 0.0 || e.days.0 <= 0.0 || e.days.0 > e.days.1 || e.days.1 > 365.0 {
+                return bad(format!("evenement {}: poids ou duree invalide", e.id));
+            }
+            if e.effects.is_empty() || e.text.is_empty() {
+                return bad(format!("evenement {}: sans effet ou sans texte", e.id));
+            }
+            for (k, m) in &e.effects {
+                let known = match k.strip_prefix("cat:") {
+                    Some(c) => self.resources.iter().any(|r| r.category == c),
+                    None => self.resource_index(k).is_some(),
+                };
+                if !known {
+                    return bad(format!(
+                        "evenement {}: ressource ou categorie {k} inconnue",
+                        e.id
+                    ));
+                }
+                if !(0.3..=3.0).contains(m) || (*m - 1.0).abs() < 0.02 {
+                    return bad(format!(
+                        "evenement {}: multiplicateur {m} hors de [0.3, 3]",
+                        e.id
+                    ));
+                }
+            }
+        }
+        Ok(())
     }
 
     /// Species: references, trophic consistency, and a working food chain in every habitat.

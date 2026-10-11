@@ -56,6 +56,7 @@ pub enum Screen {
     Options,
     Codex,
     Surface,
+    Bourse,
 }
 
 /// Route being composed in the fleet screen.
@@ -138,11 +139,22 @@ pub struct Game {
     pub surf_cities: Vec<(String, usize, usize)>,
     /// Food web of the world on the surface screen (settled balance, or the colony's own).
     pub surf_eco: Option<vector_sim::ecology::Ecosystem>,
+    /// Exchange screen: station, selected resource, range (index into `BOURSE_RANGES`), the
+    /// price series `[resource][day]` and the world events of the period.
+    pub bourse_station: usize,
+    pub bourse_sel: usize,
+    pub bourse_range: usize,
+    pub bourse_series: Vec<Vec<f64>>,
+    pub bourse_live: Vec<f64>,
+    pub bourse_news: Vec<vector_sim::bourse::ActiveEvent>,
     pub help_open: bool,
     pub tut_step: Option<usize>,
     pub tut_keys: Vec<(Screen, KeyCode)>,
     pub save_path: PathBuf,
 }
+
+/// Ranges of the exchange charts, days.
+pub const BOURSE_RANGES: [usize; 3] = [30, 90, 180];
 
 pub fn parse_seed(text: &str) -> u64 {
     let t = text.trim();
@@ -217,6 +229,12 @@ impl Game {
             surf_spin: 0.0,
             surf_cities: Vec::new(),
             surf_eco: None,
+            bourse_station: 0,
+            bourse_sel: 0,
+            bourse_range: 1,
+            bourse_series: Vec::new(),
+            bourse_live: Vec::new(),
+            bourse_news: Vec::new(),
             help_open: false,
             tut_step: None,
             tut_keys: Vec::new(),
@@ -414,7 +432,7 @@ impl Game {
                     let name = self.sim.colonies[index].name.clone();
                     self.say(format!("COLONIE FONDEE : {name}"));
                 }
-                Event::ColonyNews(t) => self.say(t.to_uppercase()),
+                Event::ColonyNews(t) | Event::MarketNews(t) => self.say(t.to_uppercase()),
                 Event::FleetDelivery { ship, revenue } => {
                     let n = self
                         .sim
@@ -645,6 +663,7 @@ impl Game {
             Screen::Options => self.options_key(code),
             Screen::Codex => self.codex_key(code),
             Screen::Surface => self.surface_key(code),
+            Screen::Bourse => self.bourse_key(code),
             Screen::Destroyed => {
                 if code == KeyCode::Enter {
                     if self.sim.can_respawn() {
@@ -809,6 +828,50 @@ impl Game {
         }
     }
 
+    /// Open the exchange of the station the ship is docked at.
+    pub fn open_bourse(&mut self) {
+        let Ok(st) = self.sim.docked_station() else {
+            self.say("PAS DE BOURSE SUR CETTE BASE");
+            return;
+        };
+        self.bourse_station = st;
+        self.screen = Screen::Bourse;
+        self.refresh_bourse();
+    }
+
+    /// Recompute the price series and the news for the selected range.
+    pub fn refresh_bourse(&mut self) {
+        let days = BOURSE_RANGES[self.bourse_range];
+        self.bourse_series = self.sim.price_series(self.bourse_station, days);
+        self.bourse_news = self.sim.market_news(days as f64);
+        let data = std::sync::Arc::clone(&self.data);
+        let market = self.sim.market(self.bourse_station);
+        self.bourse_live = (0..data.resources.len())
+            .map(|r| market.price(&data, r))
+            .collect();
+    }
+
+    fn bourse_key(&mut self, code: KeyCode) {
+        let n = self.data.resources.len();
+        match code {
+            KeyCode::ArrowUp => self.bourse_sel = (self.bourse_sel + n - 1) % n,
+            KeyCode::ArrowDown => self.bourse_sel = (self.bourse_sel + 1) % n,
+            KeyCode::PageUp => self.bourse_sel = self.bourse_sel.saturating_sub(10),
+            KeyCode::PageDown => self.bourse_sel = (self.bourse_sel + 10).min(n - 1),
+            KeyCode::Tab | KeyCode::ArrowRight => {
+                self.bourse_range = (self.bourse_range + 1) % BOURSE_RANGES.len();
+                self.refresh_bourse();
+            }
+            KeyCode::ArrowLeft => {
+                self.bourse_range =
+                    (self.bourse_range + BOURSE_RANGES.len() - 1) % BOURSE_RANGES.len();
+                self.refresh_bourse();
+            }
+            KeyCode::Escape | KeyCode::KeyT => self.screen = Screen::Station,
+            _ => {}
+        }
+    }
+
     /// Open the surface map of the targeted (or else the reference) planet or moon.
     pub fn open_surface(&mut self) {
         let body = [self.sim.target, self.sim.ref_body]
@@ -956,6 +1019,10 @@ impl Game {
             }
             KeyCode::F4 => {
                 self.open_tech();
+                return;
+            }
+            KeyCode::KeyT => {
+                self.open_bourse();
                 return;
             }
             KeyCode::KeyC => {
@@ -1854,6 +1921,7 @@ mod tests {
             Screen::Options,
             Screen::Codex,
             Screen::Surface,
+            Screen::Bourse,
         ] {
             g.screen = s;
             let line = crate::tutorial::hint_line(&g);
@@ -1920,6 +1988,37 @@ mod tests {
             g.key(KeyCode::F8, None, true);
             assert_eq!(g.screen, Screen::Flight);
         }
+    }
+
+    #[test]
+    fn the_exchange_opens_at_a_station_and_its_keys_work() {
+        let mut g = Game::new(data(), 1);
+        g.key(KeyCode::Enter, None, true);
+        // Not docked: no exchange.
+        g.open_bourse();
+        assert_eq!(g.screen, Screen::Flight);
+        let (st, _) = g.sim.nearest_station().expect("station");
+        g.sim.spawn_near(st, g.sim.bodies[st].radius + 200.0);
+        g.key(KeyCode::KeyD, None, true);
+        assert_eq!(g.screen, Screen::Station);
+        g.key(KeyCode::KeyT, None, true);
+        assert_eq!(g.screen, Screen::Bourse);
+        let n = g.data.resources.len();
+        assert_eq!(g.bourse_series.len(), n);
+        assert_eq!(g.bourse_series[0].len(), BOURSE_RANGES[g.bourse_range]);
+        assert_eq!(g.bourse_live.len(), n);
+        assert!(g
+            .bourse_series
+            .iter()
+            .flatten()
+            .all(|p| p.is_finite() && *p > 0.0));
+        let days = g.bourse_series[0].len();
+        g.key(KeyCode::Tab, None, true);
+        assert_ne!(g.bourse_series[0].len(), days, "Tab changes the period");
+        g.key(KeyCode::ArrowDown, None, true);
+        assert_eq!(g.bourse_sel, 1);
+        g.key(KeyCode::Escape, None, true);
+        assert_eq!(g.screen, Screen::Station);
     }
 
     #[test]

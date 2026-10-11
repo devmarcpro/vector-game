@@ -12,7 +12,7 @@
  ("paid", ["{amount} credits de salaires viennent d'etre distribues.", "Jour de paie : {amount} credits.", "L'equipage touche {amount} credits."]),
  ("repair", ["{a} resserre quelques boulons et le module repart.", "{a} remet un systeme d'aplomb avec trois bouts de ficelle.", "Reparation de fortune par {a} ; ca tiendra."]),
  ("quit", ["{a} s'en va pour de bon.", "{a} dépose sa démission auprès de l'IA de bord."]),
- ("dock_greet", ["Station : bienvenue, vaisseau. Amarrage autorise.", "Controle : sas {n} ouvert, bon sejour.", "Vous etes amarre. Les services de la station sont a votre disposition.", "Controle : verrouillage des pinces confirmé, IA de bord.", "Station : tarifs de port affiches. Faites bon commerce.", "Equipe de quai : on s'occupe de tout, capitaine."]),
+ ("dock_greet", ["Station : bienvenue, vaisseau. Amarrage autorise.", "Controle : sas {n} ouvert, bon sejour.", "Vous etes amarre. Les services de la station sont a votre disposition.", "Controle : verrouillage des pinces confirmé, IA de bord.", "Station : tarifs de port affiches. Faites bon commerce.", "Equipe de quai : on s'occupe de tout, vaisseau."]),
  ("undock", ["Controle : liberation des pinces, bon vol.", "Station : depart autorise, soyez prudent dehors.", "Les pinces se retractent ; le vide vous attend.", "Controle : trajectoire de sortie degagee."]),
  ("customs_clear", ["Douane : rien a signaler. Circulez.", "Inspecteur : papiers en regle, bonne journee.", "La douane ne trouve rien de suspect."]),
  ("customs_fine", ["Douane : marchandise interdite saisie, amende de {amount} credits.", "Controle fructueux : {amount} credits d'amende.", "L'inspecteur sourit et vous tend une amende de {amount} credits."]),

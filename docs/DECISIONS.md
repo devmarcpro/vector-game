@@ -1,4 +1,4 @@
-﻿# DECISIONS
+# DECISIONS
 
 Journal des choix de conception non triviaux (le plus récent en bas de chaque thème).
 

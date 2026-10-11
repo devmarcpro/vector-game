@@ -1,4 +1,4 @@
-﻿//! Headless scripted play: `vector-game --script file.txt` drives the real game logic with
+//! Headless scripted play: `vector-game --script file.txt` drives the real game logic with
 //! key events and checks outcomes, so whole sessions can be regression-tested without a window.
 //!
 //! One command per line (`#` starts a comment):

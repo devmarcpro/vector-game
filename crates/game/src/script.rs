@@ -1,4 +1,4 @@
-//! Headless scripted play: `vector-game --script file.txt` drives the real game logic with
+﻿//! Headless scripted play: `vector-game --script file.txt` drives the real game logic with
 //! key events and checks outcomes, so whole sessions can be regression-tested without a window.
 //!
 //! One command per line (`#` starts a comment):
@@ -119,6 +119,7 @@ pub fn key_code(name: &str) -> Option<KeyCode> {
         "ctrl" => KeyCode::ControlLeft,
         "shift" => KeyCode::ShiftLeft,
         "f7" => KeyCode::F7,
+        "f8" => KeyCode::F8,
         "backquote" => KeyCode::Backquote,
         "f1" => KeyCode::F1,
         "f2" => KeyCode::F2,
@@ -260,6 +261,7 @@ pub fn run(
                 }
                 g.key(KeyCode::ControlLeft, None, false);
             }
+            "reveal" => g.sim.reveal_all(),
             "mark" => marked_star = Some(g.sim.here),
             "give" => match w.get(1).copied().unwrap_or("") {
                 "credits" => g.sim.credits += num(2)?,

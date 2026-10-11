@@ -28,4 +28,4 @@ Mesures prises sur la machine de développement (Windows 11, build `--release`),
 - L'ouverture réelle de la fenêtre a été vérifiée en lançant le binaire quelques secondes (processus vivant, aucune erreur) ; le rendu fin et la jouabilité ont été vérifiés par captures et scripts, pas par une session humaine.
 
 ## Session 2 (nouvelle machine)
-Build release, 156 tests, clippy `-D warnings`, `data_check` et les 8 scripts de `scripts/` (first_flight, dock_and_trade, full_loop, ftl_jump, combat, colony, save_reload) passent. Non vérifié : le ressenti du pilotage (boost, frein, visée souris F7) et les couleurs en jeu réel, vérifiés par tests et captures seulement ; aucune session jouée par un humain.
+Build release, 156 tests, clippy `-D warnings`, `data_check` et les 7 scripts de `scripts/` (first_flight, dock_and_trade, full_loop, ftl_jump, combat, colony, save_reload) passent. Non vérifié : le ressenti du pilotage (boost, frein, visée souris F7) et les couleurs en jeu réel, vérifiés par tests et captures seulement ; aucune session jouée par un humain.

@@ -1,4 +1,4 @@
-//! Guided tutorial (state-driven, skippable) and contextual help (F1) per screen.
+﻿//! Guided tutorial (state-driven, skippable) and contextual help (F1) per screen.
 use crate::game::{Game, Screen};
 use winit::keyboard::KeyCode;
 
@@ -16,7 +16,7 @@ fn any_pressed(g: &Game, screen: Screen, codes: &[KeyCode]) -> bool {
     codes.iter().any(|&c| pressed(g, screen, c))
 }
 
-pub const STEPS: [Step; 16] = [
+pub const STEPS: [Step; 17] = [
     Step {
         text: "Bienvenue, capitaine. Tournez le vaisseau : W/S tangage, A/D lacet, Q/E roulis.",
         done: |g| {
@@ -96,7 +96,10 @@ pub const STEPS: [Step; 16] = [
         text: "F4 : technologies, F6 : codex, F2 : empire. F1 donne l'aide du contexte. Bon vol !",
         done: |g| any_pressed(g, Screen::Flight, &[KeyCode::F4, KeyCode::F6, KeyCode::F2]) || matches!(g.screen, Screen::Tech | Screen::Codex | Screen::Empire),
     },
-];
+    Step {
+        text: "F8 ouvre la surface d'une planete ou d'une lune relevee : cartes, biomes, saisons, meteo, globe (G).",
+        done: |g| pressed(g, Screen::Flight, KeyCode::F8) || g.screen == Screen::Surface,
+    },];
 
 /// One-line summary of the keys that work right now, for the permanent command bar.
 /// It follows the screen and its sub-state (map, module picker, jump charge, autopilot...).
@@ -156,6 +159,12 @@ pub fn hint_line(g: &Game) -> String {
         Screen::Rules => "HAUT/BAS REGLE  GAUCHE/DROITE MODIFIER  R DEFAUTS  ECHAP RETOUR",
         Screen::Options => "HAUT/BAS REGLAGE  GAUCHE/DROITE CHANGER  ENTREE/ECHAP RETOUR",
         Screen::Codex => "GAUCHE/DROITE CATEGORIE  HAUT/BAS ENTREE  ECHAP RETOUR",
+        Screen::Surface if g.surf_globe => {
+            "GLOBE  GAUCHE/DROITE TOURNER  TAB COUCHE  G CARTE  F CODEX  F8/ECHAP RETOUR"
+        }
+        Screen::Surface => {
+            "FLECHES CURSEUR (MAJ x4)  TAB COUCHE  G GLOBE  F CODEX  F8/ECHAP RETOUR"
+        }
     };
     s.to_string()
 }
@@ -176,6 +185,7 @@ pub fn help_lines(screen: Screen) -> &'static [&'static str] {
             "H vaisseau  K equipage  I soute  J journal",
             "L galaxie  F2 empire  F3 flotte  F4 techno  F6 codex",
             "O : fonder une colonie   Z tribut   N epave   U abordage",
+            "F8 : surface de la planete ou lune ciblee (releve niveau 2)",
         ],
         Screen::Station => &[
             "Haut/Bas : ressource   Entree : tout vendre",
@@ -227,6 +237,12 @@ pub fn help_lines(screen: Screen) -> &'static [&'static str] {
         Screen::Codex => &[
             "Gauche/Droite : categorie   Haut/Bas : entree",
             "PgUp/PgDn : sauter de 10   Echap ou F6 : retour",
+        ],
+        Screen::Surface => &[
+            "Fleches : deplacer le curseur (Maj : x4)",
+            "Tab : couche (biomes, altitude, temperature, humidite, meteo)",
+            "G : globe fil de fer avec courbes de niveau (Gauche/Droite : tourner)",
+            "F : codex   F8 ou Echap : retour au vol",
         ],
         Screen::Pause => &["Haut/Bas : choisir   Entree : valider   Echap : reprendre"],
         Screen::MainMenu => &["Haut/Bas : choisir   Entree : valider   Taper : graine"],

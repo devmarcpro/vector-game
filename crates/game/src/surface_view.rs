@@ -1,0 +1,473 @@
+﻿//! Surface screen (F8): a coloured character map of a solid planet with five layers, an info
+//! panel for the cursor cell, and a wireframe globe with contour lines.
+use crate::game::Game;
+use crate::hud::{AMBER, DIM, GREEN, RED};
+use vector_core::{Mat3, Vec3};
+use vector_render::Framebuffer;
+use vector_sim::planet::{PlanetMap, Weather};
+use vector_world::surface::{Surface, H, W};
+
+pub const LAYERS: [&str; 5] = ["BIOMES", "ALTITUDE", "TEMPERATURE", "HUMIDITE", "METEO"];
+
+/// Metres per unit of relative elevation (peaks and trenches of a living world).
+const RELIEF_M: f64 = 8000.0;
+
+fn rgb(r: f64, g: f64, b: f64) -> u32 {
+    let c = |v: f64| (v.clamp(0.0, 1.0) * 255.0) as u32;
+    (c(r) << 16) | (c(g) << 8) | c(b)
+}
+
+fn lerp3(stops: &[(f64, [f64; 3])], v: f64) -> u32 {
+    let v = v.clamp(stops[0].0, stops[stops.len() - 1].0);
+    for w in stops.windows(2) {
+        if v <= w[1].0 {
+            let t = (v - w[0].0) / (w[1].0 - w[0].0).max(1e-9);
+            let (a, b) = (w[0].1, w[1].1);
+            return rgb(
+                a[0] + (b[0] - a[0]) * t,
+                a[1] + (b[1] - a[1]) * t,
+                a[2] + (b[2] - a[2]) * t,
+            );
+        }
+    }
+    0
+}
+
+pub fn elev_color(e: f64) -> u32 {
+    if e < 0.0 {
+        lerp3(&[(-1.0, [0.02, 0.06, 0.35]), (0.0, [0.10, 0.45, 0.90])], e)
+    } else {
+        lerp3(
+            &[
+                (0.0, [0.20, 0.70, 0.25]),
+                (0.3, [0.80, 0.75, 0.25]),
+                (0.6, [0.60, 0.40, 0.20]),
+                (1.0, [1.0, 1.0, 1.0]),
+            ],
+            e,
+        )
+    }
+}
+
+fn temp_color(t: f64) -> u32 {
+    lerp3(
+        &[
+            (180.0, [0.30, 0.30, 1.0]),
+            (250.0, [0.20, 0.80, 1.0]),
+            (285.0, [0.30, 0.90, 0.30]),
+            (320.0, [1.0, 0.85, 0.20]),
+            (420.0, [1.0, 0.20, 0.10]),
+        ],
+        t,
+    )
+}
+
+fn hum_color(h: f64) -> u32 {
+    lerp3(
+        &[
+            (0.0, [0.75, 0.50, 0.20]),
+            (0.5, [0.30, 0.80, 0.40]),
+            (1.0, [0.20, 0.60, 1.0]),
+        ],
+        h,
+    )
+}
+
+pub fn weather_glyph(w: Weather) -> (char, u32) {
+    match w {
+        Weather::Clear => ('.', 0x0040_5060),
+        Weather::Cloudy => ('c', 0x00A0_A8B0),
+        Weather::Rain => ('/', 0x0040_90FF),
+        Weather::Storm => ('Z', 0x00FF_E040),
+        Weather::Snow => ('*', 0x00E0_F0FF),
+        Weather::Blizzard => ('X', 0x00FF_FFFF),
+        Weather::Heat => ('H', 0x00FF_6020),
+        Weather::Dust => ('d', 0x00D0_A050),
+    }
+}
+
+/// Glyph and colour of a cell in the current layer.
+fn cell(g: &Game, map: &PlanetMap, x: usize, y: usize) -> (char, u32) {
+    let i = Surface::idx(x, y);
+    let s = &map.surface;
+    match g.surf_layer {
+        0 => {
+            let b = &g.data.biomes[map.biome_at(x, y)];
+            (b.glyph.chars().next().unwrap_or('?'), b.color)
+        }
+        1 => {
+            let e = f64::from(s.elev[i]);
+            let ch = match e {
+                e if e < -0.5 => '~',
+                e if e < 0.0 => '-',
+                e if e < 0.2 => '.',
+                e if e < 0.45 => ':',
+                e if e < 0.7 => '+',
+                _ => '^',
+            };
+            (ch, elev_color(e))
+        }
+        2 => ('#', temp_color(g.sim.temp_now(map, x, y))),
+        3 => ('#', hum_color(f64::from(s.hum[i]))),
+        _ => weather_glyph(g.sim.weather_at(map, x, y).0),
+    }
+}
+
+fn fill_cell(fb: &mut Framebuffer, col: usize, row: usize, c: u32) {
+    for dy in 0..10 {
+        for dx in 0..8 {
+            fb.px_set((col * 8 + dx) as i32, (row * 10 + dy) as i32, c);
+        }
+    }
+}
+
+fn season_name(map_phase: f64, south: bool) -> &'static str {
+    let q = ((map_phase * 4.0).floor() as usize + if south { 2 } else { 0 }) % 4;
+    ["printemps", "été", "automne", "hiver"][q]
+}
+
+fn lat_lon(x: usize, y: usize) -> String {
+    let lat = Surface::lat(y).to_degrees();
+    let lon = Surface::lon(x).to_degrees();
+    format!(
+        "LAT {:.0} {}  LON {:.0} {}",
+        lat.abs(),
+        if lat >= 0.0 { "N" } else { "S" },
+        if lon > 180.0 { 360.0 - lon } else { lon },
+        if lon > 180.0 { "O" } else { "E" }
+    )
+}
+
+pub fn draw(fb: &mut Framebuffer, g: &Game) {
+    let Some(map) = g.surf.as_ref() else {
+        fb.text(2, 2, "PAS DE CARTE", RED);
+        return;
+    };
+    let body = &g.sim.system.bodies[map.body];
+    fb.text(2, 1, &format!("== SURFACE : {} ==", body.name), AMBER);
+    // Layer tabs.
+    let mut x = 2;
+    for (i, l) in LAYERS.iter().enumerate() {
+        fb.text(x, 2, l, if i == g.surf_layer { AMBER } else { DIM });
+        x += l.len() + 2;
+    }
+    let panel_w = 38;
+    let (x0, y0) = (1usize, 4usize);
+    let cols_map = fb.cols().saturating_sub(panel_w + 3).clamp(20, W);
+    let rows_map = fb.rows().saturating_sub(y0 + 3).clamp(10, H);
+    if g.surf_globe {
+        draw_globe(fb, g, map, x0, y0, cols_map, rows_map);
+    } else {
+        for r in 0..rows_map {
+            let my = r * H / rows_map;
+            for c in 0..cols_map {
+                let mx = c * W / cols_map;
+                let (ch, col) = cell(g, map, mx, my);
+                fb.text(x0 + c, y0 + r, &ch.to_string(), col);
+            }
+        }
+        // Cursor: the cell under it gets a bright background.
+        let (cc, cr) = (
+            (g.surf_cx * cols_map / W).min(cols_map - 1),
+            (g.surf_cy * rows_map / H).min(rows_map - 1),
+        );
+        let (ch, col) = cell(g, map, g.surf_cx, g.surf_cy);
+        fill_cell(fb, x0 + cc, y0 + cr, 0x0060_4010);
+        fb.text(
+            x0 + cc,
+            y0 + cr,
+            &ch.to_string(),
+            if col == 0 { AMBER } else { 0x00FF_FFFF },
+        );
+        // Cities of the colonies on this world.
+        for (name, cx, cy) in &g.surf_cities {
+            let (c, r) = (
+                (*cx * cols_map / W).min(cols_map - 1),
+                (*cy * rows_map / H).min(rows_map - 1),
+            );
+            fb.text(x0 + c, y0 + r, "@", 0x00FF_FFFF);
+            fb.text(x0 + c + 2, y0 + r, &name.to_uppercase(), AMBER);
+        }
+    }
+    draw_panel(fb, g, map, x0 + cols_map + 2, y0);
+}
+
+fn draw_panel(fb: &mut Framebuffer, g: &Game, map: &PlanetMap, col: usize, row: usize) {
+    let body = &g.sim.system.bodies[map.body];
+    let sim = &g.sim;
+    let mut r = row;
+    let mut line = |fb: &mut Framebuffer, s: String, c: u32| {
+        fb.text(col, r, &s, c);
+        r += 1;
+    };
+    line(fb, crate::hud::kind_label(body.kind), AMBER);
+    line(
+        fb,
+        format!(
+            "GRAVITE {:.1} M/S2  PRESSION {:.2} BAR",
+            body.gravity, body.pressure
+        ),
+        GREEN,
+    );
+    line(
+        fb,
+        format!(
+            "T EQUILIBRE {:.0} K  ({:.0} C)",
+            body.temp,
+            body.temp - 273.15
+        ),
+        GREEN,
+    );
+    let year_days = sim.year_length(map.body) / 86_400.0;
+    line(
+        fb,
+        format!(
+            "ANNEE {year_days:.0} J  INCLINAISON {:.0} DEG",
+            f64::from(map.surface.tilt).to_degrees()
+        ),
+        GREEN,
+    );
+    line(
+        fb,
+        format!("MERS {:.0} % DE LA SURFACE", map.surface.sea_frac * 100.0),
+        GREEN,
+    );
+    line(fb, String::new(), DIM);
+    let (cx, cy) = (g.surf_cx, g.surf_cy);
+    let i = Surface::idx(cx, cy);
+    let b = &g.data.biomes[map.biome_at(cx, cy)];
+    line(fb, lat_lon(cx, cy), AMBER);
+    let season = season_name(sim.season_phase(map.body), cy >= H / 2);
+    line(
+        fb,
+        format!("SAISON LOCALE : {}", season.to_uppercase()),
+        GREEN,
+    );
+    line(
+        fb,
+        format!("{}  [{}]", b.name.to_uppercase(), b.glyph),
+        b.color,
+    );
+    let e = f64::from(map.surface.elev[i]);
+    line(
+        fb,
+        if e < 0.0 {
+            format!("PROFONDEUR {:.0} M", -e * RELIEF_M)
+        } else {
+            format!("ALTITUDE {:.0} M", e * RELIEF_M)
+        },
+        GREEN,
+    );
+    let (tm, tn) = (f64::from(map.surface.temp[i]), sim.temp_now(map, cx, cy));
+    line(
+        fb,
+        format!("T MOYENNE {:.0} K  ({:.0} C)", tm, tm - 273.15),
+        GREEN,
+    );
+    line(
+        fb,
+        format!("T ACTUELLE {:.0} K  ({:.0} C)", tn, tn - 273.15),
+        GREEN,
+    );
+    line(
+        fb,
+        format!("HUMIDITE {:.0} %", f64::from(map.surface.hum[i]) * 100.0),
+        GREEN,
+    );
+    let (w, sev) = sim.weather_at(map, cx, cy);
+    let (_, wc) = weather_glyph(w);
+    line(
+        fb,
+        format!(
+            "METEO : {} ({:.0} %)",
+            w.label().to_uppercase(),
+            sev * 100.0
+        ),
+        wc,
+    );
+    line(
+        fb,
+        format!(
+            "ATTRAIT {:.0} %  FERTILITE {:.0} %",
+            b.habit * 100.0,
+            b.fertility * 100.0
+        ),
+        GREEN,
+    );
+    line(fb, String::new(), DIM);
+    match sim.catastrophe_on(map, sim.day_number()) {
+        Some(c) => line(
+            fb,
+            format!(
+                "ALERTE : {} ({:.0} %) EN {}",
+                c.kind.label().to_uppercase(),
+                c.severity * 100.0,
+                lat_lon(c.x, c.y)
+            ),
+            RED,
+        ),
+        None => line(fb, "AUCUNE CATASTROPHE AUJOURD'HUI".into(), DIM),
+    }
+    line(fb, String::new(), DIM);
+    // Biome shares, largest first.
+    let mut count = vec![0usize; g.data.biomes.len()];
+    for &b in &map.biome {
+        count[usize::from(b)] += 1;
+    }
+    let mut order: Vec<usize> = (0..count.len()).filter(|&i| count[i] > 0).collect();
+    order.sort_by_key(|&i| std::cmp::Reverse(count[i]));
+    line(fb, "BIOMES".into(), AMBER);
+    for &bi in order.iter().take(6) {
+        let b = &g.data.biomes[bi];
+        line(
+            fb,
+            format!(
+                "[{}] {:<18}{:>4.0} %",
+                b.glyph,
+                b.name.to_uppercase(),
+                count[bi] as f64 * 100.0 / (W * H) as f64
+            ),
+            b.color,
+        );
+    }
+}
+
+/// Wireframe globe: a graticule, contour lines of the elevation (marching squares), the coast
+/// in light blue and a coloured dot per visible cell. Only the facing hemisphere is drawn.
+fn draw_globe(
+    fb: &mut Framebuffer,
+    g: &Game,
+    map: &PlanetMap,
+    x0: usize,
+    y0: usize,
+    cols: usize,
+    rows: usize,
+) {
+    let (w_px, h_px) = ((cols * 8) as f32, (rows * 10) as f32);
+    // Perspective camera on the -z axis looking at the origin; the globe is centred in the map
+    // rectangle and sized to fit it. Own projection (no framebuffer borrow while drawing).
+    let cam_dist = 3.2f64;
+    let limb_r = (1.0 - 1.0 / (cam_dist * cam_dist)).sqrt();
+    let (cx_px, cy_px) = ((x0 * 8) as f32 + w_px / 2.0, (y0 * 10) as f32 + h_px / 2.0);
+    let focal = f64::from(0.47 * w_px.min(h_px)) * (cam_dist - 1.0 / cam_dist) / limb_r;
+    let spin = Mat3::rot_y(g.surf_spin);
+    let tilt = Mat3::rot_x(0.35);
+    let to_view = |lat: f64, lon: f64| -> Vec3 {
+        let p = Vec3::new(lat.cos() * lon.cos(), lat.sin(), lat.cos() * lon.sin());
+        tilt.mul_vec(spin.mul_vec(p))
+    };
+    let visible = |p: Vec3| p.z < -1.0 / cam_dist + 0.01;
+    let project = |p: Vec3| -> Option<(f32, f32)> {
+        let z = p.z + cam_dist;
+        (z > 0.1).then(|| {
+            (
+                cx_px + (p.x / z * focal) as f32,
+                cy_px - (p.y / z * focal) as f32,
+            )
+        })
+    }; // One dot per visible cell, coloured by the current layer.
+    for y in 0..H {
+        for x in 0..W {
+            let p = to_view(Surface::lat(y), Surface::lon(x));
+            if !visible(p) {
+                continue;
+            }
+            if let Some((sx, sy)) = project(p) {
+                let (_, c) = cell(g, map, x, y);
+                for (dx, dy) in [(0, 0), (1, 0), (0, 1), (1, 1)] {
+                    fb.plot(sx as i32 + dx, sy as i32 + dy, c);
+                }
+            }
+        }
+    }
+    let mut seg = |a: Vec3, b: Vec3, c: u32| {
+        if !(visible(a) || visible(b)) {
+            return;
+        }
+        if let (Some(p), Some(q)) = (project(a), project(b)) {
+            fb.line(p.0, p.1, q.0, q.1, c);
+        }
+    };
+    // Graticule every 30 degrees.
+    for k_lat in -2..=2 {
+        let lat = f64::from(k_lat) * 30f64.to_radians();
+        for s in 0..72 {
+            let (a, b) = (
+                f64::from(s) / 72.0 * std::f64::consts::TAU,
+                f64::from(s + 1) / 72.0 * std::f64::consts::TAU,
+            );
+            seg(to_view(lat, a), to_view(lat, b), 0x0018_3040);
+        }
+    }
+    for k_lon in 0..12 {
+        let lon = f64::from(k_lon) * 30f64.to_radians();
+        for s in -30..30 {
+            let (a, b) = (
+                f64::from(s) / 60.0 * std::f64::consts::PI,
+                f64::from(s + 1) / 60.0 * std::f64::consts::PI,
+            );
+            seg(to_view(a, lon), to_view(b, lon), 0x0018_3040);
+        }
+    }
+    // Contours.
+    let levels: [(f32, u32); 5] = [
+        (-0.5, 0x0020_50A0),
+        (0.0, 0x0090_E0FF),
+        (0.25, 0x0060_C060),
+        (0.5, 0x00C0_A050),
+        (0.75, 0x00F0_F0F0),
+    ];
+    let at = |x: usize, y: usize| map.surface.elev[Surface::idx(x % W, y)];
+    for y in 0..H - 1 {
+        for x in 0..W {
+            let corners = [at(x, y), at(x + 1, y), at(x + 1, y + 1), at(x, y + 1)];
+            let pos = [(x, y), (x + 1, y), (x + 1, y + 1), (x, y + 1)];
+            for &(level, color) in &levels {
+                let mut pts: Vec<Vec3> = Vec::new();
+                for e in 0..4 {
+                    let (a, b) = (corners[e], corners[(e + 1) % 4]);
+                    if (a < level) != (b < level) {
+                        let t = f64::from((level - a) / (b - a));
+                        let ((ax, ay), (bx, by)) = (pos[e], pos[(e + 1) % 4]);
+                        let fx = ax as f64 + (bx as f64 - ax as f64) * t + 0.5;
+                        let fy = ay as f64 + (by as f64 - ay as f64) * t + 0.5;
+                        let lon = fx / W as f64 * std::f64::consts::TAU;
+                        let lat = (0.5 - fy / H as f64) * std::f64::consts::PI;
+                        pts.push(to_view(lat, lon));
+                    }
+                }
+                for pair in pts.as_chunks::<2>().0 {
+                    seg(pair[0], pair[1], color);
+                }
+            }
+        }
+    }
+    // Limb.
+    let r = limb_r;
+    let z = -1.0 / cam_dist;
+    for s in 0..96 {
+        let (a, b) = (
+            f64::from(s) / 96.0 * std::f64::consts::TAU,
+            f64::from(s + 1) / 96.0 * std::f64::consts::TAU,
+        );
+        let (p, q) = (
+            Vec3::new(r * a.cos(), r * a.sin(), z),
+            Vec3::new(r * b.cos(), r * b.sin(), z),
+        );
+        if let (Some(u), Some(v)) = (project(p), project(q)) {
+            fb.line(u.0, u.1, v.0, v.1, 0x0030_6080);
+        }
+    }
+    // Cities as bright points.
+    for (name, cx, cy) in &g.surf_cities {
+        let p = to_view(Surface::lat(*cy), Surface::lon(*cx));
+        if visible(p) {
+            if let Some((sx, sy)) = project(p) {
+                for d in [(-2, 0), (2, 0), (0, -2), (0, 2), (0, 0)] {
+                    fb.plot(sx as i32 + d.0, sy as i32 + d.1, 0x00FF_FFFF);
+                }
+                fb.text_at(sx as i32 + 6, sy as i32 - 4, &name.to_uppercase(), AMBER);
+            }
+        }
+    }
+}

@@ -10,6 +10,7 @@ pub mod economy;
 pub mod fleet;
 pub mod market;
 pub mod npc;
+pub mod planet;
 pub mod rules;
 #[cfg(test)]
 mod rules_effects;

@@ -1,8 +1,8 @@
-//! The in-game encyclopedia: one entry per resource, module, hull, building, technology, recipe,
+﻿//! The in-game encyclopedia: one entry per resource, module, hull, building, technology, recipe,
 //! weapon, faction, anomaly and condition, generated from the real data (no hand-written numbers).
 use vector_data::GameData;
 
-pub const CATEGORIES: [&str; 11] = [
+pub const CATEGORIES: [&str; 12] = [
     "RESSOURCES",
     "MODULES",
     "ARMES",
@@ -14,6 +14,7 @@ pub const CATEGORIES: [&str; 11] = [
     "ANOMALIES",
     "MALADIES",
     "INDUSTRIES",
+    "BIOMES",
 ];
 
 /// Number of entries in a category.
@@ -39,6 +40,7 @@ fn entries(data: &GameData, cat: usize) -> Vec<usize> {
         8 => (0..data.anomalies_def.len()).collect(),
         9 => (0..data.diseases.len()).collect(),
         10 => (0..data.industries.len()).collect(),
+        11 => (0..data.biomes.len()).collect(),
         _ => Vec::new(),
     }
 }
@@ -57,7 +59,8 @@ pub fn names(data: &GameData, cat: usize) -> Vec<String> {
             7 => data.factions[i].name.clone(),
             8 => data.anomalies_def[i].name.clone(),
             9 => data.diseases[i].name.clone(),
-            _ => data.industries[i].name.clone(),
+            10 => data.industries[i].name.clone(),
+            _ => data.biomes[i].name.clone(),
         })
         .collect()
 }
@@ -407,6 +410,36 @@ pub fn entry(data: &GameData, cat: usize, k: usize) -> Vec<String> {
                 } else {
                     res_name(data, &d.cure).unwrap_or_else(|| d.cure.clone())
                 }
+            ));
+        }
+        11 => {
+            let b = &data.biomes[i];
+            let range = |r: (f64, f64), unit: &str| {
+                if r.1 > 1.0e8 {
+                    format!("plus de {:.0} {unit}", r.0)
+                } else {
+                    format!("{:.0} a {:.0} {unit}", r.0, r.1)
+                }
+            };
+            out.push(format!("{}  [{}]", b.name, b.glyph));
+            out.push(b.text.clone());
+            out.push(format!("Temperature annuelle : {}", range(b.t, "K")));
+            out.push(format!(
+                "Humidite {:.0} a {:.0} %   altitude relative {:+.2} a {:+.2}   pression {}",
+                b.hum.0 * 100.0,
+                b.hum.1.min(1.0) * 100.0,
+                b.elev.0.max(-1.0),
+                b.elev.1.min(1.0),
+                if b.p.1 > 1.0e8 {
+                    format!("plus de {} bar", b.p.0)
+                } else {
+                    format!("{} a {} bar", b.p.0, b.p.1)
+                }
+            ));
+            out.push(format!(
+                "Attrait pour une colonie : {:.0} %   fertilite : {:.0} %",
+                b.habit * 100.0,
+                b.fertility * 100.0
             ));
         }
         _ => {

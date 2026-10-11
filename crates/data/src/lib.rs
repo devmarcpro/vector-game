@@ -1,4 +1,4 @@
-//! Data schemas and loading/validation of `data/*.ron`. Content lives in data, not code.
+﻿//! Data schemas and loading/validation of `data/*.ron`. Content lives in data, not code.
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
@@ -287,6 +287,31 @@ pub struct AnomalyDef {
     pub text: String,
 }
 
+/// A surface biome. A cell takes the first biome whose ranges contain it (lo <= v < hi):
+/// mean annual temperature   (K), humidity hum, elevation elev (negative = sea floor)
+/// and surface pressure p (bar). habit and ertility are in [0, 1].
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct Biome {
+    pub id: String,
+    pub name: String,
+    pub glyph: String,
+    pub color: u32,
+    pub t: (f64, f64),
+    pub hum: (f64, f64),
+    pub elev: (f64, f64),
+    pub p: (f64, f64),
+    pub habit: f64,
+    pub fertility: f64,
+    pub text: String,
+}
+
+impl Biome {
+    pub fn contains(&self, t: f64, hum: f64, elev: f64, p: f64) -> bool {
+        let inside = |v: f64, r: (f64, f64)| v >= r.0 && v < r.1;
+        inside(t, self.t) && inside(hum, self.hum) && inside(elev, self.elev) && inside(p, self.p)
+    }
+}
+
 const PERSON_FIELDS: [&str; 14] = [
     "morale", "health", "loyalty", "stress", "fatigue", "hunger", "thirst", "social", "relation",
     "age", "credits", "death", "quit", "salary",
@@ -330,6 +355,7 @@ pub struct GameData {
     pub policies: Vec<Policy>,
     pub techs: Vec<Tech>,
     pub anomalies_def: Vec<AnomalyDef>,
+    pub biomes: Vec<Biome>,
 }
 
 fn read<T: for<'a> Deserialize<'a>>(path: &Path) -> Result<T, DataError> {
@@ -358,6 +384,7 @@ impl GameData {
             policies: read(&dir.join("colony_policies.ron"))?,
             techs: read(&dir.join("techs.ron"))?,
             anomalies_def: read(&dir.join("worldgen/anomalies.ron"))?,
+            biomes: read(&dir.join("biomes.ron"))?,
         };
         // Generated extension files (tools/gen_scale.py) extend the hand-written tables.
         let mut extra_events: Vec<EventDef> = read(&dir.join("events_extra.ron"))?;
@@ -426,6 +453,12 @@ impl GameData {
     pub fn tech_index(&self, id: &str) -> Option<usize> {
         self.techs.iter().position(|t| t.id == id)
     }
+    /// Index of the first biome containing this cell (None only if the table has a hole, which
+    /// alidate rules out).
+    pub fn classify_biome(&self, t: f64, hum: f64, elev: f64, p: f64) -> Option<usize> {
+        self.biomes.iter().position(|b| b.contains(t, hum, elev, p))
+    }
+
     pub fn anomaly_def(&self, id: &str) -> Option<&AnomalyDef> {
         self.anomalies_def.iter().find(|a| a.id == id)
     }
@@ -756,6 +789,61 @@ impl GameData {
                 return bad(format!("anomalie {}: valeurs invalides", a.id));
             }
         }
+        self.validate_biomes()
+    }
+
+    /// Ids, ranges, and a proof by sampling that every surface cell has a biome.
+    fn validate_biomes(&self) -> Result<(), DataError> {
+        let bad = |s: String| Err(DataError::Invalid(s));
+        let mut seen = std::collections::HashSet::new();
+        for b in &self.biomes {
+            if !seen.insert(b.id.as_str()) {
+                return bad(format!("biome {} en double", b.id));
+            }
+            if b.glyph.chars().count() != 1 {
+                return bad(format!(
+                    "biome {}: le glyphe doit etre un seul caractere",
+                    b.id
+                ));
+            }
+            if [b.t, b.hum, b.elev, b.p].iter().any(|r| r.0 >= r.1) {
+                return bad(format!("biome {}: intervalle vide ou inverse", b.id));
+            }
+            if !(0.0..=1.0).contains(&b.habit) || !(0.0..=1.0).contains(&b.fertility) {
+                return bad(format!("biome {}: habit/fertility hors de [0, 1]", b.id));
+            }
+        }
+        // Sample every range edge, just inside it, and its middle, on each axis.
+        let axis = |get: fn(&Biome) -> (f64, f64)| -> Vec<f64> {
+            let mut v = vec![0.0];
+            for b in &self.biomes {
+                let (lo, hi) = get(b);
+                v.extend([lo, (lo + hi.min(1.0e4)) / 2.0]);
+                if hi < 1.0e8 {
+                    v.push(hi - 1e-6);
+                }
+            }
+            v
+        };
+        let (ts, hs, es, ps) = (
+            axis(|b| b.t),
+            axis(|b| b.hum),
+            axis(|b| b.elev),
+            axis(|b| b.p),
+        );
+        for &t in ts.iter().filter(|&&t| t >= 0.0) {
+            for &h in hs.iter().filter(|&&h| (0.0..=1.0).contains(&h)) {
+                for &e in es.iter().filter(|&&e| (-1.0..=1.0).contains(&e)) {
+                    for &p in ps.iter().filter(|&&p| p >= 0.0) {
+                        if self.classify_biome(t, h, e, p).is_none() {
+                            return bad(format!(
+                                "aucun biome pour t={t:.1} K, humidite={h:.2}, altitude={e:.2}, pression={p} bar"
+                            ));
+                        }
+                    }
+                }
+            }
+        }
         Ok(())
     }
 }
@@ -786,6 +874,40 @@ mod tests {
 
     fn dir() -> PathBuf {
         Path::new(env!("CARGO_MANIFEST_DIR")).join("../../data")
+    }
+
+    #[test]
+    fn biome_table_must_cover_every_cell_and_have_unique_ids() {
+        let d = GameData::load(&dir()).expect("data loads");
+        assert!(d.biomes.len() >= 18, "{}", d.biomes.len());
+        // A hole in the table is found and reported.
+        let mut holed = d.clone();
+        holed.biomes.retain(|b| b.id != "desert");
+        let err = holed
+            .validate()
+            .expect_err("a missing biome leaves a hole")
+            .to_string();
+        assert!(err.contains("aucun biome"), "{err}");
+        let mut twice = d.clone();
+        twice.biomes.push(twice.biomes[0].clone());
+        assert!(twice
+            .validate()
+            .expect_err("duplicate")
+            .to_string()
+            .contains("en double"));
+        let mut wide = d.clone();
+        wide.biomes[0].glyph = "ab".into();
+        assert!(wide.validate().is_err());
+        // Classification works on a few well-known cells.
+        let id = |t, h, e, p| {
+            d.biomes[d.classify_biome(t, h, e, p).expect("covered")]
+                .id
+                .clone()
+        };
+        assert_eq!(id(288.0, 0.5, 0.2, 1.0), "foret_temperee");
+        assert_eq!(id(300.0, 0.9, 0.3, 1.0), "jungle");
+        assert_eq!(id(285.0, 0.5, -0.8, 1.0), "ocean_profond");
+        assert_eq!(id(150.0, 0.0, 0.1, 0.0), "plaine_rocheuse");
     }
 
     #[test]

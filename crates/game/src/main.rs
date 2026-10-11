@@ -6,6 +6,7 @@ mod hud;
 mod scene;
 mod script;
 mod settings;
+mod surface_view;
 mod tutorial;
 mod ui;
 
@@ -235,6 +236,34 @@ fn snapshot(path: &str, scene: &str, data: Arc<GameData>) {
             g.sim.ship.vel = b.vel;
             g.sim.target = Some(i);
             g.sim.update_ref_pub();
+        }
+        "surface" | "globe" => {
+            g.sim.reveal_all();
+            let i = g
+                .sim
+                .bodies
+                .iter()
+                .position(|b| {
+                    matches!(
+                        b.kind,
+                        vector_world::BodyKind::Planet(
+                            vector_world::PlanetKind::Terran
+                                | vector_world::PlanetKind::Ocean
+                                | vector_world::PlanetKind::Tundra
+                                | vector_world::PlanetKind::Desert
+                        )
+                    )
+                })
+                .or_else(|| {
+                    g.sim.bodies.iter().position(
+                        |b| matches!(b.kind, vector_world::BodyKind::Planet(p) if !p.is_giant()),
+                    )
+                })
+                .expect("a solid planet");
+            g.sim.target = Some(i);
+            g.open_surface();
+            g.surf_globe = scene == "globe";
+            g.surf_spin = 0.9;
         }
         "speed" => {
             g.sim.ship.vel = g

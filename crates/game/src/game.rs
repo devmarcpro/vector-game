@@ -55,6 +55,7 @@ pub enum Screen {
     Rules,
     Options,
     Codex,
+    Surface,
 }
 
 /// Route being composed in the fleet screen.
@@ -126,6 +127,15 @@ pub struct Game {
     pub opt_sel: usize,
     pub codex_cat: usize,
     pub codex_sel: usize,
+    /// Surface map screen (F8): the map, cursor, layer, globe view and its rotation.
+    pub surf: Option<vector_sim::planet::PlanetMap>,
+    pub surf_cx: usize,
+    pub surf_cy: usize,
+    pub surf_layer: usize,
+    pub surf_globe: bool,
+    pub surf_spin: f64,
+    /// Cities of this world's colonies: (name, cell x, cell y), computed when the screen opens.
+    pub surf_cities: Vec<(String, usize, usize)>,
     pub help_open: bool,
     pub tut_step: Option<usize>,
     pub tut_keys: Vec<(Screen, KeyCode)>,
@@ -197,6 +207,13 @@ impl Game {
             opt_sel: 0,
             codex_cat: 0,
             codex_sel: 0,
+            surf: None,
+            surf_cx: 0,
+            surf_cy: 0,
+            surf_layer: 0,
+            surf_globe: false,
+            surf_spin: 0.0,
+            surf_cities: Vec::new(),
             help_open: false,
             tut_step: None,
             tut_keys: Vec::new(),
@@ -624,6 +641,7 @@ impl Game {
             Screen::Rules => self.rules_key(code),
             Screen::Options => self.options_key(code),
             Screen::Codex => self.codex_key(code),
+            Screen::Surface => self.surface_key(code),
             Screen::Destroyed => {
                 if code == KeyCode::Enter {
                     if self.sim.can_respawn() {
@@ -784,6 +802,71 @@ impl Game {
                     .save(&PathBuf::from("saves").join("settings.cfg"));
             }
             KeyCode::Escape | KeyCode::Enter => self.screen = self.back_to,
+            _ => {}
+        }
+    }
+
+    /// Open the surface map of the targeted (or else the reference) planet or moon.
+    pub fn open_surface(&mut self) {
+        let body = [self.sim.target, self.sim.ref_body]
+            .into_iter()
+            .flatten()
+            .find(|&i| {
+                matches!(
+                    self.sim.bodies[i].kind,
+                    BodyKind::Planet(_) | BodyKind::Moon(_)
+                )
+            });
+        let Some(body) = body else {
+            self.say("CIBLEZ UNE PLANETE OU UNE LUNE (TAB/T) POUR VOIR SA SURFACE");
+            return;
+        };
+        if self.sim.scan[body] < vector_sim::voyage::SCAN_SURVEYED {
+            self.say("CORPS NON RELEVE : APPROCHEZ-VOUS POUR LE SCANNER (NIVEAU 2)");
+            return;
+        }
+        match self.sim.planet_map(body) {
+            Some(map) => {
+                self.surf_cx = vector_world::surface::W / 2;
+                self.surf_cy = vector_world::surface::H / 2;
+                self.surf_cities = self
+                    .sim
+                    .colonies
+                    .iter()
+                    .filter(|c| c.star == self.sim.here && c.body == body)
+                    .filter_map(|c| {
+                        self.sim
+                            .city_site(&map, c.id)
+                            .map(|(x, y)| (c.name.clone(), x, y))
+                    })
+                    .collect();
+                self.surf = Some(map);
+                self.screen = Screen::Surface;
+            }
+            None => self.say("PAS DE SURFACE SOLIDE (GEANTE GAZEUSE OU GLACEE)"),
+        }
+    }
+
+    fn surface_key(&mut self, code: KeyCode) {
+        use vector_world::surface::{H, W};
+        let step = if self.keys.contains(&KeyCode::ShiftLeft) {
+            4
+        } else {
+            1
+        };
+        match code {
+            KeyCode::ArrowLeft if self.surf_globe => self.surf_spin -= 0.15 * step as f64,
+            KeyCode::ArrowRight if self.surf_globe => self.surf_spin += 0.15 * step as f64,
+            KeyCode::ArrowLeft => self.surf_cx = (self.surf_cx + W - step % W) % W,
+            KeyCode::ArrowRight => self.surf_cx = (self.surf_cx + step) % W,
+            KeyCode::ArrowUp => self.surf_cy = self.surf_cy.saturating_sub(step),
+            KeyCode::ArrowDown => self.surf_cy = (self.surf_cy + step).min(H - 1),
+            KeyCode::Tab => {
+                self.surf_layer = (self.surf_layer + 1) % crate::surface_view::LAYERS.len()
+            }
+            KeyCode::KeyG => self.surf_globe = !self.surf_globe,
+            KeyCode::KeyF => self.open_codex(Screen::Surface),
+            KeyCode::Escape | KeyCode::F8 => self.screen = Screen::Flight,
             _ => {}
         }
     }
@@ -1628,6 +1711,7 @@ impl Game {
             },
             KeyCode::KeyO => self.found_colony_at_target(),
             KeyCode::F4 => self.open_tech(),
+            KeyCode::F8 => self.open_surface(),
             KeyCode::F6 => self.open_codex(Screen::Flight),
             KeyCode::Backspace if self.sim.is_charging_jump() => {
                 self.sim.cancel_jump();
@@ -1765,6 +1849,7 @@ mod tests {
             Screen::Rules,
             Screen::Options,
             Screen::Codex,
+            Screen::Surface,
         ] {
             g.screen = s;
             let line = crate::tutorial::hint_line(&g);
@@ -1785,6 +1870,52 @@ mod tests {
         assert!(lit(&g));
         g.settings.hints = false;
         assert!(!lit(&g));
+    }
+
+    #[test]
+    fn f8_opens_the_surface_of_a_surveyed_world_and_its_keys_work() {
+        let mut g = Game::new(data(), 1);
+        g.key(KeyCode::Enter, None, true);
+        // Nothing targeted, or an unsurveyed world: the screen refuses and says why.
+        g.key(KeyCode::F8, None, true);
+        assert_eq!(g.screen, Screen::Flight);
+        assert!(
+            g.messages.last().is_some_and(|m| m.contains("PLANETE")),
+            "{:?}",
+            g.messages.last()
+        );
+        g.sim.reveal_all();
+        g.cycle_target(|k| matches!(k, BodyKind::Planet(p) if !p.is_giant()));
+        g.key(KeyCode::F8, None, true);
+        assert_eq!(g.screen, Screen::Surface);
+        let map = g.surf.as_ref().expect("map");
+        assert_eq!(
+            map.biome.len(),
+            vector_world::surface::W * vector_world::surface::H
+        );
+        let (x, y) = (g.surf_cx, g.surf_cy);
+        g.key(KeyCode::ArrowRight, None, true);
+        g.key(KeyCode::ArrowDown, None, true);
+        assert_eq!(
+            (g.surf_cx, g.surf_cy),
+            ((x + 1) % vector_world::surface::W, y + 1)
+        );
+        let layer = g.surf_layer;
+        g.key(KeyCode::Tab, None, true);
+        assert_ne!(g.surf_layer, layer);
+        g.key(KeyCode::KeyG, None, true);
+        assert!(g.surf_globe);
+        g.key(KeyCode::ArrowRight, None, true);
+        assert!(g.surf_spin > 0.0, "left/right turn the globe");
+        g.key(KeyCode::Escape, None, true);
+        assert_eq!(g.screen, Screen::Flight);
+        // A gas giant has no surface.
+        g.sim.target = None;
+        g.cycle_target(|k| matches!(k, BodyKind::Planet(p) if p.is_giant()));
+        if g.sim.target.is_some() {
+            g.key(KeyCode::F8, None, true);
+            assert_eq!(g.screen, Screen::Flight);
+        }
     }
 
     #[test]

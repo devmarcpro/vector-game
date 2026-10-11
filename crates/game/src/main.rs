@@ -1,3 +1,4 @@
+mod audio;
 mod codex;
 mod console;
 mod game;
@@ -61,6 +62,7 @@ struct App {
     game: Game,
     last: Instant,
     acc: f64,
+    audio: audio::Audio,
 }
 
 impl ApplicationHandler for App {
@@ -120,6 +122,7 @@ impl ApplicationHandler for App {
                 if self.fb.w != w.get() as usize || self.fb.h != h.get() as usize {
                     self.fb = Framebuffer::new(w.get() as usize, h.get() as usize);
                 }
+                self.audio.update(&self.game);
                 draw_frame(&mut self.fb, &self.game);
                 let st = &self.game.settings;
                 if st.scanlines || st.glow || st.scheme > 0 {
@@ -530,11 +533,16 @@ fn main() {
         eprintln!("cannot create event loop");
         return;
     };
+    let audio = audio::Audio::new();
+    if !audio.available() {
+        eprintln!("audio: no output device, running silent");
+    }
     let mut app = App {
         window: None,
         surface: None,
         fb: Framebuffer::new(1024, 576),
         game: Game::new(data, DEFAULT_SEED),
+        audio,
         last: Instant::now(),
         acc: 0.0,
     };

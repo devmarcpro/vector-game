@@ -9,4 +9,5 @@ vector-sim = { path = "../sim" }
 vector-world = { path = "../world" }
 winit = "0.30"
 softbuffer = "0.4"
+cpal = "0.15"
 vector-data = { path = "../data" }

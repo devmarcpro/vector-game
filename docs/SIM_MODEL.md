@@ -168,3 +168,10 @@ Tout est derive (rien n'est stocke, meme graine = memes nombres) et une seule fo
 - Interieur : fraction du noyau selon la densite, flux de chaleur ~ R / age (+ chauffage de maree selon
   l'excentricite), activite (inerte, couvercle fige, plaques, volcanique, fluide), champ magnetique
   (dynamo : noyau fluide + rotation + taille).
+
+## Militaire (`arms.rs`)
+- E = 1/2 m v^2 ; degats = E / 10 kJ. Dispersion : rayon d'ecart = spread(mrad) x distance ; chance de toucher = min(1, (R/r)^2).
+- Faisceau : rayon du spot = D/2 + 1,22 lambda d / D ; intensite relative = (D/2 / spot)^2 ; transmission exp(-k rho d), k = 2e-4 (laser), 2e-3 (particules, lambda < 100 nm).
+- Detection passive : r = sqrt(P / (4 pi S)), S = 5e-6 W/m^2, plancher 5 km (capteur actif). Signature = 0,5 x puissance consommee + flash des armes en recharge.
+- Bataille : forces A et B (+-10 % hachees), vainqueur = le plus fort, reste = sqrt(1 - (faible/fort)^2). Force d'une flotte = n (4..20) x sqrt(3 x degats moyens x PV moyens de coque) / (1 + c x age de la guerre), c = 0,2 attaquant, 0,05 defenseur.
+- Blocus : le vaincu d'un front voit tous les prix x1,3.

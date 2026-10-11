@@ -1601,6 +1601,17 @@ impl Sim {
         let defense = r.floor().monsters[k].defense;
         let name = r.floor().monsters[k].name.clone();
         let dmg = total * (1.0 - defense);
+        // A loud weapon wakes the sleepers around it (the gear's `noise` radius, in cells).
+        let noise = up
+            .iter()
+            .map(|&who| self.crew.members[who].gear_stat(&self.data, "noise"))
+            .fold(0.0, f64::max);
+        let (px, py) = (r.x, r.y);
+        for o in &mut r.floor_mut().monsters {
+            if !o.awake && f64::from((o.x - px).abs().max((o.y - py).abs())) <= noise {
+                o.awake = true;
+            }
+        }
         let m = &mut r.floor_mut().monsters[k];
         m.hp -= dmg;
         m.awake = true;
@@ -3298,6 +3309,39 @@ mod tests {
         };
         let bare = blow(&mut s, false);
         let armed = blow(&mut s, true);
+        // A shot is heard: a sleeper six cells away wakes up for the rifle, not for the knife.
+        let sleeper_wakes = |s: &mut Sim, weapon: Option<usize>| -> bool {
+            s.rogue = None;
+            s.rogue_land(body, cx, cy, vec![0], false).unwrap();
+            s.crew.members[0].gear = vec![None; 3];
+            s.crew.members[0].gear[0] = weapon;
+            let (lx, ly) = {
+                let r = s.rogue.as_ref().unwrap();
+                (r.x, r.y)
+            };
+            let prey = (0..s.data.species.len())
+                .find(|&i| !s.data.species[i].is_producer())
+                .unwrap();
+            let mut a = mon_from_species(&s.data, prey, lx + 1, ly);
+            a.hp = 1000.0;
+            let mut far = mon_from_species(&s.data, prey, lx + 6, ly);
+            far.awake = false;
+            let mut r = s.rogue.take().unwrap();
+            r.floors[0].monsters.clear();
+            r.floors[0].monsters.push(a);
+            r.floors[0].monsters.push(far);
+            s.rogue_attack(&mut r, 0);
+            let woke = r.floors[0].monsters[1].awake;
+            s.rogue = Some(r);
+            woke
+        };
+        let knife = d.gear_index("couteau").unwrap();
+        let needle = d.gear_index("fusil").unwrap();
+        assert!(!sleeper_wakes(&mut s, Some(knife)), "a knife is quiet");
+        assert!(
+            sleeper_wakes(&mut s, Some(needle)),
+            "a needle rifle is loud"
+        );
         assert!(
             armed > bare + d.gear[rifle].attack - 1e-9,
             "{armed} vs {bare}"

@@ -306,6 +306,30 @@ pub fn entry(data: &GameData, cat: usize, k: usize) -> Vec<String> {
             stat("Cadence", m.rate, "coups/s");
             stat("Vitesse du projectile", m.speed, "m/s");
             stat("Portee", m.range, "m");
+            if m.proj_mass > 0.0 {
+                stat("Masse du projectile", m.proj_mass, "kg");
+                stat(
+                    "Energie cinetique",
+                    vector_sim::arms::kinetic_energy_j(m.proj_mass, m.speed) / 1e6,
+                    "MJ",
+                );
+            }
+            stat(
+                "Dispersion",
+                m.spread,
+                "mrad (le tir s'ecarte avec la distance)",
+            );
+            stat("Longueur d'onde", m.wavelength, "nm");
+            stat(
+                "Ouverture du faisceau",
+                m.aperture,
+                "m (diverge avec la distance)",
+            );
+            stat(
+                "Chaleur au tir",
+                m.flash,
+                "kW (vu par les capteurs passifs)",
+            );
             if !m.ammo.is_empty() {
                 out.push(format!(
                     "Munitions : {} ({:.2} kg par coup)",
@@ -712,6 +736,12 @@ pub fn entry(data: &GameData, cat: usize, k: usize) -> Vec<String> {
                 out.push(format!(
                     "Defense : {:.0} % des degats subis arretes",
                     g.defense * 100.0
+                ));
+            }
+            if g.noise > 0.0 {
+                out.push(format!(
+                    "Bruit : reveille les creatures endormies jusqu'a {:.0} cases",
+                    g.noise
                 ));
             }
             if g.gather > 0.0 {

@@ -3,13 +3,13 @@
 // extra share of what a harvest or a search yields. Each item is also a trade good (`gear_<id>`),
 // bought at the stations and kept in the hold until someone is equipped with it.
 [
- (id:"couteau", name:"Couteau de survie", slot:"weapon", attack:0.4, defense:0.0, gather:0.0, value:150.0,
+ (id:"couteau", name:"Couteau de survie", slot:"weapon", attack:0.4, defense:0.0, gather:0.0, value:150.0, noise:0.0,
   text:"Lame courte, indispensable et peu glorieuse."),
- (id:"matraque", name:"Matraque paralysante", slot:"weapon", attack:0.8, defense:0.0, gather:0.0, value:900.0,
+ (id:"matraque", name:"Matraque paralysante", slot:"weapon", attack:0.8, defense:0.0, gather:0.0, value:900.0, noise:1.0,
   text:"Décharge qui assomme les bêtes sans les abîmer."),
- (id:"fusil", name:"Fusil à aiguilles", slot:"weapon", attack:1.4, defense:0.0, gather:0.0, value:2200.0,
+ (id:"fusil", name:"Fusil à aiguilles", slot:"weapon", attack:1.4, defense:0.0, gather:0.0, value:2200.0, noise:9.0,
   text:"Aiguilles de métal à haute vitesse ; bruyant."),
- (id:"fusil_plasma", name:"Fusil à plasma", slot:"weapon", attack:2.6, defense:0.0, gather:0.0, value:11000.0,
+ (id:"fusil_plasma", name:"Fusil à plasma", slot:"weapon", attack:2.6, defense:0.0, gather:0.0, value:11000.0, noise:6.0,
   text:"Arme de combat qui brûle ce qu'elle touche."),
  (id:"combi_legere", name:"Combinaison légère", slot:"armor", attack:0.0, defense:0.15, gather:0.0, value:700.0,
   text:"Tissu renforcé, étanche, facile à porter."),

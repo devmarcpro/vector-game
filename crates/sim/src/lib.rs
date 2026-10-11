@@ -14,6 +14,7 @@ pub mod rules;
 #[cfg(test)]
 mod rules_effects;
 pub mod save;
+pub mod scene;
 pub mod science;
 pub mod voyage;
 
@@ -562,7 +563,7 @@ impl Sim {
         while left > 1e-9 && guard < 200_000 {
             guard += 1;
             let dt = if self.docked.is_some() {
-                left.min(600.0)
+                left.min(3600.0)
             } else {
                 left.min(self.safe_dt())
             };

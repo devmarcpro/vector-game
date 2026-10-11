@@ -1672,6 +1672,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "vector-tools"
+version = "0.1.0"
+dependencies = [
+ "vector-core",
+ "vector-data",
+ "vector-sim",
+ "vector-world",
+]
+
+[[package]]
 name = "vector-world"
 version = "0.1.0"
 dependencies = [

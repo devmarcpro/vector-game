@@ -1,0 +1,10 @@
+[package]
+name = "vector-tools"
+version = "0.1.0"
+edition.workspace = true
+
+[dependencies]
+vector-core = { path = "../core" }
+vector-world = { path = "../world" }
+vector-data = { path = "../data" }
+vector-sim = { path = "../sim" }

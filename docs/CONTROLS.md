@@ -125,3 +125,6 @@ Par défaut AZERTY : tangage Z/S, lacet Q/D, roulis A/E. Options > Clavier bascu
 - Matiere (exploration à pied) : X creuse ou casse la case devant (outil et dureté = temps ; donne les ressources de la matière selon la physique du monde), B construit un mur de pierre taillée, N pose un sol de tôle (ou un pont sur l'eau) avec ce que porte l'équipe ; les cases bâties sont à vous. La glace fait déraper, soufre et lave blessent, le froid mord sans vêtements chauds.
 
 - Panneau de physique (pilotage, ecran assez haut) : ORBITE (periapsis/apoapsis sont des altitudes, periode, vitesses circulaire et de liberation, excentricite), HOHMANN vers la cible (dv, duree, attente de la fenetre), flux solaire, retard de la lumiere de l'etoile, charge en g, dose (mGy/h et cumulee) et signature infrarouge. Aucune touche nouvelle.
+
+## Relations et surprises
+Ecran Factions (X) : Tab ouvre le registre des relations (Haut/Bas choisir, PgUp/PgDn sauter, Tab retour a l'anneau, X/Echap quitter). Journal (J) : quand une surprise attend un choix, elle s'affiche en bas ; touches 1 a 3 pour repondre.

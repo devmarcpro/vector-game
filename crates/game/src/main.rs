@@ -482,8 +482,8 @@ fn snapshot(path: &str, scene: &str, data: Arc<GameData>) {
             g.screen = Screen::Proto;
         }
         "factions" => {
-            g.sim.reputation[1] = 0.6;
-            g.sim.reputation[4] = -0.7;
+            g.sim.set_reputation(1, 60.0);
+            g.sim.set_reputation(4, -70.0);
             g.key(KeyCode::KeyX, None, true);
             g.fac_sel = 4;
         }

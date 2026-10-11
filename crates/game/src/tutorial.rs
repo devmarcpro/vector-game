@@ -132,11 +132,13 @@ pub fn hint_line(g: &Game) -> String {
             "HAUT/BAS PERSONNE  </> POSTE  T QUART  X DEBARQUER  N RECRUTER  J JOURNAL  G ARBRE  V RESEAU  O ORGANES  E EQUIP.  K RETOUR"
         }
         Screen::Recruit => "HAUT/BAS CANDIDAT  ENTREE EMBAUCHER  K EQUIPAGE  ECHAP RETOUR",
-        Screen::Journal => "HAUT/BAS DEFILER  K EQUIPAGE  J/ECHAP RETOUR  TAB NOUVELLES",
+        Screen::Journal => {
+            "HAUT/BAS DEFILER  1-3 REPONDRE A UNE SURPRISE  K EQUIPAGE  J/ECHAP RETOUR  TAB NOUVELLES"
+        }
         Screen::Expedition => "HAUT/BAS CHOISIR  ESPACE COCHER  ENTREE PARTIR  ECHAP RETOUR",
         Screen::Dialogue => "1-6 OU CLIC REPONDRE  HAUT/BAS + ENTREE  ECHAP COUPER LA COMMUNICATION",
         Screen::Proto => "CLIC SUR LES ELEMENTS  GAUCHE/DROITE OU 1-2 PROTOTYPE  F12/ECHAP RETOUR",
-        Screen::Factions => "GAUCHE/DROITE FACTION  P AMENDES  B POT-DE-VIN  L AVOCAT  X/ECHAP RETOUR",
+        Screen::Factions => "GAUCHE/DROITE FACTION  P AMENDES  B POT-DE-VIN  L AVOCAT  TAB RELATIONS  X/ECHAP RETOUR",
         Screen::Galaxy => {
             "HAUT/BAS ETOILE  +/- ZOOM  ENTREE SAUT FTL  L/ECHAP RETOUR  (RETOUR ARRIERE ANNULE UNE CHARGE)"
         }
@@ -231,7 +233,11 @@ pub fn help_lines(screen: Screen) -> &'static [&'static str] {
             "O : organes (Entree greffe, P prothese, H prelever, </> choisir un implant, I poser, U retirer, K cloner l'organe a l'hopital, M mutagene ; piece en soute)",
         ],
         Screen::Recruit => &["Haut/Bas : candidat   Entree : embaucher"],
-        Screen::Journal => &["Haut/Bas ou PgUp/PgDn : defiler   Echap : retour"],
+        Screen::Journal => &[
+            "Haut/Bas ou PgUp/PgDn : defiler   Echap : retour",
+            "Une surprise qui attend un choix s'affiche en bas : touches 1 a 3 pour repondre",
+            "Elles naissent du croisement des systemes (guerre, cartels, relations, anomalies...)",
+        ],
         Screen::Expedition => &["Cochez qui descend et le rover, Entree pour partir", "Il faut une case de terre et d'etre pres de la planete"],
         Screen::Dialogue => &[
             "Entree en vol : appeler le vaisseau cible (Tab/T/Y/R pour cibler)",
@@ -245,6 +251,8 @@ pub fn help_lines(screen: Screen) -> &'static [&'static str] {
             "A droite : moeurs (8 axes), interdits moraux, contrebande, reputation",
             "Lois en vigueur chez eux seulement ; ma situation juridique (casier, amendes)",
             "P payer les amendes   B pot-de-vin (peut echouer)   L avocat (moitie)",
+            "Tab : registre des relations (factions, peuples, cartels, contacts, entreprises)",
+            "Ce que vous faites a l'un se repercute, attenue, sur ses allies et ses rivaux",
             "X ou Echap : retour",
         ],
         Screen::Galaxy => &[

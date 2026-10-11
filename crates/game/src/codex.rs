@@ -2,7 +2,7 @@
 //! weapon, faction, anomaly and condition, generated from the real data (no hand-written numbers).
 use vector_data::GameData;
 
-pub const CATEGORIES: [&str; 37] = [
+pub const CATEGORIES: [&str; 38] = [
     "RESSOURCES",
     "MODULES",
     "ARMES",
@@ -40,6 +40,7 @@ pub const CATEGORIES: [&str; 37] = [
     "REACTIONS",
     "AGENTS PATHOGENES",
     "MONNAIES",
+    "SURPRISES",
 ];
 
 /// The category of the reactions: the laboratory.
@@ -102,6 +103,7 @@ fn entries(data: &GameData, cat: usize) -> Vec<usize> {
         30 => (0..data.exotics.len()).collect(),
         31 => (0..data.cultures.len()).collect(),
         35 => (0..data.pathogens.len()).collect(),
+        37 => (0..data.surprises.len()).collect(),
         _ => Vec::new(),
     }
 }
@@ -144,6 +146,7 @@ pub fn names(data: &GameData, cat: usize) -> Vec<String> {
             31 => format!("Noms : {}", data.cultures[i].name),
             35 => data.pathogens[i].name.clone(),
             36 => vector_sim::macroeco::currency_name(data, Some(i)),
+            37 => data.surprises[i].name.clone(),
             18 => format!(
                 "Appeler : {}",
                 vector_data::dialogue::ROLES[i].to_lowercase()
@@ -195,6 +198,140 @@ fn names_of(
         .map(|i| lookup(data, i).unwrap_or_else(|| i.clone()))
         .collect::<Vec<_>>()
         .join(", ")
+}
+
+fn describe_target(data: &GameData, t: &vector_data::surprise::Target) -> String {
+    use vector_data::surprise::Target;
+    let fac = |id: &str| {
+        data.factions
+            .iter()
+            .find(|f| f.id == id)
+            .map_or(id.to_string(), |f| f.name.clone())
+    };
+    match t {
+        Target::Faction(id) => fac(id),
+        Target::Here => "le peuple du territoire".to_string(),
+        Target::Ally => "un allie de ce peuple".to_string(),
+        Target::Rival => "un ennemi de ce peuple".to_string(),
+        Target::Cartel(id) => data
+            .cartels
+            .iter()
+            .find(|c| c.id == *id)
+            .map_or(id.clone(), |c| c.name.clone()),
+        Target::Company(id) => data
+            .companies
+            .iter()
+            .find(|c| c.id == *id)
+            .map_or(id.clone(), |c| c.name.clone()),
+        Target::Contact => "votre contact local".to_string(),
+        Target::Civ => "les natifs du systeme".to_string(),
+    }
+}
+
+fn describe_cond(data: &GameData, c: &vector_data::surprise::Cond) -> String {
+    use vector_data::surprise::{Cmp, Cond};
+    let cmp = |c: &Cmp| {
+        if *c == Cmp::Gt {
+            "au-dessus de"
+        } else {
+            "en dessous de"
+        }
+    };
+    let cartel = |id: &str| {
+        data.cartels
+            .iter()
+            .find(|k| k.id == id)
+            .map_or(id.to_string(), |k| k.name.clone())
+    };
+    match c {
+        Cond::WorldEvent(id) => format!(
+            "l'evenement \"{}\" touche la region",
+            data.world_events
+                .iter()
+                .find(|w| w.id == *id)
+                .map_or(id.as_str(), |w| w.name.as_str())
+        ),
+        Cond::AtWar => "le secteur est en guerre".to_string(),
+        Cond::Unrest(v) => format!(
+            "troubles apres un coup ou un meurtre (au moins {:.0} %)",
+            v * 100.0
+        ),
+        Cond::CartelHere(id) => format!("le cartel {} tient les prix", cartel(id)),
+        Cond::Incident => "une entreprise du secteur subit ou profite d'un incident".to_string(),
+        Cond::Epidemic(d) => format!("une de vos colonies a moins de {d:.0} al a une epidemie"),
+        Cond::ColonyNear(d) => format!("une de vos colonies est a moins de {d:.0} al"),
+        Cond::ColonyUnrest(v) => format!(
+            "vos colonies proches grondent (au moins {:.0} %)",
+            v * 100.0
+        ),
+        Cond::Territory(id) => format!(
+            "vous etes chez {}",
+            data.factions
+                .iter()
+                .find(|f| f.id == *id)
+                .map_or(id.as_str(), |f| f.name.as_str())
+        ),
+        Cond::Claimed => "vous etes sur un territoire".to_string(),
+        Cond::Civ => "une civilisation native vit dans le systeme".to_string(),
+        Cond::Anomaly => "une anomalie flotte dans le systeme".to_string(),
+        Cond::AnomalyOf(id) => format!(
+            "une anomalie \"{}\" flotte dans le systeme",
+            data.anomaly_def(id)
+                .map_or(id.as_str(), |a| a.name.as_str())
+        ),
+        Cond::Docked => "vous etes amarre".to_string(),
+        Cond::InFlight => "vous etes en vol".to_string(),
+        Cond::Credits(c, v) => format!("credits {} {v:.0}", cmp(c)),
+        Cond::Contracts(n) => format!("au moins {n} contrat(s) actif(s)"),
+        Cond::Rel(t, c, v) => format!(
+            "relation avec {} {} {v:+.2}",
+            describe_target(data, t),
+            cmp(c)
+        ),
+        Cond::Morale(c, v) => format!("moral moyen de l'equipage {} {:.0} %", cmp(c), v * 100.0),
+        Cond::Crew(n) => format!("au moins {n} personnes a bord"),
+        Cond::Hold(r, kg) => format!(
+            "au moins {kg:.0} kg de {} en soute",
+            res_name(data, r).unwrap_or_else(|| r.clone())
+        ),
+        Cond::Seat(id) => format!("vous avez un siege chez {}", cartel(id)),
+        Cond::Wanted => "vous etes recherche ici".to_string(),
+        Cond::InDebt => "la banque vous reclame de l'argent".to_string(),
+        Cond::Shares => "vous detenez des actions".to_string(),
+        Cond::Herd => "vous gardez des betes a bord".to_string(),
+    }
+}
+
+fn describe_effect(data: &GameData, e: &vector_data::surprise::Effect) -> String {
+    use vector_data::surprise::Effect;
+    match e {
+        Effect::Credits(v) => format!("{v:+.0} CR"),
+        Effect::Rel(t, d) => format!("relation avec {} {d:+.2}", describe_target(data, t)),
+        Effect::Bond(a, b, w, days) => format!(
+            "{} entre {} et {} pendant {days:.0} jours",
+            if *w > 0.0 { "alliance" } else { "rivalite" },
+            describe_target(data, a),
+            describe_target(data, b)
+        ),
+        Effect::Shock(k, m, days) => format!(
+            "prix de {} x{m:.2} dans la region pendant {days:.0} jours",
+            match k.strip_prefix("cat:") {
+                Some(c) => format!("la categorie {c}"),
+                None => res_name(data, k).unwrap_or_else(|| k.clone()),
+            }
+        ),
+        Effect::Cargo(r, kg) => format!(
+            "{kg:+.0} kg de {} en soute",
+            res_name(data, r).unwrap_or_else(|| r.clone())
+        ),
+        Effect::Morale(d) => format!("moral de l'equipage {:+.0} %", d * 100.0),
+        Effect::Contract(r, kg, m) => format!(
+            "un contrat de {kg:.0} kg de {} a {m:.1} fois le cours est propose a la station",
+            res_name(data, r).unwrap_or_else(|| r.clone())
+        ),
+        Effect::Research(v) => format!("{v:.0} points de recherche"),
+        Effect::ColonyHappiness(d) => format!("bonheur des colonies proches {:+.0} %", d * 100.0),
+    }
 }
 
 fn res_name(data: &GameData, id: &str) -> Option<String> {
@@ -1100,6 +1237,43 @@ pub fn entry(data: &GameData, cat: usize, k: usize) -> Vec<String> {
                         .to_string(),
                 );
             }
+        }
+        37 => {
+            let s = &data.surprises[i];
+            out.push(s.name.clone());
+            out.push(s.text.clone());
+            out.push(format!(
+                "Nouvelles : {}   frequence relative {:.1}   ne revient pas avant {:.0} jours",
+                s.tag, s.weight, s.cooldown
+            ));
+            out.push(
+                "Arrive seulement ici et maintenant, quand tout ceci est vrai a la fois :"
+                    .to_string(),
+            );
+            for c in &s.when {
+                out.push(format!("  - {}", describe_cond(data, c)));
+            }
+            for e in &s.effects {
+                out.push(format!("Effet : {}", describe_effect(data, e)));
+            }
+            for (k, c) in s.choices.iter().enumerate() {
+                let fx: Vec<String> = c.effects.iter().map(|e| describe_effect(data, e)).collect();
+                out.push(format!(
+                    "Choix {} ({:.0} jours pour repondre) : {} -> {}",
+                    k + 1,
+                    s.window,
+                    c.label,
+                    if fx.is_empty() {
+                        "aucun effet".to_string()
+                    } else {
+                        fx.join(" ; ")
+                    }
+                ));
+            }
+            out.push(
+                "Tire au sort chaque jour (graine, secteur, jour) : rare, local, jamais ecrit a l'avance."
+                    .to_string(),
+            );
         }
         24 => {
             let c = &data.cartels[i];

@@ -129,6 +129,9 @@ pub struct Game {
     /// Colony screen: health tracking (epidemics) instead of the lists.
     pub col_health: bool,
     pub fac_sel: usize,
+    /// Factions screen: the registry of relations (every entity) instead of the ring.
+    pub rel_page: bool,
+    pub rel_sel: usize,
     /// Crew screen: relations network instead of the table.
     pub crew_net: bool,
     /// Crew screen: the organ list of the selected person has the keys.
@@ -293,6 +296,8 @@ impl Game {
             col_flow: false,
             col_health: false,
             fac_sel: 0,
+            rel_page: false,
+            rel_sel: 0,
             crew_net: false,
             organ_mode: false,
             gear_mode: false,
@@ -603,6 +608,10 @@ impl Game {
                     let name = self.sim.colonies[index].name.clone();
                     self.say(format!("COLONIE FONDEE : {name}"));
                     self.note(format!("colonie fondee : {name}."));
+                }
+                Event::Surprise(t) => {
+                    self.note(t.clone());
+                    self.say(t.to_uppercase())
                 }
                 Event::ColonyNews(t) | Event::MarketNews(t) => {
                     if t.starts_with("INTRUSION") || t.starts_with("Contrat a terme") {
@@ -1720,6 +1729,22 @@ impl Game {
     }
 
     fn factions_key(&mut self, code: KeyCode) {
+        if code == KeyCode::Tab {
+            self.rel_page = !self.rel_page;
+            return;
+        }
+        if self.rel_page {
+            let n = self.sim.relation_rows().len().max(1);
+            match code {
+                KeyCode::ArrowDown => self.rel_sel = (self.rel_sel + 1) % n,
+                KeyCode::ArrowUp => self.rel_sel = (self.rel_sel + n - 1) % n,
+                KeyCode::PageDown => self.rel_sel = (self.rel_sel + 8).min(n - 1),
+                KeyCode::PageUp => self.rel_sel = self.rel_sel.saturating_sub(8),
+                KeyCode::Escape | KeyCode::KeyX => self.screen = Screen::Flight,
+                _ => {}
+            }
+            return;
+        }
         let n = self.data.factions.len().max(1);
         match code {
             KeyCode::ArrowRight | KeyCode::ArrowDown => self.fac_sel = (self.fac_sel + 1) % n,
@@ -1739,6 +1764,14 @@ impl Game {
                 self.journal_scroll = self.journal_scroll.saturating_sub(5)
             }
             KeyCode::KeyK => self.screen = Screen::Crew,
+            KeyCode::Digit1 | KeyCode::Digit2 | KeyCode::Digit3 => {
+                let choice = match code {
+                    KeyCode::Digit1 => 0,
+                    KeyCode::Digit2 => 1,
+                    _ => 2,
+                };
+                self.answer_surprise(choice);
+            }
             KeyCode::Tab => {
                 self.journal_tab = 1 - self.journal_tab;
                 self.journal_scroll = 0;
@@ -1751,6 +1784,17 @@ impl Game {
                 }
             }
             _ => {}
+        }
+    }
+
+    /// Answer the oldest surprise that waits for a choice.
+    fn answer_surprise(&mut self, choice: usize) {
+        match self.sim.surprise_choose(0, choice) {
+            Ok(words) => {
+                self.say(words.to_uppercase());
+                self.note(words);
+            }
+            Err(e) => self.say(e.to_uppercase()),
         }
     }
 
@@ -2988,6 +3032,46 @@ mod tests {
         assert_eq!(g.fac_sel, 0, "the selection wraps around");
         g.key(KeyCode::Escape, None, true);
         assert_eq!(g.screen, Screen::Flight);
+    }
+
+    #[test]
+    fn tab_opens_the_relations_registry_and_the_journal_answers_a_surprise() {
+        let mut g = Game::new(data(), 1);
+        g.key(KeyCode::Enter, None, true);
+        g.key(KeyCode::KeyX, None, true);
+        assert!(!g.rel_page);
+        g.key(KeyCode::Tab, None, true);
+        assert!(g.rel_page, "Tab shows the relations");
+        let rows = g.sim.relation_rows().len();
+        g.key(KeyCode::ArrowUp, None, true);
+        assert_eq!(g.rel_sel, rows - 1, "the selection wraps around");
+        frame(&g);
+        g.key(KeyCode::Tab, None, true);
+        assert!(!g.rel_page);
+        g.key(KeyCode::Escape, None, true);
+        // A surprise with choices is answered from the journal with the number keys.
+        let i = g
+            .data
+            .surprises
+            .iter()
+            .position(|s| s.id == "invitation_gala")
+            .expect("surprise");
+        g.sim
+            .surprises
+            .pending
+            .push(vector_sim::surprises::Pending {
+                def: i,
+                time: g.sim.time,
+                expires: g.sim.time + 1.0e9,
+                text: "Une invitation.".to_string(),
+            });
+        g.key(KeyCode::KeyJ, None, true);
+        assert_eq!(g.screen, Screen::Journal);
+        frame(&g);
+        g.key(KeyCode::Digit2, None, true);
+        assert!(g.sim.surprises.pending.is_empty(), "answered");
+        g.key(KeyCode::Digit1, None, true);
+        assert!(g.sim.surprises.pending.is_empty(), "nothing left to answer");
     }
 
     #[test]

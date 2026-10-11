@@ -3,6 +3,7 @@
 //! can be joined, at a risk) and tenders where you bid against rivals to supply a good.
 use crate::bourse::{events_between, DAY, WEEK};
 use crate::planet::unit;
+use crate::relations::Entity;
 use crate::Event;
 use crate::Sim;
 use serde::{Deserialize, Serialize};
@@ -23,6 +24,9 @@ pub const INSURANCE_DAYS: f64 = 30.0;
 pub const SEAT_PRICE: f64 = 4000.0;
 pub const SEAT_PAYOUT: f64 = 2500.0;
 pub const ANTITRUST_FINE: f64 = 3000.0;
+/// Goodwill of a cartel won by taking a seat, lost when the antitrust authority catches you.
+pub const SEAT_FAVOUR: f32 = 0.15;
+pub const ANTITRUST_FAVOUR: f32 = 0.3;
 pub const ANTITRUST_ODDS: f64 = 0.10;
 pub const MAX_SEATS: usize = 3;
 /// Share of months a cartel is active in a region.
@@ -129,8 +133,6 @@ pub struct TradeState {
     /// Cartel seats held, and the month last settled.
     pub seats: Vec<usize>,
     pub last_cartel_month: i64,
-    /// Trust of the contraband contacts, per faction: (faction, 0..1).
-    pub contacts: Vec<(usize, f32)>,
     /// The legal record of the player, per jurisdiction (see `law`).
     pub record: Vec<crate::law::Record>,
 }
@@ -264,12 +266,19 @@ impl Sim {
         if self.trade.seats.len() >= MAX_SEATS {
             return Err("trois sieges au plus");
         }
-        if SEAT_PRICE > self.credits {
+        let price = self.seat_price(c);
+        if price > self.credits {
             return Err("fonds insuffisants");
         }
-        self.credits -= SEAT_PRICE;
+        self.credits -= price;
         self.trade.seats.push(c);
+        self.relate(Entity::cartel(c), SEAT_FAVOUR);
         Ok(())
+    }
+
+    /// What a seat of cartel `c` costs you: its members sell cheaper to those it already likes.
+    pub fn seat_price(&self, c: usize) -> f64 {
+        SEAT_PRICE * (1.0 - 0.3 * f64::from(self.rel(Entity::cartel(c)).max(0.0)))
     }
 
     pub fn leave_cartel(&mut self, c: usize) -> Result<(), &'static str> {
@@ -299,7 +308,9 @@ impl Sim {
             if !self.cartel_here(c) {
                 continue;
             }
-            total += SEAT_PAYOUT * self.data.cartels[c].markup / 0.25;
+            let favour = f64::from(self.rel(Entity::cartel(c)).max(0.0));
+            total += SEAT_PAYOUT * self.data.cartels[c].markup / 0.25 * (1.0 + 0.5 * favour);
+            self.relate(Entity::cartel(c), 0.01);
             if unit(hash_coord(self.galaxy.seed ^ 0xA77, month, c as i64, 9)) < ANTITRUST_ODDS {
                 caught = Some(c);
             }
@@ -320,7 +331,10 @@ impl Sim {
                 .iter()
                 .position(|f| f.id == self.data.cartels[c].hq);
             self.change_reputation(self.faction, -0.1);
-            let _ = hq;
+            self.relate(Entity::cartel(c), -ANTITRUST_FAVOUR);
+            if let Some(h) = hq {
+                self.change_reputation(Some(h), -0.5);
+            }
             self.events.push(Event::MarketNews(format!(
                 "Enquete antitrust : amende de {fine:.0} CR, siege perdu ({}).",
                 self.data.cartels[c].name
@@ -482,6 +496,51 @@ mod tests {
     }
 
     #[test]
+    fn a_seat_wins_the_cartel_and_its_headquarters_and_a_known_cartel_sells_cheaper() {
+        let mut s = docked();
+        let hq = s
+            .data
+            .factions
+            .iter()
+            .position(|f| f.id == s.data.cartels[0].hq)
+            .unwrap();
+        let (rep, price0) = (s.reputation_with(Some(hq)), s.seat_price(0));
+        assert!(price0 <= SEAT_PRICE && price0 > 0.7 * SEAT_PRICE);
+        s.join_cartel(0).unwrap();
+        assert!(
+            s.rel(Entity::cartel(0)) > 0.1,
+            "the cartel likes a new member"
+        );
+        assert!(
+            s.reputation_with(Some(hq)) > rep,
+            "so does the faction behind it"
+        );
+        assert!(s.seat_price(0) < price0, "a friend pays less");
+        s.leave_cartel(0).unwrap();
+        let credits = s.credits;
+        s.join_cartel(0).unwrap();
+        assert!(
+            credits - s.credits < SEAT_PRICE,
+            "the second seat was cheaper"
+        );
+        // Caught by the antitrust authority, the cartel turns on you.
+        let favour = s.rel(Entity::cartel(0));
+        s.trade.last_cartel_month = 1;
+        for m in 2..600 {
+            s.time = f64::from(m) * CARTEL_MONTH + 1.0;
+            if !s.trade.seats.contains(&0) {
+                break;
+            }
+            s.cartel_tick();
+        }
+        assert!(!s.trade.seats.contains(&0), "the seat was lost");
+        assert!(
+            s.rel(Entity::cartel(0)) < favour,
+            "and the cartel's goodwill with it"
+        );
+    }
+
+    #[test]
     fn a_cartel_seat_costs_pays_when_active_and_can_end_in_a_fine() {
         let mut s = docked();
         assert!(s.join_cartel(99).is_err());
@@ -565,8 +624,10 @@ mod tests {
         assert!(s.deliver_contract(idx).is_err(), "no cargo yet");
         s.ship.cargo.kg[o.res] = o.kg;
         let c = s.credits;
+        let issuer = s.contracts[idx].faction.or(s.faction);
+        let edge = 1.0 + 0.001 * f64::from(s.reputation_with(issuer));
         let pay = s.deliver_contract(idx).expect("delivered");
-        assert!((pay - o.kg * o.ceiling * 0.5 * (1.0 - s.tax_rate())).abs() < 1e-6);
+        assert!((pay - o.kg * o.ceiling * 0.5 * edge * (1.0 - s.tax_rate())).abs() < 1e-6);
         assert!((s.credits - c - pay).abs() < 1e-6);
         assert!(!s.contracts.iter().any(|c| c.id == o.id));
         assert!(

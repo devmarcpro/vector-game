@@ -38,6 +38,7 @@ pub mod npc;
 pub mod orbit;
 pub mod planet;
 pub mod politics;
+pub mod relations;
 pub mod rogue;
 pub mod rules;
 #[cfg(test)]
@@ -46,6 +47,7 @@ pub mod save;
 pub mod scene;
 pub mod science;
 pub mod surgery;
+pub mod surprises;
 pub mod trading;
 pub mod voyage;
 
@@ -233,6 +235,8 @@ pub enum Event {
         reward: f64,
     },
     ContractExpired,
+    /// Something unexpected happened (see `surprises`): the words to show.
+    Surprise(String),
     BankSeizure {
         amount: f64,
     },
@@ -292,8 +296,10 @@ pub struct Sim {
     pub parked: Option<(usize, Vec3)>,
     /// The autopilot's plan for this step: (target, position and velocity relative to it).
     pub ride: Option<(usize, Vec3, Vec3)>,
-    /// Goodwill of the native civilisations met, by world key (see `civ`).
-    pub civ_rep: BTreeMap<u64, f32>,
+    /// How every faction, people, cartel, contact and company feels about the player.
+    pub relations: relations::Relations,
+    /// Surprises: what is waiting for an answer, price shocks, offers, cooldowns.
+    pub surprises: surprises::SurpriseState,
     /// Futures signed at the exchange.
     pub futures: Vec<futures::Future>,
     pub next_future: u32,
@@ -343,9 +349,8 @@ pub struct Sim {
     pub scan: Vec<u8>,
     pub scan_progress: Vec<f32>,
     pub jump: Option<JumpState>,
-    /// Territory owner of the current system (None = unclaimed) and standing with every faction.
+    /// Territory owner of the current system (None = unclaimed); standing is in `relations`.
     pub faction: Option<usize>,
-    pub reputation: Vec<f32>,
     pub contracts: Vec<Contract>,
     pub done_contracts: Vec<u64>,
     pub bank: Bank,
@@ -440,7 +445,8 @@ impl Sim {
             jump_run: None,
             parked: None,
             ride: None,
-            civ_rep: BTreeMap::new(),
+            relations: relations::Relations::default(),
+            surprises: surprises::SurpriseState::default(),
             futures: Vec::new(),
             next_future: 0,
             shares: Vec::new(),
@@ -478,7 +484,6 @@ impl Sim {
             scan_progress: Vec::new(),
             jump: None,
             faction: None,
-            reputation: Vec::new(),
             contracts: Vec::new(),
             done_contracts: Vec::new(),
             bank: Bank::default(),
@@ -524,7 +529,6 @@ impl Sim {
         };
         s.researched = s.data.techs.iter().map(|t| t.start).collect();
         s.weapon_cd = vec![0.0; s.ship.design.slots.len()];
-        s.reputation = vec![0.0; s.data.factions.len()];
         s.scan = Self::initial_scan(&s.system);
         s.scan_progress = vec![0.0; n];
         s.visited.insert(s.here, s.here_pos);
@@ -738,6 +742,8 @@ impl Sim {
     pub(crate) fn run_systems(&mut self, act: &Activity, dt: f64) {
         self.livestock_tick();
         self.cartel_tick();
+        self.relations_tick();
+        self.surprises_tick();
         self.multiverse_tick();
         self.births_tick();
         self.news_tick();
@@ -1158,8 +1164,13 @@ impl Sim {
         let day = (time / bourse::DAY).floor() as i64;
         // What the world does to prices changes slowly: refresh it once a day.
         let stale = self.markets.get(&i).is_none_or(|m| m.world_day != day);
-        let world =
-            stale.then(|| bourse::world_factors(&data, self.galaxy.seed, self.here_pos, time));
+        let world = stale.then(|| {
+            let mut w = bourse::world_factors(&data, self.galaxy.seed, self.here_pos, time);
+            for (r, f) in w.iter_mut().enumerate() {
+                *f *= self.shock_factor(self.here_pos, time, r);
+            }
+            w
+        });
         let m = self.markets.entry(i).or_insert_with(|| {
             Market::new(hash_coord(seed, i as i64, 0, 0), i, &data, time, industry)
         });

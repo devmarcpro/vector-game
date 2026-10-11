@@ -1322,9 +1322,9 @@ mod tests {
         };
         s.place_npcs();
         s.npcs[k].pos = s.ship.pos + Vec3::new(0.0, 0.0, 2500.0);
-        let rep0 = s.reputation[0];
+        let rep0 = s.reputation_with(Some(0));
         s.damage_npc(k, 10.0);
-        assert!(s.reputation[0] < rep0, "first blow is a crime");
+        assert!(s.reputation_with(Some(0)) < rep0, "first blow is a crime");
         assert!(s.npcs[k].hostile && matches!(s.npcs[k].state, NpcState::Combat { .. }));
         assert!(s.is_wanted(), "wanted in that territory");
         let t = s
@@ -1332,10 +1332,13 @@ mod tests {
             .iter()
             .position(|n| n.role == NpcRole::Trader)
             .expect("trader");
-        let rep1 = s.reputation[0];
+        let rep1 = s.reputation_with(Some(0));
         let huge = s.npcs[t].hull + s.npcs[t].shield + 1.0;
         assert!(s.damage_npc(t, huge));
-        assert!(s.reputation[0] < rep1 - 10.0, "murder is expensive");
+        assert!(
+            s.reputation_with(Some(0)) < rep1 - 10.0,
+            "murder is expensive"
+        );
     }
 
     #[test]

@@ -338,6 +338,20 @@ impl Species {
     }
 }
 
+/// A biochemistry other than carbon-water (see `data/xenobio.ron`): which species run on it and
+/// in what temperature range (K) it works.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct Chemistry {
+    pub id: String,
+    pub name: String,
+    pub backbone: String,
+    pub solvent: String,
+    pub energy: String,
+    pub t: (f64, f64),
+    pub species: Vec<String>,
+    pub text: String,
+}
+
 /// A world event that moves prices (see `data/world_events.ron`). `scope` is "region" (felt in
 /// one 60 ly cell of space) or "global"; `effects` are (resource id or "cat:<category>", price
 /// multiplier at the peak).
@@ -783,6 +797,7 @@ pub struct GameData {
     pub anomalies_def: Vec<AnomalyDef>,
     pub biomes: Vec<Biome>,
     pub species: Vec<Species>,
+    pub chemistries: Vec<Chemistry>,
     pub world_events: Vec<WorldEvent>,
     pub ethos: Ethos,
     pub genes: Vec<Gene>,
@@ -828,7 +843,13 @@ impl GameData {
             techs: read(&dir.join("techs.ron"))?,
             anomalies_def: read(&dir.join("worldgen/anomalies.ron"))?,
             biomes: read(&dir.join("biomes.ron"))?,
-            species: read(&dir.join("species.ron"))?,
+            species: {
+                // Xenobiology is a second file of the same table.
+                let mut v: Vec<Species> = read(&dir.join("species.ron"))?;
+                v.extend(read::<Vec<Species>>(&dir.join("species_xeno.ron"))?);
+                v
+            },
+            chemistries: read(&dir.join("xenobio.ron"))?,
             world_events: read(&dir.join("world_events.ron"))?,
             ethos: read(&dir.join("ethos.ron"))?,
             genes: read(&dir.join("genes.ron"))?,
@@ -923,6 +944,12 @@ impl GameData {
 
     pub fn species_index(&self, id: &str) -> Option<usize> {
         self.species.iter().position(|s| s.id == id)
+    }
+
+    /// The non-carbon chemistry a species runs on, if any.
+    pub fn chemistry_of(&self, species: usize) -> Option<usize> {
+        let id = &self.species.get(species)?.id;
+        self.chemistries.iter().position(|c| c.species.contains(id))
     }
 
     pub fn biome_index(&self, id: &str) -> Option<usize> {
@@ -1261,6 +1288,7 @@ impl GameData {
         }
         self.validate_biomes()?;
         self.validate_species()?;
+        self.validate_chemistries()?;
         self.validate_world_events()?;
         self.validate_ethos()?;
         self.validate_genes()?;
@@ -2026,6 +2054,39 @@ impl GameData {
                 .any(|s| s.is_producer() && s.habitat.contains(&b.id))
             {
                 return bad(format!("biome {}: aucun producteur", b.id));
+            }
+        }
+        Ok(())
+    }
+
+    /// Chemistries: known species, each in at most one chemistry, and every species lives
+    /// in biomes whose temperature range meets the chemistry's.
+    fn validate_chemistries(&self) -> Result<(), DataError> {
+        let bad = |s: String| Err(DataError::Invalid(s));
+        let mut seen = std::collections::HashSet::new();
+        for c in &self.chemistries {
+            if c.t.0 >= c.t.1 || c.species.is_empty() {
+                return bad(format!("chimie {}: plage ou especes invalides", c.id));
+            }
+            for id in &c.species {
+                let Some(si) = self.species_index(id) else {
+                    return bad(format!("chimie {}: espece {id} inconnue", c.id));
+                };
+                if !seen.insert(id.as_str()) {
+                    return bad(format!("espece {id} dans deux chimies"));
+                }
+                for b in &self.species[si].habitat {
+                    let Some(bi) = self.biome_index(b) else {
+                        continue;
+                    };
+                    let bt = self.biomes[bi].t;
+                    if bt.1 <= c.t.0 || bt.0 >= c.t.1 {
+                        return bad(format!(
+                            "chimie {}: l'espece {id} vit dans {b} hors de sa plage de temperature",
+                            c.id
+                        ));
+                    }
+                }
             }
         }
         Ok(())

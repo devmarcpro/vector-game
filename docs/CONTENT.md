@@ -49,3 +49,5 @@ Mœurs : data/ethos.ron (8 axes, 8 étiquettes morales, 8 profils de faction), g
 
 ## Entreprises
 `data/companies.ron` : id, nom, siège (faction), cours de base, rendement annuel, volatilité, biens (id, poids, total 1), texte.
+
+Xenobiologie : 13 especes dans data/species_xeno.ron (ecrit a la main, ajoute a `species` au chargement) et 4 chimies dans data/xenobio.ron ; entrees FLORE/FAUNE (avec biochimie, metabolisme, cycle de vie, comportement) et categorie XENOBIOLOGIE du codex ; fiches de variantes generees par `codex::variant_card` (couche BIOSPHERE de l'ecran de surface, Entree).

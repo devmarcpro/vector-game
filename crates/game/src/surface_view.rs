@@ -9,14 +9,18 @@ use vector_render::Framebuffer;
 use vector_sim::planet::{PlanetMap, Weather};
 use vector_world::surface::{Surface, H, W};
 
-pub const LAYERS: [&str; 6] = [
+pub const LAYERS: [&str; 7] = [
     "BIOMES",
     "ALTITUDE",
     "TEMPERATURE",
     "HUMIDITE",
     "METEO",
     "VIE",
+    "BIOSPHERE",
 ];
+
+/// Index of the BIOSPHERE layer: density of one species on the map, its food web, its variants.
+pub const BIOSPHERE: usize = 6;
 
 /// Metres per unit of relative elevation (peaks and trenches of a living world).
 const RELIEF_M: f64 = 8000.0;
@@ -119,8 +123,62 @@ fn cell(g: &Game, map: &PlanetMap, x: usize, y: usize) -> (char, u32) {
         2 => ('#', temp_color(g.sim.temp_now(map, x, y))),
         3 => ('#', hum_color(f64::from(s.hum[i]))),
         4 => weather_glyph(g.sim.weather_at(map, x, y).0),
-        _ => ('#', life_color(g, map.biome_at(x, y))),
+        5 => ('#', life_color(g, map.biome_at(x, y))),
+        _ => species_cell(g, map.biome_at(x, y)),
     }
+}
+
+/// Species alive somewhere on the world, the most abundant first (what V cycles through).
+pub fn alive_species(eco: &vector_sim::ecology::Ecosystem) -> Vec<usize> {
+    let mut v: Vec<(usize, f64)> = (0..eco.ns)
+        .map(|s| (s, eco.total(s)))
+        .filter(|&(_, m)| m > 0.0)
+        .collect();
+    v.sort_by(|a, b| b.1.total_cmp(&a.1));
+    v.into_iter().map(|(s, _)| s).collect()
+}
+
+/// Colour of a trophic level: producers green, grazers yellow, omnivores orange, hunters red.
+fn trophic_color(t: &str) -> [f64; 3] {
+    match t {
+        "producer" => [0.30, 0.90, 0.35],
+        "herbivore" => [0.95, 0.85, 0.25],
+        "omnivore" => [1.0, 0.60, 0.20],
+        _ => [1.0, 0.25, 0.20],
+    }
+}
+
+/// The species the BIOSPHERE layer shows.
+fn shown_species(g: &Game) -> Option<usize> {
+    let list = alive_species(g.surf_eco.as_ref()?);
+    list.get(g.surf_species.min(list.len().saturating_sub(1)))
+        .copied()
+}
+
+/// Density of the shown species in the biome of a cell, on a log scale, in the colour of its
+/// trophic level (grey where it does not live).
+fn species_cell(g: &Game, biome: usize) -> (char, u32) {
+    let (Some(eco), Some(s)) = (g.surf_eco.as_ref(), shown_species(g)) else {
+        return ('.', 0x0020_2428);
+    };
+    let dens = if eco.area[biome] > 0.0 {
+        eco.at(s, biome) / eco.area[biome]
+    } else {
+        0.0
+    };
+    if dens <= 0.0 {
+        return ('.', 0x0020_2428);
+    }
+    let v = ((1.0 + dens).log10() / 6.0).clamp(0.15, 1.0);
+    let c = trophic_color(&g.data.species[s].trophic);
+    let ch = if v < 0.35 {
+        ':'
+    } else if v < 0.65 {
+        '+'
+    } else {
+        '#'
+    };
+    (ch, rgb(c[0] * v, c[1] * v, c[2] * v))
 }
 
 /// Density of living biomass of a biome (kg per km2), on a log scale from dead rock to jungle.
@@ -275,7 +333,278 @@ pub fn draw(fb: &mut Framebuffer, g: &Game) {
             fb.text(x0 + c + 2, y0 + r, &name.to_uppercase(), AMBER);
         }
     }
-    draw_panel(fb, g, map, x0 + cols_map + 2, y0);
+    if g.surf_layer == BIOSPHERE {
+        draw_biosphere_panel(fb, g, map, x0 + cols_map + 2, y0);
+    } else {
+        draw_panel(fb, g, map, x0 + cols_map + 2, y0);
+    }
+}
+
+/// Cut a line at word boundaries into lines of at most `w` characters.
+fn wrap(s: &str, w: usize) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    let mut cur = String::new();
+    for word in s.split_whitespace() {
+        if !cur.is_empty() && cur.chars().count() + 1 + word.chars().count() > w {
+            out.push(std::mem::take(&mut cur));
+        }
+        if !cur.is_empty() {
+            cur.push(' ');
+        }
+        cur.push_str(word);
+    }
+    if !cur.is_empty() {
+        out.push(cur);
+    }
+    out
+}
+
+/// The BIOSPHERE panel: the life of the world (mass, air, chemistries), the shown species with
+/// its biology, its place in the web at the cursor and its local variant, and the populations
+/// that have diverged the most. Enter opens the full card of the variant.
+fn draw_biosphere_panel(fb: &mut Framebuffer, g: &Game, map: &PlanetMap, col: usize, row: usize) {
+    use vector_sim::biosphere::{behavior_of, life_of, web_of, world_variants};
+    let body = &g.sim.system.bodies[map.body];
+    let r = std::cell::Cell::new(row);
+    let line = |fb: &mut Framebuffer, s: String, c: u32| {
+        let room = fb.cols().saturating_sub(col);
+        fb.text(col, r.get(), &s.chars().take(room).collect::<String>(), c);
+        r.set(r.get() + 1);
+    };
+    line(
+        fb,
+        format!("BIOSPHERE : {}", body.name.to_uppercase()),
+        AMBER,
+    );
+    let Some(eco) = g.surf_eco.as_ref().filter(|e| e.life) else {
+        line(fb, "MONDE STERILE : AUCUNE VIE".into(), DIM);
+        return;
+    };
+    let (cx, cy) = (g.surf_cx, g.surf_cy);
+    let here = map.biome_at(cx, cy);
+    let list = alive_species(eco);
+    // The population of the shown species at the cursor, and every population of the world
+    // (recomputed once a day: the drift of the traits is slow).
+    let variants = {
+        let mut c = g.surf_variants.borrow_mut();
+        if c.0 != g.sim.day_number() || c.1.is_empty() {
+            *c = (
+                g.sim.day_number(),
+                world_variants(&g.data, eco, map, g.sim.time),
+            );
+        }
+        c.1.clone()
+    };
+    if let (true, Some(s)) = (g.surf_card, shown_species(g)) {
+        let v = variants
+            .iter()
+            .find(|v| v.species == s && v.biome == here)
+            .or_else(|| variants.iter().find(|v| v.species == s));
+        line(fb, "FICHE (ENTREE : RETOUR)".into(), AMBER);
+        if let Some(v) = v {
+            for l in vector_card(g, v, &body.name) {
+                for w in wrap(&l, 38) {
+                    line(fb, w.to_uppercase(), GREEN);
+                }
+            }
+        }
+        return;
+    }
+    line(
+        fb,
+        format!(
+            "BIOMASSE {}   {} ESPECES",
+            fmt_mass(eco.living()),
+            list.len()
+        ),
+        GREEN,
+    );
+    // The air as life has made it.
+    let now = g.sim.atmosphere_of(map.body);
+    let pct = |gas: &str, v: &[(String, f32)]| {
+        v.iter()
+            .find(|(n, _)| n == gas)
+            .map_or(0.0, |(_, f)| f64::from(*f) * 100.0)
+    };
+    let base: Vec<(String, f32)> = body
+        .atmosphere
+        .iter()
+        .map(|(n, f)| ((*n).to_string(), *f))
+        .collect();
+    line(
+        fb,
+        format!(
+            "AIR : O2 {:.1} %  CO2 {:.1} %",
+            pct("O2", &now),
+            pct("CO2", &now)
+        ),
+        GREEN,
+    );
+    line(
+        fb,
+        format!(
+            "PHOTOSYNTHESE : +{:.1} % D'O2",
+            pct("O2", &now) - pct("O2", &base)
+        ),
+        GREEN,
+    );
+    for (ci, c) in g.data.chemistries.iter().enumerate() {
+        let n = list
+            .iter()
+            .filter(|&&s| g.data.chemistry_of(s) == Some(ci))
+            .count();
+        if n > 0 {
+            line(
+                fb,
+                format!("XENOBIOLOGIE : {} ({n})", c.name.to_uppercase()),
+                AMBER,
+            );
+        }
+    }
+    line(fb, String::new(), DIM);
+    let Some(s) = shown_species(g) else {
+        return;
+    };
+    let sp = &g.data.species[s];
+    let tc = trophic_color(&sp.trophic);
+    line(
+        fb,
+        format!("[V] {}", sp.name.to_uppercase()),
+        rgb(tc[0], tc[1], tc[2]),
+    );
+    let m_here = eco.at(s, here);
+    line(
+        fb,
+        format!(
+            "MONDE {}  ICI {}",
+            fmt_mass(eco.total(s)),
+            if m_here > 0.0 {
+                format!(
+                    "{} ({:.0}/KM2)",
+                    fmt_mass(m_here),
+                    m_here / eco.area[here].max(1.0)
+                )
+            } else {
+                "ABSENTE".to_string()
+            }
+        ),
+        GREEN,
+    );
+    let (l, b) = (life_of(sp), behavior_of(&g.data, sp));
+    line(
+        fb,
+        format!(
+            "METAB {:.1} W  VIE {:.1} ANS  PORTEE {}  {}",
+            l.watts,
+            l.lifespan_days / 365.25,
+            l.litter,
+            if l.sexual { "SEXUEE" } else { "CLONALE" }
+        ),
+        GREEN,
+    );
+    let mut ways: Vec<String> = Vec::new();
+    if b.herd > 1 {
+        ways.push(format!(
+            "{} DE {}",
+            if b.pack { "MEUTE" } else { "TROUPEAU" },
+            b.herd
+        ));
+    }
+    if b.territory_km2 > 0.0 {
+        ways.push(format!("TERRITOIRE {:.1} KM2", b.territory_km2));
+    }
+    if b.nocturnal {
+        ways.push("NOCTURNE".into());
+    }
+    if b.hibernates {
+        ways.push("HIBERNE".into());
+    }
+    if !ways.is_empty() {
+        line(fb, ways.join("  "), GREEN);
+    }
+    if let Some(v) = variants.iter().find(|v| v.species == s && v.biome == here) {
+        line(
+            fb,
+            format!(
+                "{}  DIVERGENCE {:.0} %",
+                if v.speciated() {
+                    "VARIANTE"
+                } else {
+                    "POPULATION"
+                },
+                v.divergence * 100.0
+            ),
+            if v.speciated() { AMBER } else { GREEN },
+        );
+        line(
+            fb,
+            format!(
+                "MASSE x{:.2}  PELAGE {:+.0}  RAYONS {:.0} %",
+                v.mass_factor(),
+                v.tint * 100.0,
+                v.resist * 100.0
+            ),
+            GREEN,
+        );
+    }
+    let (eats, eaten) = web_of(&g.data, eco, here, s);
+    for (title, set) in [("SE NOURRIT DE", &eats), ("EST MANGE PAR", &eaten)] {
+        if set.is_empty() {
+            continue;
+        }
+        line(fb, format!("{title} :"), DIM);
+        for &(o, m) in set.iter().take(3) {
+            line(
+                fb,
+                format!(
+                    "  {:<24}{:>9}",
+                    g.data.species[o].name.to_uppercase(),
+                    fmt_mass(m)
+                ),
+                GREEN,
+            );
+        }
+    }
+    line(fb, String::new(), DIM);
+    // Species at the cursor: a click shows one on the map.
+    line(fb, "ICI (CLIC : AFFICHER)".into(), AMBER);
+    for (o, m) in eco.present_in(here).into_iter().take(7) {
+        let pos = list.iter().position(|&x| x == o).unwrap_or(0);
+        let c = trophic_color(&g.data.species[o].trophic);
+        g.hit_cells(
+            col,
+            r.get(),
+            36,
+            1,
+            Act::Call(Game::click_surface_species, pos),
+            None,
+        );
+        line(
+            fb,
+            format!(
+                "{} {:<24}{:>9}",
+                if o == s { ">" } else { " " },
+                g.data.species[o].name.to_uppercase(),
+                fmt_mass(m)
+            ),
+            rgb(c[0], c[1], c[2]),
+        );
+    }
+    line(fb, String::new(), DIM);
+    let diverged: Vec<_> = variants.iter().filter(|v| v.speciated()).collect();
+    line(
+        fb,
+        format!("VARIANTES DISTINCTES : {}", diverged.len()),
+        AMBER,
+    );
+    for v in diverged.iter().take(4) {
+        line(fb, format!("  {}", v.name(&g.data).to_uppercase()), GREEN);
+    }
+}
+
+/// The card of a variant, from the codex.
+fn vector_card(g: &Game, v: &vector_sim::biosphere::Variant, world: &str) -> Vec<String> {
+    crate::codex::variant_card(&g.data, v, world)
 }
 
 fn draw_panel(fb: &mut Framebuffer, g: &Game, map: &PlanetMap, col: usize, row: usize) {

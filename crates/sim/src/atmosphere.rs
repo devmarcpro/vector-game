@@ -96,7 +96,8 @@ impl Sim {
             return None;
         }
         let (mut mass, mut share) = (0.0, 0.0);
-        for (gas, f) in &b.atmosphere {
+        // The composition counts what life has done to it (photosynthesis: CO2 into O2).
+        for (gas, f) in &self.atmosphere_of(i) {
             mass += molar_mass(gas) * f64::from(*f);
             share += f64::from(*f);
         }

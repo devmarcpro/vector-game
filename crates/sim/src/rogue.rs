@@ -467,13 +467,58 @@ impl Sim {
         out
     }
 
+    /// Go down into a site met on the walk over a planet (X): the walking party descends into a
+    /// ruin, a cave, a wreck... The same site always has the same layout on a given visit.
+    pub fn rogue_from_walk(&mut self, w: &crate::walk::Walk) -> Result<(), &'static str> {
+        if self.rogue.is_some() {
+            return Err("une exploration est deja en cours");
+        }
+        let (x, y) = w.pos[w.active];
+        let k = w
+            .sites
+            .iter()
+            .position(|s| (s.x - x).abs() <= 1 && (s.y - y).abs() <= 1)
+            .ok_or("aucun site a portee")?;
+        let id = self.data.sites[w.sites[k].def].id.as_str();
+        let theme = self
+            .data
+            .rogue_theme_index(match id {
+                "epave" => "epave",
+                "ruine" => "ruines",
+                "grotte" => "grotte",
+                "campement" => "depot",
+                "source" => "grotte_cristal",
+                _ => "laboratoire",
+            })
+            .ok_or("lieu inconnu")?;
+        let party: Vec<usize> = (0..w.party.len())
+            .filter(|&i| w.up(self, i))
+            .map(|i| w.party[i])
+            .collect();
+        if party.is_empty() {
+            return Err("personne n'est en etat de descendre");
+        }
+        let base = hash_coord(w.seed, k as i64, 91, 17);
+        let visits = self
+            .rogue_visits
+            .iter()
+            .find(|(s, _)| *s == base)
+            .map_or(0, |(_, n)| *n);
+        match self.rogue_visits.iter_mut().find(|(s, _)| *s == base) {
+            Some((_, n)) => *n += 1,
+            None => self.rogue_visits.push((base, 1)),
+        }
+        self.rogue_begin(theme, hash_coord(base, i64::from(visits), 3, 3), party);
+        Ok(())
+    }
+
     /// Crew fit to go: alive and healthy enough, the best fighters first.
     pub fn rogue_squad(&self) -> Vec<usize> {
         let combat = self.data.skill_index("combat");
         let mut v: Vec<usize> = (0..self.crew.members.len())
             .filter(|&i| {
                 let p = &self.crew.members[i];
-                p.alive && p.health > 0.3
+                p.alive && p.health > 0.3 && p.age >= 16.0
             })
             .collect();
         v.sort_by(|a, b| {
@@ -1672,5 +1717,50 @@ mod tests {
         assert_eq!(a.floors[0].tiles, b.floors[0].tiles);
         assert_eq!((a.x, a.y), (b.x, b.y));
         assert_eq!(a.floors[0].monsters, b.floors[0].monsters);
+    }
+
+    #[test]
+    fn a_site_met_on_the_walk_leads_down_into_the_roguelike() {
+        let mut s = new_sim(5, data());
+        s.reveal_all();
+        let body = s
+            .bodies
+            .iter()
+            .position(|b| matches!(b.kind, BodyKind::Planet(k) if !k.is_giant()))
+            .expect("a solid planet");
+        s.ship.pos =
+            s.bodies[body].pos - vector_core::Vec3::new(0.0, 0.0, s.bodies[body].radius * 3.0);
+        s.ship.vel = s.bodies[body].vel;
+        s.update_ref_pub();
+        let mut found = None;
+        'find: for cy in (6..vector_world::surface::H - 6).step_by(3) {
+            for cx in (0..vector_world::surface::W).step_by(5) {
+                if let Ok(w) = s.walk_start(body, cx, cy, vec![0], false) {
+                    if !w.sites.is_empty() {
+                        found = Some(w);
+                        break 'find;
+                    }
+                }
+            }
+        }
+        let mut w = found.expect("a landing with a site");
+        // Far from any site: nothing to descend into.
+        w.pos[w.active] = (-50, -50);
+        assert!(s.rogue_from_walk(&w).is_err());
+        let (sx, sy) = (w.sites[0].x, w.sites[0].y);
+        w.pos[w.active] = (sx, sy);
+        s.rogue_from_walk(&w).expect("descends");
+        let r = s.rogue.as_ref().unwrap();
+        assert_eq!(r.party, vec![w.party[0]]);
+        let first = r.floors[0].tiles.clone();
+        assert!(s.rogue_from_walk(&w).is_err(), "one run at a time");
+        s.rogue.as_mut().unwrap().over = true;
+        s.rogue_close();
+        s.rogue_from_walk(&w).unwrap();
+        assert_ne!(
+            s.rogue.as_ref().unwrap().floors[0].tiles,
+            first,
+            "another visit, another layout"
+        );
     }
 }

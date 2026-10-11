@@ -98,6 +98,9 @@ impl Game {
         if self.sim.rogue.as_ref().is_some_and(|r| r.over) {
             if matches!(code, KeyCode::Enter | KeyCode::Escape | KeyCode::Space) {
                 self.sim.rogue_close();
+                if let Some(back) = self.rogue_return.take() {
+                    self.screen = back;
+                }
             }
             return;
         }

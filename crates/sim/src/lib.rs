@@ -1,6 +1,7 @@
 //! Deterministic simulation: flight model, modular ships, gravity, collisions, autopilot, mining, trade, saves.
 //! Units: SI (m, s, kg, N). See docs/SIM_MODEL.md.
 pub mod autopilot;
+pub mod births;
 pub mod blackmarket;
 pub mod bourse;
 pub mod cargo;
@@ -293,6 +294,7 @@ pub struct Sim {
     /// The roguelike exploration under way, and how many times each place was entered.
     pub rogue: Option<rogue::Rogue>,
     pub rogue_visits: Vec<(u64, u32)>,
+    pub births_day: i64,
     pub last_livestock_day: i64,
     /// Body used as velocity reference for flight assist (within its influence radius).
     pub ref_body: Option<usize>,
@@ -431,6 +433,7 @@ impl Sim {
             multiverse: Default::default(),
             rogue: None,
             rogue_visits: Vec::new(),
+            births_day: i64::MIN,
             last_livestock_day: i64::MIN,
             ref_body: None,
             target: None,
@@ -712,6 +715,7 @@ impl Sim {
         self.cartel_tick();
         self.tender_tick();
         self.multiverse_tick();
+        self.births_tick();
         let flux = self.solar_flux();
         let mass = self.ship.mass();
         let was_hot = self.ship.sys.overheating;

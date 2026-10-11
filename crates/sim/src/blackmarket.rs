@@ -12,7 +12,36 @@ pub const BUY_FACTOR: f64 = 1.9;
 pub const RAID_CHANCE: f64 = 0.12;
 pub const RAID_FINE: f64 = 600.0;
 
+/// Trust of a contact grows with every clean deal and falls with a raid; it improves the terms.
+pub const TRUST_STEP: f32 = 0.04;
+pub const TRUST_RAID: f32 = 0.3;
+
 impl Sim {
+    /// Trust (0..1) of the contact of the people whose station this is.
+    pub fn contact_trust(&self) -> f32 {
+        self.faction
+            .and_then(|f| self.trade.contacts.iter().find(|c| c.0 == f))
+            .map_or(0.0, |c| c.1)
+    }
+
+    fn set_trust(&mut self, delta: f32) {
+        let Some(f) = self.faction else { return };
+        match self.trade.contacts.iter_mut().find(|c| c.0 == f) {
+            Some(c) => c.1 = (c.1 + delta).clamp(0.0, 1.0),
+            None => self.trade.contacts.push((f, delta.clamp(0.0, 1.0))),
+        }
+    }
+
+    /// (price asked per reference unit, price paid, chance of a raid) with the contact's trust.
+    pub fn black_terms(&self) -> (f64, f64, f64) {
+        let t = f64::from(self.contact_trust());
+        (
+            BUY_FACTOR - 0.3 * t,
+            SELL_FACTOR + 0.1 * t,
+            RAID_CHANCE * (1.0 - 0.7 * t),
+        )
+    }
+
     /// Whether the good is banned where you are docked (so a contact deals it).
     pub fn black_market_for(&self, res: usize) -> Result<(), &'static str> {
         self.docked.ok_or("non amarre")?;
@@ -30,6 +59,7 @@ impl Sim {
         let fine = self.credits.clamp(0.0, RAID_FINE);
         self.credits -= fine;
         self.change_reputation(self.faction, -0.25);
+        self.set_trust(-TRUST_RAID);
         let name = self.data.resources[res].name.to_lowercase();
         self.events.push(Event::MarketNews(format!(
             "Descente de police : {kg:.0} kg de {name} saisis, amende de {fine:.0} CR."
@@ -44,7 +74,7 @@ impl Sim {
             self.time as i64,
             (kg * 10.0) as i64,
         ));
-        rng.f64() < RAID_CHANCE
+        rng.f64() < self.black_terms().2
     }
 
     /// Sell `kg` kg of a banned good to the contact; returns what was paid.
@@ -59,15 +89,16 @@ impl Sim {
         if self.deal_raided(res, kg) {
             return Err(self.raid(res, kg));
         }
-        let pay = self.reference_price(self.here_pos, self.time, res) * kg * SELL_FACTOR;
+        let pay = self.reference_price(self.here_pos, self.time, res) * kg * self.black_terms().1;
         self.credits += pay;
+        self.set_trust(TRUST_STEP);
         Ok(pay)
     }
 
     /// Buy `kg` kg of a banned good from the contact; returns what it cost.
     pub fn black_buy(&mut self, res: usize, kg: f64) -> Result<f64, &'static str> {
         self.black_market_for(res)?;
-        let price = self.reference_price(self.here_pos, self.time, res) * BUY_FACTOR;
+        let price = self.reference_price(self.here_pos, self.time, res) * self.black_terms().0;
         let room = self.ship.cargo.cap_mass - self.ship.cargo.mass;
         let kg = kg.min(self.credits / price).min(room);
         if kg <= 0.0 {
@@ -81,6 +112,7 @@ impl Sim {
         let got = self.ship.cargo.add(&data, res, kg);
         // Whatever the hold could not take is paid back.
         self.credits += price * (kg - got);
+        self.set_trust(TRUST_STEP);
         Ok(price * got)
     }
 }
@@ -137,10 +169,11 @@ mod tests {
             s.credits = 1.0e6;
             let reference = s.reference_price(s.here_pos, s.time, res);
             let credits = s.credits;
+            let factor = s.black_terms().0;
             match s.black_buy(res, 10.0) {
                 Ok(cost) => {
                     ok += 1;
-                    assert!((cost - reference * BUY_FACTOR * 10.0).abs() < 1e-6);
+                    assert!((cost - reference * factor * 10.0).abs() < 1e-6);
                     assert!((credits - s.credits - cost).abs() < 1e-6);
                     let pay = s.black_sell(res, 10.0);
                     if let Ok(p) = pay {
@@ -181,5 +214,34 @@ mod tests {
             .events
             .iter()
             .any(|e| matches!(e, Event::MarketNews(t) if t.starts_with("Descente"))));
+    }
+
+    #[test]
+    fn contacts_trust_grows_with_clean_deals_improves_terms_and_falls_with_raids() {
+        let (mut s, res) = docked("verdant");
+        assert_eq!(s.contact_trust(), 0.0);
+        let (b0, s0, r0) = s.black_terms();
+        let mut clean = 0;
+        for t in 0..60 {
+            s.time = f64::from(t) * 7200.0;
+            s.credits = 1.0e6;
+            s.ship.cargo.kg[res] = 0.0;
+            if s.black_buy(res, 5.0).is_ok() {
+                clean += 1;
+            }
+        }
+        assert!(clean > 20);
+        let trust = s.contact_trust();
+        assert!(trust > 0.15, "trust {trust}");
+        let (b1, s1, r1) = s.black_terms();
+        assert!(b1 < b0 && s1 > s0 && r1 < r0, "better terms for a friend");
+        assert!(b1 > s1, "but a round trip never pays");
+        // A raid costs trust.
+        let before = s.contact_trust();
+        s.raid(res, 5.0);
+        assert!((before - s.contact_trust() - TRUST_RAID).abs() < 1e-6 || s.contact_trust() == 0.0);
+        // Another people's contact knows nothing of you.
+        s.faction = s.data.factions.iter().position(|x| x.id == "concorde");
+        assert_eq!(s.contact_trust(), 0.0);
     }
 }

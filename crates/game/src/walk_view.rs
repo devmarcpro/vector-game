@@ -300,8 +300,10 @@ pub fn draw_walk(fb: &mut Framebuffer, g: &Game) {
     }
     // Actions as clickable text.
     let row = y0 + MAP_H as usize + 1;
-    let acts: [(&str, Act); 3] = [
+    let acts: [(&str, Act); 5] = [
         ("[G] CUEILLIR", Act::Key(KeyCode::KeyG)),
+        ("[V] LANCER UN DRONE", Act::Key(KeyCode::KeyV)),
+        ("[X] DESCENDRE DANS UN SITE", Act::Key(KeyCode::KeyX)),
         ("[TAB] CHANGER DE MEMBRE", Act::Key(KeyCode::Tab)),
         ("[R] RENTRER AU VAISSEAU", Act::Key(KeyCode::KeyR)),
     ];
@@ -448,6 +450,18 @@ impl Game {
             KeyCode::KeyG => self.sim.walk_gather(&mut w),
             KeyCode::Tab => self.sim.walk_switch(&mut w),
             KeyCode::KeyR => self.sim.walk_return(&mut w),
+            KeyCode::KeyV => {
+                if let Err(e) = self.sim.walk_deploy_drone(&mut w) {
+                    self.say(e.to_uppercase());
+                }
+            }
+            KeyCode::KeyX => match self.sim.rogue_from_walk(&w) {
+                Ok(()) => {
+                    self.rogue_return = Some(Screen::Walk);
+                    self.screen = Screen::Rogue;
+                }
+                Err(e) => self.say(e.to_uppercase()),
+            },
             KeyCode::Space => {
                 // Wait a turn.
                 let (x, y) = w.pos[w.active];

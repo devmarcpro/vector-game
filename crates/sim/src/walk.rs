@@ -11,6 +11,10 @@ pub const MAP_W: i32 = 96;
 pub const MAP_H: i32 = 52;
 /// Game time of one turn, seconds.
 pub const TURN_SECONDS: f64 = 60.0;
+/// The drone costs one unit of robotics, flies this many turns and reaches this far (cells).
+pub const DRONE_COST: f64 = 1.0;
+pub const DRONE_TURNS: u32 = 30;
+pub const DRONE_REACH: i32 = 3;
 /// What one person and the rover can carry, kg.
 pub const LOOT_PER_MEMBER: f64 = 30.0;
 pub const LOOT_VEHICLE: f64 = 250.0;
@@ -77,6 +81,8 @@ pub struct Walk {
     pub turn: u32,
     pub log: Vec<String>,
     pub over: bool,
+    /// Turns left of the drone the AI sent ahead (it gathers plants within reach on its own).
+    pub drone_turns: u32,
 }
 
 fn vnoise(seed: u64, x: f64, y: f64) -> f64 {
@@ -262,6 +268,7 @@ impl Sim {
             vehicle,
             loot: Vec::new(),
             turn: 0,
+            drone_turns: 0,
             log: Vec::new(),
             over: false,
         };
@@ -544,8 +551,54 @@ impl Sim {
         w.over = true;
     }
 
+    /// The AI sends a drone (one unit of robotics): for DRONE_TURNS turns it gathers, on its own,
+    /// the plants within DRONE_REACH cells of the active member, at half yield.
+    pub fn walk_deploy_drone(&mut self, w: &mut Walk) -> Result<(), &'static str> {
+        if w.over {
+            return Err("l'expedition est terminee");
+        }
+        if w.drone_turns > 0 {
+            return Err("un drone est deja en vol");
+        }
+        let r = self
+            .data
+            .resource_index("robotics")
+            .ok_or("pas de robotique")?;
+        if self.ship.cargo.kg[r] < DRONE_COST {
+            return Err("il faut une unite de robotique dans la soute");
+        }
+        let data = std::sync::Arc::clone(&self.data);
+        self.ship.cargo.remove(&data, r, DRONE_COST);
+        w.drone_turns = DRONE_TURNS;
+        w.say("Un drone est lance : il recolte autour de l'equipe.");
+        self.walk_end_turn(w);
+        Ok(())
+    }
+
+    fn walk_drone_gather(&mut self, w: &mut Walk) {
+        let (x, y) = w.pos[w.active];
+        let Some(k) = w.plants.iter().position(|p| {
+            !p.taken && (p.x - x).abs() <= DRONE_REACH && (p.y - y).abs() <= DRONE_REACH
+        }) else {
+            return;
+        };
+        w.plants[k].taken = true;
+        let sp = w.plants[k].species;
+        let yields = self.data.species[sp].yields.clone();
+        for (res, kg) in yields {
+            self.walk_loot(w, &res, kg * 0.5);
+        }
+    }
+
     fn walk_end_turn(&mut self, w: &mut Walk) {
         w.turn += 1;
+        if w.drone_turns > 0 {
+            w.drone_turns -= 1;
+            self.walk_drone_gather(w);
+            if w.drone_turns == 0 {
+                w.say("Le drone rentre, batteries a plat.");
+            }
+        }
         self.advance(TURN_SECONDS, &ShipInput::default());
         let mut rng = Rng::new(hash_coord(w.seed, i64::from(w.turn), 3, 41));
         for c in 0..w.creatures.len() {
@@ -996,5 +1049,45 @@ mod tests {
             "{}",
             s.crew.members[0].health
         );
+    }
+
+    #[test]
+    fn a_drone_gathers_plants_on_its_own_for_a_while() {
+        let (mut s, body, cx, cy) = setup();
+        let mut w = s.walk_start(body, cx, cy, vec![0], false).unwrap();
+        let r = s.data.resource_index("robotics").unwrap();
+        s.ship.cargo.kg[r] = 0.0;
+        assert!(
+            s.walk_deploy_drone(&mut w).is_err(),
+            "no robotics, no drone"
+        );
+        s.ship.cargo.kg[r] = 3.0;
+        // Put plants all around the active member.
+        let (x, y) = w.pos[w.active];
+        let species = w.plants.first().map_or(0, |p| p.species);
+        for k in 0..12 {
+            w.plants.push(Plant {
+                species,
+                x: x + k % 3 - 1,
+                y: y + k / 3 - 1,
+                taken: false,
+            });
+        }
+        let before = w.plants.iter().filter(|p| p.taken).count();
+        s.walk_deploy_drone(&mut w).expect("launched");
+        assert_eq!(w.drone_turns, DRONE_TURNS - 1);
+        assert!(s.ship.cargo.kg[r] < 3.0, "a unit of robotics is spent");
+        assert!(s.walk_deploy_drone(&mut w).is_err(), "one at a time");
+        for _ in 0..8 {
+            s.walk_step(&mut w, 0, 0);
+        }
+        assert!(
+            w.plants.iter().filter(|p| p.taken).count() >= before + 5,
+            "it gathered"
+        );
+        for _ in 0..40 {
+            s.walk_step(&mut w, 0, 0);
+        }
+        assert_eq!(w.drone_turns, 0, "its batteries ran out");
     }
 }

@@ -202,6 +202,8 @@ pub struct Game {
     pub trade_ui: crate::trade_view::TradeUi,
     pub cosmos_ui: crate::cosmos_view::CosmosUi,
     pub rogue_ui: crate::rogue_view::RogueUi,
+    /// Where to go back to when an exploration entered from elsewhere is closed.
+    pub rogue_return: Option<Screen>,
     pub comp_series: Vec<Vec<f64>>,
     pub bourse_live: Vec<f64>,
     pub bourse_news: Vec<vector_sim::bourse::ActiveEvent>,
@@ -329,6 +331,7 @@ impl Game {
             comp_sel: 0,
             farm: Default::default(),
             rogue_ui: Default::default(),
+            rogue_return: None,
             cosmos_ui: crate::cosmos_view::CosmosUi {
                 stasis: 3,
                 ..Default::default()

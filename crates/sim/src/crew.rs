@@ -208,6 +208,8 @@ pub struct Crew {
     pub unpaid: bool,
     /// Families created during play (recruited cousins, births): see `genealogy`.
     pub families: Families,
+    /// Expected children: (mother id, father id, due date).
+    pub pregnancies: Vec<(u32, u32, f64)>,
 }
 
 /// Everything the crew layer needs from the ship and the world for one update.

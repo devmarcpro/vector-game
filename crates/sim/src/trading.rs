@@ -142,6 +142,8 @@ pub struct TradeState {
     pub seats: Vec<usize>,
     pub last_cartel_month: i64,
     pub tenders: Vec<Tender>,
+    /// Trust of the contraband contacts, per faction: (faction, 0..1).
+    pub contacts: Vec<(usize, f32)>,
 }
 
 /// One line of the arbitrage board.

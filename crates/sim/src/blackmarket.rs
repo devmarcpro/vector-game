@@ -91,6 +91,7 @@ impl Sim {
         }
         let pay = self.reference_price(self.here_pos, self.time, res) * kg * self.black_terms().1;
         self.credits += pay;
+        self.bank.dirty += pay;
         self.set_trust(TRUST_STEP);
         Ok(pay)
     }

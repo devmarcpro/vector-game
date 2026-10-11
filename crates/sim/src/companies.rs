@@ -39,7 +39,16 @@ impl Sim {
         // What befalls the company in the sectors around its headquarters.
         let hq =
             crate::incidents::share_factor(&self.data, self.galaxy.seed, c, self.company_pos(c), t);
-        k.base * ln.exp() * (1.0 + k.vol * own).max(0.2) * hq
+        // Bubbles and crashes of the sector that holds the headquarters.
+        let pos = self.company_pos(c);
+        let mac = crate::macroeco::sector(
+            &self.data,
+            &self.galaxy,
+            self.galaxy.seed,
+            crate::politics::cell_of(pos),
+            t,
+        );
+        k.base * ln.exp() * (1.0 + k.vol * own).max(0.2) * hq * mac.share_factor()
     }
 
     /// Daily prices of company `c` over the last `days` days, oldest first.

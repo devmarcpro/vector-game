@@ -49,3 +49,5 @@ Mœurs : data/ethos.ron (8 axes, 8 étiquettes morales, 8 profils de faction), g
 
 ## Entreprises
 `data/companies.ron` : id, nom, siège (faction), cours de base, rendement annuel, volatilité, biens (id, poids, total 1), texte.
+
+- Monnaies : une par peuple (entrée MONNAIES du codex, générée depuis `data/factions.ron`) ; les paramètres macro sont calculés, pas écrits en données.

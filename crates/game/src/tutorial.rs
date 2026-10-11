@@ -142,7 +142,7 @@ pub fn hint_line(g: &Game) -> String {
         }
         Screen::Contracts => "HAUT/BAS CONTRAT  ENTREE ACCEPTER/LIVRER  X ABANDONNER  ECHAP RETOUR",
         Screen::Bank => {
-            "HAUT EMPRUNTER 1000  BAS REMBOURSER 1000  ENTREE TOUT REMBOURSER  ECHAP RETOUR"
+            "HAUT EMPRUNTER  BAS REMBOURSER  ENTREE TOUT  H HYPOTHEQUE  C/V CHANGE  B BLANCHIR  ECHAP RETOUR"
         }
         Screen::Livestock => {
             "HAUT/BAS ANIMAL  GAUCHE/DROITE ESPECE  B ACHETER  P REPRODUIRE  H ABATTRE  ECHAP RETOUR"
@@ -251,7 +251,12 @@ pub fn help_lines(screen: Screen) -> &'static [&'static str] {
             "La lettre est la classe stellaire (O B A F G K M D).",
         ],
         Screen::Contracts => &["Entree : accepter / livrer   X : abandonner"],
-        Screen::Bank => &["Haut : emprunter 1000   Bas : rembourser 1000   Entree : tout"],
+        Screen::Bank => &[
+            "Haut : emprunter 1000   Bas : rembourser 1000   Entree : tout",
+            "H : hypothequer le vaisseau (plafond releve, la soute saisie si impaye)",
+            "C : acheter 1000 CR de monnaie locale   V : la revendre (le change flotte)",
+            "B : blanchir l'argent du marche noir (commission, sinon controle fiscal)",
+        ],
         Screen::Livestock => &[
             "B : acheter un animal   P : reproduire avec le meilleur partenaire",
             "H : abattre (rendement selon les genes)   les animaux mangent des rations",

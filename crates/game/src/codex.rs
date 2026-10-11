@@ -2,7 +2,7 @@
 //! weapon, faction, anomaly and condition, generated from the real data (no hand-written numbers).
 use vector_data::GameData;
 
-pub const CATEGORIES: [&str; 29] = [
+pub const CATEGORIES: [&str; 30] = [
     "RESSOURCES",
     "MODULES",
     "ARMES",
@@ -32,6 +32,7 @@ pub const CATEGORIES: [&str; 29] = [
     "LIEUX A EXPLORER",
     "CREATURES",
     "MATERIAUX",
+    "MONNAIES",
 ];
 
 /// Index in the source table of entry `k` of a category (modules and weapons share a table).
@@ -58,7 +59,7 @@ fn entries(data: &GameData, cat: usize) -> Vec<usize> {
         4 => (0..data.buildings.len()).collect(),
         5 => (0..data.recipes.len()).collect(),
         6 => (0..data.techs.len()).collect(),
-        7 => (0..data.factions.len()).collect(),
+        7 | 29 => (0..data.factions.len()).collect(),
         8 => (0..data.anomalies_def.len()).collect(),
         9 => (0..data.diseases.len()).collect(),
         10 => (0..data.industries.len()).collect(),
@@ -118,6 +119,7 @@ pub fn names(data: &GameData, cat: usize) -> Vec<String> {
             26 => data.rogue_themes[i].name.clone(),
             27 => data.rogue_monsters[i].name.clone(),
             28 => data.materials[i].name.clone(),
+            29 => vector_sim::macroeco::currency_name(data, Some(i)),
             18 => format!(
                 "Appeler : {}",
                 vector_data::dialogue::ROLES[i].to_lowercase()
@@ -679,6 +681,24 @@ pub fn entry(data: &GameData, cat: usize, k: usize) -> Vec<String> {
             out.push(format!("Son cours suit les prix de : {}", sells.join(", ")));
             out.push(
                 "Actions : bourse (T a quai), touche E, B achete 10 actions, N en vend 10."
+                    .to_string(),
+            );
+        }
+        29 => {
+            let f = &data.factions[i];
+            out.push(vector_sim::macroeco::currency_name(data, Some(i)));
+            out.push(format!(
+                "Monnaie de {} : sa valeur en credits flotte avec l'inflation, les guerres, les troubles et les krachs de ses secteurs.",
+                f.name
+            ));
+            out.push(format!(
+                "Taxe sur les ventes {:.0} %   agressivite {:.0} %   change {:.1} % a l'achat comme a la vente",
+                f.tax * 100.0,
+                f.aggression * 100.0,
+                vector_sim::macroeco::FX_FEE * 100.0
+            ));
+            out.push(
+                "Change et comptes : banque (E a quai) : C achete 1000 CR de monnaie locale, V la vend."
                     .to_string(),
             );
         }

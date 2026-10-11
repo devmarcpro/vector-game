@@ -1519,7 +1519,15 @@ fn draw_contracts(fb: &mut Framebuffer, g: &Game) {
             Act::Call(Game::click_contract, i),
             Some(Act::Key(KeyCode::Enter)),
         );
-        let name = &g.data.resources[c.resource].name;
+        let name = if c.pax > 0 {
+            format!(
+                "{} {}",
+                c.pax,
+                vector_sim::economy::PAX_KINDS[usize::from(c.pax_kind.min(3))].0
+            )
+        } else {
+            g.data.resources[c.resource].name.clone()
+        };
         let dest = if c.dist_ly == 0.0 {
             "ICI".to_string()
         } else {
@@ -1529,8 +1537,9 @@ fn draw_contracts(fb: &mut Framebuffer, g: &Game) {
             1,
             top + 1 + i,
             &format!(
-                "{}LIVRER {:>5.0} KG {:<18.18} -> {:<24.24} {:>8.0} CR  {:.0} J",
+                "{}{} {:>5.0} KG {:<18.18} -> {:<24.24} {:>8.0} CR  {:.0} J",
                 if sel { ">" } else { " " },
+                if c.pax > 0 { "TRANSPORTER" } else { "LIVRER" },
                 c.kg,
                 name,
                 dest,
@@ -1565,7 +1574,11 @@ fn draw_contracts(fb: &mut Framebuffer, g: &Game) {
                 "{}{:>5.0} KG {:<16.16} -> {:<22.22} {:>8.0} CR  {:.0} J  SOUTE {:.0}{}",
                 if sel { ">" } else { " " },
                 c.kg,
-                g.data.resources[c.resource].name,
+                if c.pax > 0 {
+                    format!("{} PASSAGERS", c.pax)
+                } else {
+                    g.data.resources[c.resource].name.clone()
+                },
                 c.dest_name,
                 c.reward,
                 (c.expires - s.time) / 86_400.0,
@@ -1635,15 +1648,23 @@ fn draw_bank(fb: &mut Framebuffer, g: &Game) {
         "LE PLAFOND AUGMENTE AVEC VOTRE REPUTATION AUPRES DES FACTIONS.",
         DIM,
     );
-    let acts: [(&str, KeyCode); 3] = [
+    let acts: [(&str, KeyCode); 7] = [
         ("[+] EMPRUNTER 1000 CR", KeyCode::ArrowUp),
         ("[-] REMBOURSER 1000 CR", KeyCode::ArrowDown),
         ("[ENTREE] TOUT REMBOURSER", KeyCode::Enter),
+        (
+            "[H] HYPOTHEQUER / LEVER L'HYPOTHEQUE DU VAISSEAU",
+            KeyCode::KeyH,
+        ),
+        ("[C] ACHETER 1000 CR DE MONNAIE LOCALE", KeyCode::KeyC),
+        ("[V] VENDRE LA MONNAIE LOCALE", KeyCode::KeyV),
+        ("[B] BLANCHIR L'ARGENT SALE", KeyCode::KeyB),
     ];
     for (k, (label, key)) in acts.iter().enumerate() {
         let hover = g.hit_cells(1, top + 9 + k, label.len(), 1, Act::Key(*key), None);
         fb.text(1, top + 9 + k, label, if hover { AMBER } else { GREEN });
     }
+    draw_economy_panel(fb, g, top + 17);
     let b = fb.rows() - 4;
     fb.text(
         1,
@@ -1653,6 +1674,82 @@ fn draw_bank(fb: &mut Framebuffer, g: &Game) {
     );
     for (i, msg) in g.messages.iter().rev().take(2).enumerate() {
         fb.text(1, b + 1 + i, msg, if i == 0 { AMBER } else { DIM });
+    }
+}
+
+/// The economic dashboard of the jurisdiction the ship is in, the player's accounts and holdings.
+fn draw_economy_panel(fb: &mut Framebuffer, g: &Game, y: usize) {
+    let s = &g.sim;
+    let m = s.local_sector();
+    fb.text(
+        1,
+        y,
+        &format!(
+            "ECONOMIE LOCALE : {}",
+            vector_sim::macroeco::currency_name(&g.data, m.faction)
+        ),
+        AMBER,
+    );
+    fb.text(
+        1,
+        y + 1,
+        &format!(
+            "PIB {:>9.0} CR/J  INFLATION {:>5.1} %  TAUX DIRECTEUR {:>4.1} %  CHOMAGE {:>4.1} %",
+            m.gdp,
+            m.inflation * 100.0,
+            m.policy_rate * 100.0,
+            m.unemployment * 100.0
+        ),
+        GREEN,
+    );
+    fb.text(
+        1,
+        y + 2,
+        &format!(
+            "DETTE {:>4.0} % DU PIB  CHANGE 1 UNITE = {:.3} CR  TAUX DE LA BANQUE {:.2} %/J",
+            m.debt_ratio * 100.0,
+            m.fx,
+            m.bank_rate_per_day() * 100.0
+        ),
+        GREEN,
+    );
+    let state = if m.crash > 0.02 {
+        ("KRACH EN COURS : ACTIONS EN CHUTE, CREDIT RESSERRE", RED)
+    } else if m.bubble > 0.1 {
+        (
+            "BULLE SPECULATIVE : LES ACTIONS DEPASSENT LEUR VALEUR",
+            AMBER,
+        )
+    } else if m.at_war {
+        (
+            "SECTEUR EN GUERRE : PLANCHE A BILLETS, MONNAIE FAIBLE",
+            AMBER,
+        )
+    } else {
+        ("CONJONCTURE CALME", DIM)
+    };
+    fb.text(1, y + 3, state.0, state.1);
+    fb.text(
+        1,
+        y + 4,
+        &format!(
+            "VALEUR NETTE {:>10.0} CR  HYPOTHEQUE {}  ARGENT SALE {:.0} CR",
+            s.net_worth(),
+            if s.bank.mortgage { "OUI" } else { "NON" },
+            s.bank.dirty
+        ),
+        GREEN,
+    );
+    for (i, r) in s.bank.reports.iter().rev().take(3).enumerate() {
+        fb.text(
+            1,
+            y + 5 + i,
+            &format!(
+                "RAPPORT MOIS {:>3} : VALEUR NETTE {:>10.0}  CREDITS {:>9.0}  PRET {:>9.0}",
+                r.month, r.net_worth, r.credits, r.loan
+            ),
+            DIM,
+        );
     }
 }
 

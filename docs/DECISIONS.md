@@ -90,3 +90,6 @@ ponderees par `ground_of`), la neige et la glace apparaissent quand il fait froi
 lave remplace l'eau selon la temperature. Les lieux construits nomment leur matiere (`floor_mat`,
 `wall_mat`). La matiere agit : `slow` multiplie le temps de marche (boue x2, neige x1,5, glace x0,8) et
 un rover la ressent 2,5 fois moins. Sauvegardes : version 35.
+
+## Macroéconomie par secteur
+L'économie d'un secteur est une fonction pure de (graine, secteur, date), comme la politique : pas d'état à sauvegarder, la même crise frappe tout le monde le même jour. Un seul système de monnaie et de banque (`Bank`) : le taux, le plafond et les cours en dépendent, il n'y a pas de banque parallèle. Le tableau de bord vit sur l'écran banque (chacun chez soi : les services financiers sont à la station) plutôt que dans un écran neuf. Les lois (taxes, interdits) restent à l'agent société/droit : on lit seulement `Faction::tax`.

@@ -376,6 +376,8 @@ impl Sim {
             return Err("offre battue : un concurrent est moins cher");
         }
         self.accept_contract(crate::economy::Contract {
+            pax: 0,
+            pax_kind: 0,
             id,
             dest_star: self.here,
             dest_seed: self.system.seed,

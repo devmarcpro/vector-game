@@ -51,6 +51,7 @@ mod rules_effects;
 pub mod save;
 pub mod scene;
 pub mod science;
+pub mod start;
 pub mod surgery;
 pub mod surprises;
 pub mod trading;

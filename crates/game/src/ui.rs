@@ -32,6 +32,8 @@ fn menu(fb: &mut Framebuffer, g: &Game, top: usize, items: &[&str], sel: usize) 
 pub fn draw(fb: &mut Framebuffer, g: &Game) {
     match g.screen {
         Screen::MainMenu => draw_main(fb, g),
+        Screen::NewGame => crate::newgame::draw(fb, g),
+        Screen::Hub => crate::hub::draw(fb, g),
         Screen::Pause => {
             fb.text(fb.cols() / 2 - 4, 6, "== PAUSE ==", AMBER);
             menu(fb, g, 9, &PAUSE_MENU, g.menu_sel);
@@ -153,12 +155,14 @@ fn draw_ticker(fb: &mut Framebuffer, g: &Game) {
 
 pub fn draw_overlay(fb: &mut Framebuffer, g: &Game) {
     crate::flight_menu::draw(fb, g);
-    if g.settings.ticker && g.screen != Screen::MainMenu {
+    // Before the command bar: the bar stays the last zone drawn.
+    crate::hub::draw_menu_button(fb, g);
+    if g.settings.ticker && !matches!(g.screen, Screen::MainMenu | Screen::NewGame) {
         draw_ticker(fb, g);
     }
     if let Some((i, text)) = g.tutorial_line() {
         let line = format!(
-            "TUTO {}/{}  {}  [F10 ignorer]",
+            "TUTO {}/{}  {}  [SUPPR ignorer]",
             i + 1,
             crate::tutorial::STEPS.len(),
             text
@@ -495,6 +499,7 @@ fn draw_main(fb: &mut Framebuffer, g: &Game) {
         DIM,
     );
     menu(fb, g, 13, &MAIN_MENU, g.menu_sel);
+    // The seed of the quick start sits next to its line.
     let seed = if g.seed_text.is_empty() {
         "(DEFAUT)"
     } else {
@@ -502,17 +507,23 @@ fn draw_main(fb: &mut Framebuffer, g: &Game) {
     };
     let c = if g.menu_sel == 0 { AMBER } else { DIM };
     fb.text(
-        cols / 2 - 12,
-        20,
+        cols / 2 + 16,
+        13,
         &format!("GRAINE: {seed}{}", if g.menu_sel == 0 { "_" } else { "" }),
         c,
     );
-    fb.text(
-        cols / 2 - 22,
-        fb.rows() - 3,
-        "HAUT/BAS CHOISIR  ENTREE VALIDER  TAPER UNE GRAINE",
-        DIM,
-    );
+    // What the highlighted line does.
+    let about = [
+        "UN VOYAGEUR STANDARD : SON VAISSEAU, SON EQUIPAGE, LA GRAINE TAPEE CI-DESSUS (OU CELLE PAR DEFAUT).",
+        "CHOISIR LE DEPART : SCENARIO (NAUFRAGE, MARCHAND, EXPLORATEUR...), VAISSEAU, EQUIPAGE, GALAXIE, OPTIONS.",
+        "REPRENDRE LA PARTIE SAUVEGARDEE.",
+        "DEGATS, CARBURANT, MORT PERMANENTE, CARTE REVELEE... LES REGLES DE LA PROCHAINE PARTIE.",
+        "AFFICHAGE, SON, CLAVIER AZERTY OU QWERTY, TUTORIEL.",
+        "L'ENCYCLOPEDIE DU JEU, TIREE DES DONNEES.",
+        "",
+    ];
+    let line = about[g.menu_sel.min(about.len() - 1)];
+    fb.text(cols / 2 - line.len() / 2, 29, line, DIM);
     if let Some(m) = g.messages.last().filter(|m| m.starts_with("ECHEC")) {
         fb.text(cols / 2 - m.len() / 2, fb.rows() - 5, m, RED);
     }

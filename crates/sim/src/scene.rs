@@ -34,7 +34,9 @@ pub fn pick_home(galaxy: &Galaxy) -> StarEntry {
         .unwrap_or_else(|| galaxy.sector((0, 0, 0)).remove(0))
 }
 
-pub fn new_sim(seed: u64, data: Arc<GameData>) -> Sim {
+/// The world every start shares: the galaxy of the seed, its home system, the ship parked at
+/// the station, with the default ship and nothing else decided yet.
+pub fn base_sim(seed: u64, data: Arc<GameData>) -> Sim {
     let galaxy = Galaxy::new(seed);
     let home = pick_home(&galaxy);
     let mut sim = Sim::new_in_galaxy(galaxy, &home, data);
@@ -47,6 +49,11 @@ pub fn new_sim(seed: u64, data: Arc<GameData>) -> Sim {
     if let Some(st) = station {
         sim.scan[st] = SCAN_FULL;
     }
+    sim
+}
+
+pub fn new_sim(seed: u64, data: Arc<GameData>) -> Sim {
+    let mut sim = base_sim(seed, data);
     // Starting supplies and one engineer.
     let data = Arc::clone(&sim.data);
     for (id, kg) in [

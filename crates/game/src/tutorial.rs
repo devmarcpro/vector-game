@@ -80,8 +80,8 @@ pub const STEPS: [Step; 17] = [
         done: |g| pressed(g, Screen::Flight, KeyCode::KeyL) || g.screen == Screen::Galaxy,
     },
     Step {
-        text: "F4 : technologies, F6 : codex, F2 : empire. F1 donne l'aide du contexte. Bon vol !",
-        done: |g| any_pressed(g, Screen::Flight, &[KeyCode::F4, KeyCode::F6, KeyCode::F2]) || matches!(g.screen, Screen::Tech | Screen::Codex | Screen::Empire),
+        text: "F10 ouvre le menu : huit espaces qui regroupent tous les ecrans. F1 donne l'aide du contexte. Bon vol !",
+        done: |g| pressed(g, Screen::Flight, KeyCode::F10) || matches!(g.screen, Screen::Hub | Screen::Tech | Screen::Codex | Screen::Empire),
     },
     Step {
         text: "F8 ouvre la surface d'un monde releve (G : globe) ; E y lance une expedition a pied ; Entree en vol sur une planete ciblee parle a son peuple.",
@@ -95,7 +95,19 @@ pub fn hint_line(g: &Game) -> String {
         return "ENTREE EXECUTER  ~ FERMER LA CONSOLE  (HELP POUR LA LISTE)".into();
     }
     let s = match g.screen {
-        Screen::MainMenu => "HAUT/BAS CHOISIR  ENTREE VALIDER  TAPER UNE GRAINE AVANT NOUVELLE PARTIE",
+        Screen::MainMenu => "HAUT/BAS CHOISIR  ENTREE VALIDER  TAPER UNE GRAINE POUR LA PARTIE RAPIDE",
+        Screen::NewGame => match g.ng.step {
+            0 => "ENTREE SUIVANT  ECHAP MENU PRINCIPAL  F1 AIDE",
+            1 | 2 => "HAUT/BAS CHOISIR  ENTREE SUIVANT  ECHAP PRECEDENT  F1 AIDE",
+            3 => "HAUT/BAS PERSONNE  ESPACE PRENDRE/LAISSER  GAUCHE/DROITE POSTE  ENTREE SUIVANT  ECHAP PRECEDENT",
+            4 => "TAPER UNE GRAINE  TAB ALEATOIRE  SUPPR PAR DEFAUT  ENTREE SUIVANT  ECHAP PRECEDENT",
+            5 => "HAUT/BAS CHOISIR  GAUCHE/DROITE CHANGER  ENTREE SUIVANT  ECHAP PRECEDENT",
+            _ => "ENTREE LANCER LA PARTIE  ECHAP PRECEDENT  F1 AIDE",
+        },
+        Screen::Hub if g.hub.page => {
+            "HAUT/BAS CHOISIR  ENTREE OUVRIR  GAUCHE/ECHAP RETOUR AUX ESPACES  1-8 ESPACE  F10 FERMER"
+        }
+        Screen::Hub => "HAUT/BAS ESPACE  ENTREE OUVRIR  1-8 ESPACE  ECHAP FERMER  F10 FERMER  F1 AIDE",
         Screen::Flight if g.map => {
             "M FERMER LA CARTE  +/- ZOOM  C CENTRE ETOILE/VAISSEAU  TAB CIBLE  G AUTO  PGUP/PGDN TEMPS  F1 AIDE"
         }
@@ -107,12 +119,12 @@ pub fn hint_line(g: &Game) -> String {
             "PILOTE AUTO ACTIF  G ANNULER  PGUP/PGDN TEMPS  TAB CIBLE  M CARTE  P PAUSE  F1 AIDE"
         }
         Screen::Flight => {
-            "WASD/QE ROT  ESP/X POUSSEE  MAJ BOOST  C FREIN  F ASSIST  TAB CIBLE  G AUTO  D AMARRER  V LASER  CTRL TIR  M CARTE  F1 AIDE"
+            "WASD/QE ROT  ESP/X POUSSEE  MAJ BOOST  C FREIN  F ASSIST  TAB CIBLE  G AUTO  D AMARRER  V LASER  F10 MENU  M CARTE  F1 AIDE"
         }
         Screen::Station => {
             "ENTREE VENDRE  F PLEIN  R REPARER  FIN VISITER LA STATION (TOUS LES SERVICES)  H NAVIRE  T BOURSE  U DECOLLER"
         }
-        Screen::Inventory => "HAUT/BAS CHOISIR  J JETER  I/ECHAP RETOUR",
+        Screen::Inventory => "HAUT/BAS CHOISIR  J JETER  F CARBURANT DE LA SOUTE AU RESERVOIR  I/ECHAP RETOUR",
         Screen::Pause => "HAUT/BAS CHOISIR  ENTREE VALIDER  ECHAP REPRENDRE",
         Screen::Ship if g.picker => {
             "HAUT/BAS MODULE  ENTREE INSTALLER OU REMPLACER (ACHAT AUTO)  ECHAP ANNULER"
@@ -204,6 +216,7 @@ pub fn help_lines(screen: Screen) -> &'static [&'static str] {
             "PgUp/PgDn : temps   P : pause   Echap : menu",
             "H vaisseau  K equipage  I soute  J journal  X factions",
             "L galaxie  F2 empire  F3 flotte  F4 techno  F6 codex  Entree : appeler le vaisseau cible",
+            "F10 : le menu (huit espaces, tous les ecrans)   Suppr : ignorer le tutoriel",
             "O : fonder une colonie   Z tribut   N epave   U abordage",
             "F8 : surface de la planete ou lune ciblee (releve niveau 2) ; Tab y change de couche (BIOSPHERE : V espece, Entree fiche de la variante)",
             "Souris : clic = cibler un objet, double clic = y aller ; molette = temps ; clic droit = retour",
@@ -216,7 +229,10 @@ pub fn help_lines(screen: Screen) -> &'static [&'static str] {
             "K : equipage   C : contrats   E : banque   T : bourse (courbes de prix)",
             "F2 : empire   F3 : flotte   U : decoller",
         ],
-        Screen::Inventory => &["Haut/Bas : ressource   J : jeter   Echap : retour"],
+        Screen::Inventory => &[
+            "Haut/Bas : ressource   J : jeter   Echap : retour",
+            "F : verser le carburant de la soute (butin, cargaison) dans le reservoir",
+        ],
         Screen::Ship => &[
             "Haut/Bas : emplacement   Entree : installer",
             "X : retirer le module   Y : chantier naval",
@@ -348,7 +364,24 @@ pub fn help_lines(screen: Screen) -> &'static [&'static str] {
             "F : codex   F8 ou Echap : retour au vol",
         ],
         Screen::Pause => &["Haut/Bas : choisir   Entree : valider   Echap : reprendre"],
-        Screen::MainMenu => &["Haut/Bas : choisir   Entree : valider   Taper : graine"],
+        Screen::MainMenu => &[
+            "Haut/Bas : choisir   Entree : valider   Taper : graine de la partie rapide",
+            "Nouvelle partie : scenario, vaisseau, equipage, galaxie, options",
+        ],
+        Screen::NewGame => &[
+            "Sept etapes : explications, scenario, vaisseau, equipage, galaxie, options, recapitulatif",
+            "Entree : etape suivante   Echap : precedente (la premiere revient au menu)",
+            "Chaque etape est cliquable en haut ; chaque choix change l'etat de depart",
+            "Equipage : Espace prend ou laisse, Gauche/Droite change le poste, budget de points",
+            "Galaxie : taper une graine, Tab en tire une au hasard, Suppr revient a celle par defaut",
+        ],
+        Screen::Hub => &[
+            "Huit espaces regroupent tous les ecrans du jeu (F10 ouvre ou ferme ce menu)",
+            "Haut/Bas ou 1-8 : espace   Entree : ouvrir   Gauche ou Echap : remonter d'un niveau",
+            "En haut : ou vous etes et ce que vous pouvez faire maintenant",
+            "Une ligne grisee dit pourquoi elle est indisponible (amarrage, a pied...)",
+            "Echap dans un ecran ouvert d'ici revient a la page de son espace",
+        ],
         Screen::Destroyed => &["Entree : continuer (selon les regles de mort permanente)"],
     }
 }

@@ -258,6 +258,22 @@ fn snapshot(path: &str, scene: &str, data: Arc<GameData>) {
     if scene != "menu" {
         g.new_game(DEFAULT_SEED);
     }
+    // A world with life, for the views of planets: look for a seed that has a Terran or Ocean one.
+    if scene.starts_with("world_life") {
+        for seed in 1..400u64 {
+            g.new_game(seed);
+            if g.sim.bodies.iter().any(|b| {
+                matches!(
+                    b.kind,
+                    vector_world::BodyKind::Planet(
+                        vector_world::PlanetKind::Terran | vector_world::PlanetKind::Ocean
+                    )
+                )
+            }) {
+                break;
+            }
+        }
+    }
     match scene {
         "map" => {
             g.map = true;
@@ -276,7 +292,8 @@ fn snapshot(path: &str, scene: &str, data: Arc<GameData>) {
             g.open_dialogue();
             g.dlg_sel = 1;
         }
-        "world" => {
+        s if s.starts_with("world") => {
+            let near = s.ends_with("near");
             g.sim.reveal_all();
             let i = g
                 .sim
@@ -298,7 +315,7 @@ fn snapshot(path: &str, scene: &str, data: Arc<GameData>) {
                 .expect("a solid planet");
             let b = &g.sim.bodies[i];
             let dir = vector_core::Vec3::new(0.3, 0.15, -1.0).normalized();
-            g.sim.ship.pos = b.pos - dir * (b.radius * 3.2);
+            g.sim.ship.pos = b.pos - dir * (b.radius * if near { 1.25 } else { 3.2 });
             g.sim.ship.vel = b.vel;
             g.sim.ship.rot = vector_core::Mat3::look_at(dir, vector_core::Vec3::new(0.0, 1.0, 0.0));
             g.sim.target = Some(i);

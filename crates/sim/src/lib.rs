@@ -26,6 +26,7 @@ pub mod market;
 pub mod multiverse;
 pub mod news;
 pub mod npc;
+pub mod orbit;
 pub mod planet;
 pub mod politics;
 pub mod rogue;
@@ -180,6 +181,14 @@ pub struct Body {
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Event {
+    /// The ship set down gently on a world.
+    Landed {
+        body: usize,
+    },
+    /// The orbit assist put the ship on a circular orbit around a world.
+    Orbit {
+        body: usize,
+    },
     Impact {
         body: usize,
         speed: f64,
@@ -990,6 +999,7 @@ impl Sim {
         s.pos = s.pos + s.vel * dt;
         self.time += dt;
         self.refresh_bodies();
+        self.atmosphere_drag(dt);
         let riding = self.ride.take();
         if let Some((bi, rp, rv)) = riding {
             self.ship.pos = self.bodies[bi].pos + rp;
@@ -1031,6 +1041,7 @@ impl Sim {
 
     fn collide(&mut self) {
         let mut hits = Vec::new();
+        let mut landings: Vec<(usize, Vec3)> = Vec::new();
         {
             let s = &mut self.ship;
             for (i, b) in self.bodies.iter().enumerate() {
@@ -1044,7 +1055,14 @@ impl Sim {
                     let n = d * (1.0 / dist);
                     let vn = (s.vel - b.vel).dot(n);
                     s.pos = b.pos + n * min;
-                    if vn < 0.0 {
+                    // A gentle contact with a solid world is a landing: no bounce, no damage, the ship
+                    // stays on the ground (parked) until it thrusts.
+                    let solid =
+                        matches!(b.kind, BodyKind::Planet(k) | BodyKind::Moon(k) if !k.is_giant());
+                    if solid && (s.vel - b.vel).length() <= crate::orbit::LANDING_SPEED {
+                        s.vel = b.vel;
+                        landings.push((i, s.pos - b.pos));
+                    } else if vn < 0.0 {
                         let speed = -vn;
                         let damage =
                             (0.5 * s.mass() * speed * speed / 5.0e6).min(s.stats.hull_max * 2.0);
@@ -1053,6 +1071,12 @@ impl Sim {
                     }
                 }
             }
+        }
+        for (i, off) in landings {
+            if self.parked.map(|p| p.0) != Some(i) {
+                self.events.push(Event::Landed { body: i });
+            }
+            self.parked = Some((i, off));
         }
         for (i, speed, damage) in hits {
             if speed > 5.0 && !self.rules.invulnerable {

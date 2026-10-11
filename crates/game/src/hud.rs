@@ -203,32 +203,32 @@ fn draw_world(fb: &mut Framebuffer, cam: &Camera, v: &View, i: usize, px: f64) -
             )
         })
     };
+    let data = &v.sim.data;
+    // The ball itself, in plain colours: lit by the star, relief shaded, air at the rim.
+    crate::globe::fill_world(
+        fb,
+        cam,
+        b.pos,
+        b.radius,
+        &orient,
+        sun,
+        &crate::globe::Paint {
+            map: &map,
+            color: &|x, y| data.biomes[map.biome_at(x, y)].color,
+            air: map.pressure,
+        },
+    );
+    // Coasts and the graticule stay as thin lines over it when the world is big.
     let globe = Globe {
         map: &map,
         to_view: &to_view,
         visible: &visible,
         project: &project,
     };
-    // Coarser sampling the farther away the world is (fewer cells than pixels are useful).
-    let step = if px > 160.0 {
-        1
-    } else if px > 70.0 {
-        2
-    } else {
-        4
-    };
-    let size = if px > 120.0 { 2 } else { 1 };
-    let data = &v.sim.data;
-    globe.dots(fb, step, size, &|x, y, p| {
-        let c = data.biomes[map.biome_at(x, y)].color;
-        if p.dot(sun) > -0.05 {
-            c
-        } else {
-            dimmed(c, 0.3)
-        }
-    });
-    globe.contours(fb, step.max(2));
-    if px > 90.0 {
+    if px > 60.0 {
+        globe.contours(fb, if px > 160.0 { 1 } else { 2 });
+    }
+    if px > 220.0 {
         globe.graticule(fb, 0x0018_3040);
     }
     true

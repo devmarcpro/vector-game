@@ -62,3 +62,6 @@ Equipements des personnages (armes, armures, outils, combinaisons), statistiques
 
 ## Noms (pas prioritaire)
 Développer beaucoup plus les générateurs de noms : planètes, systèmes, galaxies, secteurs, prénoms et noms de famille par culture, entreprises, vaisseaux, lieux (demande du joueur, 2026-10-11).
+
+## Vue a la premiere personne (a faire apres les planetes)
+Exploration a la Daggerfall : une vue en perspective (lancer de rayons sur les memes etages que le moteur d'exploration : salles, couloirs, bornes, passants, monstres) a la place ou a cote de la vue en caracteres. Meme moteur, deux representations. Prototype demande par le joueur (2026-10-11).

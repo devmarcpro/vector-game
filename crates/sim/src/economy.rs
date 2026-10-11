@@ -219,6 +219,43 @@ impl Sim {
                 made += 1;
             }
         }
+        // Urgent orders born of the news: arms in a sector at war, the goods of a company that
+        // suffers an incident here (what the ticker tells is what the stations ask for).
+        let galaxy = vector_world::galaxy::Galaxy::new(self.galaxy.seed);
+        let turmoil =
+            crate::politics::turmoil(&data, &galaxy, self.galaxy.seed, self.here_pos, self.time);
+        let local =
+            crate::incidents::goods_factors(&data, self.galaxy.seed, self.here_pos, self.time);
+        let mut urgent: Vec<(usize, f64)> = Vec::new();
+        if turmoil.at_war {
+            let pick = ["ammo_slugs", "weapon_parts", "medicine", "missiles"]
+                [(rng.next_u64() % 4) as usize];
+            if let Some(r) = data.resource_index(pick) {
+                urgent.push((r, 1.0 + crate::politics::WAR_MARKUP + 0.5));
+            }
+        }
+        for (r, f) in local.iter().enumerate() {
+            if *f > 1.12 && data.resources[r].value >= 0.1 {
+                urgent.push((r, *f + 0.3));
+            }
+        }
+        for (k, (r, mult)) in urgent.into_iter().take(2).enumerate() {
+            let kg = (rng.range(300.0, 1500.0) / 50.0).round() * 50.0;
+            out.push(Contract {
+                id: hash_coord(here_seed, st as i64, epoch, 3000 + k as i64),
+                dest_star: here,
+                dest_seed: here_seed,
+                dest_body: st,
+                dest_name: station_name.clone(),
+                dest_system: here_name.clone(),
+                dist_ly: 0.0,
+                resource: r,
+                kg,
+                reward: (kg * data.resources[r].value * mult * 1.4).round(),
+                expires: self.time + 10.0 * DAY,
+                faction,
+            });
+        }
         out.retain(|c| {
             !self.contracts.iter().any(|a| a.id == c.id) && !self.done_contracts.contains(&c.id)
         });
@@ -612,5 +649,42 @@ mod tests {
         assert!(seized, "a loan far above the limit is eventually collected");
         assert!(s.reputation[0] < 0.0);
         let _ = Vec3::ZERO;
+    }
+
+    #[test]
+    fn a_station_in_a_sector_at_war_orders_arms_urgently() {
+        let d = std::sync::Arc::new(
+            GameData::load(&std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../data"))
+                .expect("data"),
+        );
+        let mut s = crate::scene::new_sim(5, std::sync::Arc::clone(&d));
+        let (st, _) = s.nearest_station().unwrap();
+        s.spawn_near(st, s.bodies[st].radius + 200.0);
+        s.try_dock().unwrap();
+        let galaxy = vector_world::galaxy::Galaxy::new(s.galaxy.seed);
+        // Put the station's sector at war (move the sector, not the station: the test only needs
+        // the date and the place of the market).
+        let found = crate::politics::cells_around([0, 0, 0], 2)
+            .into_iter()
+            .find_map(|c| {
+                (1..400).find_map(|m| {
+                    let t = m as f64 * crate::politics::WAR_PERIOD + 1.0;
+                    crate::politics::sector_at_war(&d, &galaxy, s.galaxy.seed, c, t)
+                        .then_some((c, t))
+                })
+            })
+            .expect("a war near the origin");
+        s.here_pos = crate::politics::cell_center(found.0);
+        s.time = found.1;
+        let offers = s.offered_contracts();
+        let urgent: Vec<_> = offers
+            .iter()
+            .filter(|c| {
+                c.dist_ly == 0.0
+                    && c.reward / (c.kg * d.resources[c.resource].value) >= 2.0
+                    && crate::politics::WAR_GOODS.contains(&d.resources[c.resource].id.as_str())
+            })
+            .collect();
+        assert!(!urgent.is_empty(), "arms are ordered urgently: {offers:?}");
     }
 }

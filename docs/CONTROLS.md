@@ -119,3 +119,4 @@ Par défaut AZERTY : tangage Z/S, lacet Q/D, roulis A/E. Options > Clavier bascu
 
 - Fin (vol ou quai) : explorer a pied (fleches / pave numerique, Entree escalier, Espace attendre, Tab chef, clic = marcher).
 - Exploration à pied (un seul système pour les mondes, stations, épaves, ruines, grottes, portails, dimensions) : touche Fin en vol ou à quai, ou E sur la carte de surface (F8). Mondes : « Atterrir » ; la surface a ses sites qui mènent aux étages des lieux.
+- Pilotage : Inser (ou « ORBITE CIRCULAIRE » du menu) met le vaisseau sur une orbite circulaire autour du monde le plus proche (dans 12 rayons), payee en carburant. Un contact a moins de 25 m/s avec un monde solide est un atterrissage (le vaisseau reste pose jusqu'a la poussee ; Fin pour explorer a pied) ; plus vite, c'est un impact. L'air des mondes freine les plongees.

@@ -538,6 +538,15 @@ impl Game {
                     ));
                     self.timescale = 1.0;
                 }
+                Event::Landed { body } => {
+                    let name = self.sim.bodies[body].name.to_uppercase();
+                    self.say(format!(
+                        "POSE SUR {name} : FIN POUR EXPLORER A PIED, POUSSEE POUR DECOLLER"
+                    ));
+                    self.note(format!("pose sur {}.", self.sim.bodies[body].name));
+                    self.timescale = 1.0;
+                }
+                Event::Orbit { .. } => {}
                 Event::OutOfFuel => self.say("CARBURANT EPUISE"),
                 Event::Arrived { body } => {
                     let name = self.sim.bodies[body].name.clone();
@@ -2277,6 +2286,10 @@ impl Game {
     fn flight_key(&mut self, code: KeyCode) {
         match code {
             KeyCode::Home => self.screen = Screen::Cosmos,
+            KeyCode::Insert => match self.sim.orbit_here() {
+                Ok(m) => self.say(m),
+                Err(e) => self.say(e.to_uppercase()),
+            },
             KeyCode::End => self.screen = Screen::Rogue,
             KeyCode::Escape => {
                 self.screen = Screen::Pause;
@@ -2556,7 +2569,10 @@ mod tests {
         g.settings.hints = false;
         assert!(!lit(&g));
         g.settings.ticker = true;
-        assert!(lit(&g), "the banner takes the last row when the command bar is off");
+        assert!(
+            lit(&g),
+            "the banner takes the last row when the command bar is off"
+        );
     }
 
     #[test]

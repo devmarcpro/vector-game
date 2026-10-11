@@ -95,6 +95,22 @@ impl Sim {
         };
         self.news_scanned_to = self.time;
         let (h0, h1) = (from, self.time);
+        // Your own colonies report at once, wherever they are: their journals make the news.
+        let mut own: Vec<(f64, f64, String)> = Vec::new();
+        for col in &self.colonies {
+            let d = self
+                .galaxy
+                .star(col.star)
+                .map_or(0.0, |e| e.distance_to(self.here_pos));
+            for (t, line) in &col.log {
+                if *t > h0 && *t <= h1 {
+                    own.push((*t, d, format!("{} : {line}", col.name)));
+                }
+            }
+        }
+        for (t, d, text) in own {
+            self.news_push(t, 4, d, text);
+        }
         let data = std::sync::Arc::clone(&self.data);
         let seed = self.galaxy.seed;
         let me = self.here_pos;
@@ -264,5 +280,23 @@ mod tests {
         let arms = d.resource_index("ammo_slugs").unwrap();
         let tm = politics::turmoil(&d, &galaxy, s.galaxy.seed, cell_center(c), e.time + DAY);
         assert!(tm.at_war && tm.factor(&d, arms) >= 1.25 - 1e-9);
+    }
+
+    #[test]
+    fn what_happens_in_your_colonies_makes_the_news_at_once() {
+        let (mut s, ci) = crate::colony::tests::founded();
+        let colony_news = |s: &Sim| s.news.iter().filter(|n| n.tag == 4).count();
+        s.time = 400.0 * DAY;
+        s.news_tick();
+        let before = colony_news(&s);
+        s.time += 2.0 * DAY;
+        s.colonies[ci].log_line(s.time - DAY, "Une epidemie se declare.");
+        s.news_tick();
+        assert_eq!(colony_news(&s), before + 1);
+        let n = s.news.iter().rev().find(|n| n.tag == 4).unwrap();
+        assert!(n.text.contains("epidemie") && n.text.contains(&s.colonies[ci].name));
+        s.time += 0.5 * DAY;
+        s.news_tick();
+        assert_eq!(colony_news(&s), before + 1, "told once");
     }
 }

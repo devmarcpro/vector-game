@@ -2036,8 +2036,8 @@ mod tests {
                 }
             }
         }
-        for k in 0..count(&d, 29) {
-            for l in entry(&d, 29, k) {
+        for k in 0..count(&d, 31) {
+            for l in entry(&d, 31, k) {
                 assert!(l.chars().all(drawable), "{l:?}");
             }
         }
@@ -2101,8 +2101,8 @@ mod tests {
         assert!(entry(&d, 13, k)
             .join("\n")
             .contains("Silicones thermophiles"));
-        assert_eq!(count(&d, 29), d.chemistries.len());
-        let chem = entry(&d, 29, 0).join("\n");
+        assert_eq!(count(&d, 38), d.chemistries.len());
+        let chem = entry(&d, 38, 0).join("\n");
         assert!(
             chem.contains("Serpent de scorie") && chem.contains("K"),
             "{chem}"

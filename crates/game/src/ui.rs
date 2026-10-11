@@ -63,6 +63,64 @@ pub fn draw(fb: &mut Framebuffer, g: &Game) {
     }
 }
 
+/// Tutorial banner and the F1 contextual help box, drawn over any screen.
+pub fn draw_overlay(fb: &mut Framebuffer, g: &Game) {
+    if let Some((i, text)) = g.tutorial_line() {
+        let line = format!(
+            "TUTO {}/{}  {}  [F10 ignorer]",
+            i + 1,
+            crate::tutorial::STEPS.len(),
+            text
+        );
+        let flight = g.screen == Screen::Flight;
+        let w = if flight {
+            54
+        } else {
+            fb.cols().saturating_sub(2).max(10)
+        };
+        let mut rows: Vec<String> = Vec::new();
+        let mut cur = String::new();
+        for word in line.split_whitespace() {
+            if !cur.is_empty() && cur.chars().count() + 1 + word.chars().count() > w {
+                rows.push(std::mem::take(&mut cur));
+            }
+            if !cur.is_empty() {
+                cur.push(' ');
+            }
+            cur.push_str(word);
+        }
+        rows.push(cur);
+        for (k, r) in rows.iter().enumerate() {
+            if flight {
+                fb.text(40, 5 + k, r, AMBER);
+            } else {
+                fb.text(1, fb.rows().saturating_sub(rows.len() - k), r, AMBER);
+            }
+        }
+    }
+    if g.help_open && g.screen != Screen::MainMenu {
+        let lines = crate::tutorial::help_lines(g.screen);
+        let w = lines.iter().map(|l| l.len()).max().unwrap_or(10).max(14) + 2;
+        let x0 = fb.cols().saturating_sub(w + 2);
+        let y0 = 4;
+        let (px, py) = ((x0 * 8) as f32 - 4.0, (y0 * 10) as f32 - 4.0);
+        let (pw, ph) = ((w * 8) as f32 + 8.0, ((lines.len() + 3) * 10) as f32 + 8.0);
+        for y in 0..ph as i32 {
+            for x in 0..pw as i32 {
+                fb.px_set((px as i32) + x, (py as i32) + y, 0x0008_1018);
+            }
+        }
+        fb.line(px, py, px + pw, py, AMBER);
+        fb.line(px, py + ph, px + pw, py + ph, AMBER);
+        fb.line(px, py, px, py + ph, AMBER);
+        fb.line(px + pw, py, px + pw, py + ph, AMBER);
+        fb.text(x0 + 1, y0, "AIDE  [F1 fermer]", AMBER);
+        for (i, l) in lines.iter().enumerate() {
+            fb.text(x0 + 1, y0 + 2 + i, l, GREEN);
+        }
+    }
+}
+
 fn draw_rules(fb: &mut Framebuffer, g: &Game) {
     fb.text(2, 2, "== REGLES DE PARTIE ==", AMBER);
     let r = g.pending_rules.describe();

@@ -11,6 +11,8 @@ pub struct Settings {
     pub scheme: usize,
     /// 0..=10
     pub volume: u8,
+    /// Guided tutorial on new games.
+    pub tutorial: bool,
 }
 
 impl Default for Settings {
@@ -20,12 +22,13 @@ impl Default for Settings {
             glow: false,
             scheme: 0,
             volume: 6,
+            tutorial: true,
         }
     }
 }
 
 impl Settings {
-    pub const COUNT: usize = 4;
+    pub const COUNT: usize = 5;
 
     pub fn describe(&self) -> Vec<(&'static str, String)> {
         let yn = |b: bool| if b { "OUI" } else { "NON" }.to_string();
@@ -37,6 +40,7 @@ impl Settings {
                 SCHEMES[self.scheme.min(SCHEMES.len() - 1)].to_string(),
             ),
             ("Volume sonore", format!("{}/10", self.volume)),
+            ("Tutoriel guide", yn(self.tutorial)),
         ]
     }
 
@@ -53,17 +57,19 @@ impl Settings {
                     self.volume.saturating_sub(1)
                 }
             }
+            4 => self.tutorial = !self.tutorial,
             _ => {}
         }
     }
 
     pub fn to_text(&self) -> String {
         format!(
-            "scanlines={}\nglow={}\nscheme={}\nvolume={}\n",
+            "scanlines={}\nglow={}\nscheme={}\nvolume={}\ntutorial={}\n",
             u8::from(self.scanlines),
             u8::from(self.glow),
             self.scheme,
-            self.volume
+            self.volume,
+            u8::from(self.tutorial)
         )
     }
 
@@ -80,6 +86,7 @@ impl Settings {
                 "scanlines" => s.scanlines = n != 0,
                 "glow" => s.glow = n != 0,
                 "scheme" => s.scheme = n.min(SCHEMES.len() - 1),
+                "tutorial" => s.tutorial = n != 0,
                 "volume" => s.volume = n.min(10) as u8,
                 _ => {}
             }

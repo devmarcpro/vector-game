@@ -23,6 +23,13 @@ impl Framebuffer {
     }
     /// Additive plot (phosphor look), saturating per channel.
     #[inline]
+    /// Overwrite one pixel (no blending); out-of-range coordinates are ignored.
+    pub fn px_set(&mut self, x: i32, y: i32, c: u32) {
+        if x >= 0 && y >= 0 && (x as usize) < self.w && (y as usize) < self.h {
+            self.px[y as usize * self.w + x as usize] = c;
+        }
+    }
+
     pub fn plot(&mut self, x: i32, y: i32, c: u32) {
         if x < 0 || y < 0 || x as usize >= self.w || y as usize >= self.h {
             return;

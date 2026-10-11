@@ -123,6 +123,9 @@ pub struct Game {
     pub opt_sel: usize,
     pub codex_cat: usize,
     pub codex_sel: usize,
+    pub help_open: bool,
+    pub tut_step: Option<usize>,
+    pub tut_keys: Vec<(Screen, KeyCode)>,
     pub save_path: PathBuf,
 }
 
@@ -189,6 +192,9 @@ impl Game {
             opt_sel: 0,
             codex_cat: 0,
             codex_sel: 0,
+            help_open: false,
+            tut_step: None,
+            tut_keys: Vec::new(),
             save_path: PathBuf::from("saves").join("slot1.sav"),
         };
         g.fit_map();
@@ -199,6 +205,11 @@ impl Game {
     pub fn new_game(&mut self, seed: u64) {
         self.sim = scene::new_sim(seed, Arc::clone(&self.data));
         self.sim.set_rules(self.pending_rules.clone());
+        self.help_open = false;
+        self.tut_step = None;
+        if self.settings.tutorial {
+            self.start_tutorial();
+        }
         self.stars = scene::star_field(seed, 900);
         self.timescale = 1.0;
         self.keys.clear();
@@ -553,6 +564,14 @@ impl Game {
     }
 
     pub fn key(&mut self, code: KeyCode, text: Option<&str>, pressed: bool) {
+        let at = self.screen;
+        self.key_inner(code, text, pressed);
+        if pressed && self.screen != Screen::MainMenu {
+            self.tutorial_tick(Some((at, code)));
+        }
+    }
+
+    fn key_inner(&mut self, code: KeyCode, text: Option<&str>, pressed: bool) {
         if pressed && code == KeyCode::Backquote && self.screen != Screen::MainMenu {
             self.console.open = !self.console.open;
             return;
@@ -565,6 +584,15 @@ impl Game {
         }
         if !pressed {
             self.keys.remove(&code);
+            return;
+        }
+        if code == KeyCode::F1 && self.screen != Screen::MainMenu {
+            self.help_open = !self.help_open;
+            return;
+        }
+        if code == KeyCode::F10 && self.tut_step.is_some() {
+            self.tut_step = None;
+            self.say("TUTORIEL IGNORE (REACTIVABLE DANS OPTIONS)");
             return;
         }
         self.keys.insert(code);
@@ -1706,6 +1734,58 @@ mod tests {
         assert_eq!(g.codex_cat, 1);
         g.key(KeyCode::F6, None, true);
         assert_eq!(g.screen, Screen::Flight);
+    }
+
+    #[test]
+    fn tutorial_advances_on_actions_and_can_be_skipped() {
+        let mut g = Game::new(data(), 1);
+        g.key(KeyCode::Enter, None, true);
+        assert_eq!(g.tut_step, Some(0), "new games start the tutorial");
+        g.key(KeyCode::KeyW, None, true);
+        assert_eq!(g.tut_step, Some(1), "rotating completes step 1");
+        g.key(KeyCode::Space, None, true);
+        g.key(KeyCode::KeyF, None, true);
+        assert_eq!(g.tut_step, Some(3));
+        g.key(KeyCode::F10, None, true);
+        assert_eq!(g.tut_step, None);
+    }
+
+    #[test]
+    fn f1_toggles_contextual_help_on_every_screen() {
+        let mut g = Game::new(data(), 1);
+        g.key(KeyCode::Enter, None, true);
+        g.key(KeyCode::F1, None, true);
+        assert!(g.help_open);
+        g.key(KeyCode::F1, None, true);
+        assert!(!g.help_open);
+        for screen in [
+            Screen::Flight,
+            Screen::Station,
+            Screen::Inventory,
+            Screen::Ship,
+            Screen::Shipyard,
+            Screen::Crew,
+            Screen::Recruit,
+            Screen::Journal,
+            Screen::Galaxy,
+            Screen::Contracts,
+            Screen::Bank,
+            Screen::Empire,
+            Screen::Colony,
+            Screen::Fleet,
+            Screen::Tech,
+            Screen::Rules,
+            Screen::Options,
+            Screen::Codex,
+            Screen::Pause,
+            Screen::MainMenu,
+            Screen::Destroyed,
+        ] {
+            assert!(
+                !crate::tutorial::help_lines(screen).is_empty(),
+                "{screen:?}"
+            );
+        }
     }
 
     #[test]

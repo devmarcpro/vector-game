@@ -4,6 +4,7 @@ mod game;
 mod hud;
 mod scene;
 mod settings;
+mod tutorial;
 mod ui;
 
 use game::{Game, Screen, DEFAULT_SEED};
@@ -49,6 +50,7 @@ fn draw_frame(fb: &mut Framebuffer, g: &Game) {
             hud::draw_console(fb, &g.console);
         }
     }
+    ui::draw_overlay(fb, g);
 }
 
 struct App {
@@ -184,6 +186,22 @@ fn snapshot(path: &str, scene: &str, data: Arc<GameData>) {
             g.advance(0.1);
         }
         "pause" => g.screen = Screen::Pause,
+        "rules" => {
+            g.pending_rules.adjust(3, true);
+            g.pending_rules.adjust(11, true);
+            g.rules_sel = 3;
+            g.screen = Screen::Rules;
+        }
+        "options" => g.screen = Screen::Options,
+        "codex" => {
+            g.codex_cat = 1;
+            g.codex_sel = 5;
+            g.screen = Screen::Codex;
+        }
+        "help" => {
+            g.help_open = true;
+            g.start_tutorial();
+        }
         "tech" => {
             g.sim.research_pool = 340.0;
             let pp = g.data.tech_index("plasma_physics").expect("tech");

@@ -136,7 +136,7 @@ pub fn hint_line(g: &Game) -> String {
         Screen::Ship => "HAUT/BAS EMPLACEMENT  H/ECHAP RETOUR",
         Screen::Shipyard => "HAUT/BAS COQUE  ENTREE ACHETER (REPRISE 50%)  ECHAP RETOUR",
         Screen::Crew => {
-            "HAUT/BAS PERSONNE  GAUCHE/DROITE POSTE  T QUART  X DEBARQUER  N RECRUTER  J JOURNAL  G GENEALOGIE  K/ECHAP RETOUR"
+            "HAUT/BAS PERSONNE  </> POSTE  T QUART  X DEBARQUER  N RECRUTER  J JOURNAL  G ARBRE  V RESEAU  K/ECHAP RETOUR"
         }
         Screen::Recruit => "HAUT/BAS CANDIDAT  ENTREE EMBAUCHER  K EQUIPAGE  ECHAP RETOUR",
         Screen::Journal => "HAUT/BAS DEFILER  K EQUIPAGE  J/ECHAP RETOUR",
@@ -214,6 +214,7 @@ pub fn help_lines(screen: Screen) -> &'static [&'static str] {
         Screen::Crew => &[
             "Gauche/Droite : poste   T : quart   X : debarquer",
             "J : journal   Les besoins (faim, soif, air) comptent.",
+            "V : reseau des relations (amis, rivaux, famille)",
         ],
         Screen::Recruit => &["Haut/Bas : candidat   Entree : embaucher"],
         Screen::Journal => &["Haut/Bas ou PgUp/PgDn : defiler   Echap : retour"],

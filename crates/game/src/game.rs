@@ -114,6 +114,8 @@ pub struct Game {
     /// Colony screen: production-chain diagram instead of the lists.
     pub col_flow: bool,
     pub fac_sel: usize,
+    /// Crew screen: relations network instead of the table.
+    pub crew_net: bool,
     pub b_sel: usize,
     pub s_sel: usize,
     pub p_sel: usize,
@@ -220,6 +222,7 @@ impl Game {
             col_focus: 0,
             col_flow: false,
             fac_sel: 0,
+            crew_net: false,
             b_sel: 0,
             s_sel: 0,
             p_sel: 0,
@@ -1130,6 +1133,7 @@ impl Game {
                 };
                 self.sim.set_role(self.crew_sel.min(n - 1), next);
             }
+            KeyCode::KeyV => self.crew_net = !self.crew_net,
             KeyCode::KeyT if n > 0 => {
                 let p = &mut self.sim.crew.members[self.crew_sel.min(n - 1)];
                 p.shift = (p.shift + 1) % 3;
@@ -2422,6 +2426,34 @@ mod tests {
         assert!(
             c.kg[water] / d.resources[water].density > 5.0 * c.kg[iron] / d.resources[iron].density
         );
+    }
+
+    #[test]
+    fn the_crew_network_toggles_with_v_and_its_boxes_select_people() {
+        let mut g = Game::new(data(), 1);
+        g.key(KeyCode::Enter, None, true);
+        let me = g.sim.crew.members[0].kin;
+        let sib = vector_sim::genealogy::siblings(&g.sim.crew.families, me)[0];
+        let p =
+            vector_sim::crew::person_from_kin(&g.data, &g.sim.crew.families, sib, 99, None, None);
+        let data = std::sync::Arc::clone(&g.data);
+        g.sim.crew.hire(&data, p, 2, 0.0);
+        g.screen = Screen::Crew;
+        let n = g.sim.crew.members.len();
+        assert!(n >= 2, "two people aboard");
+        g.key(KeyCode::KeyV, None, true);
+        assert!(g.crew_net);
+        frame(&g);
+        assert_eq!(g.pointer.hits.borrow().len(), n, "one box per person");
+        let (x, y) = {
+            let hits = g.pointer.hits.borrow();
+            let h = hits[n - 1];
+            ((h.rect.0 + h.rect.2) / 2, (h.rect.1 + h.rect.3) / 2)
+        };
+        g.pointer_click(x, y, 1_000);
+        assert_eq!(g.crew_sel, n - 1);
+        g.key(KeyCode::KeyV, None, true);
+        assert!(!g.crew_net);
     }
 
     #[test]

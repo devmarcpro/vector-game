@@ -794,6 +794,10 @@ fn draw_crew(fb: &mut Framebuffer, g: &Game) {
         ),
         GREEN,
     );
+    if g.crew_net {
+        crate::crew_net_view::draw(fb, g);
+        return;
+    }
     let top = 8;
     fb.text(
         1,

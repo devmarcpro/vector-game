@@ -2,6 +2,7 @@ mod audio;
 mod bourse_view;
 mod codex;
 mod console;
+mod crew_net_view;
 mod faction_view;
 mod family_view;
 mod flow_view;
@@ -606,7 +607,7 @@ fn snapshot(path: &str, scene: &str, data: Arc<GameData>) {
             g.sim.update_ref_pub();
             g.open_galaxy();
         }
-        "crew" | "recruit" | "journal" => {
+        "crew" | "crewnet" | "recruit" | "journal" => {
             let (st, _) = g.sim.nearest_station().expect("station");
             g.sim.spawn_near(st, g.sim.bodies[st].radius + 200.0);
             g.key(KeyCode::KeyD, None, true);
@@ -621,7 +622,10 @@ fn snapshot(path: &str, scene: &str, data: Arc<GameData>) {
             }
             g.sim.advance(40.0 * 86_400.0, &ShipInput::default());
             g.screen = match scene {
-                "crew" => Screen::Crew,
+                "crew" | "crewnet" => {
+                    g.crew_net = scene == "crewnet";
+                    Screen::Crew
+                }
                 "recruit" => Screen::Recruit,
                 _ => Screen::Journal,
             };

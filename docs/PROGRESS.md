@@ -53,3 +53,5 @@
 - 2026-10-11 : Passe visuelle : écran des factions (X en vol) : graphe en anneau des alliances/ennemis, moeurs sur 8 axes, interdits moraux, contrebande, réputation ; cliquable.
 
 - 2026-10-11 : Plan de soute visuel (écran I) : une case = un volume égal, remplissage de la case selon la densité, couleur par catégorie, jauges volume/masse, blocs cliquables.
+
+- 2026-10-11 : Passe visuelle : réseau des relations de l'équipage (V dans l'écran équipage) : anneau de boîtes, fils verts/rouges selon l'amitié, pointillés ambre pour la parenté, liens détaillés de la personne choisie.

@@ -136,7 +136,7 @@ pub fn hint_line(g: &Game) -> String {
         Screen::Ship => "HAUT/BAS EMPLACEMENT  H/ECHAP RETOUR",
         Screen::Shipyard => "HAUT/BAS COQUE  ENTREE ACHETER (REPRISE 50%)  ECHAP RETOUR",
         Screen::Crew => {
-            "HAUT/BAS PERSONNE  GAUCHE/DROITE POSTE  T QUART  X DEBARQUER  N RECRUTER  J JOURNAL  K/ECHAP RETOUR"
+            "HAUT/BAS PERSONNE  GAUCHE/DROITE POSTE  T QUART  X DEBARQUER  N RECRUTER  J JOURNAL  G GENEALOGIE  K/ECHAP RETOUR"
         }
         Screen::Recruit => "HAUT/BAS CANDIDAT  ENTREE EMBAUCHER  K EQUIPAGE  ECHAP RETOUR",
         Screen::Journal => "HAUT/BAS DEFILER  K EQUIPAGE  J/ECHAP RETOUR",
@@ -159,6 +159,7 @@ pub fn hint_line(g: &Game) -> String {
         Screen::Rules => "HAUT/BAS REGLE  GAUCHE/DROITE MODIFIER  R DEFAUTS  ECHAP RETOUR",
         Screen::Options => "HAUT/BAS REGLAGE  GAUCHE/DROITE CHANGER  ENTREE/ECHAP RETOUR",
         Screen::Codex => "GAUCHE/DROITE CATEGORIE  HAUT/BAS ENTREE  ECHAP RETOUR",
+        Screen::Family => "GAUCHE/DROITE PERSONNE SUIVANTE  TAB ARBRE/GENES  G/K/ECHAP RETOUR A L'EQUIPAGE",
         Screen::Bourse => {
             "HAUT/BAS RESSOURCE  PGUP/PGDN x10  TAB OU GAUCHE/DROITE PERIODE (30/90/180 J)  T/ECHAP RETOUR"
         }
@@ -240,6 +241,14 @@ pub fn help_lines(screen: Screen) -> &'static [&'static str] {
         Screen::Codex => &[
             "Gauche/Droite : categorie   Haut/Bas : entree",
             "PgUp/PgDn : sauter de 10   Echap ou F6 : retour",
+        ],
+        Screen::Family => &[
+            "Arbre : grands-parents (couples), parents, fratrie, oncles et tantes avec leurs enfants",
+            "Pourcentage : ressemblance genetique avec la personne",
+            "Ligne ambre : parent a bord ; + age : decede",
+            "Tab : bascule entre l'arbre et les genes",
+            "Gauche/Droite : personne suivante   G, K ou Echap : retour",
+            "Page des genes : porteur (x1.5) ou atteint (x4) pour les predispositions",
         ],
         Screen::Bourse => &[
             "Haut/Bas : ressource   PgUp/PgDn : sauter de 10",

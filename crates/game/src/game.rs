@@ -57,6 +57,7 @@ pub enum Screen {
     Codex,
     Surface,
     Bourse,
+    Family,
 }
 
 /// Route being composed in the fleet screen.
@@ -147,6 +148,11 @@ pub struct Game {
     pub bourse_series: Vec<Vec<f64>>,
     pub bourse_live: Vec<f64>,
     pub bourse_news: Vec<vector_sim::bourse::ActiveEvent>,
+    /// Family screen: the crew member shown and their pedigree.
+    pub family_member: usize,
+    /// 0: the tree, 1: the genes.
+    pub family_tab: usize,
+    pub family_ped: Option<vector_sim::genealogy::Pedigree>,
     pub help_open: bool,
     pub tut_step: Option<usize>,
     pub tut_keys: Vec<(Screen, KeyCode)>,
@@ -235,6 +241,9 @@ impl Game {
             bourse_series: Vec::new(),
             bourse_live: Vec::new(),
             bourse_news: Vec::new(),
+            family_member: 0,
+            family_tab: 0,
+            family_ped: None,
             help_open: false,
             tut_step: None,
             tut_keys: Vec::new(),
@@ -664,6 +673,7 @@ impl Game {
             Screen::Codex => self.codex_key(code),
             Screen::Surface => self.surface_key(code),
             Screen::Bourse => self.bourse_key(code),
+            Screen::Family => self.family_key(code),
             Screen::Destroyed => {
                 if code == KeyCode::Enter {
                     if self.sim.can_respawn() {
@@ -824,6 +834,43 @@ impl Game {
                     .save(&PathBuf::from("saves").join("settings.cfg"));
             }
             KeyCode::Escape | KeyCode::Enter => self.screen = self.back_to,
+            _ => {}
+        }
+    }
+
+    /// Recompute the pedigree of the crew member shown on the family screen.
+    pub fn refresh_family(&mut self) {
+        let n = self.sim.crew.members.len();
+        if n == 0 {
+            self.family_ped = None;
+            return;
+        }
+        self.family_member = self.family_member.min(n - 1);
+        let p = &self.sim.crew.members[self.family_member];
+        self.family_ped = Some(vector_sim::genealogy::pedigree(
+            &self.sim.crew.families,
+            &self.data,
+            p.kin,
+            f64::from(p.age),
+        ));
+    }
+
+    fn family_key(&mut self, code: KeyCode) {
+        let n = self.sim.crew.members.len().max(1);
+        match code {
+            KeyCode::ArrowLeft | KeyCode::ArrowUp => {
+                self.family_member = (self.family_member + n - 1) % n;
+                self.refresh_family();
+            }
+            KeyCode::ArrowRight | KeyCode::ArrowDown => {
+                self.family_member = (self.family_member + 1) % n;
+                self.refresh_family();
+            }
+            KeyCode::Tab => self.family_tab = 1 - self.family_tab,
+            KeyCode::Escape | KeyCode::KeyG | KeyCode::KeyK => {
+                self.crew_sel = self.family_member;
+                self.screen = Screen::Crew;
+            }
             _ => {}
         }
     }
@@ -1080,6 +1127,11 @@ impl Game {
                 )),
             },
             KeyCode::KeyJ => self.screen = Screen::Journal,
+            KeyCode::KeyG if n > 0 => {
+                self.family_member = self.crew_sel.min(n - 1);
+                self.refresh_family();
+                self.screen = Screen::Family;
+            }
             KeyCode::KeyN if docked => {
                 self.screen = Screen::Recruit;
                 self.recruit_sel = 0;
@@ -1922,6 +1974,7 @@ mod tests {
             Screen::Codex,
             Screen::Surface,
             Screen::Bourse,
+            Screen::Family,
         ] {
             g.screen = s;
             let line = crate::tutorial::hint_line(&g);
@@ -2019,6 +2072,38 @@ mod tests {
         assert_eq!(g.bourse_sel, 1);
         g.key(KeyCode::Escape, None, true);
         assert_eq!(g.screen, Screen::Station);
+    }
+
+    #[test]
+    fn the_family_screen_opens_from_the_crew_and_walks_through_the_members() {
+        let mut g = Game::new(data(), 1);
+        g.key(KeyCode::Enter, None, true);
+        let (st, _) = g.sim.nearest_station().expect("station");
+        g.sim.spawn_near(st, g.sim.bodies[st].radius + 200.0);
+        g.key(KeyCode::KeyD, None, true);
+        // A second member, a sibling of the first, so there is someone to walk to.
+        let me = g.sim.crew.members[0].kin;
+        let sib = vector_sim::genealogy::siblings(&g.sim.crew.families, me)[0];
+        let p =
+            vector_sim::crew::person_from_kin(&g.data, &g.sim.crew.families, sib, 99, None, None);
+        let data = std::sync::Arc::clone(&g.data);
+        g.sim.crew.hire(&data, p, 2, 0.0);
+        g.key(KeyCode::KeyK, None, true);
+        assert_eq!(g.screen, Screen::Crew);
+        g.key(KeyCode::KeyG, None, true);
+        assert_eq!(g.screen, Screen::Family);
+        let ped = g.family_ped.as_ref().expect("pedigree");
+        assert_eq!(ped.parents.len(), 2);
+        assert!(
+            ped.siblings.iter().any(|s| s.kin == sib),
+            "the hired brother is listed"
+        );
+        let first = g.family_member;
+        g.key(KeyCode::ArrowRight, None, true);
+        assert_ne!(g.family_member, first);
+        assert!(g.family_ped.is_some());
+        g.key(KeyCode::Escape, None, true);
+        assert_eq!(g.screen, Screen::Crew);
     }
 
     #[test]

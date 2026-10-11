@@ -10,6 +10,7 @@ pub mod design;
 pub mod ecology;
 pub mod economy;
 pub mod fleet;
+pub mod genealogy;
 pub mod market;
 pub mod npc;
 pub mod planet;
@@ -1183,7 +1184,9 @@ impl Sim {
     /// Recruits available at the docked station.
     pub fn candidates(&self) -> Vec<crew::Person> {
         match self.docked {
-            Some(st) => crew::candidates(&self.data, self.system.seed, st, self.time, 6),
+            Some(st) => {
+                crew::candidates(&self.data, self.system.seed, st, self.time, 6, &self.crew)
+            }
             None => Vec::new(),
         }
     }

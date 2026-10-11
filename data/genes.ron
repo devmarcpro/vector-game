@@ -1,0 +1,29 @@
+// Genes. Everybody carries two alleles (0..3) of every gene, one from each parent.
+// additive: the expression (allele sum / 6, 0..1) moves the listed effects by weight x (2 x
+//   expression - 1); effect keys are the trait keys (health_base, work_speed, stress_resist,
+//   social_need, morale_base, luck, sleep_need, appetite, temper), "lifespan" (years) and
+//   "skill:<skill id>" (skill points).
+// predisposition: allele 0 is the harmful one; carrying it twice multiplies the chance of the
+//   linked disease by 4, once by 1.5.
+[
+ (id:"constitution", name:"Constitution", kind:"additive", effects:[("health_base",0.10)], disease:""),
+ (id:"vigueur", name:"Vigueur", kind:"additive", effects:[("work_speed",0.12)], disease:""),
+ (id:"sang_froid", name:"Sang-froid", kind:"additive", effects:[("stress_resist",0.15)], disease:""),
+ (id:"sociabilite", name:"Sociabilité", kind:"additive", effects:[("social_need",0.12)], disease:""),
+ (id:"humeur", name:"Bonne humeur", kind:"additive", effects:[("morale_base",0.08)], disease:""),
+ (id:"chance", name:"Chance", kind:"additive", effects:[("luck",0.12)], disease:""),
+ (id:"longevite", name:"Longévité", kind:"additive", effects:[("lifespan",18.0)], disease:""),
+ (id:"endurance", name:"Endurance", kind:"additive", effects:[("sleep_need",-0.12)], disease:""),
+ (id:"appetit", name:"Appétit", kind:"additive", effects:[("appetite",0.12)], disease:""),
+ (id:"temperament", name:"Tempérament vif", kind:"additive", effects:[("temper",0.15)], disease:""),
+ (id:"intellect", name:"Intellect", kind:"additive", effects:[("skill:science",1.2),("skill:medecine",0.5),("skill:ingenierie",0.5)], disease:""),
+ (id:"dexterite", name:"Dextérité", kind:"additive", effects:[("skill:reparation",1.0),("skill:pilotage",0.7),("skill:combat",0.4)], disease:""),
+ (id:"charisme", name:"Charisme", kind:"additive", effects:[("skill:commerce",1.0),("skill:commandement",0.8)], disease:""),
+ (id:"curiosite", name:"Curiosité", kind:"additive", effects:[("skill:botanique",0.8),("skill:navigation",0.8),("skill:minage",0.3)], disease:""),
+ (id:"pre_cancer", name:"Prédisposition au cancer", kind:"predisposition", effects:[], disease:"cancer_precoce"),
+ (id:"pre_allergie", name:"Terrain allergique", kind:"predisposition", effects:[], disease:"allergie"),
+ (id:"pre_depression", name:"Fragilité dépressive", kind:"predisposition", effects:[], disease:"depression"),
+ (id:"pre_addiction", name:"Prédisposition à l'addiction", kind:"predisposition", effects:[], disease:"addiction"),
+ (id:"pre_os", name:"Fragilité osseuse", kind:"predisposition", effects:[], disease:"fracture"),
+ (id:"pre_sommeil", name:"Troubles du sommeil", kind:"predisposition", effects:[], disease:"insomnie_chronique"),
+]

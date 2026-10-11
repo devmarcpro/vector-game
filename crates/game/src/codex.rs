@@ -2,7 +2,7 @@
 //! weapon, faction, anomaly and condition, generated from the real data (no hand-written numbers).
 use vector_data::GameData;
 
-pub const CATEGORIES: [&str; 15] = [
+pub const CATEGORIES: [&str; 16] = [
     "RESSOURCES",
     "MODULES",
     "ARMES",
@@ -18,6 +18,7 @@ pub const CATEGORIES: [&str; 15] = [
     "FLORE",
     "FAUNE",
     "EVENEMENTS",
+    "GENES",
 ];
 
 /// Number of entries in a category.
@@ -51,6 +52,7 @@ fn entries(data: &GameData, cat: usize) -> Vec<usize> {
             .filter(|&i| !data.species[i].is_producer())
             .collect(),
         14 => (0..data.world_events.len()).collect(),
+        15 => (0..data.genes.len()).collect(),
         _ => Vec::new(),
     }
 }
@@ -72,6 +74,7 @@ pub fn names(data: &GameData, cat: usize) -> Vec<String> {
             10 => data.industries[i].name.clone(),
             11 => data.biomes[i].name.clone(),
             14 => data.world_events[i].name.clone(),
+            15 => data.genes[i].name.clone(),
             _ => data.species[i].name.clone(),
         })
         .collect()
@@ -443,6 +446,37 @@ pub fn entry(data: &GameData, cat: usize, k: usize) -> Vec<String> {
                     res_name(data, &d.cure).unwrap_or_else(|| d.cure.clone())
                 }
             ));
+        }
+        15 => {
+            let g = &data.genes[i];
+            out.push(format!(
+                "{}  ({})",
+                g.name,
+                if g.is_predisposition() {
+                    "predisposition"
+                } else {
+                    "gene additif"
+                }
+            ));
+            if g.is_predisposition() {
+                let d = data
+                    .disease_index(&g.disease)
+                    .map_or(g.disease.clone(), |k| data.diseases[k].name.clone());
+                out.push(format!("Maladie liee : {d}"));
+                out.push("L'allele 0 est nefaste : un exemplaire (porteur) multiplie le risque par 1.5, deux (atteint) par 4. Frequence de l'allele nefaste : environ 10 % dans la population fondatrice.".to_string());
+            } else {
+                for (k, w) in &g.effects {
+                    let what = match k.strip_prefix("skill:") {
+                        Some(s) => format!("competence {s}"),
+                        None => k.clone(),
+                    };
+                    out.push(format!(
+                        "Effet : {what}, de {:+.2} a {:+.2} selon les alleles",
+                        -w, w
+                    ));
+                }
+                out.push("Deux alleles de 0 a 3 (un de chaque parent) ; l'effet suit leur somme. Les enfants en recoivent un de chaque parent, avec 0.5 % de mutation.".to_string());
+            }
         }
         14 => {
             let e = &data.world_events[i];

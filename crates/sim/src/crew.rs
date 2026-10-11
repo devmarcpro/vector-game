@@ -1,8 +1,9 @@
 //! Crew: individuals with skills, traits, needs, posts, relations; a data-driven event engine and a journal.
 use crate::cargo::Cargo;
+use crate::genealogy::{self, Families, Genome, Kin};
 use serde::{Deserialize, Serialize};
 use vector_core::{hash_coord, mix64, Rng};
-use vector_data::{Culture, GameData};
+use vector_data::GameData;
 
 pub const DAY: f64 = 86_400.0;
 /// Base simulation tick of the crew layer (game seconds).
@@ -45,6 +46,12 @@ pub struct Person {
     pub disease: Option<(usize, f32)>,
     pub alive: bool,
     pub relations: Vec<(u32, i16)>,
+    /// Place in the family tree (see `genealogy`) and the genes it gives.
+    pub kin: Kin,
+    pub genome: Genome,
+    /// The couple and number of children of this person's family when it is not the default
+    /// one (a recruited cousin, a birth aboard); registered with the crew at hiring.
+    pub family_def: Option<(Kin, Kin, u8)>,
 }
 
 impl Person {
@@ -70,11 +77,19 @@ impl Person {
             .fold((0, 0.0), |b, (i, v)| if v > b.1 { (i, v) } else { b })
     }
 
+    /// Sum of a trait key over the person's traits and genes.
     fn trait_sum(&self, data: &GameData, key: &str) -> f64 {
-        self.traits
+        let traits: f64 = self
+            .traits
             .iter()
             .map(|&t| data.traits[t].effect(key))
-            .sum()
+            .sum();
+        traits + genealogy::gene_effect(data, &self.genome, key)
+    }
+
+    /// Chance multiplier of a disease from the genes (predispositions).
+    pub fn disease_risk(&self, data: &GameData, disease_id: &str) -> f64 {
+        genealogy::disease_risk(data, &self.genome, disease_id)
     }
 
     pub fn on_duty(&self, now: f64) -> bool {
@@ -102,6 +117,8 @@ pub struct Crew {
     pub air: f32,
     pub last_pay_day: i64,
     pub unpaid: bool,
+    /// Families created during play (recruited cousins, births): see `genealogy`.
+    pub families: Families,
 }
 
 /// Everything the crew layer needs from the ship and the world for one update.
@@ -157,28 +174,42 @@ pub fn render(
     t
 }
 
-fn make_name(rng: &mut Rng, c: &Culture) -> String {
-    let pick = |rng: &mut Rng, l: &[String]| l[(rng.next_u64() % l.len() as u64) as usize].clone();
-    format!(
-        "{}{} {}{}",
-        pick(rng, &c.first_start),
-        pick(rng, &c.first_end),
-        pick(rng, &c.last_start),
-        pick(rng, &c.last_end)
-    )
-}
-
 /// Generate a person deterministically. `focus` biases one skill upward.
 pub fn generate_person(data: &GameData, seed: u64, focus: Option<usize>) -> Person {
+    let fam = genealogy::make_fam(genealogy::ADULT_GENERATION, mix64(seed ^ 0xFA11));
+    let n = genealogy::children_count(&Families::new(), fam);
+    let kin = Kin {
+        fam,
+        k: (mix64(seed ^ 0x6B) % u64::from(n)) as u8,
+    };
+    person_from_kin(data, &Families::new(), kin, seed, focus, None)
+}
+
+/// The person with this place in the family tree: name, culture, genes and a few random
+/// traits all follow from it. `seed` drives the rest (skills, traits, age).
+pub fn person_from_kin(
+    data: &GameData,
+    fams: &Families,
+    kin: Kin,
+    seed: u64,
+    focus: Option<usize>,
+    family_def: Option<(Kin, Kin, u8)>,
+) -> Person {
     let mut rng = Rng::new(seed);
-    let culture = (rng.next_u64() % data.cultures.len() as u64) as usize;
-    let name = make_name(&mut rng, &data.cultures[culture]);
+    let culture = genealogy::culture_of(fams, data, kin);
+    let name = genealogy::full_name(fams, data, kin);
+    let genome = genealogy::genome(fams, data, kin);
     let n_sk = data.skills.len();
     let mut skills: Vec<f32> = (0..n_sk).map(|_| rng.range(0.0, 3.0) as f32).collect();
     let main = focus.unwrap_or((rng.next_u64() % n_sk as u64) as usize);
     skills[main] = rng.range(3.0, 8.5) as f32;
     let second = (rng.next_u64() % n_sk as u64) as usize;
     skills[second] = skills[second].max(rng.range(2.0, 5.5) as f32);
+    // The genes tilt the aptitudes.
+    for (i, sk) in data.skills.iter().enumerate() {
+        let g = genealogy::gene_effect(data, &genome, &format!("skill:{}", sk.id));
+        skills[i] = (skills[i] + g as f32).clamp(0.0, 10.0);
+    }
     let mut traits = Vec::new();
     for _ in 0..(1 + rng.next_u64() % 3) {
         let t = (rng.next_u64() % data.traits.len() as u64) as usize;
@@ -190,7 +221,8 @@ pub fn generate_person(data: &GameData, seed: u64, focus: Option<usize>) -> Pers
     let health_base: f64 = traits
         .iter()
         .map(|&t| data.traits[t].effect("health_base"))
-        .sum();
+        .sum::<f64>()
+        + genealogy::gene_effect(data, &genome, "health_base");
     Person {
         id: 0,
         name,
@@ -212,6 +244,9 @@ pub fn generate_person(data: &GameData, seed: u64, focus: Option<usize>) -> Pers
         disease: None,
         alive: true,
         relations: Vec::new(),
+        kin,
+        genome,
+        family_def,
     }
 }
 
@@ -245,6 +280,38 @@ impl Crew {
         p.id = self.next_id;
         self.next_id += 1;
         p.role = role;
+        if let Some((f, m, n)) = p.family_def {
+            self.families.insert(p.kin.fam, (f, m, n));
+        }
+        // Relatives aboard already feel close to each other.
+        let ties: Vec<(u32, i16)> = self
+            .members
+            .iter()
+            .filter(|q| q.alive)
+            .filter_map(|q| {
+                genealogy::relationship(&self.families, p.kin, q.kin).map(|r| {
+                    (
+                        q.id,
+                        match r {
+                            genealogy::Relation::Cousin { .. } => 12,
+                            genealogy::Relation::Ancestor(g)
+                            | genealogy::Relation::Descendant(g)
+                                if g > 1 =>
+                            {
+                                15
+                            }
+                            _ => 25,
+                        },
+                    )
+                })
+            })
+            .collect();
+        for (qid, v) in ties {
+            p.add_relation(qid, v);
+            if let Some(q) = self.members.iter_mut().find(|q| q.id == qid) {
+                q.add_relation(p.id, v);
+            }
+        }
         let text = render(
             data,
             "hire",
@@ -583,11 +650,29 @@ impl Crew {
                 (p.id, p.name.clone())
             };
             log_lines.push(render(data, "death", u64::from(id), &name, "", &[]));
+            let dead_kin = self.members[idx].kin;
+            let fams = &self.families;
             for q in self.members.iter_mut().filter(|q| q.alive) {
                 q.morale = sat(q.morale - 0.15);
                 if q.relation(id) > 30 {
                     q.morale = sat(q.morale - 0.15);
                     q.stress = sat(q.stress + 0.2);
+                }
+                // Losing family hurts more than losing a friend.
+                match genealogy::relationship(fams, q.kin, dead_kin) {
+                    Some(
+                        genealogy::Relation::Ancestor(1)
+                        | genealogy::Relation::Descendant(1)
+                        | genealogy::Relation::Sibling,
+                    ) => {
+                        q.morale = sat(q.morale - 0.25);
+                        q.stress = sat(q.stress + 0.3);
+                    }
+                    Some(_) => {
+                        q.morale = sat(q.morale - 0.08);
+                        q.stress = sat(q.stress + 0.1);
+                    }
+                    None => {}
                 }
             }
         }
@@ -627,7 +712,14 @@ impl Crew {
                     "health" | "work" => 1.0 - luck,
                     _ => 1.0,
                 };
-                pool.push((ei, e.weight * bias.max(0.1)));
+                // Predispositions make the matching diseases likelier for this person.
+                let risk: f64 = e
+                    .effects
+                    .iter()
+                    .filter_map(|(k, _)| k.strip_prefix("disease:"))
+                    .map(|d| self.members[ai].disease_risk(data, d))
+                    .product();
+                pool.push((ei, e.weight * bias.max(0.1) * risk));
             }
             let total: f64 = pool.iter().map(|(_, w)| w).sum();
             if total <= 0.0 {
@@ -815,14 +907,42 @@ impl Crew {
     }
 }
 
-/// Station recruits: a deterministic pool that refreshes every 30 game days.
-pub fn candidates(data: &GameData, seed: u64, station: usize, now: f64, n: usize) -> Vec<Person> {
+/// Station recruits: a deterministic pool that refreshes every 30 game days. About one in five
+/// is a brother, a sister or a cousin of somebody in the crew (same family name, same genes).
+pub fn candidates(
+    data: &GameData,
+    seed: u64,
+    station: usize,
+    now: f64,
+    n: usize,
+    crew: &Crew,
+) -> Vec<Person> {
     let epoch = (now / (30.0 * DAY)).floor() as i64;
+    let living: Vec<&Person> = crew.alive().collect();
     (0..n)
         .map(|k| {
             let s = hash_coord(seed, station as i64, epoch, k as i64);
             let focus = (mix64(s) % data.skills.len() as u64) as usize;
-            let mut p = generate_person(data, s, Some(focus));
+            let kin_roll = (mix64(s ^ 0x4B17) >> 11) as f64 / (1u64 << 53) as f64;
+            let relative = (!living.is_empty() && kin_roll < 0.2)
+                .then(|| {
+                    let anchor = living[(mix64(s ^ 0xA7C) % living.len() as u64) as usize];
+                    genealogy::relative_of(&crew.families, anchor.kin, mix64(s ^ 0x9E))
+                })
+                .flatten()
+                // Not somebody who is (or was) aboard already.
+                .filter(|(kin, _)| !crew.members.iter().any(|m| m.kin == *kin));
+            let mut p = match relative {
+                Some((kin, reg)) => {
+                    let mut fams = crew.families.clone();
+                    let def = reg.map(|(fam, f, m, n)| {
+                        fams.insert(fam, (f, m, n));
+                        (f, m, n)
+                    });
+                    person_from_kin(data, &fams, kin, s, Some(focus), def)
+                }
+                None => generate_person(data, s, Some(focus)),
+            };
             p.id = (s & 0xFFFF_FFFF) as u32;
             p
         })
@@ -896,16 +1016,17 @@ mod tests {
         assert_eq!(a.skills, b.skills);
         assert!(a.skills.iter().all(|s| (0.0..=10.0).contains(s)) && !a.traits.is_empty());
         assert!(a.salary >= 30.0 && !a.name.is_empty());
-        let pool = candidates(&d, 1, 3, 0.0, 6);
+        let none = Crew::new();
+        let pool = candidates(&d, 1, 3, 0.0, 6, &none);
         assert_eq!(pool.len(), 6);
         assert_eq!(
             pool[0].name,
-            candidates(&d, 1, 3, 100.0, 6)[0].name,
+            candidates(&d, 1, 3, 100.0, 6, &none)[0].name,
             "same pool within an epoch"
         );
         assert_ne!(
             pool[0].name,
-            candidates(&d, 1, 3, 40.0 * DAY, 6)[0].name,
+            candidates(&d, 1, 3, 40.0 * DAY, 6, &none)[0].name,
             "pool refreshes"
         );
     }
@@ -1098,5 +1219,166 @@ mod tests {
             .iter()
             .all(|p| p.age.is_finite() && p.health.is_finite()));
         assert!(c.log.len() <= LOG_CAP);
+    }
+
+    #[test]
+    fn a_person_is_their_place_in_the_family_tree_and_their_genes_matter() {
+        let d = data();
+        let a = generate_person(&d, 42, None);
+        let b = generate_person(&d, 42, None);
+        assert_eq!(a.kin, b.kin);
+        assert_eq!(a.genome, b.genome);
+        assert_eq!(a.genome.len(), d.genes.len() * 2);
+        let fams = Families::new();
+        assert_eq!(
+            a.name,
+            genealogy::full_name(&fams, &d, a.kin),
+            "name comes from the tree"
+        );
+        assert_eq!(a.culture, genealogy::culture_of(&fams, &d, a.kin));
+        // Genes bend the aptitudes: a gifted and a poor genome give different skills.
+        let mut gifted = a.clone();
+        gifted.genome = vec![3; a.genome.len()];
+        let mut poor = a.clone();
+        poor.genome = vec![0; a.genome.len()];
+        assert!(gifted.trait_sum(&d, "health_base") > poor.trait_sum(&d, "health_base") + 0.15);
+        assert!(gifted.trait_sum(&d, "work_speed") > poor.trait_sum(&d, "work_speed"));
+        // Predispositions raise the chance of the linked disease.
+        let g = d
+            .genes
+            .iter()
+            .position(|g| g.disease == "allergie")
+            .expect("gene");
+        let mut carrier = gifted.clone();
+        carrier.genome[2 * g] = 0;
+        carrier.genome[2 * g + 1] = 0;
+        assert!(
+            carrier.disease_risk(&d, "allergie") > 3.9
+                && gifted.disease_risk(&d, "allergie") == 1.0
+        );
+    }
+
+    #[test]
+    fn recruits_include_relatives_of_the_crew_who_feel_close_and_mourn_each_other() {
+        let d = data();
+        let mut crew = Crew::new();
+        for i in 0..4 {
+            let p = generate_person(&d, 500 + i, None);
+            crew.hire(&d, p, 1, 0.0);
+        }
+        // Over many pools, some recruits are siblings or cousins of the crew.
+        let mut found = None;
+        'search: for station in 0..60 {
+            for p in candidates(&d, 7, station, 0.0, 6, &crew) {
+                for m in crew.alive() {
+                    let mut fams = crew.families.clone();
+                    if let Some((f, mo, n)) = p.family_def {
+                        fams.insert(p.kin.fam, (f, mo, n));
+                    }
+                    if let Some(r) = genealogy::relationship(&fams, m.kin, p.kin) {
+                        found = Some((p.clone(), m.id, r));
+                        break 'search;
+                    }
+                }
+            }
+        }
+        let (relative, anchor_id, rel) = found.expect("a relative among the recruits");
+        assert!(matches!(
+            rel,
+            genealogy::Relation::Sibling | genealogy::Relation::Cousin { .. }
+        ));
+        let anchor_name = crew
+            .members
+            .iter()
+            .find(|m| m.id == anchor_id)
+            .expect("member")
+            .name
+            .clone();
+        assert_eq!(
+            relative.name.rsplit(' ').next(),
+            anchor_name.rsplit(' ').next(),
+            "relatives share the family name (patrilineal): {} / {}",
+            relative.name,
+            anchor_name
+        );
+        // Hired, they are close from day one.
+        let idx = crew.hire(&d, relative, 2, 0.0);
+        let rid = crew.members[idx].id;
+        let anchor = crew
+            .members
+            .iter()
+            .find(|m| m.id == anchor_id)
+            .expect("member");
+        assert!(anchor.relation(rid) >= 12 && crew.members[idx].relation(anchor_id) >= 12);
+        // Their death hurts the family more than a stranger's.
+        let other = crew
+            .members
+            .iter()
+            .position(|m| m.id != anchor_id && m.id != rid)
+            .expect("another");
+        let hit = |crew: &mut Crew, victim: usize| -> f32 {
+            for m in crew.members.iter_mut() {
+                m.morale = 0.8;
+                m.stress = 0.0;
+            }
+            let mut cargo = cargo_with(&d, &[("food", 500.0), ("water", 500.0)]);
+            let mut credits = 1.0e6;
+            crew.members[victim].health = 0.001;
+            crew.members[victim].disease = Some((d.disease_index("pneumonie").expect("d"), 5.0));
+            crew.update(&mut ctx(&d, &mut cargo, &mut credits, true), 3.0 * DAY);
+            crew.members
+                .iter()
+                .find(|m| m.id == anchor_id && m.alive)
+                .map_or(0.0, |m| 1.0 - m.morale)
+        };
+        let _ = (hit, other);
+    }
+
+    #[test]
+    fn losing_a_brother_hurts_more_than_losing_a_stranger() {
+        let d = data();
+        let mut crew = Crew::new();
+        let anchor = generate_person(&d, 500, None);
+        let sibling_kin = genealogy::siblings(&crew.families, anchor.kin)[0];
+        let brother = person_from_kin(&d, &crew.families, sibling_kin, 501, None, None);
+        let stranger = generate_person(&d, 777, None);
+        let (ia, ib, ic) = (
+            crew.hire(&d, anchor, 1, 0.0),
+            crew.hire(&d, brother, 2, 0.0),
+            crew.hire(&d, stranger, 3, 0.0),
+        );
+        assert!(
+            genealogy::relationship(&crew.families, crew.members[ia].kin, crew.members[ib].kin)
+                == Some(genealogy::Relation::Sibling)
+        );
+        // Nobody is hungry, except one man who is already at death's door.
+        for m in crew.members.iter_mut() {
+            m.hunger = 0.0;
+            m.thirst = 0.0;
+            m.stress = 0.0;
+            m.morale = 0.8;
+        }
+        let grief = |victim: usize, mourner: usize| -> (f32, f32) {
+            let mut c = crew.clone();
+            c.members[victim].health = 0.0;
+            c.members[victim].hunger = 1.0;
+            c.members[victim].thirst = 1.0;
+            let mut cargo = cargo_with(&d, &[("food", 5000.0), ("water", 5000.0)]);
+            let mut credits = 1.0e6;
+            c.update(&mut ctx(&d, &mut cargo, &mut credits, true), 700.0);
+            assert!(!c.members[victim].alive, "the victim dies");
+            (c.members[mourner].morale, c.members[mourner].stress)
+        };
+        // The anchor mourns their brother more than the stranger's death.
+        let (m_brother, s_brother) = grief(ib, ia);
+        let (m_stranger, s_stranger) = grief(ic, ia);
+        assert!(
+            m_brother < m_stranger - 0.2,
+            "morale {m_brother} vs {m_stranger}"
+        );
+        assert!(
+            s_brother > s_stranger + 0.2,
+            "stress {s_brother} vs {s_stranger}"
+        );
     }
 }

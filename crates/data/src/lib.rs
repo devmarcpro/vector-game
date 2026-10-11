@@ -469,6 +469,39 @@ impl Ethos {
     }
 }
 
+/// A gene (see `data/genes.ron`): two alleles of 0..3 per person.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct Gene {
+    pub id: String,
+    pub name: String,
+    pub kind: String,
+    pub effects: Vec<(String, f64)>,
+    pub disease: String,
+}
+
+impl Gene {
+    pub fn is_predisposition(&self) -> bool {
+        self.kind == "predisposition"
+    }
+
+    /// Expression in 0..1 of the allele pair (additive genes).
+    pub fn expression(a: u8, b: u8) -> f64 {
+        f64::from(a + b) / 6.0
+    }
+
+    /// Chance multiplier of the linked disease for this allele pair (1 for additive genes).
+    pub fn risk(&self, a: u8, b: u8) -> f64 {
+        if !self.is_predisposition() {
+            return 1.0;
+        }
+        match (a == 0, b == 0) {
+            (true, true) => 4.0,
+            (false, false) => 1.0,
+            _ => 1.5,
+        }
+    }
+}
+
 const PERSON_FIELDS: [&str; 14] = [
     "morale", "health", "loyalty", "stress", "fatigue", "hunger", "thirst", "social", "relation",
     "age", "credits", "death", "quit", "salary",
@@ -516,6 +549,7 @@ pub struct GameData {
     pub species: Vec<Species>,
     pub world_events: Vec<WorldEvent>,
     pub ethos: Ethos,
+    pub genes: Vec<Gene>,
 }
 
 fn read<T: for<'a> Deserialize<'a>>(path: &Path) -> Result<T, DataError> {
@@ -548,6 +582,7 @@ impl GameData {
             species: read(&dir.join("species.ron"))?,
             world_events: read(&dir.join("world_events.ron"))?,
             ethos: read(&dir.join("ethos.ron"))?,
+            genes: read(&dir.join("genes.ron"))?,
         };
         // Generated extension files (tools/gen_scale.py) extend the hand-written tables.
         let mut extra_events: Vec<EventDef> = read(&dir.join("events_extra.ron"))?;
@@ -963,7 +998,59 @@ impl GameData {
         self.validate_biomes()?;
         self.validate_species()?;
         self.validate_world_events()?;
-        self.validate_ethos()
+        self.validate_ethos()?;
+        self.validate_genes()
+    }
+
+    /// Genes: known effect keys, skills and diseases.
+    fn validate_genes(&self) -> Result<(), DataError> {
+        let bad = |s: String| Err(DataError::Invalid(s));
+        const KEYS: [&str; 10] = [
+            "health_base",
+            "work_speed",
+            "stress_resist",
+            "social_need",
+            "morale_base",
+            "luck",
+            "sleep_need",
+            "appetite",
+            "temper",
+            "lifespan",
+        ];
+        let mut seen = std::collections::HashSet::new();
+        for g in &self.genes {
+            if !seen.insert(g.id.as_str()) {
+                return bad(format!("gene {} en double", g.id));
+            }
+            match g.kind.as_str() {
+                "additive" => {
+                    if g.effects.is_empty() || !g.disease.is_empty() {
+                        return bad(format!(
+                            "gene {}: additif sans effet ou lie a une maladie",
+                            g.id
+                        ));
+                    }
+                }
+                "predisposition" => {
+                    if self.disease_index(&g.disease).is_none() || !g.effects.is_empty() {
+                        return bad(format!("gene {}: maladie {} inconnue", g.id, g.disease));
+                    }
+                }
+                other => return bad(format!("gene {}: type {other} inconnu", g.id)),
+            }
+            for (k, w) in &g.effects {
+                let known = KEYS.contains(&k.as_str())
+                    || k.strip_prefix("skill:")
+                        .is_some_and(|s| self.skill_index(s).is_some());
+                if !known || !w.is_finite() || *w == 0.0 {
+                    return bad(format!("gene {}: effet {k} invalide", g.id));
+                }
+            }
+        }
+        if self.genes.len() < 12 {
+            return bad("moins de 12 genes".into());
+        }
+        Ok(())
     }
 
     /// Customs and morals: known axes and goods, one profile per faction, values in [-1, 1].

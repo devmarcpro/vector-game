@@ -2,6 +2,7 @@ mod audio;
 mod bourse_view;
 mod codex;
 mod console;
+mod family_view;
 mod game;
 mod hud;
 mod scene;
@@ -227,6 +228,27 @@ fn snapshot(path: &str, scene: &str, data: Arc<GameData>) {
             g.bourse_sel = pick;
             g.bourse_range = 1;
             g.key(KeyCode::KeyT, None, true);
+        }
+        "family" => {
+            use vector_sim::{crew, genealogy};
+            // A crew with a brother and a cousin of the first member aboard.
+            let data = Arc::clone(&g.data);
+            let me = g.sim.crew.members[0].kin;
+            let fams = g.sim.crew.families.clone();
+            let sib = genealogy::siblings(&fams, me)[0];
+            let p = crew::person_from_kin(&data, &fams, sib, 4242, None, None);
+            g.sim.crew.hire(&data, p, 2, 0.0);
+            if let Some((kin, reg)) = genealogy::relative_of(&fams, me, 7) {
+                let mut f2 = fams.clone();
+                let def = reg.map(|(fam, f, m, n)| {
+                    f2.insert(fam, (f, m, n));
+                    (f, m, n)
+                });
+                let p = crew::person_from_kin(&data, &f2, kin, 4243, None, def);
+                g.sim.crew.hire(&data, p, 3, 0.0);
+            }
+            g.screen = Screen::Crew;
+            g.key(KeyCode::KeyG, None, true);
         }
         "station" => {
             let (st, _) = g.sim.nearest_station().expect("station");

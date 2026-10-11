@@ -49,3 +49,9 @@ Mœurs : data/ethos.ron (8 axes, 8 étiquettes morales, 8 profils de faction), g
 
 ## Entreprises
 `data/companies.ron` : id, nom, siège (faction), cours de base, rendement annuel, volatilité, biens (id, poids, total 1), texte.
+
+## Esprit de l'IA
+`data/mind.ron` : `tasks` (5 taches fixes : pilotage, analyse, traduction, simulation, defense) et `software` (id, nom, tache, bonus, memoire, prix, technologie requise ou "", texte). Validation : ordre des taches, logiciels uniques, technologies connues. Codex : LOGICIELS, TACHES DE L'IA.
+
+## Histoire et artefacts
+`data/history.ron` : `ages` (6 ages fixes), `causes` (id, nom, poids, texte) et `artefacts` (texte, carte, technologie, relique, outil : valeur de base, jours de traduction, texte). Codex : AGES DE L'HISTOIRE, CAUSES D'EFFONDREMENT, ARTEFACTS.

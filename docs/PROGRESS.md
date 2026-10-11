@@ -131,3 +131,5 @@
 - Matieres (`materials.ron`, 38) : chaque case a une composition ; couleur/caractere/motif identiques en carte et en vue a la premiere personne (sol dessine case par case), neige/glace/eau gelee selon la temperature, vitesse de marche selon le sol; entree MATERIAUX du codex.
 
 - Zoom : + sur la carte de region descend sur la grille a pied, - remonte; le sol 3D de la vue a la premiere personne prend la matiere de la case sous les pieds (neige, glace, mousse...), le meme terrain a toutes les echelles.
+
+- Histoire, archeologie, esprit de l'IA : `history.rs` (chronique de chaque secteur sur 8 ages de 400 ans, calculee a la demande depuis la graine, accordee a la politique actuelle), `archive.rs` (fouilles a pied dans les ruines et epaves, datation, faux, traduction, vente/musee/restitution), `mind.rs` (budget de calcul entre 5 taches, logiciels, malware, donnees chiffrees, autres IA : contacter/allier/liberer) ; onglet ARCHIVES du journal (J puis Tab) et panneau ESPRIT (F4 puis E) ; `data/history.ron`, `data/mind.ron`, 5 categories du codex. Sauvegardes : `Sim.mind` et `Sim.archive` ajoutes (coordinateur : bump de VERSION).

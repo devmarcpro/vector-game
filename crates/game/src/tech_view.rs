@@ -130,6 +130,10 @@ fn field_color(field: &str) -> u32 {
 }
 
 pub fn draw(fb: &mut Framebuffer, g: &Game) {
+    if g.tech_mind {
+        crate::mind_view::draw(fb, g);
+        return;
+    }
     let s = &g.sim;
     let data = &g.data;
     let lay = layout(data);

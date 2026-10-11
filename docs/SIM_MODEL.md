@@ -168,3 +168,12 @@ Tout est derive (rien n'est stocke, meme graine = memes nombres) et une seule fo
 - Interieur : fraction du noyau selon la densite, flux de chaleur ~ R / age (+ chauffage de maree selon
   l'excentricite), activite (inerte, couvercle fige, plaques, volcanique, fluide), champ magnetique
   (dynamo : noyau fluide + rotation + taille).
+
+## Histoire, archeologie, esprit
+
+- Age k d'un secteur c : kind_0 = essor (70 %) ou migration ; kind_k tire dans la table `NEXT[kind_{k-1}]`
+  (essor -> apogee 6 / effondrement 2 ; apogee -> apogee 3 / effondrement 7 ; effondrement -> age sombre 6 / migrations 4 ; age sombre -> age sombre 2 / migrations 3 / reconquete 5 ; migrations -> essor 6 / reconquete 4 ; reconquete -> essor 1 / apogee 5 / effondrement 2). Chaque effondrement a une cause ponderee (`history.ron`).
+- Annee = 2400 + t / 365 j. Provenance d'un site : batisseur = detenteur de l'age de construction ; chute = effondrement suivant (sinon epuisement), toujours avant 2400.
+- Datation : sigma = (0,15 age_reel + 20) / (1 + rythme_analyse) ; mesure = age_reel + sigma x bruit(-1..1 par hash de l'objet) ; suspect si |age_apparent - mesure| > 2 sigma.
+- Budget : facteur(P) = 0,5 + (1 - exp(-P ln2 / 20)) (P = part x puissance), rythme = P / 20, x (1 + somme des bonus de logiciels, +50 % du bonus par version au-dela de la premiere).
+- Pilote automatique : dv_plan = dv x (0,85 + 0,15 facteur_pilotage) ; laboratoires : x facteur_analyse ; pare-feu : / facteur_defense ; malware -0,04 x rythme_defense par jour ; chiffres -1 x rythme_simulation jours de travail par jour ; traduction : rythme_traduction / difficulte par jour.

@@ -17,11 +17,11 @@
 | D | Amarrer (station < 500 m, vitesse relative < 8 m/s) |
 | I | Soute / inventaire (J = jeter la ressource) |
 | K | Equipage (Gauche/Droite poste, T quart, X débarquer à quai, J journal) |
-| J | Journal de bord |
+| J | Journal de bord (Tab : nouvelles du monde, puis ARCHIVES : histoire du secteur et artefacts ; D dater, C collectionneur, M musée, R restituer, T fouille prudente) |
 | L | Carte galactique (Haut/Bas étoile, +/- zoom, Entrée = saut FTL) ; Retour arrière annule une charge de saut |
 | F2 | Empire (colonies) ; Entrée = détail ; F3 = Flotte |
 | O | Fonder une colonie sur le corps ciblé (kit en soute) |
-| F4 | Arbre technologique (Entrée lance une recherche) |
+| F4 | Arbre technologique (Entrée lance une recherche) ; E = panneau ESPRIT (budget de calcul de l'IA, logiciels, autres IA : Gauche/Droite budget, Entrée installer, C/A/L contacter/allier/libérer, S ancre) |
 | Ctrl / Entrée (maintenir) | Tir principal (faisceaux, canons) |
 | B (maintenir) | Missiles et mines |
 | Z | Payer le tribut demandé par des pirates |

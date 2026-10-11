@@ -1267,12 +1267,16 @@ fn draw_recruit(fb: &mut Framebuffer, g: &Game) {
 }
 
 fn draw_journal(fb: &mut Framebuffer, g: &Game) {
+    if g.journal_tab == 2 {
+        crate::archive_view::draw(fb, g);
+        return;
+    }
     if g.journal_tab == 1 {
         draw_news(fb, g);
         return;
     }
     fb.text(1, 1, "JOURNAL DE BORD", AMBER);
-    fb.text(30, 1, "[TAB] NOUVELLES DU MONDE", DIM);
+    fb.text(30, 1, "[TAB] NOUVELLES DU MONDE   (PUIS ARCHIVES)", DIM);
     let log = &g.sim.crew.log;
     let rows = fb.rows().saturating_sub(6);
     let end = log.len().saturating_sub(g.journal_scroll.min(log.len()));
@@ -1294,7 +1298,7 @@ fn draw_journal(fb: &mut Framebuffer, g: &Game) {
 /// The news heard so far, newest first, with how far away it happened.
 fn draw_news(fb: &mut Framebuffer, g: &Game) {
     fb.text(1, 1, "NOUVELLES DU MONDE", AMBER);
-    fb.text(30, 1, "[TAB] JOURNAL DE BORD", DIM);
+    fb.text(30, 1, "[TAB] ARCHIVES", DIM);
     fb.text(
         1,
         2,

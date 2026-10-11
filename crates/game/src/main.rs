@@ -1,3 +1,4 @@
+mod archive_view;
 mod audio;
 mod bourse_view;
 mod codex;
@@ -16,6 +17,7 @@ mod fpv_view;
 mod game;
 mod globe;
 mod hud;
+mod mind_view;
 mod mouse;
 mod power_view;
 mod proto_view;
@@ -683,6 +685,28 @@ fn snapshot(path: &str, scene: &str, data: Arc<GameData>) {
             g.sim.start_research(pp).expect("start");
             g.sim.tick_research(1.0);
             g.tech_sel = 7;
+            g.screen = Screen::Tech;
+        }
+        "archives" => {
+            g.sim.credits = 5_000.0;
+            g.sim.archive.careful = true;
+            for key in [3_u64, 11, 29] {
+                g.sim.dig_site("ruine", key);
+            }
+            let _ = g.sim.date_artefact(0);
+            g.journal_tab = 2;
+            g.screen = Screen::Journal;
+        }
+        "esprit" => {
+            g.sim.credits = 20_000.0;
+            let k = g
+                .data
+                .software_index("datation_isotopique")
+                .expect("software");
+            g.sim.install_software(k).expect("install");
+            g.sim.add_cipher(6.0, "ARCHIVE CHIFFREE");
+            g.sim.mind.alloc = [3, 6, 3, 5, 3];
+            g.tech_mind = true;
             g.screen = Screen::Tech;
         }
         "anomaly" => {

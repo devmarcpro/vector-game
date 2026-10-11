@@ -799,6 +799,144 @@ pub struct GameData {
     pub rogue_themes: Vec<RogueTheme>,
     pub materials: Vec<Material>,
     pub companies: Vec<Company>,
+    pub mind: MindData,
+    pub history: HistoryData,
+}
+
+/// The tasks the ship's AI splits its computing power between (fixed ids, in this order).
+pub const MIND_TASKS: [&str; 5] = ["pilotage", "analyse", "traduction", "simulation", "defense"];
+/// The ages of a sector's history (ids the generator relies on).
+pub const AGE_IDS: [&str; 6] = [
+    "essor",
+    "apogee",
+    "effondrement",
+    "age_sombre",
+    "migration",
+    "reconquete",
+];
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct TaskDef {
+    pub id: String,
+    pub name: String,
+    pub text: String,
+}
+
+/// A program of the AI: adds `bonus` (x level) to the factor of its task and takes `memory`.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct Software {
+    pub id: String,
+    pub name: String,
+    pub task: String,
+    pub bonus: f64,
+    pub memory: u32,
+    pub price: f64,
+    /// Technology required to buy it ("" for none).
+    pub tech: String,
+    pub text: String,
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+pub struct MindData {
+    pub tasks: Vec<TaskDef>,
+    pub software: Vec<Software>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct AgeDef {
+    pub id: String,
+    pub name: String,
+    pub text: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct CauseDef {
+    pub id: String,
+    pub name: String,
+    pub weight: f64,
+    pub text: String,
+}
+
+/// A kind of artefact: base value (cr) and days of translation work at full power.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct ArtefactDef {
+    pub id: String,
+    pub name: String,
+    pub value: f64,
+    pub difficulty: f64,
+    pub text: String,
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+pub struct HistoryData {
+    pub ages: Vec<AgeDef>,
+    pub causes: Vec<CauseDef>,
+    pub artefacts: Vec<ArtefactDef>,
+}
+
+impl GameData {
+    pub fn age_index(&self, id: &str) -> Option<usize> {
+        self.history.ages.iter().position(|a| a.id == id)
+    }
+    pub fn artefact_index(&self, id: &str) -> Option<usize> {
+        self.history.artefacts.iter().position(|a| a.id == id)
+    }
+    pub fn software_index(&self, id: &str) -> Option<usize> {
+        self.mind.software.iter().position(|a| a.id == id)
+    }
+
+    /// Mind and history tables: fixed ids in order, known tasks, techs, sane numbers.
+    fn validate_mind_history(&self) -> Result<(), DataError> {
+        let bad = |s: String| Err(DataError::Invalid(s));
+        let ids: Vec<&str> = self.mind.tasks.iter().map(|t| t.id.as_str()).collect();
+        if ids != MIND_TASKS {
+            return bad("mind.ron: les taches doivent etre pilotage, analyse, traduction, simulation, defense".into());
+        }
+        let ages: Vec<&str> = self.history.ages.iter().map(|t| t.id.as_str()).collect();
+        if ages != AGE_IDS {
+            return bad("history.ron: ages inattendus".into());
+        }
+        let mut seen = std::collections::HashSet::new();
+        for s in &self.mind.software {
+            if !seen.insert(s.id.as_str()) {
+                return bad(format!("logiciel {} en double", s.id));
+            }
+            if !MIND_TASKS.contains(&s.task.as_str())
+                || s.bonus <= 0.0
+                || s.memory == 0
+                || s.price <= 0.0
+            {
+                return bad(format!("logiciel {}: valeurs invalides", s.id));
+            }
+            if !s.tech.is_empty() && self.tech_index(&s.tech).is_none() {
+                return bad(format!(
+                    "logiciel {}: technologie {} inconnue",
+                    s.id, s.tech
+                ));
+            }
+        }
+        if self.mind.software.len() < MIND_TASKS.len() {
+            return bad("moins de logiciels que de taches".into());
+        }
+        if self.history.causes.is_empty() || self.history.causes.iter().any(|c| c.weight <= 0.0) {
+            return bad("history.ron: causes invalides".into());
+        }
+        if self.history.artefacts.is_empty()
+            || self
+                .history
+                .artefacts
+                .iter()
+                .any(|a| a.value <= 0.0 || a.difficulty < 0.0)
+        {
+            return bad("history.ron: artefacts invalides".into());
+        }
+        for id in ["texte", "carte", "technologie", "relique", "outil"] {
+            if self.artefact_index(id).is_none() {
+                return bad(format!("history.ron: artefact {id} manquant"));
+            }
+        }
+        Ok(())
+    }
 }
 
 fn read<T: for<'a> Deserialize<'a>>(path: &Path) -> Result<T, DataError> {
@@ -845,6 +983,8 @@ impl GameData {
             rogue_themes: read(&dir.join("rogue_themes.ron"))?,
             materials: read(&dir.join("materials.ron"))?,
             companies: read(&dir.join("companies.ron"))?,
+            mind: read(&dir.join("mind.ron"))?,
+            history: read(&dir.join("history.ron"))?,
         };
         // Generated extension files (tools/gen_scale.py) extend the hand-written tables.
         let mut extra_resources: Vec<Resource> = read(&dir.join("resources_organs.ron"))?;
@@ -1268,6 +1408,7 @@ impl GameData {
         self.validate_cybernetics()?;
         self.validate_dialogues()?;
         self.validate_sites()?;
+        self.validate_mind_history()?;
         self.validate_civilisations()?;
         self.validate_gear()?;
         self.validate_religions()?;
@@ -2550,5 +2691,30 @@ mod tests {
         let dup = d.resources[0].clone();
         d.resources.push(dup);
         assert!(d.validate().is_err());
+    }
+
+    #[test]
+    fn mind_and_history_tables_are_validated() {
+        let ok = GameData::load(&dir()).expect("data loads");
+        assert!(ok.mind.software.len() >= 10 && ok.history.causes.len() >= 5);
+        let mut d = ok.clone();
+        d.mind.tasks.swap(0, 1);
+        assert!(d.validate().is_err(), "tasks keep their order");
+        let mut d = ok.clone();
+        d.mind.software[0].task = "inconnue".into();
+        assert!(d.validate().is_err(), "unknown task");
+        let mut d = ok.clone();
+        d.mind.software[0].tech = "magie".into();
+        assert!(d.validate().is_err(), "unknown technology");
+        let mut d = ok.clone();
+        let dup = d.mind.software[0].clone();
+        d.mind.software.push(dup);
+        assert!(d.validate().is_err(), "duplicate software");
+        let mut d = ok.clone();
+        d.history.causes[0].weight = 0.0;
+        assert!(d.validate().is_err(), "a cause needs a weight");
+        let mut d = ok;
+        d.history.ages.pop();
+        assert!(d.validate().is_err(), "the ages are fixed");
     }
 }

@@ -71,10 +71,12 @@ impl Autopilot {
         // Speed relative to the target is cancelled first (the plan starts at rest in its frame).
         let rel = (sim.ship.vel - b.vel).length();
         let dv_eff = dv - rel;
+        // A better-computed transfer wastes less of the delta-v: the pilotage budget.
+        let dv_plan = dv_eff * (0.85 + 0.15 * sim.mind_factor(crate::mind::T_PILOTAGE));
         if dv_eff < 0.3 * dv {
             return Err("carburant insuffisant pour rattraper la cible");
         }
-        let a_cruise = (dv_eff * dv_eff / (16.0 * len)).min(0.5 * a_main);
+        let a_cruise = (dv_plan * dv_plan / (16.0 * len)).min(0.5 * a_main);
         if a_cruise < 1.0e-3 {
             return Err("carburant insuffisant");
         }
@@ -281,5 +283,32 @@ mod tests {
         assert!(last.rel_vel.length() < 1e-9, "at rest");
         // Peak speed is half way: a * total / 2.
         assert!((max_v - ap.a_cruise * total / 2.0).abs() / max_v < 0.05);
+    }
+
+    #[test]
+    fn the_pilotage_budget_changes_the_plan_of_the_autopilot() {
+        let plan = |alloc: [u8; 5]| {
+            let mut best = None;
+            for p in 0..sim_seed(7).bodies.len() {
+                let mut s = sim_seed(7);
+                s.ship.sys.temp_k = 290.0;
+                s.mind.alloc = alloc;
+                if let Ok(ap) = Autopilot::new(&s, p) {
+                    best.get_or_insert_with(Vec::new).push(ap.a_cruise);
+                }
+            }
+            best.expect("some reachable body")
+        };
+        let low = plan([10, 0, 0, 0, 0].map(|w| 10 - w));
+        let high = plan([10, 0, 0, 0, 0]);
+        assert_eq!(low.len(), high.len());
+        assert!(
+            low.iter().zip(&high).all(|(l, h)| h >= l),
+            "more pilotage never plans a slower trip"
+        );
+        assert!(
+            low.iter().zip(&high).any(|(l, h)| h > l),
+            "and speeds up at least the fuel-limited ones"
+        );
     }
 }

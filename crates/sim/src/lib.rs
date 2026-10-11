@@ -1,5 +1,6 @@
 //! Deterministic simulation: flight model, modular ships, gravity, collisions, autopilot, mining, trade, saves.
 //! Units: SI (m, s, kg, N). See docs/SIM_MODEL.md.
+pub mod archive;
 pub mod atmosphere;
 pub mod autopilot;
 pub mod births;
@@ -20,10 +21,12 @@ pub mod fleet;
 pub mod futures;
 pub mod gear;
 pub mod genealogy;
+pub mod history;
 pub mod incidents;
 pub mod intrusion;
 pub mod livestock;
 pub mod market;
+pub mod mind;
 pub mod multiverse;
 pub mod news;
 pub mod npc;
@@ -294,6 +297,10 @@ pub struct Sim {
     pub last_dividend_month: i64,
     /// Day of the last intrusion roll (not saved).
     pub intrusion_day: i64,
+    /// The AI's computing budget, software, ciphers and relations with other minds.
+    pub mind: mind::Mind,
+    /// Finds of digs and their disposal.
+    pub archive: archive::Archive,
     /// Animals kept aboard, a counter for the dealer's stock, and the last day they were fed.
     pub herd: Vec<livestock::Animal>,
     pub herd_counter: i64,
@@ -441,6 +448,8 @@ impl Sim {
             shares: Vec::new(),
             last_dividend_month: i64::MIN,
             intrusion_day: i64::MIN,
+            mind: Default::default(),
+            archive: Default::default(),
             herd: Vec::new(),
             herd_counter: 0,
             casino_round: 0,
@@ -731,6 +740,7 @@ impl Sim {
         self.livestock_tick();
         self.cartel_tick();
         self.multiverse_tick();
+        self.mind_tick();
         self.births_tick();
         self.news_tick();
         let flux = self.solar_flux();

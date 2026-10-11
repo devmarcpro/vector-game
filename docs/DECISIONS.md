@@ -90,3 +90,39 @@ ponderees par `ground_of`), la neige et la glace apparaissent quand il fait froi
 lave remplace l'eau selon la temperature. Les lieux construits nomment leur matiere (`floor_mat`,
 `wall_mat`). La matiere agit : `slow` multiplie le temps de marche (boue x2, neige x1,5, glace x0,8) et
 un rover la ressent 2,5 fois moins. Sauvegardes : version 35.
+
+## L'histoire d'un secteur, une seule chronologie (`history.rs`)
+
+Chaque secteur de 240 al a 8 ages de 400 ans (essor, apogee, effondrement, age sombre, migrations,
+reconquete) tires par une petite machine a etats depuis `hash(graine, secteur)`, sans rien stocker : le
+meme secteur raconte la meme histoire a chaque appel. Le dernier age s'accorde avec le present (le
+peuple qui tient le secteur aujourd'hui, `politics::faction_of`) et les annees recentes sont celles de
+`politics::events_in_cell` (dirigeants, guerres, paix) : une chronologie, pas deux moteurs. Une ruine, une
+epave ou une station ancienne tire sa provenance (`provenance`) de cette chronique : batie dans un age
+d'essor, d'apogee ou de reconquete par le peuple de cet age, tombee avec l'effondrement suivant et sa
+cause ; une epave est recente. Le nom du lieu (`Marche de ...`) vient du plus grand personnage.
+
+## Archeologie et ethique (`archive.rs`)
+
+La fouille prudente documente les trouvailles (valeur x1,3, le musee les accepte) mais en sort moins ;
+le pillage en sort davantage, sans contexte (x0,6), et coute de la reputation aupres des heritiers (le
+peuple qui tient le secteur). Un faux est fabrique 150 a 400 ans avant aujourd'hui avec de vieux
+materiaux : la datation donne un age mesure +/- une barre d'erreur qui fond avec le budget d'analyse de
+l'IA ; au-dela de 2 barres d'ecart avec l'age apparent, la datation le trahit. Un collectionneur paie
+80 % de la valeur apparente sans question (il peut flairer un faux : fraude denoncee, reputation en
+baisse), un musee 50 % mais seulement du documente et authentique, la restitution aux heritiers ne paie
+rien et rapporte leur reconnaissance.
+
+## L'IA est une machine (`mind.rs`)
+
+Puissance = 100 + 60 par laboratoire alimente (sante), x debit thermique (0,4 a la temperature de
+degats) x bus electrique, x (1 - 0,6 malware), +10 % par IA alliee. Le budget se repartit par poids 0-10
+entre pilotage, analyse, traduction, simulation, defense. Une tache lit sa part de deux manieres :
+`mind_factor` (saturant, 0,5 a ~1,5, x1,00 a parts egales sur un vaisseau nu, utilise par le pilote
+automatique (delta-v du plan), les laboratoires (`ship_research_rate`) et le pare-feu des intrusions) et
+`mind_rate` (lineaire, pour les travaux de plusieurs jours : traduction, cassage de donnees chiffrees,
+nettoyage de malware, datation). Une intrusion reussie laisse du malware d'autant plus gros que la defense
+est faible. Les logiciels (`mind.ron`) ajoutent un bonus a une tache et prennent de la memoire (6 + 2 par
+laboratoire) ; trois versions payantes. Les autres IA d'un secteur (0 a 2) sont asservies (a un peuple),
+libres ou rebelles ; en liberer une coute -6 de reputation a son proprietaire ; un rebelle non allie rend
+les intrusions plus probables ; les sauvegardes de soi sont les ancres du multivers.

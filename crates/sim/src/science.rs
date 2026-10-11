@@ -83,7 +83,8 @@ impl Sim {
             .modules(&self.data)
             .filter(|(i, m)| m.science > 0.0 && self.ship.sys.powered[*i])
             .map(|(i, m)| m.science * self.ship.sys.health[i] * LAB_POINTS_PER_DAY * eff)
-            .sum()
+            .sum::<f64>()
+            * self.mind_factor(crate::mind::T_ANALYSE)
     }
 
     /// Collect lab output and colony research into the pool, then spend it on the current project.
@@ -725,6 +726,32 @@ mod tests {
         assert!(
             s.crew.members.iter().any(|p| p.disease.is_some()),
             "and cause injuries"
+        );
+    }
+
+    #[test]
+    fn the_analysis_budget_scales_the_laboratories() {
+        let (mut s, _) = sim_with_anomaly(None);
+        let data = Arc::clone(&s.data);
+        // Make room: the starter ship has no free internal slot.
+        s.ship.design.slots.iter_mut().for_each(|x| *x = None);
+        s.ship
+            .design
+            .install_first_fit(&data, "lab_mk1")
+            .expect("a lab fits");
+        s.ship.refresh_stats(&data);
+        s.ship.sys.powered.iter_mut().for_each(|p| *p = true);
+        s.ship.sys.temp_k = 290.0;
+        s.mind.alloc = [4, 4, 4, 4, 4];
+        let even = s.ship_research_rate();
+        assert!(even > 0.0, "a lab works");
+        s.mind.alloc = [0, 10, 0, 0, 0];
+        let focused = s.ship_research_rate();
+        s.mind.alloc = [10, 0, 0, 0, 0];
+        let starved = s.ship_research_rate();
+        assert!(
+            focused > even && even > starved,
+            "{starved} < {even} < {focused}"
         );
     }
 }

@@ -109,8 +109,12 @@ pub struct Game {
     pub crew_sel: usize,
     pub recruit_sel: usize,
     pub journal_scroll: usize,
-    /// 0 the log of the ship, 1 the news of the world.
+    /// 0 the log of the ship, 1 the news of the world, 2 the archives (history and finds).
     pub journal_tab: u8,
+    pub arch_sel: usize,
+    /// Page of the technology screen that shows the mind of the ship, and its selected row.
+    pub tech_mind: bool,
+    pub mind_sel: usize,
     pub log_seen: usize,
     pub gal_cache: Vec<StarEntry>,
     pub gal_sel: usize,
@@ -276,6 +280,9 @@ impl Game {
             recruit_sel: 0,
             journal_scroll: 0,
             journal_tab: 0,
+            arch_sel: 0,
+            tech_mind: false,
+            mind_sel: 0,
             log_seen: 0,
             gal_cache: Vec::new(),
             gal_sel: 0,
@@ -1688,6 +1695,9 @@ impl Game {
     }
 
     fn journal_key(&mut self, code: KeyCode) {
+        if self.journal_tab == 2 && self.archive_key(code) {
+            return;
+        }
         match code {
             KeyCode::ArrowUp | KeyCode::PageUp => self.journal_scroll += 5,
             KeyCode::ArrowDown | KeyCode::PageDown => {
@@ -1695,7 +1705,7 @@ impl Game {
             }
             KeyCode::KeyK => self.screen = Screen::Crew,
             KeyCode::Tab => {
-                self.journal_tab = 1 - self.journal_tab;
+                self.journal_tab = (self.journal_tab + 1) % 3;
                 self.journal_scroll = 0;
             }
             KeyCode::Escape | KeyCode::KeyJ => {
@@ -2031,6 +2041,14 @@ impl Game {
     }
 
     fn tech_key(&mut self, code: KeyCode) {
+        if code == KeyCode::KeyE {
+            self.tech_mind = !self.tech_mind;
+            return;
+        }
+        if self.tech_mind && code != KeyCode::Escape && code != KeyCode::F4 {
+            self.mind_key(code);
+            return;
+        }
         let n = self.data.techs.len();
         match code {
             KeyCode::ArrowUp => self.tech_walk(0, -1),

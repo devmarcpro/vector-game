@@ -2,7 +2,7 @@
 //! weapon, faction, anomaly and condition, generated from the real data (no hand-written numbers).
 use vector_data::GameData;
 
-pub const CATEGORIES: [&str; 29] = [
+pub const CATEGORIES: [&str; 34] = [
     "RESSOURCES",
     "MODULES",
     "ARMES",
@@ -32,6 +32,11 @@ pub const CATEGORIES: [&str; 29] = [
     "LIEUX A EXPLORER",
     "CREATURES",
     "MATERIAUX",
+    "LOGICIELS",
+    "TACHES DE L'IA",
+    "AGES DE L'HISTOIRE",
+    "CAUSES D'EFFONDREMENT",
+    "ARTEFACTS",
 ];
 
 /// Index in the source table of entry `k` of a category (modules and weapons share a table).
@@ -84,6 +89,11 @@ fn entries(data: &GameData, cat: usize) -> Vec<usize> {
         26 => (0..data.rogue_themes.len()).collect(),
         27 => (0..data.rogue_monsters.len()).collect(),
         28 => (0..data.materials.len()).collect(),
+        29 => (0..data.mind.software.len()).collect(),
+        30 => (0..data.mind.tasks.len()).collect(),
+        31 => (0..data.history.ages.len()).collect(),
+        32 => (0..data.history.causes.len()).collect(),
+        33 => (0..data.history.artefacts.len()).collect(),
         _ => Vec::new(),
     }
 }
@@ -118,6 +128,11 @@ pub fn names(data: &GameData, cat: usize) -> Vec<String> {
             26 => data.rogue_themes[i].name.clone(),
             27 => data.rogue_monsters[i].name.clone(),
             28 => data.materials[i].name.clone(),
+            29 => data.mind.software[i].name.clone(),
+            30 => data.mind.tasks[i].name.clone(),
+            31 => data.history.ages[i].name.clone(),
+            32 => data.history.causes[i].name.clone(),
+            33 => data.history.artefacts[i].name.clone(),
             18 => format!(
                 "Appeler : {}",
                 vector_data::dialogue::ROLES[i].to_lowercase()
@@ -785,6 +800,68 @@ pub fn entry(data: &GameData, cat: usize, k: usize) -> Vec<String> {
                 }
             ));
             out.push("Se fouille une fois, avec G a cote, pendant une expedition a pied (E sur la surface).".to_string());
+        }
+        29 => {
+            let sw = &data.mind.software[i];
+            let task = data
+                .mind
+                .tasks
+                .iter()
+                .find(|t| t.id == sw.task)
+                .map_or("?", |t| t.name.as_str());
+            out.push(format!("{}  [tache : {task}]", sw.name));
+            out.push(sw.text.clone());
+            out.push(format!(
+                "Bonus +{:.0} % a la tache (+50 % de ce bonus par mise a jour, 3 versions), memoire {} (+1 par mise a jour), {:.0} cr (x numero de version).",
+                sw.bonus * 100.0,
+                sw.memory,
+                sw.price
+            ));
+            out.push("Se gere dans le panneau ESPRIT : F4 puis E.".to_string());
+        }
+        30 => {
+            let t = &data.mind.tasks[i];
+            out.push(format!(
+                "{}  [tache de l'IA {}/{}]",
+                t.name,
+                i + 1,
+                data.mind.tasks.len()
+            ));
+            out.push(t.text.clone());
+            out.push(
+                "Le budget de calcul se partage par poids de 0 a 10 : a parts egales sur un vaisseau nu, le facteur est x1,00 (de x0,50 sans rien a x1,50 en pleine puissance). Chaque laboratoire ajoute de la puissance et de la memoire ; la chaleur, un bus electrique affame et les programmes malveillants la reduisent.".to_string(),
+            );
+        }
+        31 => {
+            let a = &data.history.ages[i];
+            out.push(format!("{}  [age de 400 ans]", a.name));
+            out.push(a.text.clone());
+            let next: Vec<String> = data
+                .history
+                .ages
+                .iter()
+                .enumerate()
+                .filter(|(j, _)| vector_sim::history::can_follow(i, *j))
+                .map(|(_, n)| n.name.clone())
+                .collect();
+            out.push(format!("Peut etre suivi de : {}.", next.join(", ")));
+            out.push("Chaque secteur a 8 ages (3200 ans) calcules depuis la graine ; les annees recentes sont celles de la politique. Voir ARCHIVES (J puis TAB).".to_string());
+        }
+        32 => {
+            let c = &data.history.causes[i];
+            out.push(format!("{}  [poids {:.1}]", c.name, c.weight));
+            out.push(c.text.clone());
+            out.push("Une ruine tombee pendant cet effondrement le dit dans ses textes une fois traduits.".to_string());
+        }
+        33 => {
+            let a = &data.history.artefacts[i];
+            out.push(format!("{}  [valeur de base {:.0} cr]", a.name, a.value));
+            out.push(a.text.clone());
+            out.push(format!(
+                "Traduction : {:.0} jours de calcul au rythme 1 ; la valeur croit avec l'age ; un faux est fabrique 150 a 400 ans avant aujourd'hui et se trahit a la datation si le budget d'analyse est assez grand.",
+                a.difficulty
+            ));
+            out.push("Se vend a un collectionneur (80 %, sans question), se verse a un musee (50 %, documente seulement) ou se restitue aux heritiers.".to_string());
         }
         18 => {
             let role = vector_data::dialogue::ROLES[i];

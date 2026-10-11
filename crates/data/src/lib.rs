@@ -507,6 +507,20 @@ pub struct Cybernetic {
     pub hackable: bool,
 }
 
+/// A site of interest met on expeditions (see `data/sites.ron`).
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct Site {
+    pub id: String,
+    pub name: String,
+    pub glyph: String,
+    pub color: u32,
+    pub weight: f64,
+    pub loot: Vec<(String, f64)>,
+    pub danger: f64,
+    pub heal: bool,
+    pub text: String,
+}
+
 /// A gene (see `data/genes.ron`): two alleles of 0..3 per person.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Gene {
@@ -591,6 +605,7 @@ pub struct GameData {
     pub organs: Vec<Organ>,
     pub cybernetics: Vec<Cybernetic>,
     pub dialogues: dialogue::Dialogues,
+    pub sites: Vec<Site>,
 }
 
 fn read<T: for<'a> Deserialize<'a>>(path: &Path) -> Result<T, DataError> {
@@ -627,6 +642,7 @@ impl GameData {
             organs: read(&dir.join("organs.ron"))?,
             cybernetics: read(&dir.join("cybernetics.ron"))?,
             dialogues: read(&dir.join("dialogues.ron"))?,
+            sites: read(&dir.join("sites.ron"))?,
         };
         // Generated extension files (tools/gen_scale.py) extend the hand-written tables.
         let mut extra_resources: Vec<Resource> = read(&dir.join("resources_organs.ron"))?;
@@ -1048,7 +1064,34 @@ impl GameData {
         self.validate_genes()?;
         self.validate_organs()?;
         self.validate_cybernetics()?;
-        self.validate_dialogues()
+        self.validate_dialogues()?;
+        self.validate_sites()
+    }
+
+    /// Sites of interest: unique ids, one-character glyphs, known loot, sane numbers.
+    fn validate_sites(&self) -> Result<(), DataError> {
+        let bad = |s: String| Err(DataError::Invalid(s));
+        let mut seen = std::collections::HashSet::new();
+        for s in &self.sites {
+            if !seen.insert(s.id.as_str()) {
+                return bad(format!("site {} en double", s.id));
+            }
+            if s.glyph.chars().count() != 1 || s.weight <= 0.0 || !(0.0..=1.0).contains(&s.danger) {
+                return bad(format!("site {}: valeurs invalides", s.id));
+            }
+            if s.loot.is_empty() && !s.heal {
+                return bad(format!("site {}: rien a y trouver", s.id));
+            }
+            for (r, kg) in &s.loot {
+                if self.resource_index(r).is_none() || *kg <= 0.0 {
+                    return bad(format!("site {}: butin {r} invalide", s.id));
+                }
+            }
+        }
+        if self.sites.len() < 5 {
+            return bad("moins de 5 sites".into());
+        }
+        Ok(())
     }
 
     /// Dialogues: every node reachable and well formed, conditions and effects that parse and name
@@ -1713,6 +1756,25 @@ mod tests {
             d.unlocking_tech("module", "fusion_mk1").is_none(),
             "tier 1 is free"
         );
+    }
+
+    #[test]
+    fn sites_are_validated() {
+        let ok = GameData::load(&dir()).expect("data loads");
+        assert!(ok.sites.len() >= 5);
+        let mut d = ok.clone();
+        d.sites[0].loot.push(("unobtainium".into(), 1.0));
+        assert!(d.validate().is_err(), "unknown loot");
+        let mut d = ok.clone();
+        d.sites[0].glyph = "ab".into();
+        assert!(d.validate().is_err(), "glyph is one character");
+        let mut d = ok.clone();
+        d.sites[0].danger = 3.0;
+        assert!(d.validate().is_err(), "danger is a probability");
+        let mut d = ok;
+        let dup = d.sites[0].clone();
+        d.sites.push(dup);
+        assert!(d.validate().is_err(), "duplicate");
     }
 
     #[test]

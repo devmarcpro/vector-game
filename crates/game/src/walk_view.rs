@@ -145,6 +145,16 @@ pub fn draw_walk(fb: &mut Framebuffer, g: &Game) {
             fb.text(x0 + x as usize, y0 + y as usize, glyph, c);
         }
     }
+    // Sites of interest (dim once searched).
+    for t in &w.sites {
+        let d = &g.data.sites[t.def];
+        fb.text(
+            x0 + t.x as usize,
+            y0 + t.y as usize,
+            &d.glyph,
+            if t.used { dim(d.color) } else { d.color },
+        );
+    }
     // Plants.
     for p in w.plants.iter().filter(|p| !p.taken) {
         let sp = &g.data.species[p.species];

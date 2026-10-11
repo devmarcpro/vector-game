@@ -2,7 +2,7 @@
 //! weapon, faction, anomaly and condition, generated from the real data (no hand-written numbers).
 use vector_data::GameData;
 
-pub const CATEGORIES: [&str; 19] = [
+pub const CATEGORIES: [&str; 20] = [
     "RESSOURCES",
     "MODULES",
     "ARMES",
@@ -22,6 +22,7 @@ pub const CATEGORIES: [&str; 19] = [
     "ORGANES",
     "IMPLANTS",
     "COMMUNICATIONS",
+    "SITES",
 ];
 
 /// Number of entries in a category.
@@ -59,6 +60,7 @@ fn entries(data: &GameData, cat: usize) -> Vec<usize> {
         16 => (0..data.organs.len()).collect(),
         17 => (0..data.cybernetics.len()).collect(),
         18 => (0..vector_data::dialogue::ROLES.len()).collect(),
+        19 => (0..data.sites.len()).collect(),
         _ => Vec::new(),
     }
 }
@@ -83,6 +85,7 @@ pub fn names(data: &GameData, cat: usize) -> Vec<String> {
             15 => data.genes[i].name.clone(),
             16 => data.organs[i].name.clone(),
             17 => data.cybernetics[i].name.clone(),
+            19 => data.sites[i].name.clone(),
             18 => format!(
                 "Appeler : {}",
                 vector_data::dialogue::ROLES[i].to_lowercase()
@@ -491,6 +494,35 @@ pub fn entry(data: &GameData, cat: usize, k: usize) -> Vec<String> {
                     res_name(data, &d.cure).unwrap_or_else(|| d.cure.clone())
                 }
             ));
+        }
+        19 => {
+            let s = &data.sites[i];
+            out.push(format!("{}  (symbole {})", s.name, s.glyph));
+            out.push(s.text.clone());
+            let loot: Vec<String> = s
+                .loot
+                .iter()
+                .map(|(r, kg)| {
+                    format!(
+                        "{} {kg:.0} kg",
+                        res_name(data, r).unwrap_or_else(|| r.clone())
+                    )
+                })
+                .collect();
+            if !loot.is_empty() {
+                out.push(format!("A y trouver : {}", loot.join(", ")));
+            }
+            out.push(format!(
+                "Frequence relative {:.1}   risque d'embuscade ou d'eboulement : {:.0} %{}",
+                s.weight,
+                s.danger * 100.0,
+                if s.heal {
+                    "   soigne toute l'equipe"
+                } else {
+                    ""
+                }
+            ));
+            out.push("Se fouille une fois, avec G a cote, pendant une expedition a pied (E sur la surface).".to_string());
         }
         18 => {
             let role = vector_data::dialogue::ROLES[i];

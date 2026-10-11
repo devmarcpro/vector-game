@@ -37,6 +37,15 @@ pub struct Creature {
     pub alive: bool,
 }
 
+/// A site of interest on the map.
+#[derive(Clone, Debug)]
+pub struct SiteInst {
+    pub def: usize,
+    pub x: i32,
+    pub y: i32,
+    pub used: bool,
+}
+
 #[derive(Clone, Debug)]
 pub struct Plant {
     pub species: usize,
@@ -54,6 +63,7 @@ pub struct Walk {
     pub tiles: Vec<Tile>,
     pub plants: Vec<Plant>,
     pub creatures: Vec<Creature>,
+    pub sites: Vec<SiteInst>,
     /// Indices into the crew, and where each one stands.
     pub party: Vec<usize>,
     pub pos: Vec<(i32, i32)>,
@@ -212,6 +222,7 @@ impl Sim {
             tiles,
             plants: Vec::new(),
             creatures: Vec::new(),
+            sites: Vec::new(),
             pos: vec![(lx, ly); party.len()],
             party,
             active: 0,
@@ -277,6 +288,37 @@ impl Sim {
                     alive: true,
                 });
             }
+        }
+        // Sites of interest: 2 to 4, by weight, away from the landing.
+        let total: f64 = self.data.sites.iter().map(|s| s.weight).sum();
+        for _ in 0..(2 + rng.next_u64() % 3) {
+            let (x, y) = (
+                (rng.next_u64() % MAP_W as u64) as i32,
+                (rng.next_u64() % MAP_H as u64) as i32,
+            );
+            if !w.free(x, y) || (x - lx).abs() + (y - ly).abs() < 10 {
+                continue;
+            }
+            if w.sites.iter().any(|s| s.x == x && s.y == y)
+                || w.plants.iter().any(|p| p.x == x && p.y == y)
+            {
+                continue;
+            }
+            let mut pick = rng.f64() * total;
+            let mut def = 0;
+            for (i, s) in self.data.sites.iter().enumerate() {
+                if pick < s.weight {
+                    def = i;
+                    break;
+                }
+                pick -= s.weight;
+            }
+            w.sites.push(SiteInst {
+                def,
+                x,
+                y,
+                used: false,
+            });
         }
         let names: Vec<String> = w
             .party
@@ -356,12 +398,20 @@ impl Sim {
         }
     }
 
-    /// Gather the plant under or next to the active member.
+    /// Gather the plant under or next to the active member, or search a site next to them.
     pub fn walk_gather(&mut self, w: &mut Walk) {
         if w.over || !w.up(self, w.active) {
             return;
         }
         let (x, y) = w.pos[w.active];
+        if let Some(k) = w
+            .sites
+            .iter()
+            .position(|s| !s.used && (s.x - x).abs() <= 1 && (s.y - y).abs() <= 1)
+        {
+            self.walk_search_site(w, k);
+            return;
+        }
         let found = w
             .plants
             .iter()
@@ -382,6 +432,38 @@ impl Sim {
             }
             None => w.say("Rien a recolter ici."),
         }
+    }
+
+    fn walk_search_site(&mut self, w: &mut Walk, k: usize) {
+        w.sites[k].used = true;
+        let data = std::sync::Arc::clone(&self.data);
+        let site = &data.sites[w.sites[k].def];
+        w.say(format!("{} : {}", site.name, site.text));
+        for (res, kg) in &site.loot {
+            self.walk_loot(w, res, *kg);
+        }
+        if site.heal {
+            for &m in &w.party {
+                let p = &mut self.crew.members[m];
+                if p.alive {
+                    p.health = (p.health + 0.3).min(1.0);
+                    p.fatigue = (p.fatigue - 0.5).max(0.0);
+                    for o in p.organs.iter_mut() {
+                        if *o > 0.0 {
+                            *o = (*o + 0.2).min(1.0);
+                        }
+                    }
+                }
+            }
+            w.say("Toute l'equipe se repose et se soigne.");
+        }
+        let mut rng = Rng::new(hash_coord(w.seed, i64::from(w.turn), k as i64, 63));
+        if site.danger > 0.0 && rng.f64() < site.danger {
+            let who = w.party[w.active];
+            let dmg = 0.2 + 0.3 * rng.f64();
+            self.walk_hurt(w, who, dmg, "Un eboulement ou une embuscade");
+        }
+        self.walk_end_turn(w);
     }
 
     /// Control the next member who can still act.
@@ -674,6 +756,54 @@ mod tests {
             "the predator wounds the member and an organ"
         );
         assert!(w.log.iter().any(|l| l.contains("blesse")));
+    }
+
+    #[test]
+    fn sites_are_placed_far_from_the_landing_and_searched_once_for_loot_and_rest() {
+        let (mut s, body, cx, cy) = setup();
+        let mut w = s.walk_start(body, cx, cy, vec![0], false).unwrap();
+        let (lx, ly) = Walk::landing();
+        assert!(w.sites.len() <= 4);
+        assert!(w
+            .sites
+            .iter()
+            .all(|t| (t.x - lx).abs() + (t.y - ly).abs() >= 10));
+        // Put a loot site and a hot spring next to the member.
+        let loot = s
+            .data
+            .sites
+            .iter()
+            .position(|d| !d.loot.is_empty() && !d.heal && d.danger < 0.1)
+            .unwrap();
+        let spring = s.data.sites.iter().position(|d| d.heal).unwrap();
+        let (x, y) = w.pos[0];
+        w.sites.clear();
+        w.sites.push(SiteInst {
+            def: loot,
+            x: x + 1,
+            y,
+            used: false,
+        });
+        s.walk_gather(&mut w);
+        assert!(w.sites[0].used);
+        assert!(w.loot_mass() > 0.0, "the site gave something");
+        let after = w.loot_mass();
+        s.walk_gather(&mut w);
+        assert_eq!(w.loot_mass(), after, "a site is searched once");
+        // The spring mends wounds.
+        let me = w.party[0];
+        s.crew.members[me].health = 0.3;
+        let lungs = s.data.organ_index("poumons").unwrap();
+        s.crew.members[me].organs[lungs] = 0.4;
+        w.sites.push(SiteInst {
+            def: spring,
+            x: x - 1,
+            y,
+            used: false,
+        });
+        s.walk_gather(&mut w);
+        assert!(s.crew.members[me].health > 0.5);
+        assert!(s.crew.members[me].organs[lungs] > 0.55);
     }
 
     #[test]

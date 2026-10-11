@@ -34,3 +34,6 @@ Mœurs : data/ethos.ron (8 axes, 8 étiquettes morales, 8 profils de faction), g
 
 ## Dialogues
 `data/dialogues.ron` : noeuds avec textes par ton, options (`cond`, `effects`, `next`). Conditions : rep, credits, cargo:<res>, ethos:<axe>, role:<ROLE>, hostile. Effets : rep, credits, give, news, region, tip, peace, hostile, bluff, bribe.
+
+## Sites d'expédition
+`data/sites.ron` : id, nom, symbole, couleur, poids, butin, danger, soin, texte.

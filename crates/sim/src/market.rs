@@ -50,7 +50,11 @@ impl Market {
             let id = data.resources[i].id.as_str();
             // Cheap bulk goods are stocked in larger quantities.
             let value = data.resources[i].value.max(0.01);
-            let reference = 2.0e4 / (1.0 + value).sqrt() * rng.range(0.6, 1.4);
+            let mut reference = 2.0e4 / (1.0 + value).sqrt() * rng.range(0.6, 1.4);
+            // Grafts and prostheses are counted in pieces, not tonnes.
+            if matches!(data.resources[i].category.as_str(), "organes" | "protheses") {
+                reference = rng.range(1.5, 5.0);
+            }
             let factor = if ind.produces.iter().any(|p| p == id) {
                 PRODUCE_FACTOR
             } else if ind.consumes.iter().any(|p| p == id) {

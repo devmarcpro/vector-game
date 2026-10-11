@@ -61,3 +61,6 @@ Les zones cliquables sont déclarées par chaque écran en se dessinant (`Game::
 
 ## Sandbox libre : plus de technologie obligatoire (2026-10-11)
 Le joueur veut un sandbox totalement libre : coques, modules et bâtiments sont disponibles sans recherche. La règle « Technologies requises pour construire » (`Rules.tech_locks`) est désactivée par défaut ; l'activer rétablit les verrous. L'arbre des technologies reste là comme option de jeu. Format de sauvegarde passé en v14 (nouveau champ des règles).
+
+## Le commerce d'organes passe par les ressources (2026-10-11)
+Plutôt qu'un système de vente parallèle, greffons et prothèses sont des ressources (catégories `organes` et `protheses`) : bourse, prix mondiaux, douanes et mœurs fonctionnent tels quels. Leur stock de référence est compté en pièces (1.5 à 5), pas en tonnes. Format de sauvegarde v16.

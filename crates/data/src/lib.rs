@@ -600,6 +600,8 @@ impl GameData {
             organs: read(&dir.join("organs.ron"))?,
         };
         // Generated extension files (tools/gen_scale.py) extend the hand-written tables.
+        let mut extra_resources: Vec<Resource> = read(&dir.join("resources_organs.ron"))?;
+        d.resources.append(&mut extra_resources);
         let mut extra_events: Vec<EventDef> = read(&dir.join("events_extra.ron"))?;
         d.events.append(&mut extra_events);
         let mut extra_recipes: Vec<Recipe> = read(&dir.join("recipes_extra.ron"))?;

@@ -78,3 +78,5 @@ Tout se fait aussi à la souris (hors visée F7, où la souris pilote le vaissea
 - **X** (en vol) : écran des factions et de leurs moeurs ; Gauche/Droite ou clic pour choisir, X ou Echap pour revenir.
 
 - **Codex** : sous chaque entrée, « VOIR AUSSI » liste les entrées citées ; clic ou touches 1 à 9 pour les suivre, Retour arrière pour revenir.
+
+- **Equipage, O** : liste des organes de la personne choisie ; Haut/Bas choisit l'organe, Entree greffe (ou prothèse s'il n'y a pas de greffon en soute), P prothèse, H prélève, O ou Echap revient à la liste. Il faut la pièce en soute et un hôpital (à quai, 1500 CR) ou un médecin et une infirmerie à bord.

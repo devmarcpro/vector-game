@@ -20,6 +20,7 @@ mod rules_effects;
 pub mod save;
 pub mod scene;
 pub mod science;
+pub mod surgery;
 pub mod voyage;
 
 use autopilot::Autopilot;

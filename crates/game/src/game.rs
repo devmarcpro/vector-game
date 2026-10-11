@@ -116,6 +116,9 @@ pub struct Game {
     pub fac_sel: usize,
     /// Crew screen: relations network instead of the table.
     pub crew_net: bool,
+    /// Crew screen: the organ list of the selected person has the keys.
+    pub organ_mode: bool,
+    pub organ_sel: usize,
     /// Fleet screen: map of colonies and routes instead of the lists.
     pub fleet_map: bool,
     pub b_sel: usize,
@@ -227,6 +230,8 @@ impl Game {
             col_flow: false,
             fac_sel: 0,
             crew_net: false,
+            organ_mode: false,
+            organ_sel: 0,
             fleet_map: false,
             b_sel: 0,
             s_sel: 0,
@@ -1154,7 +1159,62 @@ impl Game {
         }
     }
 
+    /// Keys of the organ list (surgery) of the crew screen.
+    fn organ_key(&mut self, code: KeyCode) {
+        use vector_sim::surgery::Implant;
+        let no = self.data.organs.len().max(1);
+        let n = self.sim.crew.members.len();
+        let member = self.crew_sel.min(n.saturating_sub(1));
+        let organ = self.organ_sel.min(no - 1);
+        let result = match code {
+            KeyCode::ArrowUp => {
+                self.organ_sel = (organ + no - 1) % no;
+                return;
+            }
+            KeyCode::ArrowDown => {
+                self.organ_sel = (organ + 1) % no;
+                return;
+            }
+            KeyCode::Escape | KeyCode::KeyO => {
+                self.organ_mode = false;
+                return;
+            }
+            KeyCode::Enter if n > 0 => {
+                // A graft if the hold has one, else a prosthesis.
+                let graft = self
+                    .data
+                    .resource_index(&format!("organ_{}", self.data.organs[organ].id))
+                    .is_some_and(|r| self.sim.ship.cargo.kg[r] >= 1.0);
+                self.sim.implant(
+                    member,
+                    organ,
+                    if graft {
+                        Implant::Graft
+                    } else {
+                        Implant::Prosthesis
+                    },
+                )
+            }
+            KeyCode::KeyP if n > 0 => self.sim.implant(member, organ, Implant::Prosthesis),
+            KeyCode::KeyH if n > 0 => self.sim.harvest(member, organ),
+            _ => return,
+        };
+        match result {
+            Ok(r) => self.say(r.to_uppercase()),
+            Err(e) => self.say(e.to_uppercase()),
+        }
+    }
+
+    pub fn click_organ(&mut self, i: usize) {
+        self.organ_mode = true;
+        self.organ_sel = i;
+    }
+
     fn crew_key(&mut self, code: KeyCode) {
+        if self.organ_mode {
+            self.organ_key(code);
+            return;
+        }
         let n = self.sim.crew.members.len();
         let docked = self.sim.docked.is_some();
         match code {
@@ -1171,6 +1231,7 @@ impl Game {
                 self.sim.set_role(self.crew_sel.min(n - 1), next);
             }
             KeyCode::KeyV => self.crew_net = !self.crew_net,
+            KeyCode::KeyO if n > 0 => self.organ_mode = true,
             KeyCode::KeyT if n > 0 => {
                 let p = &mut self.sim.crew.members[self.crew_sel.min(n - 1)];
                 p.shift = (p.shift + 1) % 3;
@@ -2548,6 +2609,35 @@ mod tests {
         assert_eq!((g.codex_cat, g.codex_sel), (c, j));
         g.key(KeyCode::Backspace, None, true);
         assert_eq!((g.codex_cat, g.codex_sel), (0, k));
+    }
+
+    #[test]
+    fn the_organ_keys_operate_the_selected_person() {
+        let mut g = Game::new(data(), 1);
+        g.key(KeyCode::Enter, None, true);
+        let d = Arc::clone(&g.data);
+        let (st, _) = g.sim.nearest_station().expect("station");
+        g.sim.spawn_near(st, g.sim.bodies[st].radius + 200.0);
+        g.sim.try_dock().expect("dock");
+        g.sim.credits = 1.0e6;
+        g.sim.ship.cargo.cap_mass = 1.0e6;
+        g.sim.ship.cargo.cap_vol = 1.0e6;
+        let lungs = d.organ_index("poumons").expect("lungs");
+        let part = d.resource_index("prosthesis_poumons").expect("part");
+        g.sim.ship.cargo.add(&d, part, 1.0);
+        g.screen = Screen::Crew;
+        g.crew_sel = 0;
+        g.key(KeyCode::KeyO, None, true);
+        assert!(g.organ_mode);
+        g.organ_sel = lungs;
+        g.sim.crew.members[0].organs[lungs] = 0.2;
+        g.key(KeyCode::KeyP, None, true);
+        assert_eq!(g.sim.crew.members[0].organs[lungs], 0.85);
+        assert_eq!(g.sim.crew.members[0].organ_kind[lungs], 2);
+        frame(&g);
+        g.key(KeyCode::Escape, None, true);
+        assert!(!g.organ_mode);
+        assert_eq!(g.screen, Screen::Crew, "Escape only left the organ list");
     }
 
     #[test]

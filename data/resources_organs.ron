@@ -1,0 +1,23 @@
+// GENERATED from data/organs.ron by tools/gen_organs.py. Grafts and prostheses as trade goods.
+[
+ (id:"organ_coeur", name:"Greffon : Coeur", category:"organes", density:1050.0, value:90000.0),
+ (id:"organ_poumons", name:"Greffon : Poumons", category:"organes", density:1050.0, value:70000.0),
+ (id:"organ_foie", name:"Greffon : Foie", category:"organes", density:1050.0, value:60000.0),
+ (id:"organ_reins", name:"Greffon : Reins", category:"organes", density:1050.0, value:55000.0),
+ (id:"organ_cerveau", name:"Greffon : Cerveau", category:"organes", density:1050.0, value:500000.0),
+ (id:"organ_estomac", name:"Greffon : Estomac", category:"organes", density:1050.0, value:20000.0),
+ (id:"organ_yeux", name:"Greffon : Yeux", category:"organes", density:1050.0, value:40000.0),
+ (id:"organ_muscles", name:"Greffon : Muscles", category:"organes", density:1050.0, value:15000.0),
+ (id:"organ_os", name:"Greffon : Os", category:"organes", density:1050.0, value:15000.0),
+ (id:"organ_peau", name:"Greffon : Peau", category:"organes", density:1050.0, value:8000.0),
+ (id:"prosthesis_coeur", name:"Prothèse : Coeur", category:"protheses", density:3000.0, value:36000.0),
+ (id:"prosthesis_poumons", name:"Prothèse : Poumons", category:"protheses", density:3000.0, value:28000.0),
+ (id:"prosthesis_foie", name:"Prothèse : Foie", category:"protheses", density:3000.0, value:24000.0),
+ (id:"prosthesis_reins", name:"Prothèse : Reins", category:"protheses", density:3000.0, value:22000.0),
+ (id:"prosthesis_cerveau", name:"Prothèse : Cerveau", category:"protheses", density:3000.0, value:200000.0),
+ (id:"prosthesis_estomac", name:"Prothèse : Estomac", category:"protheses", density:3000.0, value:8000.0),
+ (id:"prosthesis_yeux", name:"Prothèse : Yeux", category:"protheses", density:3000.0, value:16000.0),
+ (id:"prosthesis_muscles", name:"Prothèse : Muscles", category:"protheses", density:3000.0, value:6000.0),
+ (id:"prosthesis_os", name:"Prothèse : Os", category:"protheses", density:3000.0, value:6000.0),
+ (id:"prosthesis_peau", name:"Prothèse : Peau", category:"protheses", density:3000.0, value:3200.0),
+]

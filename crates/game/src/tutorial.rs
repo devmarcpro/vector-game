@@ -135,8 +135,11 @@ pub fn hint_line(g: &Game) -> String {
         }
         Screen::Ship => "HAUT/BAS EMPLACEMENT  H/ECHAP RETOUR",
         Screen::Shipyard => "HAUT/BAS COQUE  ENTREE ACHETER (REPRISE 50%)  ECHAP RETOUR",
+        Screen::Crew if g.organ_mode => {
+            "HAUT/BAS ORGANE  ENTREE GREFFER OU PROTHESE  P PROTHESE  H PRELEVER  O/ECHAP RETOUR A LA LISTE"
+        }
         Screen::Crew => {
-            "HAUT/BAS PERSONNE  </> POSTE  T QUART  X DEBARQUER  N RECRUTER  J JOURNAL  G ARBRE  V RESEAU  K/ECHAP RETOUR"
+            "HAUT/BAS PERSONNE  </> POSTE  T QUART  X DEBARQUER  N RECRUTER  J JOURNAL  G ARBRE  V RESEAU  O ORGANES  K/ECHAP RETOUR"
         }
         Screen::Recruit => "HAUT/BAS CANDIDAT  ENTREE EMBAUCHER  K EQUIPAGE  ECHAP RETOUR",
         Screen::Journal => "HAUT/BAS DEFILER  K EQUIPAGE  J/ECHAP RETOUR",
@@ -215,6 +218,7 @@ pub fn help_lines(screen: Screen) -> &'static [&'static str] {
             "Gauche/Droite : poste   T : quart   X : debarquer",
             "J : journal   Les besoins (faim, soif, air) comptent.",
             "V : reseau des relations (amis, rivaux, famille)",
+            "O : organes (Entree greffe, P prothese, H prelever ; il faut la piece en soute)",
         ],
         Screen::Recruit => &["Haut/Bas : candidat   Entree : embaucher"],
         Screen::Journal => &["Haut/Bas ou PgUp/PgDn : defiler   Echap : retour"],

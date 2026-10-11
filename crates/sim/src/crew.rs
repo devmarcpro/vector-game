@@ -54,6 +54,8 @@ pub struct Person {
     pub family_def: Option<(Kin, Kin, u8)>,
     /// Integrity 0..1 of each organ of `GameData::organs`.
     pub organs: Vec<f32>,
+    /// 0 natural, 1 graft, 2 prosthesis (see `surgery`), per organ.
+    pub organ_kind: Vec<u8>,
 }
 
 impl Person {
@@ -278,6 +280,7 @@ pub fn person_from_kin(
         genome,
         family_def,
         organs: vec![1.0; data.organs.len()],
+        organ_kind: vec![0; data.organs.len()],
     }
 }
 
@@ -533,6 +536,7 @@ impl Crew {
             let t_morale = p.trait_sum(data, "morale_base") as f32;
             let t_health = p.trait_sum(data, "health_base") as f32;
             p.organs.resize(data.organs.len(), 1.0);
+            p.organ_kind.resize(data.organs.len(), 0);
             let mut organ_hit: Option<(usize, f32)> = None;
             // Needs.
             p.fatigue = sat(p.fatigue
@@ -615,6 +619,10 @@ impl Crew {
             }
             // Organs: the disease wears down the ones it targets, the others mend.
             for (oi, o) in data.organs.iter().enumerate() {
+                if p.organ_kind[oi] == 2 {
+                    // A prosthesis is neither worn by disease nor mended.
+                    continue;
+                }
                 let hit = organ_hit.filter(|(d, _)| o.afflicted_by.contains(&data.diseases[*d].id));
                 if let Some((_, sev)) = hit {
                     p.organs[oi] = sat(p.organs[oi] - 0.5 * sev * hours);

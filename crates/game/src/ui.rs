@@ -937,7 +937,23 @@ fn draw_crew(fb: &mut Framebuffer, g: &Game) {
         // Organs: integrity of each, red when failing.
         fb.text(x, top + 19, "ORGANES", AMBER);
         for (k, (def, v)) in g.data.organs.iter().zip(&p.organs).enumerate() {
-            let col = if *v <= 0.0 {
+            let hover = g.hit_cells(
+                x,
+                top + 20 + k,
+                24,
+                1,
+                Act::Call(Game::click_organ, k),
+                None,
+            );
+            let picked = g.organ_mode && k == g.organ_sel;
+            let kind = match p.organ_kind.get(k) {
+                Some(1) => 'G',
+                Some(2) => 'P',
+                _ => ' ',
+            };
+            let col = if picked || hover {
+                AMBER
+            } else if *v <= 0.0 {
                 RED
             } else if *v < 0.5 {
                 AMBER
@@ -948,10 +964,12 @@ fn draw_crew(fb: &mut Framebuffer, g: &Game) {
                 x,
                 top + 20 + k,
                 &format!(
-                    "{:<8.8}{} {:>3.0}%",
+                    "{}{:<8.8}{} {:>3.0}%{}",
+                    if picked { '>' } else { ' ' },
                     def.name.to_uppercase(),
                     bar(f64::from(*v), 8),
-                    v * 100.0
+                    v * 100.0,
+                    kind
                 ),
                 col,
             );

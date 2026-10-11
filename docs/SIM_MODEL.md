@@ -117,3 +117,6 @@ Unites SI. Pas fixe 30 Hz (SIM_DT).
 - Écran Généalogie : arbre en cases reliées par des traits (couples de grands-parents, parents unis, fratrie, oncles et tantes avec leurs enfants), pourcentage de ressemblance génétique, défunts en gris avec l'âge du décès, parents à bord en ambre ; onglet Gènes.
 ## Organes (E3.2)
 Chaque personne a `organs[i]` dans 0..1. Par heure : si sa maladie cible l'organe, `-0.5 x gravité` (x0.3 sous traitement) ; sinon `+guérison x (1 + 0.5 médecin + 0.5 infirmerie)` par jour, sauf organe à 0. Santé = min(santé, 0.35 + 0.65 x état pondéré). Organe vital à 0 = mort. Effet sur un trait : somme des `poids x (1 - intégrité)`.
+
+## Greffes et prothèses (E3.3)
+`surgery.rs` : une greffe réussit avec probabilité 1 - 0.2 x (1 - compétence/12) (4 à quai), sinon l'organe tombe à 20 % ; une prothèse vaut 85 % et ne s'use ni ne guérit. Prélever sur un vivant (non vital) : morale -0.4 et loyauté -0.4 pour lui, -0.2 aux autres (-0.1 de plus pour ses amis) ; sur un mort : -0.05.

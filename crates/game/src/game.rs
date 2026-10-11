@@ -2444,10 +2444,18 @@ mod tests {
         g.key(KeyCode::KeyV, None, true);
         assert!(g.crew_net);
         frame(&g);
-        assert_eq!(g.pointer.hits.borrow().len(), n, "one box per person");
+        // The command bar adds zones too; the boxes are the ones with a double-click action.
+        let boxes: Vec<_> = g
+            .pointer
+            .hits
+            .borrow()
+            .iter()
+            .filter(|h| h.double.is_some())
+            .copied()
+            .collect();
+        assert_eq!(boxes.len(), n, "one box per person");
         let (x, y) = {
-            let hits = g.pointer.hits.borrow();
-            let h = hits[n - 1];
+            let h = boxes[n - 1];
             ((h.rect.0 + h.rect.2) / 2, (h.rect.1 + h.rect.3) / 2)
         };
         g.pointer_click(x, y, 1_000);

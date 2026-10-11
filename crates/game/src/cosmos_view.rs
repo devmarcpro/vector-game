@@ -19,6 +19,7 @@ pub struct CosmosUi {
     pub anchor: usize,
     /// Days of the next stasis (in steps of 10, at least 10).
     pub stasis: usize,
+    pub relay: usize,
 }
 
 impl Game {
@@ -58,6 +59,35 @@ impl Game {
             KeyCode::Minus | KeyCode::NumpadSubtract => {
                 self.cosmos_ui.stasis = self.cosmos_ui.stasis.max(2) - 1;
                 return;
+            }
+            KeyCode::Digit1 | KeyCode::Digit2 | KeyCode::Digit3 => {
+                let how = match code {
+                    KeyCode::Digit1 => 0,
+                    KeyCode::Digit2 => 1,
+                    _ => 2,
+                };
+                self.sim.meet_echo(how)
+            }
+            KeyCode::KeyB => self.sim.break_loop(),
+            KeyCode::KeyO => self.sim.build_outpost(),
+            KeyCode::ArrowLeft | KeyCode::ArrowRight => {
+                let k = self.sim.relay_nodes().len();
+                if k > 0 {
+                    let r = &mut self.cosmos_ui.relay;
+                    *r = if code == KeyCode::ArrowRight {
+                        (*r + 1) % k
+                    } else {
+                        (*r + k - 1) % k
+                    };
+                }
+                return;
+            }
+            KeyCode::KeyJ => {
+                let nodes = self.sim.relay_nodes();
+                match nodes.get(self.cosmos_ui.relay) {
+                    Some(n) => self.sim.relay_jump(n.0),
+                    None => Err("aucun relais choisi"),
+                }
             }
             KeyCode::KeyS => {
                 let d = self.stasis_days();
@@ -247,9 +277,93 @@ pub fn draw(fb: &mut Framebuffer, g: &Game) {
     } else {
         fb.text(3, 26, "A QUAI SEULEMENT.", DIM);
     }
+    draw_oddities(fb, g);
     for (i, m) in g.messages.iter().rev().take(1).enumerate() {
-        fb.text(1, 30 + i, m, AMBER);
+        fb.text(1, 37 + i, m, AMBER);
     }
+}
+
+/// Echoes, loops of time, relay portals and outposts.
+fn draw_oddities(fb: &mut Framebuffer, g: &Game) {
+    let s = &g.sim;
+    fb.text(1, 28, "ECHO", AMBER);
+    match s.echo_ready() {
+        Some(c) => {
+            fb.text(
+                3,
+                29,
+                &format!("UN ECHO DE VOTRE LIGNE ABANDONNEE VOUS ATTEND ({c:.0} CR) :"),
+                UP,
+            );
+            let mut x = 3;
+            x = word(fb, g, x, 30, "[1] L'AIDER", KeyCode::Digit1);
+            x = word(fb, g, x, 30, "[2] LE COMBATTRE", KeyCode::Digit2);
+            word(fb, g, x, 30, "[3] FUSIONNER", KeyCode::Digit3);
+        }
+        None => fb.text(
+            3,
+            29,
+            "AUCUN ECHO. (UNE REMONTEE QUI PERD DES GAINS EN LAISSE UN)",
+            DIM,
+        ),
+    }
+    fb.text(1, 31, "BOUCLE DE TEMPS", AMBER);
+    if s.in_time_loop() {
+        fb.text(
+            3,
+            32,
+            &format!(
+                "CE SYSTEME REJOUE SES {:.0} JOURS ({} FOIS). PARTEZ QUAND VOUS VOULEZ.",
+                vector_sim::multiverse::LOOP_DAYS,
+                s.multiverse.loops_done
+            ),
+            UP,
+        );
+        word(
+            fb,
+            g,
+            3,
+            33,
+            "[B] BRISER LA BOUCLE (5 ARTEFACTS)",
+            KeyCode::KeyB,
+        );
+    } else {
+        fb.text(3, 32, "CE SYSTEME VIT NORMALEMENT.", DIM);
+    }
+    fb.text(1, 34, "RELAIS ET AVANT-POSTES", AMBER);
+    let nodes = s.relay_nodes();
+    if s.relay_here() && !nodes.is_empty() {
+        let k = g.cosmos_ui.relay.min(nodes.len() - 1);
+        fb.text(
+            3,
+            35,
+            &format!(
+                "< {} > A {:.0} AL : {:.0} CR",
+                nodes[k].1.to_uppercase(),
+                nodes[k].2,
+                nodes[k].2 * vector_sim::multiverse::RELAY_CR_PER_LY
+            ),
+            GREEN,
+        );
+        word(fb, g, 52, 35, "[J] TRAVERSER", KeyCode::KeyJ);
+    } else {
+        fb.text(
+            3,
+            35,
+            "PORTAIL RELAIS : BATISSEZ-EN UN DANS DEUX COLONIES POUR LES RELIER.",
+            DIM,
+        );
+    }
+    fb.text(
+        3,
+        36,
+        &format!(
+            "AVANT-POSTES DIMENSIONNELS {}/{}   [O] EN BATIR UN PRES DU PORTAIL (DANS UNE DIMENSION)",
+            s.multiverse.outposts.len(),
+            vector_sim::multiverse::MAX_OUTPOSTS
+        ),
+        DIM,
+    );
 }
 
 const PORTEE_KM: f64 = PORTAL_RANGE / 1000.0;

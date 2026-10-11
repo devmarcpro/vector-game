@@ -1091,7 +1091,7 @@ impl Sim {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
     use crate::ShipInput;
     use std::sync::Arc;
@@ -1154,7 +1154,7 @@ mod tests {
         s.update_ref();
     }
 
-    fn founded() -> (Sim, usize) {
+    pub(crate) fn founded() -> (Sim, usize) {
         let mut s = sim();
         let b = rocky(&s);
         stock_kit(&mut s);

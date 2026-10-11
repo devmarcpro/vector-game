@@ -114,3 +114,5 @@ Ecran de préparation : Haut/Bas, Espace coche un équipier ou le rover, Entrée
 - Station : D courtage (Gauche/Droite onglet : rumeurs, arbitrage, cartels, appels d'offres, assurance ; Haut/Bas choix ; +/- mise ; Entree agir).
 
 - Accueil (vol ou quai) : portails, dimensions et temps (Entree portail, A ancre, R remonter, X lever, +/- jours, S stase).
+
+- Ecran Portail/Temps (Accueil) : 1/2/3 echo, B briser une boucle, O avant-poste, Gauche/Droite + J relais.

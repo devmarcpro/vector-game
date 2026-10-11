@@ -117,3 +117,5 @@
 - Courtage (`trading.rs`, `data/cartels.ron`) : rumeurs (dont des fausses), arbitrage entre systemes, assurance de soute (rembourse 70 % a la destruction), cartels (majorent les prix, sieges achetables, enquete antitrust), appels d'offres (le moins cher gagne, penalite si non livre). Save v27.
 
 - Haute SF (`multiverse.rs`, `data/dimensions.ron`) : portails (1 systeme sur 10), trous de ver, 6 dimensions (autre version de l'etoile, regles et dilatation du temps), ancres temporelles + remontee (souvenirs du futur = rumeurs certaines, paradoxes), stase. Save v28.
+
+- Haute SF (suite) : modules exotiques (6, trouves en explorant des anomalies dans les dimensions), boucles de temps (4 % des systemes, optionnelles : on part quand on veut, 5 artefacts les brisent), echos d'une ligne abandonnee (aider / combattre / fusionner), avant-postes dimensionnels (terres rares), portail relais (batiment de colonie, voyage entre colonies pour des credits). Save v29.

@@ -95,4 +95,10 @@
  (id:"ecm_mk1", name:"Brouilleur ECM Mk1", category:"defense", slot:Hardpoint, size:1, mass:250.0, hp:60.0, cost:24000.0, weapon:"ecm", range:10000.0, power:-500.0, priority:2),
  (id:"ecm_mk2", name:"Brouilleur ECM Mk2", category:"defense", slot:Hardpoint, size:2, mass:500.0, hp:90.0, cost:64000.0, weapon:"ecm", range:20000.0, power:-1100.0, priority:2),
  (id:"minelayer_mk1", name:"Mouilleur de mines Mk1", category:"weapon", slot:Hardpoint, size:2, mass:600.0, hp:100.0, cost:36000.0, weapon:"mine", damage:2500.0, rate:0.1, speed:20.0, range:500.0, ammo:"mines", ammo_use:1.0, power:-80.0, priority:2),
+ (id:"exo_inertialess", name:"Moteur sans inertie", category:"engine", slot:Core, size:3, mass:3000.0, hp:800.0, cost:2500000.0, thrust:5000000.0, isp:1200000.0, power:-30000.0, priority:1),
+ (id:"exo_pocket_hold", name:"Soute de poche dimensionnelle", category:"cargo", slot:Internal, size:1, mass:800.0, hp:200.0, cost:1500000.0, cargo_kg:400000.0, cargo_m3:600.0),
+ (id:"exo_void_reactor", name:"Réacteur du vide", category:"reactor", slot:Core, size:2, mass:2000.0, hp:500.0, cost:3000000.0, power:120000.0, priority:0),
+ (id:"exo_paradox_shield", name:"Bouclier de paradoxe", category:"shield", slot:Core, size:2, mass:900.0, hp:400.0, cost:2000000.0, shield:1500.0, power:-4000.0, priority:2),
+ (id:"exo_chrono_scanner", name:"Scanner chronologique", category:"scanner", slot:External, size:2, mass:250.0, hp:120.0, cost:1200000.0, scan_range:3000000000.0, power:-600.0, priority:2),
+ (id:"exo_rift_drive", name:"Propulseur de faille", category:"ftl", slot:Core, size:2, mass:2500.0, hp:400.0, cost:4000000.0, jump_range:40.0, power:-30000.0, priority:1),
 ]

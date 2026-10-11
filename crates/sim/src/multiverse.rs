@@ -35,6 +35,22 @@ pub const GLITCH_ODDS: f64 = 0.02;
 pub const GLITCH_INSTABILITY: f32 = 0.15;
 /// Days of calm that wash away one paradox point.
 pub const PARADOX_DECAY_DAYS: f64 = 30.0;
+/// Relay portals built in colonies: the credits asked per light year, the building's id.
+pub const RELAY_ID: &str = "portal_relay";
+pub const RELAY_CR_PER_LY: f64 = 2.0;
+/// Time loops: share of systems that hold one, days a loop lasts, what breaking it costs.
+pub const LOOP_CHANCE: f64 = 0.04;
+pub const LOOP_DAYS: f64 = 3.0;
+pub const LOOP_ARTIFACTS: f64 = 5.0;
+/// Echoes: smallest gain that leaves one, days after the rewind, the odds of winning the fight.
+pub const ECHO_MIN: f64 = 500.0;
+pub const ECHO_DELAY_DAYS: f64 = 2.0;
+pub const ECHO_FIGHT_ODDS: f64 = 0.6;
+pub const ECHO_HELP_FEE: f64 = 800.0;
+/// Outposts in dimensions: price, most held, kg produced per day at ore x1.
+pub const OUTPOST_COST: f64 = 50_000.0;
+pub const MAX_OUTPOSTS: usize = 5;
+pub const OUTPOST_KG_DAY: f64 = 40.0;
 /// Stasis: cost per day, longest stay (days).
 pub const STASIS_COST: f64 = 100.0;
 pub const STASIS_MAX: f64 = 365.0;
@@ -57,6 +73,14 @@ pub struct Multiverse {
     /// Latest date reached in an abandoned timeline: what happens before it is remembered.
     pub memory_until: f64,
     pub last_rewind: f64,
+    /// Loops of time: the date the current one began (if in a looping system) and those broken.
+    pub loop_start: Option<f64>,
+    pub loops_done: u32,
+    pub broken: Vec<vector_world::galaxy::StarRef>,
+    /// An echo of the abandoned timeline waiting to be met: (credits it carries, date it shows).
+    pub echo: Option<(f64, f64)>,
+    /// Outposts in dimensions: (star, dimension, kg waiting).
+    pub outposts: Vec<(vector_world::galaxy::StarRef, u32, f64)>,
 }
 
 /// Where a portal leads.
@@ -205,6 +229,7 @@ impl Sim {
             Gate::Home => {
                 let seed = self.star_seed()?;
                 let def = self.dimension_def().cloned();
+                let outpost_kg = self.collect_outpost();
                 let inside = (self.time - self.multiverse.entered).max(0.0);
                 self.mined.clear();
                 self.markets.clear();
@@ -214,6 +239,9 @@ impl Sim {
                 self.spawn_traffic();
                 self.target = None;
                 let mut msg = "RETOUR DANS NOTRE DIMENSION".to_string();
+                if let Some(kg) = outpost_kg.filter(|k| *k > 0.5) {
+                    msg = format!("{msg} : {kg:.0} KG DE TERRES RARES DE L'AVANT-POSTE");
+                }
                 if let Some(d) = def {
                     // The outside clock ran at another pace.
                     let shift = (inside * (d.time_ratio - 1.0)).max(-30.0 * DAY);
@@ -233,6 +261,7 @@ impl Sim {
 
     /// Once a day: the crew feels the other dimension, paradoxes glitch.
     pub(crate) fn multiverse_tick(&mut self) {
+        self.loop_tick();
         let day = (self.time / DAY).floor() as i64;
         let last = self.multiverse.last_day;
         self.multiverse.last_day = day;
@@ -240,6 +269,7 @@ impl Sim {
             return;
         }
         let days = (day - last).min(3) as f32;
+        self.outpost_tick(f64::from(days));
         if let Some(d) = self.dimension_def().cloned() {
             for p in &mut self.crew.members {
                 p.instability = (p.instability + d.instability as f32 * days).min(1.0);
@@ -333,6 +363,9 @@ impl Sim {
         restored.multiverse.paradox = paradox;
         restored.multiverse.memory_until = memory;
         restored.multiverse.last_rewind = restored.time;
+        let gain = (self.credits - restored.credits).max(0.0);
+        restored.multiverse.echo =
+            (gain >= ECHO_MIN).then_some((gain, restored.time + ECHO_DELAY_DAYS * DAY));
         restored.credits = (restored.credits - REWIND_FEE).max(0.0);
         let back = (now - anchor.time) / DAY;
         *self = restored;
@@ -404,6 +437,267 @@ impl Sim {
         self.ship.fuel = fuel;
         self.ship.sys.battery_mj = battery;
         Ok(cost)
+    }
+}
+
+impl Sim {
+    // ---- relay portals (a building of the colonies) ----------------------------
+
+    /// Whether a colony of the system holds a finished relay.
+    pub fn relay_here(&self) -> bool {
+        self.colonies
+            .iter()
+            .any(|c| c.star == self.here && self.has_relay(c))
+    }
+
+    fn has_relay(&self, c: &crate::colony::Colony) -> bool {
+        c.buildings
+            .iter()
+            .any(|b| b.built() && self.data.buildings[b.def].id == RELAY_ID)
+    }
+
+    /// The other systems with a relay: (colony id, name, distance in ly).
+    pub fn relay_nodes(&self) -> Vec<(u32, String, f64)> {
+        self.colonies
+            .iter()
+            .filter(|c| c.star != self.here && self.has_relay(c))
+            .filter_map(|c| {
+                let e = self.galaxy.star(c.star)?;
+                Some((c.id, c.name.clone(), e.distance_to(self.here_pos)))
+            })
+            .collect()
+    }
+
+    /// Cross to the relay of colony `id`, for credits (no fuel, no charge time).
+    pub fn relay_jump(&mut self, id: u32) -> Result<String, &'static str> {
+        if self.multiverse.dimension > 0 {
+            return Err("pas de relais hors de notre dimension");
+        }
+        if !self.relay_here() {
+            return Err("aucun portail relais dans ce systeme");
+        }
+        if self.jump.is_some() {
+            return Err("saut deja engage");
+        }
+        let c = self
+            .colonies
+            .iter()
+            .find(|c| c.id == id && c.star != self.here && self.has_relay(c))
+            .ok_or("relais inconnu")?;
+        let star = self.galaxy.star(c.star).ok_or("etoile inconnue")?;
+        let dist = star.distance_to(self.here_pos);
+        let cost = dist * RELAY_CR_PER_LY;
+        if cost > self.credits {
+            return Err("fonds insuffisants");
+        }
+        self.credits -= cost;
+        self.docked = None;
+        self.jump = Some(JumpState {
+            target: star.id,
+            target_pos: star.pos,
+            target_seed: star.seed,
+            dist_ly: dist,
+            charge_left: 0.0,
+            transit_left: 0.0,
+            total_transit: 0.0,
+            fuel_cost: 0.0,
+            in_transit: true,
+            mishap: false,
+        });
+        self.arrive();
+        Ok(format!(
+            "RELAIS : VOUS EMERGEZ PRES DE {}",
+            star.header.name.to_uppercase()
+        ))
+    }
+
+    // ---- loops of time ----------------------------------------------------------
+
+    /// Whether this system is caught in a loop of time (some are; leaving always ends it).
+    pub fn in_time_loop(&self) -> bool {
+        if self.multiverse.broken.contains(&self.here) || self.multiverse.dimension > 0 {
+            return false;
+        }
+        let h = hash_coord(self.system.seed ^ 0x100F, 7, 7, 7);
+        ((h >> 11) as f64 / (1u64 << 53) as f64) < LOOP_CHANCE
+    }
+
+    /// Spend artifacts to break the loop of this system for good: it teaches something.
+    pub fn break_loop(&mut self) -> Result<String, &'static str> {
+        if !self.in_time_loop() {
+            return Err("ce systeme n'est pas pris dans une boucle");
+        }
+        let art = self
+            .data
+            .resource_index("artifacts")
+            .ok_or("artefacts inconnus")?;
+        if self.ship.cargo.kg[art] + 1e-9 < LOOP_ARTIFACTS {
+            return Err("il faut 5 artefacts pour briser la boucle");
+        }
+        let data = std::sync::Arc::clone(&self.data);
+        self.ship.cargo.remove(&data, art, LOOP_ARTIFACTS);
+        self.multiverse.broken.push(self.here);
+        self.multiverse.loop_start = None;
+        self.research_pool += 600.0;
+        self.credits += 2000.0;
+        Ok("BOUCLE BRISEE : LE TEMPS REPREND SON COURS".to_string())
+    }
+
+    pub(crate) fn loop_tick(&mut self) {
+        if !self.in_time_loop() {
+            self.multiverse.loop_start = None;
+            return;
+        }
+        let start = *self.multiverse.loop_start.get_or_insert(self.time);
+        if self.time - start >= LOOP_DAYS * DAY {
+            // The days run again, but what happened in them is remembered.
+            self.multiverse.memory_until = self.multiverse.memory_until.max(self.time);
+            self.time = start;
+            self.multiverse.loops_done += 1;
+            self.events.push(Event::MarketNews(format!(
+                "Boucle temporelle : le jour recommence ({} fois).",
+                self.multiverse.loops_done
+            )));
+        }
+    }
+
+    // ---- echoes of an abandoned timeline ------------------------------------------
+
+    /// An echo is waiting, if its time has come: the credits it carries.
+    pub fn echo_ready(&self) -> Option<f64> {
+        self.multiverse
+            .echo
+            .filter(|(_, at)| *at <= self.time)
+            .map(|(c, _)| c)
+    }
+
+    /// Meet the echo: 0 help it (costs a little, calms a paradox, a third of its gains), 1 fight it
+    /// (odds, most of its gains), 2 merge with it (all of it, two paradoxes and unstable crew).
+    pub fn meet_echo(&mut self, how: u8) -> Result<String, &'static str> {
+        let carried = self.echo_ready().ok_or("aucun echo ne vous attend")?;
+        let msg = match how {
+            0 => {
+                if self.credits < ECHO_HELP_FEE {
+                    return Err("fonds insuffisants");
+                }
+                self.credits += carried * 0.3 - ECHO_HELP_FEE;
+                self.multiverse.paradox = self.multiverse.paradox.saturating_sub(1);
+                "L'ECHO VOUS REMERCIE ET S'EFFACE : UN PARADOXE EN MOINS"
+            }
+            1 => {
+                let mut rng = Rng::new(hash_coord(
+                    self.galaxy.seed ^ 0xEC40,
+                    self.time as i64,
+                    3,
+                    3,
+                ));
+                if rng.f64() < ECHO_FIGHT_ODDS {
+                    self.credits += carried * 0.7;
+                    "L'ECHO SE DISSOUT ; VOUS EN RECUPEREZ LES RESTES"
+                } else {
+                    self.credits -= self.credits * 0.05;
+                    self.multiverse.paradox += 1;
+                    "L'ECHO VOUS REPOUSSE : UN PARADOXE DE PLUS"
+                }
+            }
+            2 => {
+                self.credits += carried;
+                self.multiverse.paradox += 2;
+                for p in &mut self.crew.members {
+                    p.instability = (p.instability + 0.2).min(1.0);
+                }
+                "VOUS FUSIONNEZ AVEC VOTRE ECHO : TOUT SE SOUVIENT, TOUT VIBRE"
+            }
+            _ => return Err("choix inconnu"),
+        };
+        self.multiverse.echo = None;
+        Ok(msg.to_string())
+    }
+
+    // ---- exotic modules --------------------------------------------------------
+
+    /// Indices of the modules only found beyond the portals.
+    pub fn exotic_modules(&self) -> Vec<usize> {
+        (0..self.data.modules.len())
+            .filter(|&m| self.data.modules[m].id.starts_with("exo_"))
+            .collect()
+    }
+
+    /// Exploring an anomaly in a dimension may turn up an exotic module (one chance in two).
+    pub(crate) fn exotic_find(&mut self, body: usize) {
+        let list = self.exotic_modules();
+        let h = hash_coord(self.system.seed ^ 0xE70, body as i64, 5, 5);
+        if list.is_empty() || (h >> 11) as f64 / (1u64 << 53) as f64 >= 0.5 {
+            return;
+        }
+        let m = list[(h % list.len() as u64) as usize];
+        self.module_stock[m] += 1;
+        self.events.push(Event::MarketNews(format!(
+            "Decouverte : {} (module exotique).",
+            self.data.modules[m].name
+        )));
+    }
+
+    // ---- outposts in dimensions ---------------------------------------------------
+
+    /// Build an outpost beside the portal of the dimension you are in.
+    pub fn build_outpost(&mut self) -> Result<String, &'static str> {
+        let d = self.multiverse.dimension;
+        if d == 0 {
+            return Err("les avant-postes se batissent dans une dimension");
+        }
+        self.portal_in_range().ok_or("approchez-vous du portail")?;
+        if self.multiverse.outposts.len() >= MAX_OUTPOSTS {
+            return Err("cinq avant-postes au plus");
+        }
+        if self
+            .multiverse
+            .outposts
+            .iter()
+            .any(|o| o.0 == self.here && o.1 == d)
+        {
+            return Err("un avant-poste existe deja ici");
+        }
+        if OUTPOST_COST > self.credits {
+            return Err("fonds insuffisants");
+        }
+        self.credits -= OUTPOST_COST;
+        self.multiverse.outposts.push((self.here, d, 0.0));
+        Ok("AVANT-POSTE FONDE".to_string())
+    }
+
+    /// Outposts produce while you are away; their stock is loaded when you come back through
+    /// their portal.
+    pub(crate) fn outpost_tick(&mut self, days: f64) {
+        let scales: Vec<f64> = self
+            .multiverse
+            .outposts
+            .iter()
+            .map(|o| {
+                self.data
+                    .dimensions
+                    .get(o.1 as usize - 1)
+                    .map_or(1.0, |d| d.ore_scale)
+            })
+            .collect();
+        for (o, s) in self.multiverse.outposts.iter_mut().zip(scales) {
+            o.2 = (o.2 + OUTPOST_KG_DAY * s * days).min(50_000.0);
+        }
+    }
+
+    pub(crate) fn collect_outpost(&mut self) -> Option<f64> {
+        let d = self.multiverse.dimension;
+        let k = self
+            .multiverse
+            .outposts
+            .iter()
+            .position(|o| o.0 == self.here && o.1 == d)?;
+        let kg = std::mem::take(&mut self.multiverse.outposts[k].2);
+        let res = self.data.resource_index("rare_earths")?;
+        let data = std::sync::Arc::clone(&self.data);
+        let put = self.ship.cargo.add(&data, res, kg);
+        self.multiverse.outposts[k].2 = kg - put;
+        Some(put)
     }
 }
 
@@ -666,5 +960,230 @@ mod tests {
         assert_eq!(crew, after);
         s.undock();
         assert!(s.stasis(10.0).is_err(), "only docked");
+    }
+
+    #[test]
+    fn exotic_modules_exist_and_are_found_only_beyond_the_portals() {
+        let mut s = at_portal(false);
+        let list = s.exotic_modules();
+        assert!(list.len() >= 5, "{} exotic modules", list.len());
+        // Our own dimension never gives them.
+        for b in 0..60 {
+            s.exotic_find(b);
+        }
+        // exotic_find itself is unconditional; the condition is in explore_anomaly.
+        let found_here: u32 = list.iter().map(|m| s.module_stock[*m]).sum();
+        assert!(
+            found_here > 5 && found_here < 45,
+            "{found_here} of 60 tries"
+        );
+        let mut s = at_portal(false);
+        s.use_portal().unwrap();
+        let before: u32 = list.iter().map(|m| s.module_stock[*m]).sum();
+        assert_eq!(before, 0);
+        let anomaly = s
+            .bodies
+            .iter()
+            .position(|b| matches!(b.kind, vector_world::BodyKind::Anomaly(_)))
+            .unwrap();
+        s.explored[anomaly] = false;
+        for k in 0..40 {
+            s.system.seed ^= k;
+            s.exotic_find(anomaly + k as usize);
+        }
+        assert!(list.iter().map(|m| s.module_stock[*m]).sum::<u32>() > 5);
+    }
+
+    #[test]
+    fn time_loops_repeat_the_days_until_broken_and_ending_them_is_free_by_leaving() {
+        let g = Galaxy::new(8);
+        let mut found = None;
+        'seek: for e in g.nearby([0.0; 3], 400.0) {
+            let s = Sim::new_in_galaxy(Galaxy::new(8), &e, data());
+            if s.in_time_loop() {
+                found = Some(s);
+                break 'seek;
+            }
+        }
+        let mut s = found.expect("a looping system");
+        s.time = 10.0 * DAY;
+        s.multiverse.last_day = 10;
+        s.loop_tick();
+        let start = s.time;
+        assert_eq!(s.multiverse.loop_start, Some(start));
+        s.time = start + 2.0 * DAY;
+        s.loop_tick();
+        assert!((s.time - (start + 2.0 * DAY)).abs() < 1e-9, "not yet");
+        s.time = start + LOOP_DAYS * DAY + 5.0;
+        let reached = s.time;
+        s.loop_tick();
+        assert_eq!(s.time, start, "the days run again");
+        assert_eq!(s.multiverse.loops_done, 1);
+        assert!(s.multiverse.memory_until >= reached, "and are remembered");
+        // Breaking it needs artifacts, then the system is free for good.
+        assert!(s.break_loop().is_err());
+        let art = s.data.resource_index("artifacts").unwrap();
+        s.ship.cargo.kg[art] = 10.0;
+        let research = s.research_pool;
+        s.break_loop().expect("broken");
+        assert!(s.research_pool > research);
+        assert!(!s.in_time_loop());
+        s.time = start + 10.0 * DAY;
+        s.loop_tick();
+        assert_eq!(s.time, start + 10.0 * DAY);
+        assert!(s.break_loop().is_err(), "nothing left to break");
+    }
+
+    #[test]
+    fn leaving_a_looping_system_ends_the_loop() {
+        let g = Galaxy::new(8);
+        let mut s = g
+            .nearby([0.0; 3], 400.0)
+            .into_iter()
+            .map(|e| Sim::new_in_galaxy(Galaxy::new(8), &e, data()))
+            .find(Sim::in_time_loop)
+            .expect("a looping system");
+        s.multiverse.loop_start = Some(5.0);
+        // A system without a loop clears the mark.
+        let other = g
+            .nearby([0.0; 3], 400.0)
+            .into_iter()
+            .map(|e| Sim::new_in_galaxy(Galaxy::new(8), &e, data()))
+            .find(|x| !x.in_time_loop())
+            .unwrap();
+        s.system = other.system.clone();
+        s.loop_tick();
+        assert_eq!(s.multiverse.loop_start, None);
+    }
+
+    #[test]
+    fn a_rewind_that_loses_gains_leaves_an_echo_with_three_ways_to_meet_it() {
+        let mut s = new_sim(5, data());
+        s.credits = 100_000.0;
+        s.set_anchor().unwrap();
+        s.credits += 20_000.0;
+        s.rewind(0).unwrap();
+        let (carried, at) = s.multiverse.echo.expect("an echo waits");
+        assert!((carried - 20_000.0).abs() < 1.0, "{carried}");
+        assert!(
+            s.echo_ready().is_none() && s.meet_echo(0).is_err(),
+            "not yet"
+        );
+        s.time = at + 1.0;
+        assert_eq!(s.echo_ready(), Some(carried));
+        // Help: costs a bit, a third of its gains, one paradox less.
+        let mut h = clone_state(&s);
+        let c = h.credits;
+        h.meet_echo(0).unwrap();
+        assert!((h.credits - (c + carried * 0.3 - ECHO_HELP_FEE)).abs() < 1e-6);
+        assert_eq!(h.multiverse.paradox, 0);
+        assert!(h.multiverse.echo.is_none());
+        // Merge: everything, two paradoxes, unstable crew.
+        let mut m = clone_state(&s);
+        let c = m.credits;
+        m.meet_echo(2).unwrap();
+        assert!((m.credits - c - carried).abs() < 1e-6);
+        assert_eq!(m.multiverse.paradox, 3);
+        assert!(m.crew.members.iter().all(|p| p.instability >= 0.2));
+        // Fight: odds, either way the echo is gone.
+        let mut wins = 0;
+        for k in 0..60 {
+            let mut f = clone_state(&s);
+            f.time += f64::from(k) * 7.0;
+            let c = f.credits;
+            f.meet_echo(1).unwrap();
+            if f.credits > c {
+                wins += 1;
+            }
+            assert!(f.multiverse.echo.is_none());
+        }
+        assert!((20..=50).contains(&wins), "{wins} wins of 60");
+        assert!(s.meet_echo(7).is_err());
+        // Small gains leave no echo.
+        let mut t = new_sim(5, data());
+        t.credits = 10_000.0;
+        t.set_anchor().unwrap();
+        t.credits += 100.0;
+        t.rewind(0).unwrap();
+        assert!(t.multiverse.echo.is_none());
+    }
+
+    /// A copy of a sim through a saved game.
+    fn clone_state(s: &Sim) -> Sim {
+        let bytes = s.save_bytes().unwrap();
+        Sim::load_bytes(&bytes, Arc::clone(&s.data)).unwrap()
+    }
+
+    #[test]
+    fn outposts_produce_while_away_and_are_collected_on_the_way_home() {
+        let mut s = at_portal(false);
+        s.credits = 200_000.0;
+        assert!(s.build_outpost().is_err(), "only in a dimension");
+        s.use_portal().unwrap();
+        s.build_outpost().expect("built");
+        assert!(s.build_outpost().is_err(), "one per place");
+        assert_eq!(s.credits, 200_000.0 - OUTPOST_COST);
+        let ore = s.ore_scale();
+        s.multiverse.last_day = (s.time / DAY) as i64;
+        s.time += 10.0 * DAY;
+        s.multiverse_tick();
+        let waiting = s.multiverse.outposts[0].2;
+        assert!(
+            waiting > 0.0 && waiting <= OUTPOST_KG_DAY * ore * 4.0,
+            "{waiting}"
+        );
+        let re = s.data.resource_index("rare_earths").unwrap();
+        let before = s.ship.cargo.kg[re];
+        let msg = s.use_portal().unwrap();
+        assert!(msg.contains("AVANT-POSTE"), "{msg}");
+        assert!((s.ship.cargo.kg[re] - before - waiting).abs() < 1e-6);
+        assert_eq!(s.multiverse.outposts[0].2, 0.0);
+    }
+
+    #[test]
+    fn relay_portals_link_colonies_for_credits() {
+        let (mut s, ci) = crate::colony::tests::founded();
+        let relay = s
+            .data
+            .buildings
+            .iter()
+            .position(|b| b.id == RELAY_ID)
+            .expect("the relay is a building");
+        let inst = crate::colony::BuildingInst {
+            def: relay,
+            progress: 1.0,
+            enabled: true,
+            recipe: 0,
+            health: 1.0,
+        };
+        s.colonies[ci].buildings.push(inst.clone());
+        assert!(s.relay_here());
+        assert!(s.relay_nodes().is_empty());
+        assert!(s.relay_jump(99).is_err());
+        // A second colony with a relay, in another system.
+        let far = Galaxy::new(s.galaxy.seed)
+            .nearby(s.here_pos, 60.0)
+            .into_iter()
+            .find(|e| e.id != s.here)
+            .expect("another star");
+        let mut other = s.colonies[ci].clone();
+        other.buildings.clear();
+        other.id = 77;
+        other.star = far.id;
+        other.name = "Lointaine".into();
+        s.colonies.push(other);
+        assert!(s.relay_nodes().is_empty(), "an unfinished relay is no node");
+        s.colonies.last_mut().unwrap().buildings.push(inst);
+        let nodes = s.relay_nodes();
+        assert_eq!(nodes.len(), 1);
+        let cost = nodes[0].2 * RELAY_CR_PER_LY;
+        s.credits = cost - 1.0;
+        assert!(s.relay_jump(77).is_err(), "no money");
+        s.credits = cost + 10.0;
+        let msg = s.relay_jump(77).expect("crosses");
+        assert!(msg.starts_with("RELAIS"), "{msg}");
+        assert_eq!(s.here, far.id);
+        assert!((s.credits - 10.0).abs() < 1e-6);
+        assert!(s.docked.is_none());
     }
 }

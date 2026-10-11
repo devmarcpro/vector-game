@@ -359,6 +359,9 @@ impl Sim {
         let credits = rng.range(def.credits.0, def.credits.1).round();
         self.research_pool += research;
         self.credits += credits;
+        if self.multiverse.dimension > 0 {
+            self.exotic_find(i);
+        }
         let cargo: Vec<(usize, f64)> = def
             .loot
             .iter()

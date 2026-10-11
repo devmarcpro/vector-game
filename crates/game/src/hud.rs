@@ -182,6 +182,10 @@ fn draw_world(fb: &mut Framebuffer, cam: &Camera, v: &View, i: usize) -> bool {
     let orient = Mat3::rot_z(f64::from(map.surface.tilt)).mul(&Mat3::rot_y(angle));
     let sun = (b.pos * -1.0).normalized();
     let data = &v.sim.data;
+    // Low over the ground the world stops being a ball: the same ground is marched to the horizon.
+    if terrain_view(fb, cam, v, i, &map, &orient) {
+        return true;
+    }
     // The ball itself, in plain colours: lit by the star, relief shaded, air at the rim.
     crate::globe::fill_world(
         fb,
@@ -197,6 +201,114 @@ fn draw_world(fb: &mut Framebuffer, cam: &Camera, v: &View, i: usize) -> bool {
         },
     );
     true
+}
+
+/// How low (as a share of the radius, at most 200 km) the ship must be for the ground to be
+/// drawn as terrain instead of a ball.
+const LOW_SHARE: f64 = 0.03;
+
+/// The ground seen from a ship flying low over world `i`: one heightfield from the feet of the
+/// ship to the horizon, in the colours of the biomes, lit by the star, hazed by the air. Roll is
+/// not shown; looking straight down falls back to the ball.
+fn terrain_view(
+    fb: &mut Framebuffer,
+    cam: &Camera,
+    v: &View,
+    i: usize,
+    map: &vector_sim::planet::PlanetMap,
+    orient: &Mat3,
+) -> bool {
+    let b = &v.sim.bodies[i];
+    let rel = cam.pos - b.pos;
+    let alt = rel.length() - b.radius;
+    if alt > (b.radius * LOW_SHARE).min(200_000.0) || alt < 0.0 {
+        return false;
+    }
+    let up = rel.normalized();
+    let inv = orient.transpose();
+    let nb = inv.mul_vec(up);
+    let (lat, lon) = (nb.y.clamp(-1.0, 1.0).asin(), nb.z.atan2(nb.x));
+    let east = orient.mul_vec(Vec3::new(-lon.sin(), 0.0, lon.cos()));
+    let north = orient.mul_vec(Vec3::new(
+        -lat.sin() * lon.cos(),
+        lat.cos(),
+        -lat.sin() * lon.sin(),
+    ));
+    let fwd = cam.rot.transpose().mul_vec(Vec3::new(0.0, 0.0, 1.0));
+    let pitch = fwd.dot(up).clamp(-1.0, 1.0).asin();
+    if pitch < -1.0 {
+        return false;
+    }
+    let yaw = fwd.dot(east).atan2(fwd.dot(north));
+    let sun = (b.pos * -1.0).normalized();
+    let air = map.pressure;
+    let t = crate::terrain::Terrain::new(map, b.radius);
+    let data = &v.sim.data;
+    let focal = fb.h as f64 * 0.5 / (cam.fov_y * 0.5).tan();
+    let horizon_dist = (2.0 * b.radius * alt.max(10.0)).sqrt();
+    crate::terrain::render(
+        fb,
+        &t,
+        &|x, y| data.biomes[map.biome_at(x, y)].color,
+        &crate::terrain::Eye {
+            lat,
+            lon,
+            height: alt,
+            yaw,
+            pitch,
+        },
+        &crate::terrain::Frame {
+            x0: 0,
+            y0: 0,
+            w: fb.w as i32,
+            h: fb.h as i32,
+            focal,
+        },
+        &crate::terrain::Sky {
+            air: v.sim.air_of(i).filter(|a| a.ground > 0.05).map(|a| {
+                // The zenith goes dark with height as the air thins out.
+                let k = (a.pressure(alt) / a.ground).sqrt() as f32;
+                (
+                    scale_rgb(0x0030_60B0, k),
+                    scale_rgb(0x00A8_C8E8, 0.15 + 0.85 * k),
+                )
+            }),
+            haze: 40_000.0 / air.max(0.1),
+            scale: v.sim.air_of(i).map_or(8000.0, |a| a.height),
+        },
+        &crate::terrain::Light {
+            up: sun.dot(up),
+            east: sun.dot(east),
+            north: sun.dot(north),
+        },
+        (horizon_dist * 1.15).min(900_000.0),
+    );
+    true
+}
+
+fn scale_rgb(c: u32, k: f32) -> u32 {
+    let ch = |s: u32| (((c >> s) & 0xFF) as f32 * k).clamp(0.0, 255.0) as u32;
+    (ch(16) << 16) | (ch(8) << 8) | ch(0)
+}
+
+/// How much of the sky the air hides from where the ship is: 1 sees everything (the void, or
+/// the night over thin air), 0 sees nothing but the haze (low in a thick air by day). Also the
+/// layer of the air and its pressure, for the readout.
+fn sky_view(v: &View) -> (f64, Option<(&'static str, f64)>) {
+    let Some((i, air, alt)) = v.sim.in_air() else {
+        return (1.0, None);
+    };
+    let b = &v.sim.bodies[i];
+    let up = (v.sim.ship.pos - b.pos).normalized();
+    let sun = (b.pos * -1.0).normalized();
+    // Day when the star is above the horizon, with a twilight.
+    let day = ((sun.dot(up) + 0.1) / 0.3).clamp(0.0, 1.0);
+    let scatter = air.scattering(alt);
+    let hidden = scatter * (day + (1.0 - day) * 0.15);
+    (
+        1.0 - hidden,
+        air.layer(alt).map(|name| (name, air.pressure(alt))),
+    )
 }
 
 /// A world as a lit ball of one colour, or with the bands of a gas giant.
@@ -270,10 +382,17 @@ fn draw_cockpit(fb: &mut Framebuffer, v: &View) {
     };
     let focal = fb.h as f64 * 0.5 / (cam.fov_y * 0.5).tan();
 
-    for s in v.stars {
-        if let Some((x, y)) = cam.project_dir(*s, fb) {
-            fb.plot(x as i32, y as i32, STAR);
+    // Low in a thick air by day the sky hides the stars and the worlds beyond.
+    let (clear, layer) = sky_view(v);
+    if clear > 0.3 {
+        for s in v.stars {
+            if let Some((x, y)) = cam.project_dir(*s, fb) {
+                fb.plot(x as i32, y as i32, scale_rgb(STAR, clear as f32));
+            }
         }
+    }
+    if let Some((name, p)) = layer {
+        fb.text(1, 12, &format!("ATMOSPHERE : {name}  {p:.4} BAR"), AMBER);
     }
     draw_dust(fb, &cam, v);
     for (i, b) in v.sim.bodies.iter().enumerate() {
@@ -282,6 +401,14 @@ fn draw_cockpit(fb: &mut Framebuffer, v: &View) {
         }
         let col = body_color(v, i);
         let dist = (b.pos - ship.pos).length();
+        // Seen through the haze, faraway worlds are gone (the star and what is near stay).
+        if clear < 0.3
+            && !matches!(b.kind, BodyKind::Star(_))
+            && dist > 1.0e6
+            && v.sim.in_air().is_none_or(|(w, ..)| w != i)
+        {
+            continue;
+        }
         let px = b.radius / dist.max(1.0) * focal;
         let spin = Mat3::rot_y(v.sim.time * 2.0e-5 + i as f64);
         match b.kind {

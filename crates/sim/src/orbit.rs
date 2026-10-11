@@ -7,8 +7,7 @@ use vector_world::BodyKind;
 
 /// Contact speed (m/s) up to which touching a solid world is a landing, not a crash.
 pub const LANDING_SPEED: f64 = 25.0;
-/// Thickness of the air as a share of the radius of the world, and the strongest braking (m/s^2).
-pub const AIR_HEIGHT: f64 = 0.02;
+/// The strongest braking of the air (m/s^2).
 pub const MAX_DRAG: f64 = 150.0;
 /// The orbit assist works within this many radii of the world.
 pub const ORBIT_RANGE_RADII: f64 = 12.0;
@@ -30,18 +29,15 @@ impl Sim {
             })
     }
 
-    /// The air brakes a ship moving fast through the lower atmosphere of a world.
+    /// The air brakes a ship moving fast through the atmosphere of a world: the thicker the air at
+    /// its height (pressure, in bar), the harder.
     pub(crate) fn atmosphere_drag(&mut self, dt: f64) {
         let mut decel = Vec3::ZERO;
-        for (i, b) in self.bodies.iter().enumerate() {
-            let air = self.system.bodies[i].pressure;
-            if air < 0.01 || !matches!(b.kind, BodyKind::Planet(_) | BodyKind::Moon(_)) {
-                continue;
-            }
-            let d = self.ship.pos - b.pos;
-            let alt = d.length() - b.radius;
-            let top = b.radius * AIR_HEIGHT;
-            if alt >= top || alt < 0.0 {
+        for i in 0..self.bodies.len() {
+            let Some(air) = self.air_of(i) else { continue };
+            let b = &self.bodies[i];
+            let alt = (self.ship.pos - b.pos).length() - b.radius;
+            if alt >= air.top() || alt < 0.0 {
                 continue;
             }
             let rel = self.ship.vel - b.vel;
@@ -49,7 +45,7 @@ impl Sim {
             if v < 1.0 {
                 continue;
             }
-            let density = air.min(10.0) * (1.0 - alt / top).powi(2);
+            let density = air.pressure(alt).min(10.0);
             let a = (0.0015 * density * v * v)
                 .min(MAX_DRAG)
                 .min(v / dt.max(1e-6));
@@ -212,7 +208,7 @@ mod tests {
             let b = s.bodies[i].clone();
             let up = Vec3::new(0.0, 0.0, -1.0);
             // Entering the air at 3 km/s, 60 % of the way up.
-            let alt = b.radius * AIR_HEIGHT * 0.6;
+            let alt = s.air_of(i).map_or(100_000.0, |a| a.height);
             s.ship.pos = b.pos + up * (b.radius + alt);
             s.ship.vel = b.vel - up * 3000.0;
             s.rules.invulnerable = true;

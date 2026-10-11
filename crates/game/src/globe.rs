@@ -124,6 +124,7 @@ impl Globe<'_> {
 
 // ---- the solid world ---------------------------------------------------------------------------
 
+use crate::terrain::Terrain;
 use vector_core::Mat3;
 use vector_render::Camera;
 
@@ -148,7 +149,7 @@ pub struct Paint<'a> {
 }
 
 /// Elevation of the map at a fractional cell, bilinear, wrapping in longitude.
-fn elev_at(map: &PlanetMap, fx: f64, fy: f64) -> f32 {
+pub(crate) fn elev_at(map: &PlanetMap, fx: f64, fy: f64) -> f32 {
     let x0 = fx.floor();
     let y0 = fy.floor();
     let (tx, ty) = ((fx - x0) as f32, (fy - y0) as f32);
@@ -174,16 +175,6 @@ fn noise2(x: f64, y: f64) -> f32 {
     let a = v(0, 0) + (v(1, 0) - v(0, 0)) * fx;
     let b = v(0, 1) + (v(1, 1) - v(0, 1)) * fx;
     a + (b - a) * fy
-}
-
-/// Ground height at a fractional cell, with finer relief than the map when the world is close:
-/// two octaves of noise lie on the elevation of the map, in proportion to how high it is.
-fn height(map: &PlanetMap, fx: f64, fy: f64, detail: bool) -> f32 {
-    let e = elev_at(map, fx, fy);
-    if !detail || e <= 0.0 {
-        return e;
-    }
-    e + e.min(0.6) * (0.10 * noise2(fx * 5.0, fy * 5.0) + 0.04 * noise2(fx * 21.0, fy * 21.0))
 }
 
 /// Paint a solid world as a lit ball: the colour of each cell, sunlight and a terminator, relief
@@ -228,6 +219,7 @@ pub fn fill_world(
     let inv_orient = orient.transpose();
     let sun_b = inv_orient.mul_vec(sun);
     let atmosphere = paint.air > 0.02;
+    let terrain = paint.map.map(|m| Terrain::new(m, radius));
     let mut y = y_lo;
     while y <= y_hi {
         let mut x = x_lo;
@@ -247,41 +239,48 @@ pub fn fill_world(
                 let lon = nb.z.atan2(nb.x).rem_euclid(std::f64::consts::TAU);
                 let fx = lon / std::f64::consts::TAU * W as f64 - 0.5;
                 let fy = (0.5 - lat / std::f64::consts::PI) * H as f64 - 0.5;
-                let (cxi, cyi) = (
-                    (fx.round() as i64).rem_euclid(W as i64) as usize,
-                    (fy.round() as i64).clamp(0, H as i64 - 1) as usize,
+                // Borders between biomes are not squares: the lookup is warped by noise.
+                let warp = (
+                    noise2(fx * 2.3, fy * 2.3) * 0.9,
+                    noise2(fx * 2.3 + 40.0, fy * 2.3) * 0.9,
                 );
-                let base = (paint.color)(cxi, cyi);
-                let e = paint.map.map_or(0.0, |m| elev_at(m, fx, fy));
-                // Relief: the slope of the ground against the light, on land only.
+                let (wxi, wyi) = (
+                    ((fx + f64::from(warp.0)).round() as i64).rem_euclid(W as i64) as usize,
+                    ((fy + f64::from(warp.1)).round() as i64).clamp(0, H as i64 - 1) as usize,
+                );
+                let mut base = (paint.color)(wxi, wyi);
                 let mut shade = 1.0f32;
-                if let (true, Some(map)) = (e > 0.0, paint.map) {
-                    // Close up the slope is read over a fraction of a cell, on the finer relief.
-                    let detail = r_px > 90.0;
-                    let d = if detail { 0.3 } else { 1.0 };
-                    let h = |x: f64, y: f64| height(map, x, y, detail);
-                    let (ge, gn) = (
-                        (h(fx + d, fy) - h(fx - d, fy)) / (2.0 * d as f32),
-                        (h(fx, fy - d) - h(fx, fy + d)) / (2.0 * d as f32),
+                if let Some(terr) = &terrain {
+                    // The same ground as seen from low: the height at this point, to the
+                    // resolution of a pixel, and its slope against the light.
+                    let px_m = radius / r_px.max(1.0) * f64::from(step);
+                    let (hc, e) = terr.sample(lat, lon, px_m);
+                    let delta = px_m * 1.2 / radius;
+                    let (he, _) = terr.sample(lat, lon + delta / lat.cos().abs().max(0.05), px_m);
+                    let (hn, _) = terr.sample(lat + delta, lon, px_m);
+                    let slope = (
+                        f64::from(he - hc) / (px_m * 1.2),
+                        f64::from(hn - hc) / (px_m * 1.2),
                     );
                     let east = Vec3::new(-lon.sin(), 0.0, lon.cos());
                     let north =
                         Vec3::new(-lat.sin() * lon.cos(), lat.cos(), -lat.sin() * lon.sin());
-                    let toward =
-                        (sun_b.dot(east) * f64::from(ge) + sun_b.dot(north) * f64::from(gn)) as f32;
-                    shade += (toward * 5.0).clamp(-0.5, 0.5);
-                    // Height itself: peaks brighter.
-                    shade += e * 0.25;
-                }
-                // Grain when close: the cells are big on the screen, the ground is not smooth.
-                if r_px > 140.0 && paint.map.is_some() {
-                    let g = vector_core::hash_coord(
-                        7,
-                        (fx * 6.0).floor() as i64,
-                        (fy * 6.0).floor() as i64,
-                        3,
-                    );
-                    shade *= 0.93 + 0.14 * ((g >> 11) as f32 / (1u64 << 53) as f32);
+                    let toward = (sun_b.dot(east) * slope.0 + sun_b.dot(north) * slope.1) as f32;
+                    // Seas and lakes follow the detailed height, not the cell.
+                    if hc <= 0.0 && e > 0.0 && paint.air > 0.05 {
+                        base = 0x0020_60A0;
+                    } else if hc > 0.0 && e <= 0.0 && paint.air > 0.05 {
+                        base = scale_color(0x00C8_B880, 0.9);
+                    }
+                    if hc > 0.0 {
+                        shade += (toward * 9.0).clamp(-0.6, 0.6);
+                        shade += (hc as f32 / terr.relief as f32).clamp(0.0, 1.0) * 0.3;
+                        // Variation of the ground from place to place.
+                        shade *=
+                            1.0 + 0.12 * noise2(lon * radius / 30_000.0, lat * radius / 30_000.0);
+                    } else {
+                        shade *= 1.0 + 0.06 * e.clamp(-1.0, 0.0);
+                    }
                 }
                 let light = n.dot(sun).max(-0.2);
                 let lit = ((light + 0.08) / 0.25).clamp(0.0, 1.0) as f32;

@@ -25,6 +25,7 @@ mod script;
 mod settings;
 mod surface_view;
 mod tech_view;
+mod terrain;
 mod trade_view;
 mod tutorial;
 mod ui;
@@ -322,9 +323,25 @@ fn snapshot(path: &str, scene: &str, data: Arc<GameData>) {
                 .expect("a solid planet");
             let b = &g.sim.bodies[i];
             let dir = vector_core::Vec3::new(0.3, 0.15, -1.0).normalized();
-            g.sim.ship.pos = b.pos - dir * (b.radius * if near { 1.25 } else { 3.2 });
+            let low = s.ends_with("low");
+            g.sim.ship.pos = b.pos
+                - dir
+                    * (b.radius
+                        * if low {
+                            1.012
+                        } else if near {
+                            1.25
+                        } else {
+                            3.2
+                        });
             g.sim.ship.vel = b.vel;
-            g.sim.ship.rot = vector_core::Mat3::look_at(dir, vector_core::Vec3::new(0.0, 1.0, 0.0));
+            g.sim.ship.rot = if low {
+                // Flying along the ground, nose a little down.
+                let forward = (vector_core::Vec3::new(1.0, -0.12, 0.0)).normalized();
+                vector_core::Mat3::look_at(forward, vector_core::Vec3::new(0.0, 1.0, 0.0))
+            } else {
+                vector_core::Mat3::look_at(dir, vector_core::Vec3::new(0.0, 1.0, 0.0))
+            };
             g.sim.target = Some(i);
             g.sim.update_ref_pub();
         }

@@ -1,13 +1,15 @@
 //! First-person view of the exploration (F in the exploration screen): the same floors, the same
-//! squad and the same turns as the view in characters, seen from the squad's eyes with a
-//! raycaster (walls, floor and ceiling) and billboards made of ASCII art for everything that
-//! stands in it: people, creatures, machines, trees and plants, loot, terminals and stairs. Left
-//! and right turn by an eighth of a circle, up and down step forward and back. A prototype of an
-//! exploration in the manner of Daggerfall: one engine, two representations.
+//! squad and the same turns as the view in characters, seen from the squad's eyes. Indoors a
+//! raycaster draws the walls, floor and ceiling; on the surface of a world the same ground as the
+//! cockpit sees from orbit (see `terrain`) is marched from the squad's feet to the horizon. In
+//! both, everything that stands in it is a billboard made of ASCII art: people, creatures,
+//! machines, trees and plants, loot, terminals, stairs, rocks. Left and right turn by an eighth
+//! of a circle, up and down step forward and back. One engine, two representations.
+use crate::game::Game;
 use crate::hud::{AMBER, DIM, GREEN};
 use vector_data::ROGUE_TERMINALS;
 use vector_render::Framebuffer;
-use vector_sim::rogue::{Mon, Rogue, T_DOWN, T_FEATURE, T_SITE, T_TERMINAL, T_UP, T_WALL};
+use vector_sim::rogue::{Mon, Rogue, T_DOWN, T_FEATURE, T_SITE, T_TERMINAL, T_UP, T_WALL, T_WATER};
 
 /// Window of the view on the screen (pixels).
 pub const X0: i32 = 8;
@@ -17,6 +19,10 @@ pub const H: i32 = 520;
 /// Half the field of view as the length of the camera plane (0.66 is about 66 degrees).
 const PLANE: f64 = 0.66;
 const MAX_DIST: f64 = 16.0;
+/// Metres of one tile of a surface, and the height a billboard of size 1 stands (m).
+pub const TILE_M: f64 = 3.0;
+const UNIT_M: f64 = 2.4;
+const EYE_M: f64 = 1.7;
 
 type Art = &'static [&'static str];
 
@@ -61,6 +67,8 @@ const STAIRS_DOWN: Art = &["  ||  ", "\\_  _/", " \\  / ", "  \\/  "];
 const RUIN: Art = &[" _  _ ", "| \\/ |", "|    |", "|_/\\_|"];
 const ALTAR: Art = &["  *  ", " /_\\ ", "|___|"];
 const FEATURE: Art = &[" .-. ", "( & )", " '-' "];
+const ROCK: Art = &["  _.-._ ", " /#####\\", "/#######\\"];
+const POND: Art = &["~~~~~~~", " ~~~~~ "];
 
 /// The drawing of a creature, a machine or a person by what it is.
 fn art_of(m: &Mon) -> Art {
@@ -139,30 +147,179 @@ struct Sprite {
     y: f64,
     art: Art,
     color: u32,
-    /// Height of the drawing as a share of the height of a wall.
+    /// Height of the drawing as a share of the height of a wall (a unit of 2.4 m outdoors).
     size: f64,
     /// A letter to put on the drawing (the label of a terminal).
     mark: Option<char>,
 }
 
-pub fn draw(fb: &mut Framebuffer, r: &Rogue, dir: i32, wall_color: u32, sky: bool) {
+/// Everything that stands on the floor, as billboards. On a surface the rocks and ponds of the
+/// ground near the squad stand too.
+fn collect_sprites(r: &Rogue, px: f64, py: f64, reach: f64) -> Vec<Sprite> {
+    let f = &r.floors[r.cur];
+    let mut sprites: Vec<Sprite> = Vec::new();
+    for m in &f.monsters {
+        sprites.push(Sprite {
+            x: f64::from(m.x) + 0.5,
+            y: f64::from(m.y) + 0.5,
+            art: art_of(m),
+            color: if m.boss {
+                0x00FF_40FF
+            } else if m.friendly {
+                0x0060_E0E0
+            } else if !m.hunts {
+                0x0090_D090
+            } else {
+                0x00FF_8070
+            },
+            size: if m.boss { 1.2 } else { 0.8 },
+            mark: None,
+        });
+    }
+    for it in &f.items {
+        let (art, color, size) = if it.plant {
+            let art = plant_art(it.x, it.y);
+            let tall = art.len() >= 5;
+            (art, 0x0050_D070, if tall { 1.15 } else { 0.55 })
+        } else {
+            (PILE, AMBER, 0.3)
+        };
+        sprites.push(Sprite {
+            x: f64::from(it.x) + 0.5,
+            y: f64::from(it.y) + 0.5,
+            art,
+            color,
+            size,
+            mark: None,
+        });
+    }
+    for ty in 0..r.h as i32 {
+        for tx in 0..r.w as i32 {
+            let (ddx, ddy) = (f64::from(tx) + 0.5 - px, f64::from(ty) + 0.5 - py);
+            if ddx * ddx + ddy * ddy >= reach * reach || (ddx == 0.0 && ddy == 0.0) {
+                continue;
+            }
+            let t = r.tile(tx, ty);
+            let g: Option<(Art, u32, f64, Option<char>)> = if t == T_UP {
+                Some((STAIRS_UP, AMBER, 0.9, None))
+            } else if t == T_DOWN {
+                Some((STAIRS_DOWN, AMBER, 0.9, None))
+            } else if t == T_SITE {
+                Some((RUIN, AMBER, 1.0, None))
+            } else if t >= T_TERMINAL {
+                ROGUE_TERMINALS
+                    .get((t - T_TERMINAL) as usize)
+                    .map(|d| (CONSOLE, AMBER, 0.9, Some(d.2)))
+            } else if t >= T_FEATURE {
+                Some((
+                    if t.is_multiple_of(2) { ALTAR } else { FEATURE },
+                    0x0060_C0FF,
+                    0.6,
+                    None,
+                ))
+            } else if r.on_surface() && t == T_WALL {
+                Some((ROCK, 0x0090_8880, 0.7, None))
+            } else if r.on_surface() && t == T_WATER {
+                Some((POND, 0x0040_80E0, 0.12, None))
+            } else {
+                None
+            };
+            if let Some((art, color, size, mark)) = g {
+                if f.seen[r.idx(tx, ty)] {
+                    sprites.push(Sprite {
+                        x: f64::from(tx) + 0.5,
+                        y: f64::from(ty) + 0.5,
+                        art,
+                        color,
+                        size,
+                        mark,
+                    });
+                }
+            }
+        }
+    }
+    sprites
+}
+
+/// Where a billboard shows on the screen.
+struct Placed {
+    screen_x: f64,
+    /// Distance from the eye (for the order, the fade and the hiding).
+    depth: f64,
+    /// Pixels of one unit of height at that distance.
+    unit_px: f64,
+    /// Row of the feet, in the window.
+    feet_y: f64,
+}
+
+/// Draw the billboards, farthest first. `place` puts one on the screen (None when it is behind
+/// or out of range); `hidden` tells whether something nearer covers it.
+fn draw_sprites(
+    fb: &mut Framebuffer,
+    sprites: &[Sprite],
+    place: &dyn Fn(&Sprite) -> Option<Placed>,
+    hidden: &dyn Fn(i32, &Placed) -> bool,
+    far: f64,
+) {
+    let mut placed: Vec<(&Sprite, Placed)> = sprites
+        .iter()
+        .filter_map(|s| place(s).map(|p| (s, p)))
+        .collect();
+    placed.sort_by(|a, b| b.1.depth.total_cmp(&a.1.depth));
+    for (s, p) in placed {
+        let col = (p.screen_x / 2.0) as i32;
+        if !(0..W / 2).contains(&col) || hidden(col, &p) {
+            continue;
+        }
+        let height_px = (p.unit_px * s.size).min(f64::from(H) * 2.0);
+        let rows = s.art.len() as f64;
+        let scale = ((height_px / rows / 8.0).round() as i32).clamp(1, 16);
+        let cols = s.art.iter().map(|l| l.chars().count()).max().unwrap_or(1) as i32;
+        let (w_px, h_px) = (cols * 6 * scale, s.art.len() as i32 * 8 * scale);
+        let (gx, gy) = (
+            X0 + p.screen_x as i32 - w_px / 2,
+            Y0 + p.feet_y as i32 - h_px,
+        );
+        let fade = (1.0 / (1.0 + (p.depth / far).powi(2) * 4.0)).max(0.3);
+        let color = shade(s.color, fade);
+        for (k, line) in s.art.iter().enumerate() {
+            let line: String = match (s.mark, line.contains('X')) {
+                (Some(m), true) => line.replace('X', &m.to_string()),
+                _ => (*line).to_string(),
+            };
+            fb.text_big(gx, gy + k as i32 * 8 * scale, &line, scale, color);
+        }
+    }
+}
+
+fn crosshair(fb: &mut Framebuffer, dir: i32) {
+    let (cx, cy) = (X0 + W / 2, Y0 + H / 2);
+    for d in [-6, -5, -4, 4, 5, 6] {
+        fb.plot(cx + d, cy, GREEN);
+        fb.plot(cx, cy + d, GREEN);
+    }
+    let names = ["E", "SE", "S", "SO", "O", "NO", "N", "NE"];
+    fb.text_at(
+        X0 + 4,
+        Y0 + H - 12,
+        &format!("CAP {}", names[dir.rem_euclid(8) as usize]),
+        DIM,
+    );
+}
+
+/// Indoors: walls by raycasting, billboards for everything else.
+pub fn draw(fb: &mut Framebuffer, r: &Rogue, dir: i32, wall_color: u32) {
     let a = f64::from(dir) * std::f64::consts::FRAC_PI_4;
     let (dx, dy) = (a.cos(), a.sin());
     let (px, py) = (f64::from(r.x) + 0.5, f64::from(r.y) + 0.5);
     let (plx, ply) = (-dy * PLANE, dx * PLANE);
-    // Ceiling (or sky) and floor, in bands.
+    // Ceiling and floor, in bands.
     for y in 0..H {
         let t = f64::from(y) / f64::from(H);
         let c = if t < 0.5 {
-            let k = 1.0 - t * 2.0;
-            if sky {
-                shade(0x0040_70C0, 0.35 + 0.5 * (1.0 - k))
-            } else {
-                shade(0x0030_3840, 0.15 + 0.5 * (1.0 - k))
-            }
+            shade(0x0030_3840, 0.15 + 0.5 * (t * 2.0))
         } else {
-            let k = (t - 0.5) * 2.0;
-            shade(0x0030_4830, 0.12 + 0.55 * k)
+            shade(0x0030_4830, 0.12 + 0.55 * ((t - 0.5) * 2.0))
         };
         for x in 0..W {
             fb.plot(X0 + x, Y0 + y, c);
@@ -215,7 +372,6 @@ pub fn draw(fb: &mut Framebuffer, r: &Rogue, dir: i32, wall_color: u32, sky: boo
         }
         let height = (f64::from(H) / dist).min(f64::from(H) * 3.0);
         let top = (f64::from(H) / 2.0 - height / 2.0) as i32;
-        // Where along the wall the ray hit, for the pattern.
         let wall_x = if side == 0 {
             py + dist * ry
         } else {
@@ -240,134 +396,146 @@ pub fn draw(fb: &mut Framebuffer, r: &Rogue, dir: i32, wall_color: u32, sky: boo
             fb.plot(x + 1, Y0 + yy, c);
         }
     }
-    // Billboards, farthest first, hidden behind the walls that are nearer.
-    let f = &r.floors[r.cur];
-    let mut sprites: Vec<Sprite> = Vec::new();
-    for m in &f.monsters {
-        sprites.push(Sprite {
-            x: f64::from(m.x) + 0.5,
-            y: f64::from(m.y) + 0.5,
-            art: art_of(m),
-            color: if m.boss {
-                0x00FF_40FF
-            } else if m.friendly {
-                0x0060_E0E0
-            } else if !m.hunts {
-                0x0090_D090
-            } else {
-                0x00FF_8070
-            },
-            size: if m.boss { 1.2 } else { 0.8 },
-            mark: None,
-        });
-    }
-    for it in &f.items {
-        let (art, color, size) = if it.plant {
-            let art = plant_art(it.x, it.y);
-            let tall = art.len() >= 5;
-            (art, 0x0050_D070, if tall { 1.15 } else { 0.55 })
-        } else {
-            (PILE, AMBER, 0.3)
-        };
-        sprites.push(Sprite {
-            x: f64::from(it.x) + 0.5,
-            y: f64::from(it.y) + 0.5,
-            art,
-            color,
-            size,
-            mark: None,
-        });
-    }
-    for ty in 0..r.h as i32 {
-        for tx in 0..r.w as i32 {
-            let t = r.tile(tx, ty);
-            let g: Option<(Art, u32, f64, Option<char>)> = if t == T_UP {
-                Some((STAIRS_UP, AMBER, 0.9, None))
-            } else if t == T_DOWN {
-                Some((STAIRS_DOWN, AMBER, 0.9, None))
-            } else if t == T_SITE {
-                Some((RUIN, AMBER, 1.0, None))
-            } else if t >= T_TERMINAL {
-                ROGUE_TERMINALS
-                    .get((t - T_TERMINAL) as usize)
-                    .map(|d| (CONSOLE, AMBER, 0.9, Some(d.2)))
-            } else if t >= T_FEATURE {
-                Some((
-                    (if t.is_multiple_of(2) { ALTAR } else { FEATURE }),
-                    0x0060_C0FF,
-                    0.6,
-                    None,
-                ))
-            } else {
-                None
-            };
-            if let Some((art, color, size, mark)) = g {
-                let (ddx, ddy) = (f64::from(tx) + 0.5 - px, f64::from(ty) + 0.5 - py);
-                if ddx * ddx + ddy * ddy < MAX_DIST * MAX_DIST
-                    && (ddx != 0.0 || ddy != 0.0)
-                    && f.seen[r.idx(tx, ty)]
-                {
-                    sprites.push(Sprite {
-                        x: f64::from(tx) + 0.5,
-                        y: f64::from(ty) + 0.5,
-                        art,
-                        color,
-                        size,
-                        mark,
-                    });
-                }
-            }
-        }
-    }
-    sprites.sort_by(|a, b| {
-        let da = (a.x - px).powi(2) + (a.y - py).powi(2);
-        let db = (b.x - px).powi(2) + (b.y - py).powi(2);
-        db.total_cmp(&da)
-    });
+    let sprites = collect_sprites(r, px, py, MAX_DIST);
     let inv = 1.0 / (plx * dy - dx * ply);
-    for s in &sprites {
-        let (rx, ry) = (s.x - px, s.y - py);
-        let tx = inv * (dy * rx - dx * ry);
-        let ty = inv * (-ply * rx + plx * ry);
-        if !(0.2..=MAX_DIST).contains(&ty) {
-            continue;
-        }
-        let screen_x = f64::from(W) / 2.0 * (1.0 + tx / ty);
-        let col = (screen_x / 2.0) as i32;
-        if !(0..W / 2).contains(&col) || zbuf[col as usize] < ty {
-            continue;
-        }
-        // The drawing stands on the floor: its height is a share of a wall's, its feet at the
-        // bottom of the wall in that direction.
-        let wall_px = f64::from(H) / ty;
-        let height_px = (wall_px * s.size).min(f64::from(H) * 2.0);
-        let rows = s.art.len() as f64;
-        let scale = ((height_px / rows / 8.0).round() as i32).clamp(1, 16);
-        let cols = s.art.iter().map(|l| l.chars().count()).max().unwrap_or(1) as i32;
-        let (w_px, h_px) = (cols * 6 * scale, s.art.len() as i32 * 8 * scale);
-        let feet = f64::from(H) / 2.0 + wall_px * 0.5;
-        let (gx, gy) = (X0 + screen_x as i32 - w_px / 2, Y0 + feet as i32 - h_px);
-        let fade = (1.0 / (1.0 + ty * ty * 0.02)).max(0.3);
-        let color = shade(s.color, fade);
-        for (k, line) in s.art.iter().enumerate() {
-            let line: String = match (s.mark, line.contains('X')) {
-                (Some(m), true) => line.replace('X', &m.to_string()),
-                _ => (*line).to_string(),
-            };
-            fb.text_big(gx, gy + k as i32 * 8 * scale, &line, scale, color);
-        }
-    }
-    // A crosshair and the way you face.
-    let (cx, cy) = (X0 + W / 2, Y0 + H / 2);
-    for d in [-6, -5, -4, 4, 5, 6] {
-        fb.plot(cx + d, cy, GREEN);
-        fb.plot(cx, cy + d, GREEN);
-    }
-    let names = ["E", "SE", "S", "SO", "O", "NO", "N", "NE"];
-    fb.text_at(
-        X0 + 4,
-        Y0 + H - 12,
-        &format!("CAP {}", names[dir.rem_euclid(8) as usize]),
-        DIM,
+    draw_sprites(
+        fb,
+        &sprites,
+        &|s| {
+            let (rx, ry) = (s.x - px, s.y - py);
+            let tx = inv * (dy * rx - dx * ry);
+            let ty = inv * (-ply * rx + plx * ry);
+            if !(0.2..=MAX_DIST).contains(&ty) {
+                return None;
+            }
+            let unit_px = f64::from(H) / ty;
+            Some(Placed {
+                screen_x: f64::from(W) / 2.0 * (1.0 + tx / ty),
+                depth: ty,
+                unit_px,
+                feet_y: f64::from(H) / 2.0 + unit_px * 0.5,
+            })
+        },
+        &|col, p| zbuf[col as usize] < p.depth,
+        MAX_DIST,
     );
+    crosshair(fb, dir);
+}
+
+/// On the surface of a world: the ground of the planet marched from the squad's feet, lit by
+/// the star under the air of the world, with the billboards standing on it.
+pub fn draw_surface(fb: &mut Framebuffer, g: &Game, r: &Rogue, dir: i32) {
+    let (Some(body), Some((cx, cy))) = (r.body, r.land) else {
+        return;
+    };
+    let Some(map) = g.flight_map(body) else {
+        return;
+    };
+    let b = &g.sim.bodies[body];
+    let sys = &g.sim.system.bodies[body];
+    let t = crate::terrain::Terrain::new(&map, b.radius);
+    let (lat0, lon0) = (
+        vector_world::surface::Surface::lat(cy),
+        vector_world::surface::Surface::lon(cx),
+    );
+    let cos_lat = lat0.cos().abs().max(0.05);
+    // The squad stands on the grid; the grid is laid on the ground around the landing.
+    let (landing_x, landing_y) = (
+        f64::from(r.floors[0].start.0) + 0.5,
+        f64::from(r.floors[0].start.1) + 0.5,
+    );
+    let to_ll = |gx: f64, gy: f64| -> (f64, f64) {
+        let (east, north) = ((gx - landing_x) * TILE_M, -(gy - landing_y) * TILE_M);
+        (lat0 + north / b.radius, lon0 + east / (b.radius * cos_lat))
+    };
+    let (px, py) = (f64::from(r.x) + 0.5, f64::from(r.y) + 0.5);
+    let (lat, lon) = to_ll(px, py);
+    let ground = f64::from(t.sample(lat, lon, 1.0).0.max(0.0));
+    let (sx, sy) = step_of(dir);
+    let yaw = f64::from(sx).atan2(-f64::from(sy));
+    let focal = f64::from(W) / 2.0 / PLANE;
+    // The light of the star in the frame of this place.
+    let angle = std::f64::consts::TAU * g.sim.time / sys.rotation_period.max(60.0);
+    let orient =
+        vector_core::Mat3::rot_z(f64::from(map.surface.tilt)).mul(&vector_core::Mat3::rot_y(angle));
+    let nb = |lat: f64, lon: f64| {
+        orient.mul_vec(vector_core::Vec3::new(
+            lat.cos() * lon.cos(),
+            lat.sin(),
+            lat.cos() * lon.sin(),
+        ))
+    };
+    let up = nb(lat0, lon0);
+    let east = orient.mul_vec(vector_core::Vec3::new(-lon0.sin(), 0.0, lon0.cos()));
+    let north = orient.mul_vec(vector_core::Vec3::new(
+        -lat0.sin() * lon0.cos(),
+        lat0.cos(),
+        -lat0.sin() * lon0.sin(),
+    ));
+    let sun = (b.pos * -1.0).normalized();
+    let air = g.sim.air_of(body);
+    let data = &g.sim.data;
+    let far = 20_000.0;
+    let depth = crate::terrain::render(
+        fb,
+        &t,
+        &|x, y| data.biomes[map.biome_at(x, y)].color,
+        &crate::terrain::Eye {
+            lat,
+            lon,
+            height: ground + EYE_M,
+            yaw,
+            pitch: 0.0,
+        },
+        &crate::terrain::Frame {
+            x0: X0,
+            y0: Y0,
+            w: W,
+            h: H,
+            focal,
+        },
+        &crate::terrain::Sky {
+            air: air
+                .as_ref()
+                .filter(|a| a.ground > 0.05)
+                .map(|_| (0x0030_60B0, 0x00A8_C8E8)),
+            haze: 40_000.0 / map.pressure.max(0.1),
+            scale: air.as_ref().map_or(8000.0, |a| a.height),
+        },
+        &crate::terrain::Light {
+            up: sun.dot(up),
+            east: sun.dot(east),
+            north: sun.dot(north),
+        },
+        far,
+    );
+    let sprites = collect_sprites(r, px, py, 14.0);
+    let horizon = f64::from(H) / 2.0;
+    draw_sprites(
+        fb,
+        &sprites,
+        &|s| {
+            let (e, n) = ((s.x - px) * TILE_M, -(s.y - py) * TILE_M);
+            let fwd = e * yaw.sin() + n * yaw.cos();
+            let right = e * yaw.cos() - n * yaw.sin();
+            if fwd < 0.6 {
+                return None;
+            }
+            let (sla, slo) = to_ll(s.x, s.y);
+            let gh = f64::from(t.sample(sla, slo, 1.0).0.max(0.0));
+            let unit_px = focal * UNIT_M / fwd;
+            Some(Placed {
+                screen_x: f64::from(W) / 2.0 + focal * right / fwd,
+                depth: e.hypot(n),
+                unit_px,
+                feet_y: horizon + focal * (ground + EYE_M - gh) / fwd,
+            })
+        },
+        &|col, p| {
+            let y = (p.feet_y - 2.0).clamp(0.0, f64::from(H) - 1.0) as i32;
+            f64::from(depth.at(col, y)) < p.depth * 0.97
+        },
+        far.min(60.0),
+    );
+    crosshair(fb, dir);
 }

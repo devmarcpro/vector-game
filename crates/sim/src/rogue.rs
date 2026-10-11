@@ -133,6 +133,8 @@ pub struct Rogue {
     pub boss_dead: bool,
     /// A planet surface: the body, the name of the place, the rover, air (bar) and temperature (K).
     pub body: Option<usize>,
+    /// The cell of the map of the world where the squad landed.
+    pub land: Option<(usize, usize)>,
     pub place: String,
     pub vehicle: bool,
     pub env: Option<(f64, f64)>,
@@ -1067,6 +1069,7 @@ impl Sim {
             drone_turns: 0,
             boss_dead: false,
             body: None,
+            land: None,
             place: t.name.clone(),
             vehicle: false,
             env: None,
@@ -1261,6 +1264,7 @@ impl Sim {
             drone_turns: 0,
             boss_dead: false,
             body: Some(body),
+            land: Some((cx, cy)),
             place: b.name.clone(),
             vehicle,
             env: Some((map.pressure, self.temp_now(&map, cx, cy))),

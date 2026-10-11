@@ -466,7 +466,11 @@ fn draw_run(fb: &mut Framebuffer, g: &Game, r: &Rogue) {
     };
     fb.text(1, 1, &title, AMBER);
     if g.fpv {
-        crate::fpv_view::draw(fb, r, g.fpv_dir, wall_color(&th.id), r.on_surface());
+        if r.on_surface() {
+            crate::fpv_view::draw_surface(fb, g, r, g.fpv_dir);
+        } else {
+            crate::fpv_view::draw(fb, r, g.fpv_dir, wall_color(&th.id));
+        }
     } else {
         draw_map(fb, g, r);
     }

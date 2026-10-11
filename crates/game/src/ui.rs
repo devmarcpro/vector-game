@@ -460,6 +460,21 @@ fn draw_codex(fb: &mut Framebuffer, g: &Game) {
             x += label.chars().count() + 1;
         }
     }
+    if g.codex_cat == codex::LAB_CATEGORY {
+        let label = "[LANCER UN LOT (L)]";
+        let hover = g.hit_cells(
+            2,
+            fb.rows() - 5,
+            label.len(),
+            1,
+            Act::Call(Game::codex_lab, 0),
+            None,
+        );
+        fb.text(2, fb.rows() - 5, label, if hover { AMBER } else { GREEN });
+        for (i, msg) in g.messages.iter().rev().take(2).enumerate() {
+            fb.text(26, fb.rows() - 5 + i, msg, if i == 0 { AMBER } else { DIM });
+        }
+    }
     fb.text(
         2,
         fb.rows() - 3,

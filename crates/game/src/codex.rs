@@ -2,7 +2,7 @@
 //! weapon, faction, anomaly and condition, generated from the real data (no hand-written numbers).
 use vector_data::GameData;
 
-pub const CATEGORIES: [&str; 32] = [
+pub const CATEGORIES: [&str; 35] = [
     "RESSOURCES",
     "MODULES",
     "ARMES",
@@ -35,7 +35,13 @@ pub const CATEGORIES: [&str; 32] = [
     "LOIS",
     "PHENOMENES EXOTIQUES",
     "NOMS",
+    "ELEMENTS",
+    "COMPOSES",
+    "REACTIONS",
 ];
+
+/// The category of the reactions: the laboratory.
+pub const LAB_CATEGORY: usize = 34;
 
 /// Index in the source table of entry `k` of a category (modules and weapons share a table).
 pub fn source_index(data: &GameData, cat: usize, k: usize) -> Option<usize> {
@@ -86,6 +92,9 @@ fn entries(data: &GameData, cat: usize) -> Vec<usize> {
         25 => (0..data.dimensions.len()).collect(),
         26 => (0..data.rogue_themes.len()).collect(),
         27 => (0..data.rogue_monsters.len()).collect(),
+        32 => (0..data.chemistry.elements.len()).collect(),
+        33 => (0..data.chemistry.compounds.len()).collect(),
+        34 => (0..data.reactions.len()).collect(),
         28 => (0..data.materials.len()).collect(),
         29 => (0..data.laws.len()).collect(),
         30 => (0..data.exotics.len()).collect(),
@@ -123,6 +132,9 @@ pub fn names(data: &GameData, cat: usize) -> Vec<String> {
             25 => data.dimensions[i].name.clone(),
             26 => data.rogue_themes[i].name.clone(),
             27 => data.rogue_monsters[i].name.clone(),
+            32 => data.chemistry.elements[i].name.clone(),
+            33 => data.chemistry.compounds[i].name.clone(),
+            34 => data.reactions[i].name.clone(),
             28 => data.materials[i].name.clone(),
             29 => data.laws[i].name.clone(),
             30 => data.exotics[i].name.clone(),
@@ -211,6 +223,21 @@ pub fn entry(data: &GameData, cat: usize, k: usize) -> Vec<String> {
             out.push(format!("{}  [{}]", r.name, r.category));
             out.push(format!("Masse volumique : {:.0} kg/m3", r.density));
             out.push(format!("Valeur de base : {:.2} cr/kg", r.value));
+            if let (Some(c), Some(parts)) = (
+                data.compound_of_resource(&r.id),
+                data.resource_elements(&r.id),
+            ) {
+                out.push(format!(
+                    "Chimie : {} ({})   {}",
+                    data.chemistry.compounds[c].name,
+                    data.chemistry.compounds[c].formula,
+                    parts
+                        .iter()
+                        .map(|(s, f)| format!("{s} {:.1} %", f * 100.0))
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                ));
+            }
             let from: Vec<String> = data
                 .asteroids
                 .iter()
@@ -629,6 +656,167 @@ pub fn entry(data: &GameData, cat: usize, k: usize) -> Vec<String> {
                 "Les mondes morts portent un nom de catalogue (etoile + chiffre romain), les mondes vivants un nom evocateur, les geantes un nom de titan."
                     .to_string(),
             );
+        }
+        32 => {
+            let e = &data.chemistry.elements[i];
+            out.push(format!(
+                "{} ({})  numero atomique {}",
+                e.name, e.symbol, e.z
+            ));
+            out.push(e.text.clone());
+            out.push(format!(
+                "Masse molaire : {:.3} g/mol   electronegativite : {:.2}",
+                e.mass, e.en
+            ));
+            out.push(format!(
+                "Fusion : {:.0} K   ebullition : {:.0} K",
+                e.melt, e.boil
+            ));
+            out.push(format!(
+                "Abondance solaire : 10^{:.1} atomes pour 10^12 d'hydrogene",
+                e.abund
+            ));
+            let found: Vec<String> = data
+                .chemistry
+                .compounds
+                .iter()
+                .enumerate()
+                .filter(|(c, _)| data.compound_atoms(*c).iter().any(|(s, _)| *s == e.symbol))
+                .map(|(_, c)| c.name.clone())
+                .collect();
+            if !found.is_empty() {
+                out.push(format!("Entre dans : {}", found.join(", ")));
+            }
+        }
+        33 => {
+            let c = &data.chemistry.compounds[i];
+            out.push(format!("{}  [{}]", c.name, c.class));
+            out.push(c.text.clone());
+            out.push(format!(
+                "Formule : {}   masse molaire : {:.2} g/mol",
+                c.formula,
+                data.molar_mass(i)
+            ));
+            out.push(format!(
+                "Fusion : {:.0} K   ebullition : {:.0} K   a 288 K : {}",
+                c.melt,
+                c.boil,
+                c.state(288.0)
+            ));
+            out.push(format!("Enthalpie de formation : {:.1} kJ/mol", c.hf));
+            let mut risks = Vec::new();
+            if c.limit > 0.0 {
+                risks.push(format!(
+                    "toxique au-dela de {:.4} % de l'air",
+                    c.limit * 100.0
+                ));
+            }
+            if c.corrosive > 0.0 {
+                risks.push(format!("corrosif (indice {:.2})", c.corrosive));
+            }
+            if c.ignite > 0.0 {
+                risks.push(format!(
+                    "inflammable : auto-inflammation {:.0} K, brule des {:.1} % dans l'air",
+                    c.ignite,
+                    c.lel * 100.0
+                ));
+            }
+            if c.oxidizer {
+                risks.push("comburant : attise les feux".to_string());
+            }
+            if c.class == "explosif" {
+                risks.push("explosif".to_string());
+            }
+            if !risks.is_empty() {
+                out.push(format!("Dangers : {}", risks.join(" ; ")));
+            }
+            let res: Vec<String> = c
+                .resources
+                .iter()
+                .filter_map(|r| res_name(data, r))
+                .collect();
+            if !res.is_empty() {
+                out.push(format!("Ressource : {}", res.join(", ")));
+            }
+            let ins: Vec<String> = data
+                .reactions
+                .iter()
+                .filter(|r| {
+                    r.reactants
+                        .iter()
+                        .chain(&r.products)
+                        .any(|(x, _)| *x == c.id)
+                        || r.catalyst == c.id
+                })
+                .map(|r| r.name.clone())
+                .collect();
+            if !ins.is_empty() {
+                out.push(format!("Reactions : {}", ins.join(", ")));
+            }
+        }
+        34 => {
+            let r = &data.reactions[i];
+            let side = |l: &[(String, u32)]| -> String {
+                l.iter()
+                    .map(|(c, n)| {
+                        let f = data
+                            .compound_index(c)
+                            .map_or(c.clone(), |x| data.chemistry.compounds[x].formula.clone());
+                        if *n > 1 {
+                            format!("{n} {f}")
+                        } else {
+                            f
+                        }
+                    })
+                    .collect::<Vec<_>>()
+                    .join(" + ")
+            };
+            out.push(format!("{}  [{}]", r.name, r.kind));
+            out.push(r.text.clone());
+            out.push(format!("{}  ->  {}", side(&r.reactants), side(&r.products)));
+            let dh = data.reaction_enthalpy(r);
+            out.push(format!(
+                "Enthalpie : {dh:+.1} kJ/mol ({})   energie : {:+.2} MJ/kg de reactifs",
+                if dh < 0.0 {
+                    "DEGAGE de la chaleur"
+                } else {
+                    "ABSORBE de la chaleur"
+                },
+                vector_sim::chemistry::energy_density(data, r)
+            ));
+            let mut cond = format!(
+                "Activation : {:.0} K   pression minimale : {:.1} bar",
+                r.t_act, r.p_min
+            );
+            if let Some(c) = data.compound_index(&r.catalyst) {
+                cond.push_str(&format!(
+                    "   catalyseur : {}",
+                    data.chemistry.compounds[c].name
+                ));
+            }
+            out.push(cond);
+            if let Some(isp) = vector_sim::chemistry::specific_impulse(data, r) {
+                out.push(format!(
+                    "Comme ergol : impulsion specifique {isp:.0} s (vitesse d'ejection {:.0} m/s)",
+                    isp * 9.80665
+                ));
+            }
+            let held = |c: &str| {
+                data.compound_index(c).is_some_and(|x| {
+                    data.chemistry.compounds[x]
+                        .resources
+                        .iter()
+                        .any(|r| data.resource_index(r).is_some())
+                })
+            };
+            let reach = r.t_act <= vector_sim::chemistry::LAB_T_MAX
+                && r.p_min <= vector_sim::chemistry::LAB_P_MAX;
+            let runnable = reach && r.reactants.iter().chain(&r.products).all(|(c, _)| held(c));
+            out.push(if runnable {
+                "Laboratoire du bord : REALISABLE (touche L ou clic sur LANCER UN LOT : 100 kg de reactifs tires de la soute, energie prise sur la batterie)".to_string()
+            } else {
+                "Laboratoire du bord : hors de portee du reacteur (2400 K / 300 bar max) ou substance sans ressource".to_string()
+            });
         }
         28 => {
             let m = &data.materials[i];

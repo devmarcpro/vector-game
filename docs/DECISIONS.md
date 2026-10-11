@@ -117,3 +117,18 @@ La chaleur exterieure (soleil, air) entre dans `Systems::step` par `Activity.ext
 Un seul systeme : les phenomenes exotiques sont des resultats d'exploration d'anomalies (`science.rs`) et ne creent aucun systeme parallele; les modules exotiques restent les `exo_*` de `multiverse.rs`. Rien n'est scripte : le phenomene, les vestiges (20 % des systemes) et la reponse au paradoxe de Fermi sortent de `hash(graine, coordonnees)`. Antimatiere : E = 2 m c2 exact; un piege magnetique non alimente la laisse fuir et s'annihiler contre la coque. Cout du warp : m c2 v2 (1 + v2/4), plus que quadratique. Sauvegardes : `Multiverse.exotic_clues` (serde default) ; le coordinateur bumpe VERSION.
 ## Noms generes (une grammaire, une source)
 Tous les noms viennent de `world::names` (`Spec::new(genre).culture(..).host(..).name(hash)`), jamais d'une horloge : meme graine, memes noms. La grammaire `data/names.ron` est embarquee (`include_str!`) et validee au premier usage (jetons connus, listes existantes, caracteres affichables par la police 5x7, probabilites, genres obligatoires); les tests refusent une grammaire cassee. `cultures_names.ron` ne garde que id et nom d'affichage; tout le reste de la culture (syllabes, sexe, particules, surnoms, titres, mots de lieux) est dans `names.ron` sous le meme id. La generation des systemes tire exactement les memes nombres aleatoires qu'avant (le nom d'etoile vient d'un hash de l'etat du generateur; le trafic PNJ tire deux nombres comme avant) : la physique des systemes et le trafic ne changent pas, seuls les noms changent. Les noms de personnes, d'etoiles, de planetes, de lunes, de stations, d'anomalies, de PNJ et de vaisseaux de flotte sont donc differents d'avant pour une graine donnee (les noms deja enregistres dans une sauvegarde restent tels quels).
+## Chimie : une table, la loi de Hess, un laboratoire (`data/chemistry.ron`, `reactions.ron`)
+
+Une seule representation de la matiere chimique : les corps purs (`chemistry.ron`) portent une formule dont
+la masse molaire est calculee (jamais saisie) et une enthalpie de formation ; une reaction (`reactions.ron`)
+ne porte pas son energie : elle se deduit de la difference des enthalpies de formation (loi de Hess), donc
+une table ne peut pas se contredire. A la lecture, chaque reaction doit equilibrer les atomes de chaque
+element, une combustion ou une explosion doit degager de la chaleur, une electrolyse en absorber. Les
+ressources de `resources.ron` restent la monnaie du jeu : un corps pur liste les ressources qu'il est
+(`resources:[...]`, la premiere est celle qu'une reaction fabrique) ; les alliages et composants ne sont pas des
+corps purs et n'ont pas de composition. Les atmospheres (`world`) gardent leurs formules (`"CO2"`) : on les
+rattache aux corps par la formule. Nouvelles ressources dans `resources_chemistry.ron` (fichier a part pour
+ne pas heurter les autres ajouts de ressources). Le laboratoire reutilise le codex (categorie REACTIONS) au
+lieu d'un nouvel ecran. Le reacteur du bord monte a 2400 K et 300 bar ; l'efficacite electrique est de 0,6 ;
+l'impulsion specifique reelle = 0,78 x sqrt(2 q) / g0 (q = chaleur par kg d'ejecta). Sauvegardes : aucune
+structure sauvegardee n'a change (corrosion = sante des modules existante ; stock = soute existante).

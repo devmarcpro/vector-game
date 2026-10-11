@@ -2227,6 +2227,11 @@ impl Sim {
         // The air and the climate of a surface: a suit protects in proportion to its defence, and
         // warm clothes in the cold.
         if let (Some((pressure, temp)), true) = (r.env, r.on_surface()) {
+            // What the air is made of (chemistry): poison and lack of oxygen.
+            let lungs = r
+                .body
+                .and_then(|b| self.air_hazard_of(b))
+                .map_or(0.0, |a| a.lungs());
             for who in self.party_up(r) {
                 let p = &self.crew.members[who];
                 let defense = p.gear_stat(&self.data, "defense")
@@ -2235,7 +2240,13 @@ impl Sim {
                     } else {
                         0.0
                     };
-                let (dmg, why) = environment_damage(pressure, temp, defense);
+                let (mut dmg, mut why) = environment_damage(pressure, temp, defense);
+                if lungs > 0.0 {
+                    dmg += lungs * (1.0 - (1.5 * defense).min(0.95));
+                    if why.is_empty() {
+                        why = "L'air est irrespirable";
+                    }
+                }
                 if dmg > 0.0 {
                     let p = &mut self.crew.members[who];
                     p.health = (p.health - (dmg * r.turn_seconds / 60.0) as f32).max(0.0);
@@ -2692,6 +2703,10 @@ mod tests {
                 let Some(map) = s.planet_map(body) else {
                     continue;
                 };
+                // Chemistry: the squad lands unsuited, so the air must be breathable.
+                if s.air_hazard_of(body).is_some_and(|a| !a.breathable()) {
+                    continue;
+                }
                 for cy in (4..SURF_H).step_by(6) {
                     for cx in (0..SURF_W).step_by(9) {
                         if map.surface.is_sea(cx, cy) {

@@ -16,7 +16,7 @@ use vector_render::Framebuffer;
 use vector_sim::{ShipInput, SIM_DT};
 use winit::{
     application::ApplicationHandler,
-    event::{ElementState, WindowEvent},
+    event::{DeviceEvent, DeviceId, ElementState, WindowEvent},
     event_loop::{ActiveEventLoop, EventLoop},
     keyboard::{KeyCode, PhysicalKey},
     window::{Window, WindowId},
@@ -63,9 +63,53 @@ struct App {
     last: Instant,
     acc: f64,
     audio: audio::Audio,
+    /// Raw mouse motion since the last frame, and whether the cursor is currently captured.
+    mouse_acc: (f64, f64),
+    grabbed: bool,
+}
+
+/// Full turn demand at this many pixels of raw mouse motion per second.
+const MOUSE_FULL_PX_PER_S: f64 = 500.0;
+
+impl App {
+    /// Capture the cursor while mouse look is on in flight; release it otherwise.
+    fn sync_mouse(&mut self, dt: f64) {
+        let want =
+            self.game.mouse_look && self.game.screen == Screen::Flight && !self.game.console.open;
+        if want != self.grabbed {
+            if let Some(w) = &self.window {
+                use winit::window::CursorGrabMode;
+                if want {
+                    let ok = w.set_cursor_grab(CursorGrabMode::Locked).is_ok()
+                        || w.set_cursor_grab(CursorGrabMode::Confined).is_ok();
+                    w.set_cursor_visible(!ok);
+                } else {
+                    w.set_cursor_grab(CursorGrabMode::None).ok();
+                    w.set_cursor_visible(true);
+                }
+            }
+            self.grabbed = want;
+        }
+        let (dx, dy) = std::mem::take(&mut self.mouse_acc);
+        self.game.mouse = if want && dt > 0.0 {
+            (
+                (dx / dt / MOUSE_FULL_PX_PER_S).clamp(-1.0, 1.0),
+                (dy / dt / MOUSE_FULL_PX_PER_S).clamp(-1.0, 1.0),
+            )
+        } else {
+            (0.0, 0.0)
+        };
+    }
 }
 
 impl ApplicationHandler for App {
+    fn device_event(&mut self, _el: &ActiveEventLoop, _id: DeviceId, ev: DeviceEvent) {
+        if let DeviceEvent::MouseMotion { delta } = ev {
+            self.mouse_acc.0 += delta.0;
+            self.mouse_acc.1 += delta.1;
+        }
+    }
+
     fn resumed(&mut self, el: &ActiveEventLoop) {
         let attrs = Window::default_attributes()
             .with_title("VECTOR")
@@ -100,6 +144,7 @@ impl ApplicationHandler for App {
                 let now = Instant::now();
                 let dt = (now - self.last).as_secs_f64().min(0.25);
                 self.last = now;
+                self.sync_mouse(dt);
                 if self.game.running() {
                     if self.game.timescale <= 1.0 {
                         self.acc += dt * self.game.timescale;
@@ -553,6 +598,8 @@ fn main() {
         audio,
         last: Instant::now(),
         acc: 0.0,
+        mouse_acc: (0.0, 0.0),
+        grabbed: false,
     };
     if let Err(e) = el.run_app(&mut app) {
         eprintln!("run failed: {e}");

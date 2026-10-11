@@ -1,4 +1,4 @@
-# ACCEPTANCE — critères de la section 12, avec preuves
+﻿# ACCEPTANCE — critères de la section 12, avec preuves
 
 Mesures prises sur la machine de développement (Windows 11, build `--release`), le 2026-10-11.
 
@@ -12,7 +12,7 @@ Mesures prises sur la machine de développement (Windows 11, build `--release`),
 | Stabilité sur 100 ans | atteint | `sim_bench 100` : 26 s pour 100 ans de jeu (≈ 1,2·10⁸ × le temps réel), aucune valeur non finie, marchés sains |
 | Stabilité en vol libre | atteint (lent) | `sim_bench drift 1` : 18 s par an de jeu (≈ 1,7·10⁶ ×) ; le jeu plafonne à ×100 000 |
 | Codex pour chaque ressource, module, bâtiment, technologie | atteint | F6 ; `every_entry_of_every_category_has_real_data` (350+ entrées) |
-| Tutoriel | atteint | 15 étapes pilotées par l'état ; `tutorial_advances_on_actions_and_can_be_skipped` |
+| Tutoriel | atteint | 16 étapes pilotées par l'état ; `tutorial_advances_on_actions_and_can_be_skipped` |
 | Aide contextuelle | atteint | F1 sur chaque écran ; `f1_toggles_contextual_help_on_every_screen` |
 | Performance | atteint | rendu 1280×720 : 0,67 ms/image ; pas de simulation : 0,028 ms ; sauvegarde : 2,9 Ko en 0,22 ms (`vector-game --bench`) |
 | Tests automatisés | 147 verts | `cargo test` ; `cargo clippy --all-targets -- -D warnings` propre ; `cargo fmt` appliqué |

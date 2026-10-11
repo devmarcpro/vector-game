@@ -31,3 +31,4 @@
 - 2026-10-11 : M10 (c) : tutoriel guidé de 15 étapes, aide contextuelle F1 sur tous les écrans, audio procédural (cpal), mode `--script` avec scripts de régression rejoués par `cargo test`.
 - 2026-10-11 : M10 (d) : README, docs/ACCEPTANCE.md, paquet `dist/VECTOR.zip` (`tools/package.ps1`). `sim_bench 100` : 100 ans en 26 s, stable.
 - 2026-10-11 : Session 2, environnement (Rust 1.99, Build Tools 2022, gh) installé sur la nouvelle machine : build, 147 tests, clippy, data_check, first_flight OK au départ. Étape 0 / pilotage (a) : boost (Maj) et frein relatif (C maintenu), rotation des coques x1.3, amarrage D silencieux hors portée. 150 tests verts.
+- 2026-10-11 : Étape 0 / pilotage (b) : poussière spatiale en traînées (le fond d'étoiles est à l'infini, rien ne défilait), FOV élargi au boost, visée souris F7 (DeviceEvent::MouseMotion, curseur capturé en vol), tutoriel à 16 étapes, aide F1 mise à jour.

@@ -73,6 +73,9 @@ pub struct Game {
     pub sim: Sim,
     pub stars: Vec<Vec3>,
     pub keys: HashSet<KeyCode>,
+    /// Mouse look (F7): turn demand in [-1, 1] as (yaw, pitch), fed each frame by the window.
+    pub mouse_look: bool,
+    pub mouse: (f64, f64),
     pub timescale: f64,
     pub paused: bool,
     pub messages: Vec<String>,
@@ -146,6 +149,8 @@ impl Game {
             sim,
             stars: scene::star_field(seed, 900),
             keys: HashSet::new(),
+            mouse_look: false,
+            mouse: (0.0, 0.0),
             timescale: 1.0,
             paused: false,
             messages: vec!["BIENVENUE A BORD - [F1] AIDE".into()],
@@ -243,8 +248,8 @@ impl Game {
             f64::from(self.keys.contains(&pos) as i8) - f64::from(self.keys.contains(&neg) as i8)
         };
         ShipInput {
-            pitch: ax(KeyCode::KeyW, KeyCode::KeyS),
-            yaw: ax(KeyCode::KeyD, KeyCode::KeyA),
+            pitch: (ax(KeyCode::KeyW, KeyCode::KeyS) + self.mouse.1).clamp(-1.0, 1.0),
+            yaw: (ax(KeyCode::KeyD, KeyCode::KeyA) + self.mouse.0).clamp(-1.0, 1.0),
             roll: ax(KeyCode::KeyQ, KeyCode::KeyE),
             fwd: ax(KeyCode::Space, KeyCode::KeyX),
             lat: ax(KeyCode::ArrowRight, KeyCode::ArrowLeft),
@@ -1576,6 +1581,15 @@ impl Game {
             KeyCode::PageUp => self.step_time(true),
             KeyCode::PageDown => self.step_time(false),
             KeyCode::KeyG => self.toggle_autopilot(),
+            KeyCode::F7 => {
+                self.mouse_look = !self.mouse_look;
+                self.mouse = (0.0, 0.0);
+                self.say(if self.mouse_look {
+                    "VISEE SOURIS ACTIVEE (F7 POUR LA COUPER)"
+                } else {
+                    "VISEE SOURIS COUPEE"
+                });
+            }
             KeyCode::KeyM => self.map = !self.map,
             KeyCode::KeyC => self.map_on_ship = !self.map_on_ship,
             KeyCode::KeyI => self.screen = Screen::Inventory,
@@ -1596,7 +1610,7 @@ impl Game {
             KeyCode::Minus | KeyCode::NumpadSubtract => self.map_scale *= 1.5,
             KeyCode::F1 => {
                 self.say("WASD/QE:ROT ESPACE/X:POUSSEE FLECHES:RCS F:ASSIST V:LASER");
-                self.say("MAJ:BOOST C(MAINTENIR):FREIN SUR LA CIBLE");
+                self.say("MAJ:BOOST C(MAINTENIR):FREIN SUR LA CIBLE F7:VISEE SOURIS");
                 self.say("TAB/T/Y/R:CIBLE G:AUTO D:AMARRER I:SOUTE M:CARTE F5/F9:SAUV/CHARG");
                 self.say(
                     "F2:EMPIRE F3:FLOTTE O:COLONISER LA CIBLE L:GALAXIE K:EQUIPAGE H:VAISSEAU",
@@ -1704,6 +1718,27 @@ mod tests {
         );
         g.key(KeyCode::PageUp, None, true);
         assert!(g.timescale > 1.0, "PageUp speeds time up");
+    }
+
+    #[test]
+    fn mouse_look_boost_and_brake_reach_the_ship_input() {
+        let mut g = Game::new(data(), 1);
+        g.key(KeyCode::Enter, None, true);
+        assert_eq!(g.screen, Screen::Flight);
+        g.mouse = (0.6, -0.3);
+        let i = g.input();
+        assert!((i.yaw - 0.6).abs() < 1e-9 && (i.pitch + 0.3).abs() < 1e-9);
+        g.key(KeyCode::KeyD, None, true);
+        g.mouse = (0.9, 0.0);
+        assert_eq!(g.input().yaw, 1.0, "keyboard and mouse add, then clamp");
+        g.key(KeyCode::KeyD, None, false);
+        g.key(KeyCode::F7, None, true);
+        assert!(g.mouse_look, "F7 toggles mouse look");
+        assert_eq!(g.mouse, (0.0, 0.0), "toggling clears stale motion");
+        assert!(!g.input().boost && !g.input().brake);
+        g.key(KeyCode::ShiftLeft, None, true);
+        g.key(KeyCode::KeyC, None, true);
+        assert!(g.input().boost && g.input().brake);
     }
 
     #[test]

@@ -1,4 +1,4 @@
-# DECISIONS
+﻿# DECISIONS
 
 Journal des choix de conception non triviaux (le plus récent en bas de chaque thème).
 
@@ -32,7 +32,7 @@ Journal des choix de conception non triviaux (le plus récent en bas de chaque t
 - Depuis le menu pause les règles s'appliquent en direct ; depuis le menu principal elles s'appliquent à la prochaine partie.
 
 ## Interface
-- Écrans texte sur grille 8x10 px ; aucune souris. F1 = aide contextuelle par écran, F6 = codex généré depuis les données (aucune valeur écrite à la main), tutoriel de 15 étapes piloté par l'état (F10 l'ignore, option pour le désactiver).
+- Écrans texte sur grille 8x10 px ; souris uniquement pour la visée en vol (F7, mouvement relatif). F1 = aide contextuelle par écran, F6 = codex généré depuis les données (aucune valeur écrite à la main), tutoriel de 16 étapes piloté par l'état (F10 l'ignore, option pour le désactiver).
 - Post-traitement (lignes de balayage, halo, palettes monochromes) en option, appliqué sur le framebuffer avant affichage ; réglages dans `saves/settings.cfg` (clé=valeur, tolérant aux erreurs).
 - Mode `--script fichier` : exécute des touches et des assertions sur la vraie logique du jeu, sans fenêtre. Les scripts de `scripts/` sont rejoués par `cargo test`.
 

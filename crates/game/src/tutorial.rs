@@ -16,7 +16,7 @@ fn any_pressed(g: &Game, screen: Screen, codes: &[KeyCode]) -> bool {
     codes.iter().any(|&c| pressed(g, screen, c))
 }
 
-pub const STEPS: [Step; 15] = [
+pub const STEPS: [Step; 16] = [
     Step {
         text: "Bienvenue, capitaine. Tournez le vaisseau : W/S tangage, A/D lacet, Q/E roulis.",
         done: |g| {
@@ -41,6 +41,10 @@ pub const STEPS: [Step; 15] = [
     Step {
         text: "F active ou coupe l'assistance de vol. Essayez de la basculer.",
         done: |g| pressed(g, Screen::Flight, KeyCode::KeyF),
+    },
+    Step {
+        text: "MAJ (maintenir) : boost. C (maintenir) : frein, annule la vitesse vers la cible. F7 : visee souris.",
+        done: |g| any_pressed(g, Screen::Flight, &[KeyCode::ShiftLeft, KeyCode::KeyC, KeyCode::F7]),
     },
     Step {
         text: "Tab (ou Y) cible la station la plus proche. Le panneau de cible affiche distance et vitesse relative.",
@@ -101,7 +105,8 @@ pub fn help_lines(screen: Screen) -> &'static [&'static str] {
             "W/S A/D Q/E : tangage, lacet, roulis",
             "Espace / X : poussee avant / recul",
             "Fleches : RCS lateral et vertical",
-            "F : assistance de vol",
+            "F : assistance de vol   Maj : boost   C : frein sur la cible",
+            "F7 : visee souris (tangage et lacet)",
             "Tab T Y R : cibles (proche, asteroide, station, PNJ)",
             "V : laser de minage   Ctrl : tir   B : missiles",
             "G : pilote auto   D : amarrer   M : carte systeme",

@@ -34,7 +34,7 @@ pub const STEPS: [Step; 17] = [
         done: |g| any_pressed(g, Screen::Flight, &[KeyCode::ShiftLeft, KeyCode::KeyC, KeyCode::F7]),
     },
     Step {
-        text: "Tab (ou Y) cible la station la plus proche. Le panneau de cible affiche distance et vitesse relative.",
+        text: "Tab (ou Y) cible l'objet ou la station le plus proche, Maj+Tab une planete. Le panneau de cible affiche distance et vitesse relative.",
         done: |g| g.sim.target.is_some() || g.sim.docked.is_some(),
     },
     Step {
@@ -76,7 +76,7 @@ pub const STEPS: [Step; 17] = [
         done: |g| g.sim.docked.is_none() && g.sim.credits.is_finite() && (pressed(g, Screen::Flight, KeyCode::KeyV) || pressed(g, Screen::Flight, KeyCode::KeyT)),
     },
     Step {
-        text: "L ouvre la carte de la galaxie : Entree lance un saut si le vaisseau a un moteur FTL.",
+        text: "L ouvre la carte de la galaxie : Entree lance un saut (le vaisseau s'eloigne seul des corps massifs puis saute ; G annule).",
         done: |g| pressed(g, Screen::Flight, KeyCode::KeyL) || g.screen == Screen::Galaxy,
     },
     Step {
@@ -84,7 +84,7 @@ pub const STEPS: [Step; 17] = [
         done: |g| any_pressed(g, Screen::Flight, &[KeyCode::F4, KeyCode::F6, KeyCode::F2]) || matches!(g.screen, Screen::Tech | Screen::Codex | Screen::Empire),
     },
     Step {
-        text: "F8 ouvre la surface d'une planete ou d'une lune relevee : cartes, biomes, saisons, meteo, globe (G).",
+        text: "F8 ouvre la surface d'un monde releve (G : globe) ; E y lance une expedition a pied ; Entree en vol sur une planete ciblee parle a son peuple.",
         done: |g| pressed(g, Screen::Flight, KeyCode::F8) || g.screen == Screen::Surface,
     },];
 

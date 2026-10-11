@@ -136,10 +136,17 @@ pub fn event_factor(data: &GameData, events: &[ActiveEvent], res: usize, t: f64)
 pub fn world_factors(data: &GameData, galaxy_seed: u64, pos: [f64; 3], t: f64) -> Vec<f64> {
     let events = events_between(data, galaxy_seed, pos, t, t);
     let cell = region_cell(pos);
+    // What the people of this territory want and shun (their mœurs, see `data/ethos.ron`).
+    let faction =
+        vector_world::galaxy::Galaxy::new(galaxy_seed).territory(pos, data.factions.len());
+    let values = data
+        .ethos
+        .profile(faction.map(|f| data.factions[f].id.as_str()));
     let region_key = hash_coord(galaxy_seed ^ 0xF1A7, cell[0], cell[1], cell[2]) as i64;
     (0..data.resources.len())
         .map(|r| {
-            let f = event_factor(data, &events, r, t);
+            let f = event_factor(data, &events, r, t)
+                * data.ethos.demand_factor(&values, &data.resources, r);
             let vol = 0.03 + 0.012 * (1.0 + data.resources[r].value).log10();
             let key = region_key ^ (r as i64).wrapping_mul(0x9E37_79B9);
             let n = 0.65 * smooth_noise(galaxy_seed, key, 9.0, t)
@@ -326,6 +333,59 @@ mod tests {
         let got = world_factors(&d, 7, pos, peak)[res];
         assert!((got / expect - 1.0).abs() < 0.12, "{got} vs {expect}");
     }
+    /// A point of space inside a faction's territory.
+    fn position_in(d: &GameData, seed: u64, faction: &str) -> [f64; 3] {
+        let g = vector_world::galaxy::Galaxy::new(seed);
+        let idx = d.faction_index(faction).expect("faction");
+        for x in (-600..600).step_by(40) {
+            for y in (-300..300).step_by(40) {
+                for z in (-300..300).step_by(40) {
+                    let p = [f64::from(x), f64::from(y), f64::from(z)];
+                    if g.territory(p, d.factions.len()) == Some(idx) {
+                        return p;
+                    }
+                }
+            }
+        }
+        panic!("no territory of {faction}");
+    }
+
+    #[test]
+    fn the_mores_of_a_people_set_what_its_markets_pay() {
+        let d = data();
+        let arms = d.resource_index("weapon_parts").expect("res");
+        let tech = d.resource_index("electronics").expect("res");
+        let (war, green) = (
+            position_in(&d, 7, "hegemonie"),
+            position_in(&d, 7, "verdant"),
+        );
+        let mean = |pos: [f64; 3], res: usize| -> f64 {
+            (0..300)
+                .map(|day| world_factors(&d, 7, pos, f64::from(day) * 3.0 * DAY)[res])
+                .sum::<f64>()
+                / 300.0
+        };
+        // Militarists pay far more for weapons than pacifists, whatever the events.
+        assert!(
+            mean(war, arms) > 1.25 * mean(green, arms),
+            "{} vs {}",
+            mean(war, arms),
+            mean(green, arms)
+        );
+        // Progressives want technology more than traditionalists.
+        let mars = position_in(&d, 7, "mars");
+        let errants = position_in(&d, 7, "errants");
+        assert!(
+            mean(mars, tech) > mean(errants, tech),
+            "{} vs {}",
+            mean(mars, tech),
+            mean(errants, tech)
+        );
+        // The factor of a neutral people is 1.
+        let neutral = vec![0.0; d.ethos.axes.len()];
+        assert_eq!(d.ethos.demand_factor(&neutral, &d.resources, arms), 1.0);
+    }
+
     #[test]
     fn noise_stays_small_and_events_never_make_prices_negative() {
         let d = data();

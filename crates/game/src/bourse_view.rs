@@ -62,6 +62,30 @@ pub fn draw(fb: &mut Framebuffer, g: &Game) {
         ),
         DIM,
     );
+    // The people of this territory: their mœurs and what they forbid.
+    let faction = g.sim.faction;
+    let values = data
+        .ethos
+        .profile(faction.map(|f| data.factions[f].id.as_str()));
+    let banned: Vec<bool> = (0..data.resources.len())
+        .map(|r| {
+            data.ethos.banned_by(&values, &data.resources, r).is_some()
+                || faction
+                    .is_some_and(|f| data.factions[f].contraband.contains(&data.resources[r].id))
+        })
+        .collect();
+    let people = faction.map_or("ESPACE LIBRE".to_string(), |f| {
+        data.factions[f].name.to_uppercase()
+    });
+    fb.text(
+        2,
+        2,
+        &format!(
+            "MOEURS : {people} - {}",
+            data.ethos.traits(&values, 4).join(", ").to_uppercase()
+        ),
+        DIM,
+    );
     let rows = fb.rows().saturating_sub(7);
     // Resource list with 7-day change and a sparkline.
     fb.text(2, 3, "RESSOURCE            PRIX   7J      30J", DIM);
@@ -72,7 +96,13 @@ pub fn draw(fb: &mut Framebuffer, g: &Game) {
         let series = &g.bourse_series[k];
         let (ch7, ch30) = (change(series, 7), change(series, 30));
         let selected = k == sel;
-        let col = if selected { AMBER } else { GREEN };
+        let col = if banned[k] {
+            RED
+        } else if selected {
+            AMBER
+        } else {
+            GREEN
+        };
         let mut name = r.name.to_uppercase();
         name.truncate(18);
         let row = 4 + k - start;
@@ -81,7 +111,13 @@ pub fn draw(fb: &mut Framebuffer, g: &Game) {
             row,
             &format!(
                 "{}{:<19}{:>7}",
-                if selected { ">" } else { " " },
+                if selected {
+                    ">"
+                } else if banned[k] {
+                    "!"
+                } else {
+                    " "
+                },
                 name,
                 fmt_price(series[series.len() - 1])
             ),
@@ -103,6 +139,14 @@ pub fn draw(fb: &mut Framebuffer, g: &Game) {
     let x0 = 48usize;
     if fb.cols() < x0 + 30 {
         return;
+    }
+    if banned[sel] {
+        fb.text(
+            x0,
+            2,
+            "INTERDIT ICI : CONTREBANDE (SAISIE ET AMENDE A LA DOUANE)",
+            RED,
+        );
     }
     draw_chart(fb, g, sel, x0);
     draw_news(fb, g, sel, x0);

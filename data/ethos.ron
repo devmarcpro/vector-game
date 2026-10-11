@@ -1,0 +1,36 @@
+// Customs and morals (mœurs). Every faction has a value on each of 8 axes in [-1, 1]; the axis
+// names give the two poles. Moral tags group goods: a tag shifts the demand (price) of its goods
+// by sum(weight x value) and bans them (contraband, seized at customs) when any ban condition
+// (axis, "<" or ">", threshold) holds. `matches`: resource ids or "cat:<category>".
+(
+ axes:[
+  (id:"autorite", name:"Autorité", low:"libertaire", high:"autoritaire"),
+  (id:"tradition", name:"Tradition", low:"progressiste", high:"traditionaliste"),
+  (id:"violence", name:"Violence", low:"pacifiste", high:"martial"),
+  (id:"commerce", name:"Commerce", low:"communautaire", high:"marchand"),
+  (id:"foi", name:"Foi", low:"rationaliste", high:"spirituel"),
+  (id:"ouverture", name:"Ouverture", low:"xénophobe", high:"ouvert"),
+  (id:"corps", name:"Rapport au corps", low:"sacralisé", high:"pragmatique"),
+  (id:"honneur", name:"Honneur", low:"opportuniste", high:"honorable"),
+ ],
+ tags:[
+  (id:"arme", name:"Armement", matches:["cat:ammo","weapon_parts"], demand:[("violence",0.30),("autorite",0.05)], ban:[("violence","<",-0.6)]),
+  (id:"tech", name:"Haute technologie", matches:["electronics","circuits","robotics","nanomaterials"], demand:[("tradition",-0.25),("ouverture",0.10)], ban:[("tradition",">",0.8)]),
+  (id:"luxe", name:"Luxe", matches:["luxury_goods","gold","platinum","diamond"], demand:[("commerce",0.25),("honneur",-0.05)], ban:[("commerce","<",-0.7)]),
+  (id:"sacre", name:"Reliques", matches:["artifacts"], demand:[("foi",0.40)], ban:[("foi",">",0.7)]),
+  (id:"soins", name:"Soins", matches:["medicine"], demand:[("corps",0.10),("tradition",-0.10)], ban:[("foi",">",0.85)]),
+  (id:"vivres", name:"Vivres", matches:["food","water"], demand:[("commerce",-0.10)], ban:[]),
+  (id:"atome", name:"Nucléaire", matches:["cat:nuclear"], demand:[("violence",0.10),("ouverture",0.05)], ban:[("ouverture","<",-0.6)]),
+  (id:"savoir", name:"Données", matches:["research_data"], demand:[("tradition",-0.20),("ouverture",0.20)], ban:[("autorite",">",0.8)]),
+ ],
+ profiles:[
+  ("concorde", [-0.4, -0.2, -0.3, 0.2, -0.3, 0.7, 0.2, 0.5]),
+  ("ceintures", [-0.8, -0.3, 0.0, 0.3, -0.4, 0.2, 0.6, 0.0]),
+  ("mars", [0.3, -0.6, 0.0, 0.0, -0.8, 0.3, 0.8, 0.2]),
+  ("ligue", [0.0, 0.0, -0.2, 0.9, -0.2, 0.5, 0.6, -0.3]),
+  ("hegemonie", [0.9, 0.6, 0.9, -0.2, 0.3, -0.55, -0.2, 0.7]),
+  ("errants", [-0.2, 0.7, 0.4, -0.5, 0.6, -0.65, -0.5, 0.9]),
+  ("helios", [0.6, -0.3, 0.3, 0.8, -0.5, 0.0, 0.9, -0.6]),
+  ("verdant", [-0.3, 0.2, -0.8, -0.75, 0.5, 0.3, -0.7, 0.6]),
+ ],
+)

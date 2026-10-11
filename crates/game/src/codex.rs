@@ -357,6 +357,26 @@ pub fn entry(data: &GameData, cat: usize, k: usize) -> Vec<String> {
                 f.aggression * 100.0
             ));
             out.push(format!("Culture : {}", f.culture));
+            let values = data.ethos.profile(Some(f.id.as_str()));
+            out.push(format!(
+                "Moeurs : {}",
+                data.ethos.traits(&values, 4).join(", ")
+            ));
+            let banned: Vec<String> = (0..data.resources.len())
+                .filter(|&r| data.ethos.banned_by(&values, &data.resources, r).is_some())
+                .map(|r| data.resources[r].name.clone())
+                .collect();
+            if !banned.is_empty() {
+                out.push(format!("Interdit par ses moeurs : {}", banned.join(", ")));
+            }
+            let wants: Vec<String> = (0..data.resources.len())
+                .map(|r| (r, data.ethos.demand_factor(&values, &data.resources, r)))
+                .filter(|&(_, d)| d > 1.12)
+                .map(|(r, d)| format!("{} {:+.0} %", data.resources[r].name, (d - 1.0) * 100.0))
+                .collect();
+            if !wants.is_empty() {
+                out.push(format!("Demande forte : {}", wants.join(", ")));
+            }
             out.push(format!(
                 "Allies : {}",
                 if f.allies.is_empty() {

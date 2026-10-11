@@ -365,6 +365,110 @@ impl WorldEvent {
     }
 }
 
+/// One axis of customs and morals: values run from -1 (`low` pole) to +1 (`high` pole).
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct EthosAxis {
+    pub id: String,
+    pub name: String,
+    pub low: String,
+    pub high: String,
+}
+
+/// A group of goods with a moral colour: it moves demand and can be banned (see `data/ethos.ron`).
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct MoralTag {
+    pub id: String,
+    pub name: String,
+    pub matches: Vec<String>,
+    pub demand: Vec<(String, f64)>,
+    pub ban: Vec<(String, String, f64)>,
+}
+
+/// Customs and morals of the factions, and what they do to trade.
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+pub struct Ethos {
+    pub axes: Vec<EthosAxis>,
+    pub tags: Vec<MoralTag>,
+    pub profiles: Vec<(String, Vec<f64>)>,
+}
+
+impl Ethos {
+    pub fn axis(&self, id: &str) -> Option<usize> {
+        self.axes.iter().position(|a| a.id == id)
+    }
+
+    /// Values of a faction (zeros, i.e. neutral, when it has no profile or `faction` is None).
+    pub fn profile(&self, faction_id: Option<&str>) -> Vec<f64> {
+        faction_id
+            .and_then(|f| self.profiles.iter().find(|(id, _)| id == f))
+            .map_or_else(|| vec![0.0; self.axes.len()], |(_, v)| v.clone())
+    }
+
+    fn tag_covers(tag: &MoralTag, resources: &[Resource], res: usize) -> bool {
+        let r = &resources[res];
+        tag.matches.iter().any(|m| {
+            m.strip_prefix("cat:")
+                .map_or(*m == r.id, |c| c == r.category)
+        })
+    }
+
+    /// Demand multiplier of a resource for a people with these values (1 = neutral).
+    pub fn demand_factor(&self, values: &[f64], resources: &[Resource], res: usize) -> f64 {
+        self.tags
+            .iter()
+            .filter(|t| Self::tag_covers(t, resources, res))
+            .map(|t| {
+                let shift: f64 = t
+                    .demand
+                    .iter()
+                    .filter_map(|(a, w)| self.axis(a).map(|i| w * values[i]))
+                    .sum();
+                (1.0 + shift).clamp(0.7, 1.45)
+            })
+            .product()
+    }
+
+    /// The tag that bans a resource for a people with these values, if any.
+    pub fn banned_by(
+        &self,
+        values: &[f64],
+        resources: &[Resource],
+        res: usize,
+    ) -> Option<&MoralTag> {
+        self.tags.iter().find(|t| {
+            Self::tag_covers(t, resources, res)
+                && t.ban.iter().any(|(a, op, limit)| {
+                    self.axis(a).is_some_and(|i| match op.as_str() {
+                        "<" => values[i] < *limit,
+                        _ => values[i] > *limit,
+                    })
+                })
+        })
+    }
+
+    /// The `n` strongest traits of a people, as pole names ("martial", "xénophobe"...).
+    pub fn traits(&self, values: &[f64], n: usize) -> Vec<String> {
+        let mut v: Vec<(f64, &str)> = self
+            .axes
+            .iter()
+            .zip(values)
+            .filter(|(_, x)| x.abs() >= 0.3)
+            .map(|(a, x)| {
+                (
+                    x.abs(),
+                    if *x < 0.0 {
+                        a.low.as_str()
+                    } else {
+                        a.high.as_str()
+                    },
+                )
+            })
+            .collect();
+        v.sort_by(|a, b| b.0.total_cmp(&a.0));
+        v.into_iter().take(n).map(|(_, s)| s.to_string()).collect()
+    }
+}
+
 const PERSON_FIELDS: [&str; 14] = [
     "morale", "health", "loyalty", "stress", "fatigue", "hunger", "thirst", "social", "relation",
     "age", "credits", "death", "quit", "salary",
@@ -411,6 +515,7 @@ pub struct GameData {
     pub biomes: Vec<Biome>,
     pub species: Vec<Species>,
     pub world_events: Vec<WorldEvent>,
+    pub ethos: Ethos,
 }
 
 fn read<T: for<'a> Deserialize<'a>>(path: &Path) -> Result<T, DataError> {
@@ -442,6 +547,7 @@ impl GameData {
             biomes: read(&dir.join("biomes.ron"))?,
             species: read(&dir.join("species.ron"))?,
             world_events: read(&dir.join("world_events.ron"))?,
+            ethos: read(&dir.join("ethos.ron"))?,
         };
         // Generated extension files (tools/gen_scale.py) extend the hand-written tables.
         let mut extra_events: Vec<EventDef> = read(&dir.join("events_extra.ron"))?;
@@ -856,7 +962,64 @@ impl GameData {
         }
         self.validate_biomes()?;
         self.validate_species()?;
-        self.validate_world_events()
+        self.validate_world_events()?;
+        self.validate_ethos()
+    }
+
+    /// Customs and morals: known axes and goods, one profile per faction, values in [-1, 1].
+    fn validate_ethos(&self) -> Result<(), DataError> {
+        let bad = |s: String| Err(DataError::Invalid(s));
+        let e = &self.ethos;
+        if e.axes.len() < 4 {
+            return bad("mœurs: au moins 4 axes".into());
+        }
+        let mut ids = std::collections::HashSet::new();
+        for a in &e.axes {
+            if !ids.insert(a.id.as_str()) {
+                return bad(format!("mœurs: axe {} en double", a.id));
+            }
+        }
+        for t in &e.tags {
+            if t.matches.is_empty() {
+                return bad(format!("mœurs: etiquette {} sans marchandise", t.id));
+            }
+            for m in &t.matches {
+                let known = match m.strip_prefix("cat:") {
+                    Some(c) => self.resources.iter().any(|r| r.category == c),
+                    None => self.resource_index(m).is_some(),
+                };
+                if !known {
+                    return bad(format!("mœurs: etiquette {}: {m} inconnu", t.id));
+                }
+            }
+            for (a, w) in &t.demand {
+                if e.axis(a).is_none() || w.abs() > 0.6 {
+                    return bad(format!(
+                        "mœurs: etiquette {}: demande {a}/{w} invalide",
+                        t.id
+                    ));
+                }
+            }
+            for (a, op, limit) in &t.ban {
+                if e.axis(a).is_none() || !["<", ">"].contains(&op.as_str()) || limit.abs() > 1.0 {
+                    return bad(format!("mœurs: etiquette {}: interdiction invalide", t.id));
+                }
+            }
+        }
+        for f in &self.factions {
+            let Some((_, v)) = e.profiles.iter().find(|(id, _)| *id == f.id) else {
+                return bad(format!("mœurs: la faction {} n'a pas de profil", f.id));
+            };
+            if v.len() != e.axes.len() || v.iter().any(|x| !(-1.0..=1.0).contains(x)) {
+                return bad(format!("mœurs: profil de {} invalide", f.id));
+            }
+        }
+        for (id, _) in &e.profiles {
+            if !self.factions.iter().any(|f| f.id == *id) {
+                return bad(format!("mœurs: profil pour la faction inconnue {id}"));
+            }
+        }
+        Ok(())
     }
 
     /// World events: known resources and categories, sane multipliers, durations and scopes.
@@ -1138,6 +1301,47 @@ mod tests {
             assert!(x.validate().is_err(), "case {field}");
         }
     }
+    #[test]
+    fn ethos_profiles_bans_and_demand_are_consistent() {
+        let d = GameData::load(&dir()).expect("data loads");
+        assert!(d.ethos.axes.len() == 8 && d.ethos.tags.len() >= 6);
+        let id = |f: &str| d.ethos.profile(Some(f));
+        let arms = d.resource_index("weapon_parts").expect("res");
+        assert!(d
+            .ethos
+            .banned_by(&id("verdant"), &d.resources, arms)
+            .is_some());
+        assert!(d
+            .ethos
+            .banned_by(&id("hegemonie"), &d.resources, arms)
+            .is_none());
+        assert!(d.ethos.demand_factor(&id("hegemonie"), &d.resources, arms) > 1.2);
+        assert!(d.ethos.demand_factor(&id("verdant"), &d.resources, arms) < 0.85);
+        assert_eq!(
+            d.ethos.profile(None),
+            vec![0.0; 8],
+            "unclaimed space is neutral"
+        );
+        assert!(d
+            .ethos
+            .traits(&id("hegemonie"), 3)
+            .contains(&"martial".to_string()));
+        // A faction without a profile, an unknown good and a bad bound are all refused.
+        let mut x = d.clone();
+        x.ethos.profiles.pop();
+        assert!(x
+            .validate()
+            .expect_err("missing profile")
+            .to_string()
+            .contains("profil"));
+        let mut y = d.clone();
+        y.ethos.tags[0].matches = vec!["fromage".into()];
+        assert!(y.validate().is_err());
+        let mut z = d.clone();
+        z.ethos.profiles[0].1[0] = 3.0;
+        assert!(z.validate().is_err());
+    }
+
     #[test]
     fn shipped_data_is_valid() {
         let d = GameData::load(&dir()).expect("data loads");

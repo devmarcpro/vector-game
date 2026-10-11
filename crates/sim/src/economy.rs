@@ -76,15 +76,27 @@ impl Sim {
         (hash_coord(self.system.seed, i as i64, 31, 5) % self.data.industries.len() as u64) as usize
     }
 
+    /// Goods banned in a faction's space: its own list plus whatever its mœurs forbid.
+    pub fn banned_goods(&self, faction: usize) -> Vec<usize> {
+        let data = &self.data;
+        let fac = &data.factions[faction];
+        let values = data.ethos.profile(Some(fac.id.as_str()));
+        (0..data.resources.len())
+            .filter(|&r| {
+                fac.contraband.iter().any(|id| *id == data.resources[r].id)
+                    || data.ethos.banned_by(&values, &data.resources, r).is_some()
+            })
+            .collect()
+    }
+
     /// Contraband inspection at the docks. Returns (kg seized, fine) when something was found.
     pub fn customs_check(&mut self) -> Option<(f64, f64)> {
         let f = self.faction?;
         let fac = self.data.factions[f].clone();
         let data = std::sync::Arc::clone(&self.data);
-        let held: Vec<usize> = fac
-            .contraband
-            .iter()
-            .filter_map(|id| data.resource_index(id))
+        let held: Vec<usize> = self
+            .banned_goods(f)
+            .into_iter()
             .filter(|&r| self.ship.cargo.kg[r] > 0.0)
             .collect();
         if held.is_empty() {
@@ -429,6 +441,38 @@ mod tests {
         assert!(s.try_dock().is_err());
         s.reputation[2] = -10.0;
         assert!(s.try_dock().is_ok());
+    }
+
+    #[test]
+    fn mores_make_goods_contraband_without_being_listed() {
+        let mut s = docked_at_hub();
+        let verdant = s.data.faction_index("verdant").expect("faction");
+        let hegemonie = s.data.faction_index("hegemonie").expect("faction");
+        let arms = s.data.resource_index("weapon_parts").expect("res");
+        assert!(
+            !s.data.factions[verdant]
+                .contraband
+                .contains(&"weapon_parts".to_string()),
+            "not on the faction's own list"
+        );
+        // Their pacifism bans it; the militarists buy it.
+        assert!(s.banned_goods(verdant).contains(&arms));
+        assert!(!s.banned_goods(hegemonie).contains(&arms));
+        s.faction = Some(verdant);
+        let data = Arc::clone(&s.data);
+        let mut caught = false;
+        for k in 0..80 {
+            s.time = f64::from(k) * 100.0;
+            if s.ship.cargo.kg[arms] == 0.0 {
+                s.ship.cargo.add(&data, arms, 40.0);
+            }
+            if s.customs_check().is_some() {
+                assert_eq!(s.ship.cargo.kg[arms], 0.0);
+                caught = true;
+                break;
+            }
+        }
+        assert!(caught, "customs seize goods the mores forbid");
     }
 
     #[test]

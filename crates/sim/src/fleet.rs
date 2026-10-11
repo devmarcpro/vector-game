@@ -148,6 +148,9 @@ impl Sim {
     pub fn buy_fleet_ship(&mut self, hull: usize) -> Result<u32, &'static str> {
         self.docked_station()?;
         let h = self.data.hulls.get(hull).ok_or("coque inconnue")?;
+        if !self.is_unlocked("hull", &h.id) {
+            return Err("technologie non recherchee");
+        }
         let price = h.cost * PURCHASE_FACTOR;
         if price > self.credits {
             return Err("fonds insuffisants");
@@ -545,6 +548,7 @@ mod tests {
             .expect("system with two stations");
         let mut s = Sim::new_in_galaxy(g, &e, data());
         s.reveal_all();
+        s.researched.fill(true);
         let st = s
             .system
             .bodies

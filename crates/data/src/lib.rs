@@ -259,6 +259,34 @@ pub struct Policy {
     pub default_level: usize,
 }
 
+/// A technology: researched with points, may require others, unlocks content.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct Tech {
+    pub id: String,
+    pub name: String,
+    pub field: String,
+    pub cost: f64,
+    pub requires: Vec<String>,
+    /// (kind, id) with kind in module | hull | building.
+    pub unlocks: Vec<(String, String)>,
+    pub start: bool,
+}
+
+/// A point of interest in a system (see `vector_world::AnomalyKind::id`).
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct AnomalyDef {
+    pub id: String,
+    pub name: String,
+    /// Reach of its effect (m).
+    pub radius: f64,
+    pub hazard: String,
+    pub strength: f64,
+    pub research: (f64, f64),
+    pub credits: (f64, f64),
+    pub loot: Vec<(String, f64, f64)>,
+    pub text: String,
+}
+
 const PERSON_FIELDS: [&str; 14] = [
     "morale", "health", "loyalty", "stress", "fatigue", "hunger", "thirst", "social", "relation",
     "age", "credits", "death", "quit", "salary",
@@ -300,6 +328,8 @@ pub struct GameData {
     pub recipes: Vec<Recipe>,
     pub buildings: Vec<Building>,
     pub policies: Vec<Policy>,
+    pub techs: Vec<Tech>,
+    pub anomalies_def: Vec<AnomalyDef>,
 }
 
 fn read<T: for<'a> Deserialize<'a>>(path: &Path) -> Result<T, DataError> {
@@ -326,6 +356,8 @@ impl GameData {
             recipes: read(&dir.join("recipes.ron"))?,
             buildings: read(&dir.join("buildings.ron"))?,
             policies: read(&dir.join("colony_policies.ron"))?,
+            techs: read(&dir.join("techs.ron"))?,
+            anomalies_def: read(&dir.join("worldgen/anomalies.ron"))?,
         };
         d.validate()?;
         Ok(d)
@@ -377,6 +409,19 @@ impl GameData {
     }
     pub fn policy_index(&self, id: &str) -> Option<usize> {
         self.policies.iter().position(|r| r.id == id)
+    }
+
+    pub fn tech_index(&self, id: &str) -> Option<usize> {
+        self.techs.iter().position(|t| t.id == id)
+    }
+    pub fn anomaly_def(&self, id: &str) -> Option<&AnomalyDef> {
+        self.anomalies_def.iter().find(|a| a.id == id)
+    }
+    /// The technology that unlocks `(kind, id)`, if it is gated at all.
+    pub fn unlocking_tech(&self, kind: &str, id: &str) -> Option<usize> {
+        self.techs
+            .iter()
+            .position(|t| t.unlocks.iter().any(|(k, i)| k == kind && i == id))
     }
 
     pub fn module_index(&self, id: &str) -> Option<usize> {
@@ -635,6 +680,70 @@ impl GameData {
                 return bad(format!("politique invalide: {}", p.id));
             }
         }
+        let mut tids = BTreeSet::new();
+        for t in &self.techs {
+            if !tids.insert(t.id.as_str()) {
+                return bad(format!("technologie en double: {}", t.id));
+            }
+            if t.cost < 0.0 {
+                return bad(format!("technologie {}: cout negatif", t.id));
+            }
+            for (k, id) in &t.unlocks {
+                let ok = match k.as_str() {
+                    "module" => self.module_index(id).is_some(),
+                    "hull" => self.hull_index(id).is_some(),
+                    "building" => self.building_index(id).is_some(),
+                    _ => false,
+                };
+                if !ok {
+                    return bad(format!("technologie {}: deblocage inconnu {k}:{id}", t.id));
+                }
+            }
+        }
+        for t in &self.techs {
+            for r in &t.requires {
+                if !tids.contains(r.as_str()) {
+                    return bad(format!("technologie {}: prerequis inconnu {r}", t.id));
+                }
+            }
+        }
+        // The prerequisite graph must be acyclic and everything must be reachable from the start techs.
+        let mut known: BTreeSet<&str> = self
+            .techs
+            .iter()
+            .filter(|t| t.start)
+            .map(|t| t.id.as_str())
+            .collect();
+        loop {
+            let before = known.len();
+            for t in &self.techs {
+                if t.requires.iter().all(|r| known.contains(r.as_str())) {
+                    known.insert(t.id.as_str());
+                }
+            }
+            if known.len() == before {
+                break;
+            }
+        }
+        if known.len() != self.techs.len() {
+            let stuck: Vec<&str> = self
+                .techs
+                .iter()
+                .map(|t| t.id.as_str())
+                .filter(|i| !known.contains(i))
+                .collect();
+            return bad(format!("technologies inaccessibles (cycle ?): {stuck:?}"));
+        }
+        for a in &self.anomalies_def {
+            for (r, lo, hi) in &a.loot {
+                if self.resource_index(r).is_none() || lo > hi {
+                    return bad(format!("anomalie {}: butin invalide {r}", a.id));
+                }
+            }
+            if a.radius <= 0.0 || a.research.0 > a.research.1 || a.credits.0 > a.credits.1 {
+                return bad(format!("anomalie {}: valeurs invalides", a.id));
+            }
+        }
         Ok(())
     }
 }
@@ -675,6 +784,13 @@ mod tests {
         assert!(d.modules.len() >= 60, "{}", d.modules.len());
         assert!(d.hulls.len() >= 15);
         assert!(d.factions.len() >= 6 && d.industries.len() >= 8);
+        assert!(
+            d.techs.len() >= 60 && d.anomalies_def.len() >= 10 && d.diseases.len() >= 30,
+            "{} {} {}",
+            d.techs.len(),
+            d.anomalies_def.len(),
+            d.diseases.len()
+        );
         assert!(d.recipes.len() >= 35 && d.buildings.len() >= 25 && d.policies.len() >= 4);
         let defences = d.modules.iter().filter(|m| !m.weapon.is_empty()).count();
         assert!(defences >= 20, "{defences}");
@@ -719,6 +835,29 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn tech_graph_is_checked_for_cycles_and_unlocks_exist() {
+        let mut d = GameData::load(&dir()).expect("data loads");
+        let a = d.tech_index("plasma_physics").expect("tech");
+        let b = d.tech_index("spatial_theory").expect("tech");
+        let (ida, idb) = (d.techs[a].id.clone(), d.techs[b].id.clone());
+        d.techs[a].requires.push(idb);
+        d.techs[b].requires.push(ida);
+        assert!(
+            d.validate().is_err(),
+            "a prerequisite cycle must be rejected"
+        );
+        let mut d = GameData::load(&dir()).expect("data loads");
+        d.techs[1].unlocks.push(("module".into(), "nope".into()));
+        assert!(d.validate().is_err());
+        let d = GameData::load(&dir()).expect("data loads");
+        assert!(d.unlocking_tech("module", "fusion_mk3").is_some());
+        assert!(
+            d.unlocking_tech("module", "fusion_mk1").is_none(),
+            "tier 1 is free"
+        );
     }
 
     #[test]

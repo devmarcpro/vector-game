@@ -18,6 +18,13 @@
 | L | Carte galactique (Haut/Bas étoile, +/- zoom, Entrée = saut FTL) ; Retour arrière annule une charge de saut |
 | F2 | Empire (colonies) ; Entrée = détail ; F3 = Flotte |
 | O | Fonder une colonie sur le corps ciblé (kit en soute) |
+| F4 | Arbre technologique (Entrée lance une recherche) |
+| Ctrl / Entrée (maintenir) | Tir principal (faisceaux, canons) |
+| B (maintenir) | Missiles et mines |
+| Z | Payer le tribut demandé par des pirates |
+| N | Récupérer l'épave la plus proche |
+| U | Aborder la cible neutralisée |
+| R | Cibler le vaisseau PNJ le plus proche |
 | H | Ecran vaisseau (emplacements, santé, énergie ; amarré : Entrée installer, X retirer, Y chantier naval) |
 | F5 / F9 | Sauvegarde / chargement rapide (saves/slot1.sav) |
 | Echap | Menu pause |

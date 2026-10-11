@@ -41,6 +41,7 @@ pub enum Screen {
     Colony,
     Fleet,
     Destroyed,
+    Tech,
 }
 
 /// Route being composed in the fleet screen.
@@ -99,6 +100,7 @@ pub struct Game {
     pub endpoints: Vec<Endpoint>,
     pub editor: Option<RouteEditor>,
     pub hull_pick: Option<usize>,
+    pub tech_sel: usize,
     pub save_path: PathBuf,
 }
 
@@ -157,6 +159,7 @@ impl Game {
             endpoints: Vec::new(),
             editor: None,
             hull_pick: None,
+            tech_sel: 0,
             save_path: PathBuf::from("saves").join("slot1.sav"),
         };
         g.fit_map();
@@ -364,6 +367,33 @@ impl Game {
                 Event::CrimeCommitted => self.say("CRIME : VOUS ETES RECHERCHE DANS CE TERRITOIRE"),
                 Event::PatrolHostile => self.say("LA PATROUILLE VOUS CONSIDERE COMME HOSTILE !"),
                 Event::Respawned => self.say("VOTRE VAISSEAU A ETE RECONSTRUIT PAR L ASSUREUR"),
+                Event::ResearchDone { tech } => {
+                    let name = self.data.techs[tech].name.to_uppercase();
+                    self.say(format!("RECHERCHE TERMINEE : {name}"));
+                }
+                Event::AnomalyExplored {
+                    kind_id,
+                    research,
+                    credits,
+                } => {
+                    let label = self
+                        .data
+                        .anomaly_def(kind_id)
+                        .map_or(kind_id.to_string(), |a| a.name.to_uppercase());
+                    self.say(format!(
+                        "{label} EXPLOREE : +{research:.0} RECHERCHE, +{credits:.0} CR"
+                    ));
+                }
+                Event::RiftJump => self.say("UNE FAILLE SPATIALE VOUS A DEPLACE !"),
+                Event::FlareWarning => {
+                    self.say("ALERTE : ERUPTION STELLAIRE IMMINENTE - ABRITEZ-VOUS !")
+                }
+                Event::FlareHit { dose } => {
+                    self.say(format!("ERUPTION STELLAIRE : DOSE {dose:.2} GY"))
+                }
+                Event::MeteorImpact { damage } => {
+                    self.say(format!("IMPACT DE METEOROIDE : -{damage:.0}"))
+                }
                 Event::PirateAlert => self.say("ALERTE: PIRATES A PROXIMITE !"),
                 Event::Overheat => self.say("ALERTE: SURCHAUFFE !"),
                 Event::ModuleLost { slot } => {
@@ -520,6 +550,7 @@ impl Game {
             Screen::Empire => self.empire_key(code),
             Screen::Colony => self.colony_key(code),
             Screen::Fleet => self.fleet_key(code),
+            Screen::Tech => self.tech_key(code),
             Screen::Destroyed => {
                 if code == KeyCode::Enter {
                     self.sim.insurance_respawn();
@@ -673,6 +704,10 @@ impl Game {
             }
             KeyCode::KeyK => {
                 self.screen = Screen::Crew;
+                return;
+            }
+            KeyCode::F4 => {
+                self.open_tech();
                 return;
             }
             KeyCode::KeyC => {
@@ -1069,6 +1104,53 @@ impl Game {
         }
     }
 
+    /// Tech indices in display order: by field, then by cost.
+    pub fn tech_order(&self) -> Vec<usize> {
+        let mut v: Vec<usize> = (0..self.data.techs.len()).collect();
+        v.sort_by(|&a, &b| {
+            let (ta, tb) = (&self.data.techs[a], &self.data.techs[b]);
+            ta.field
+                .cmp(&tb.field)
+                .then(ta.cost.total_cmp(&tb.cost))
+                .then(ta.id.cmp(&tb.id))
+        });
+        v
+    }
+
+    fn open_tech(&mut self) {
+        self.tech_sel = 0;
+        self.screen = Screen::Tech;
+    }
+
+    fn tech_key(&mut self, code: KeyCode) {
+        let order = self.tech_order();
+        let n = order.len();
+        match code {
+            KeyCode::ArrowUp => self.tech_sel = (self.tech_sel + n - 1) % n,
+            KeyCode::ArrowDown => self.tech_sel = (self.tech_sel + 1) % n,
+            KeyCode::PageUp => self.tech_sel = self.tech_sel.saturating_sub(10),
+            KeyCode::PageDown => self.tech_sel = (self.tech_sel + 10).min(n - 1),
+            KeyCode::Enter => {
+                let t = order[self.tech_sel.min(n - 1)];
+                match self.sim.start_research(t) {
+                    Ok(()) => {
+                        let name = self.data.techs[t].name.to_uppercase();
+                        self.say(format!("RECHERCHE LANCEE : {name}"));
+                    }
+                    Err(e) => self.say(e.to_uppercase()),
+                }
+            }
+            KeyCode::Escape | KeyCode::F4 => {
+                self.screen = if self.sim.docked.is_some() {
+                    self.dock_screen()
+                } else {
+                    Screen::Flight
+                }
+            }
+            _ => {}
+        }
+    }
+
     fn contracts_key(&mut self, code: KeyCode) {
         let total = self.offers.len() + self.sim.contracts.len();
         match code {
@@ -1382,6 +1464,7 @@ impl Game {
                 Err(e) => self.say(e.to_uppercase()),
             },
             KeyCode::KeyO => self.found_colony_at_target(),
+            KeyCode::F4 => self.open_tech(),
             KeyCode::Backspace if self.sim.is_charging_jump() => {
                 self.sim.cancel_jump();
                 self.handle_events();
@@ -1432,6 +1515,7 @@ mod tests {
             (KeyCode::KeyL, Screen::Galaxy),
             (KeyCode::F2, Screen::Empire),
             (KeyCode::F3, Screen::Fleet),
+            (KeyCode::F4, Screen::Tech),
             (KeyCode::KeyK, Screen::Crew),
             (KeyCode::KeyJ, Screen::Journal),
             (KeyCode::KeyH, Screen::Ship),

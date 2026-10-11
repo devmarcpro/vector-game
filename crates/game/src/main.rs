@@ -171,6 +171,49 @@ fn snapshot(path: &str, scene: &str, data: Arc<GameData>) {
             g.advance(0.1);
         }
         "pause" => g.screen = Screen::Pause,
+        "tech" => {
+            g.sim.research_pool = 340.0;
+            let pp = g.data.tech_index("plasma_physics").expect("tech");
+            g.sim.start_research(pp).expect("start");
+            g.sim.tick_research(1.0);
+            g.tech_sel = 7;
+            g.screen = Screen::Tech;
+        }
+        "anomaly" => {
+            let galaxy = vector_world::galaxy::Galaxy::new(12);
+            let entry = galaxy
+                .nearby([0.0; 3], 400.0)
+                .into_iter()
+                .find(|e| {
+                    vector_world::generate_system(e.seed)
+                        .bodies
+                        .iter()
+                        .any(|b| {
+                            matches!(
+                                b.kind,
+                                vector_world::BodyKind::Anomaly(
+                                    vector_world::AnomalyKind::RadiationBelt
+                                )
+                            )
+                        })
+                })
+                .expect("a system with a radiation belt");
+            g.sim = vector_sim::Sim::new_in_galaxy(galaxy, &entry, Arc::clone(&g.data));
+            g.sim.reveal_all();
+            let i = g
+                .sim
+                .system
+                .bodies
+                .iter()
+                .position(|b| matches!(b.kind, vector_world::BodyKind::Anomaly(_)))
+                .expect("anomaly");
+            g.sim.ship.pos = g.sim.bodies[i].pos - vector_core::Vec3::new(0.0, 0.0, 9000.0);
+            g.sim.ship.vel = g.sim.bodies[i].vel;
+            g.sim.ship.assist = false;
+            g.sim.update_ref_pub();
+            g.sim.target = Some(i);
+            g.advance(0.2);
+        }
         "combat" => {
             let k = console::run("warship", &mut g.sim, &mut g.timescale);
             assert_eq!(k, vec!["warship ready".to_string()]);

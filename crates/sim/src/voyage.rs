@@ -45,6 +45,7 @@ pub struct SystemDelta {
     pub markets: BTreeMap<usize, Market>,
     pub scan: Vec<u8>,
     pub scan_progress: Vec<f32>,
+    pub explored: Vec<bool>,
 }
 
 impl Sim {
@@ -55,6 +56,7 @@ impl Sim {
             .iter()
             .map(|b| match b.kind {
                 BodyKind::Star(_) => SCAN_FULL,
+                BodyKind::Anomaly(_) => SCAN_UNKNOWN,
                 BodyKind::Planet(_) | BodyKind::Moon(_) if b.radius >= 1.0e6 => SCAN_DETECTED,
                 _ => SCAN_UNKNOWN,
             })
@@ -71,7 +73,7 @@ impl Sim {
         let size = (self.system.bodies[i].radius / 6.0e6)
             .sqrt()
             .clamp(0.02, 5.0);
-        (BASE_SENSOR_RANGE + self.effective.scan_range) * size
+        (BASE_SENSOR_RANGE + self.effective.scan_range) * size * self.env_sensor
     }
 
     /// Progressive scanning: close passes upgrade what the player knows about a body.
@@ -105,6 +107,7 @@ impl Sim {
                 if self.scan_progress[i] >= 40.0 {
                     self.scan[i] = SCAN_FULL;
                     self.scan_progress[i] = 0.0;
+                    self.on_fully_scanned(i);
                 }
             }
         }
@@ -258,6 +261,7 @@ impl Sim {
             markets: std::mem::take(&mut self.markets),
             scan: std::mem::take(&mut self.scan),
             scan_progress: std::mem::take(&mut self.scan_progress),
+            explored: std::mem::take(&mut self.explored),
         };
         self.deltas.insert(self.here, old);
         self.visited.insert(self.here, self.here_pos);
@@ -312,12 +316,18 @@ impl Sim {
                 self.markets = d.markets;
                 self.scan = d.scan;
                 self.scan_progress = d.scan_progress;
+                self.explored = if d.explored.len() == n {
+                    d.explored
+                } else {
+                    vec![false; n]
+                };
             }
             _ => {
                 self.mined = vec![0.0; n];
                 self.markets = BTreeMap::new();
                 self.scan = Self::initial_scan(&self.system);
                 self.scan_progress = vec![0.0; n];
+                self.explored = vec![false; n];
             }
         }
         self.refresh_bodies();

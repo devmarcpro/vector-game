@@ -793,6 +793,9 @@ impl Sim {
     pub fn colony_build(&mut self, ci: usize, def: usize) -> Result<(), &'static str> {
         let data = std::sync::Arc::clone(&self.data);
         let d = data.buildings.get(def).ok_or("batiment inconnu")?;
+        if !self.is_unlocked("building", &d.id) {
+            return Err("technologie non recherchee");
+        }
         let c = self.colonies.get_mut(ci).ok_or("colonie inconnue")?;
         if !d.sites.iter().any(|s| c.tags.contains(s)) {
             return Err("site inadapte a ce batiment");

@@ -6,7 +6,7 @@ use vector_data::GameData;
 use vector_world::generate_system;
 
 pub const MAGIC: [u8; 4] = *b"VECT";
-pub const VERSION: u32 = 9;
+pub const VERSION: u32 = 10;
 
 #[derive(Debug)]
 pub enum SaveError {
@@ -64,6 +64,11 @@ pub struct SaveGame {
     pub wrecks: Vec<crate::combat::Wreck>,
     pub next_wreck: u32,
     pub wanted_until: Vec<(usize, f64)>,
+    pub researched: Vec<bool>,
+    pub research_pool: f64,
+    pub current_research: Option<usize>,
+    pub research_progress: f64,
+    pub explored: Vec<bool>,
 }
 
 impl Sim {
@@ -103,6 +108,11 @@ impl Sim {
             wrecks: self.wrecks.clone(),
             next_wreck: self.next_wreck,
             wanted_until: self.wanted_until.iter().map(|(k, v)| (*k, *v)).collect(),
+            researched: self.researched.clone(),
+            research_pool: self.research_pool,
+            current_research: self.current_research,
+            research_progress: self.research_progress,
+            explored: self.explored.clone(),
         };
         let mut out = MAGIC.to_vec();
         out.extend_from_slice(&VERSION.to_le_bytes());
@@ -158,6 +168,15 @@ impl Sim {
         sim.wrecks = save.wrecks;
         sim.next_wreck = save.next_wreck;
         sim.wanted_until = save.wanted_until.into_iter().collect();
+        if save.researched.len() == sim.researched.len() {
+            sim.researched = save.researched;
+        }
+        sim.research_pool = save.research_pool;
+        sim.current_research = save.current_research;
+        sim.research_progress = save.research_progress;
+        if save.explored.len() == sim.explored.len() {
+            sim.explored = save.explored;
+        }
         sim.place_npcs();
         sim.time = save.time;
         sim.ship = save.ship;

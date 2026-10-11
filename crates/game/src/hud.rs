@@ -110,6 +110,11 @@ fn draw_cockpit(fb: &mut Framebuffer, v: &View) {
             }
             BodyKind::Planet(_) => cam.draw_sphere(fb, b.pos, b.radius, &spin, 8, 14, col),
             BodyKind::Moon(_) => cam.draw_sphere(fb, b.pos, b.radius, &spin, 5, 8, col),
+            BodyKind::Anomaly(_) => {
+                // Anomalies: a lattice sphere that pulses, so they do not look like rocks.
+                let pulse = 1.0 + 0.08 * (v.sim.time * 0.7).sin();
+                cam.draw_sphere(fb, b.pos, b.radius * pulse, &spin, 3, 5, 0x00C0_60FF);
+            }
             BodyKind::Asteroid(_) => cam.draw_sphere(fb, b.pos, b.radius, &spin, 4, 6, col),
             BodyKind::Station => {
                 let r = Mat3::rot_y(v.sim.time * 0.2);
@@ -309,6 +314,10 @@ fn draw_map(fb: &mut Framebuffer, v: &View) {
         match cb.kind {
             BodyKind::Star(_) => fb.circle(x, y, r.max(4.0), SUN),
             BodyKind::Asteroid(_) => fb.plot(x as i32, y as i32, col),
+            BodyKind::Anomaly(_) => {
+                fb.circle(x, y, 4.0, 0x00C0_60FF);
+                fb.plot(x as i32, y as i32, 0x00C0_60FF);
+            }
             BodyKind::Station => {
                 fb.line(x - 3.0, y - 3.0, x + 3.0, y + 3.0, col);
                 fb.line(x - 3.0, y + 3.0, x + 3.0, y - 3.0, col);
@@ -317,6 +326,7 @@ fn draw_map(fb: &mut Framebuffer, v: &View) {
         }
         let shown = match cb.kind {
             BodyKind::Asteroid(_) => false,
+            BodyKind::Anomaly(_) => true,
             BodyKind::Moon(_) | BodyKind::Station => {
                 cb.orbit.as_ref().is_some_and(|o| o.a / v.map_scale > 12.0)
             }
@@ -505,6 +515,50 @@ fn draw_status(fb: &mut Framebuffer, v: &View) {
         &terr,
         sim.faction.map_or(DIM, |f| sim.data.factions[f].color),
     );
+    {
+        let env = sim.environment_at(ship.pos);
+        let mut danger = Vec::new();
+        if env.radiation > 0.0 {
+            danger.push(format!("RADIATIONS {:.1} GY/H", env.radiation));
+        }
+        if env.ion > 0.0 {
+            danger.push("TEMPETE IONIQUE".to_string());
+        }
+        if env.gravity.length() > 0.5 {
+            danger.push(format!(
+                "PUITS GRAVITATIONNEL {:.1} M/S2",
+                env.gravity.length()
+            ));
+        }
+        if env.sensor_mult < 0.9 {
+            danger.push("CAPTEURS BRUITES".to_string());
+        }
+        if env.agility_mult < 0.9 {
+            danger.push("INTERFERENCES MAGNETIQUES".to_string());
+        }
+        if env.rift > 0.0 {
+            danger.push("FAILLE SPATIALE".to_string());
+        }
+        if !danger.is_empty() {
+            fb.text(1, 13, &format!("DANGER : {}", danger.join(" / ")), RED);
+        }
+        let cur = sim.current_research.map_or("AUCUNE".to_string(), |t| {
+            format!(
+                "{} {:.0}%",
+                sim.data.techs[t].name.to_uppercase(),
+                100.0 * sim.research_progress / sim.data.techs[t].cost.max(1.0)
+            )
+        });
+        fb.text(
+            1,
+            14,
+            &format!(
+                "RECHERCHE : {cur}   RESERVE {:.0} PTS  [F4]",
+                sim.research_pool
+            ),
+            DIM,
+        );
+    }
     if sim.is_wanted() {
         fb.text(1, 11, "RECHERCHE DANS CE TERRITOIRE !", RED);
     }
@@ -650,6 +704,32 @@ fn draw_target_panel(fb: &mut Framebuffer, v: &View, rows: usize, cols: usize) {
         &format!("TYPE  {}", kind_label(cb.kind)),
         AMBER,
     );
+    if let BodyKind::Anomaly(a) = cb.kind {
+        let def = sim.data.anomaly_def(a.id());
+        fb.text(
+            x,
+            rows - 4,
+            &format!(
+                "RAYON {}  ZONE {}",
+                fmt_dist(t.radius),
+                fmt_dist(def.map_or(0.0, |d| d.radius))
+            ),
+            DIM,
+        );
+        let text = def.map_or(String::new(), |d| d.text.to_uppercase());
+        fb.text(x, rows - 3, &text.chars().take(38).collect::<String>(), DIM);
+        fb.text(
+            x,
+            rows - 2,
+            if sim.explored.get(i).copied().unwrap_or(false) {
+                "EXPLOREE"
+            } else {
+                "SCAN COMPLET = RECOMPENSES"
+            },
+            DIM,
+        );
+        return;
+    }
     fb.text(
         x,
         rows - 4,
@@ -722,6 +802,7 @@ pub fn kind_label(k: BodyKind) -> String {
         BodyKind::Planet(p) => format!("PLANETE {}", p.label()),
         BodyKind::Moon(p) => format!("LUNE {}", p.label()),
         BodyKind::Asteroid(t) => format!("ASTEROIDE TYPE {}", t.id()),
+        BodyKind::Anomaly(a) => format!("ANOMALIE : {}", a.label().to_uppercase()),
         BodyKind::Station => "STATION".into(),
     }
 }

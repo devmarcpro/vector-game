@@ -190,6 +190,7 @@ impl Sim {
         s.sys
             .damage_modules(&data, &s.design, rest * (1.0 - STRUCTURE_SHARE), pick);
         s.refresh_stats(&data);
+        self.injure_crew(rest);
         if self.ship.hull <= 0.0 {
             self.destroyed = true;
             self.events.push(Event::PlayerDestroyed);

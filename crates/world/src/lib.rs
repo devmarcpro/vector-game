@@ -85,6 +85,73 @@ impl PlanetKind {
     }
 }
 
+/// Points of interest scattered through systems.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub enum AnomalyKind {
+    DerelictShip,
+    AncientStation,
+    AlienBeacon,
+    ArtifactField,
+    CrystalFormation,
+    GravityWell,
+    RadiationBelt,
+    IonStorm,
+    Nebula,
+    Comet,
+    MagneticAnomaly,
+    SpatialRift,
+}
+
+impl AnomalyKind {
+    pub const ALL: [AnomalyKind; 12] = [
+        Self::DerelictShip,
+        Self::AncientStation,
+        Self::AlienBeacon,
+        Self::ArtifactField,
+        Self::CrystalFormation,
+        Self::GravityWell,
+        Self::RadiationBelt,
+        Self::IonStorm,
+        Self::Nebula,
+        Self::Comet,
+        Self::MagneticAnomaly,
+        Self::SpatialRift,
+    ];
+    /// Stable id used by data files.
+    pub fn id(self) -> &'static str {
+        match self {
+            Self::DerelictShip => "derelict_ship",
+            Self::AncientStation => "ancient_station",
+            Self::AlienBeacon => "alien_beacon",
+            Self::ArtifactField => "artifact_field",
+            Self::CrystalFormation => "crystal_formation",
+            Self::GravityWell => "gravity_well",
+            Self::RadiationBelt => "radiation_belt",
+            Self::IonStorm => "ion_storm",
+            Self::Nebula => "nebula",
+            Self::Comet => "comet",
+            Self::MagneticAnomaly => "magnetic_anomaly",
+            Self::SpatialRift => "spatial_rift",
+        }
+    }
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::DerelictShip => "Epave derivante",
+            Self::AncientStation => "Station ancienne",
+            Self::AlienBeacon => "Balise inconnue",
+            Self::ArtifactField => "Champ d'artefacts",
+            Self::CrystalFormation => "Formation cristalline",
+            Self::GravityWell => "Puits gravitationnel",
+            Self::RadiationBelt => "Ceinture de radiations",
+            Self::IonStorm => "Tempete ionique",
+            Self::Nebula => "Nebuleuse",
+            Self::Comet => "Comete",
+            Self::MagneticAnomaly => "Anomalie magnetique",
+            Self::SpatialRift => "Faille spatiale",
+        }
+    }
+}
+
 /// Asteroid taxonomy: C carbonaceous, S silicate, M metallic, I icy.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum AstType {
@@ -105,6 +172,7 @@ impl AstType {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum BodyKind {
+    Anomaly(AnomalyKind),
     Asteroid(AstType),
     Star(StarClass),
     Planet(PlanetKind),
@@ -570,6 +638,39 @@ pub fn generate_system(seed: u64) -> System {
         });
     }
 
+    // Anomalies: none (55 %), one (30 %), two (12 %) or three (3 %).
+    let n_anom = match rng.f64() {
+        x if x < 0.55 => 0,
+        x if x < 0.85 => 1,
+        x if x < 0.97 => 2,
+        _ => 3,
+    };
+    for k in 0..n_anom {
+        let kind = AnomalyKind::ALL[(rng.next_u64() % AnomalyKind::ALL.len() as u64) as usize];
+        let a = AU * rng.range(0.4, 25.0) * lum.sqrt().max(0.2);
+        let orbit = random_orbit(&mut rng, 0, a, 0.3, 0.2, mu_star);
+        let radius = match kind {
+            AnomalyKind::DerelictShip => 80.0,
+            AnomalyKind::AncientStation => 600.0,
+            AnomalyKind::AlienBeacon => 40.0,
+            AnomalyKind::CrystalFormation => 900.0,
+            AnomalyKind::Comet => 4000.0,
+            _ => 1500.0,
+        };
+        bodies.push(CelBody {
+            name: format!("{} {}-{}", kind.label(), name, k + 1),
+            kind: BodyKind::Anomaly(kind),
+            mass: 1.0e9,
+            radius,
+            orbit: Some(orbit),
+            rotation_period: 3600.0,
+            temp: 100.0,
+            gravity: 0.0,
+            pressure: 0.0,
+            atmosphere: vec![],
+        });
+    }
+
     System {
         seed,
         name,
@@ -588,6 +689,32 @@ fn orbit_a(b: &CelBody) -> f64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn anomalies_exist_in_all_twelve_kinds() {
+        let mut kinds = std::collections::BTreeSet::new();
+        let mut with = 0;
+        for seed in 0..800u64 {
+            let sys = generate_system(seed);
+            let n = sys
+                .bodies
+                .iter()
+                .filter(|b| matches!(b.kind, BodyKind::Anomaly(_)))
+                .count();
+            with += usize::from(n > 0);
+            assert!(n <= 3);
+            for b in &sys.bodies {
+                if let BodyKind::Anomaly(k) = b.kind {
+                    kinds.insert(k);
+                }
+            }
+        }
+        assert_eq!(kinds.len(), 12, "every anomaly kind must occur: {kinds:?}");
+        assert!(
+            (250..=550).contains(&with),
+            "about 45 % of systems hold one: {with}/800"
+        );
+    }
 
     #[test]
     fn generation_is_deterministic() {

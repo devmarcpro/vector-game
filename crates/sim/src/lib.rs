@@ -11,6 +11,7 @@ pub mod fleet;
 pub mod market;
 pub mod npc;
 pub mod save;
+pub mod science;
 pub mod voyage;
 
 use autopilot::Autopilot;
@@ -202,6 +203,22 @@ pub enum Event {
     CrimeCommitted,
     PatrolHostile,
     Respawned,
+    ResearchDone {
+        tech: usize,
+    },
+    AnomalyExplored {
+        kind_id: &'static str,
+        research: f64,
+        credits: f64,
+    },
+    RiftJump,
+    FlareWarning,
+    FlareHit {
+        dose: f64,
+    },
+    MeteorImpact {
+        damage: f64,
+    },
 }
 
 pub struct Sim {
@@ -267,6 +284,18 @@ pub struct Sim {
     pub tribute_due: Option<(u32, f64)>,
     /// Factions that consider the player a criminal until the given time.
     pub wanted_until: BTreeMap<usize, f64>,
+    /// Technologies known, research points waiting, and the current project.
+    pub researched: Vec<bool>,
+    pub research_pool: f64,
+    pub current_research: Option<usize>,
+    pub research_progress: f64,
+    /// Anomalies already explored (per body of the current system).
+    pub explored: Vec<bool>,
+    pub flare_day: i64,
+    pub pending_flare: Option<(f64, f64, bool)>,
+    pub env_sensor: f64,
+    pub env_agility: f64,
+    pub env_gravity: Vec3,
 }
 
 /// Propellant mass flow (kg/s) for a thrust force (N) at a given specific impulse.
@@ -280,7 +309,7 @@ pub fn mass_flow(force: f64, isp: f64) -> f64 {
 
 fn influence_radius(b: &Body) -> f64 {
     match b.kind {
-        BodyKind::Star(_) | BodyKind::Asteroid(_) => 0.0,
+        BodyKind::Star(_) | BodyKind::Asteroid(_) | BodyKind::Anomaly(_) => 0.0,
         BodyKind::Station => 20_000.0,
         _ => 60.0 * b.radius,
     }
@@ -357,7 +386,18 @@ impl Sim {
             destroyed: false,
             tribute_due: None,
             wanted_until: BTreeMap::new(),
+            researched: Vec::new(),
+            research_pool: 0.0,
+            current_research: None,
+            research_progress: 0.0,
+            explored: vec![false; n],
+            flare_day: -1,
+            pending_flare: None,
+            env_sensor: 1.0,
+            env_agility: 1.0,
+            env_gravity: Vec3::ZERO,
         };
+        s.researched = s.data.techs.iter().map(|t| t.start).collect();
         s.weapon_cd = vec![0.0; s.ship.design.slots.len()];
         s.reputation = vec![0.0; s.data.factions.len()];
         s.scan = Self::initial_scan(&s.system);
@@ -457,14 +497,17 @@ impl Sim {
     pub fn gravity_at(&self, p: Vec3) -> Vec3 {
         let mut a = Vec3::ZERO;
         for b in &self.bodies {
-            if matches!(b.kind, BodyKind::Station | BodyKind::Asteroid(_)) {
+            if matches!(
+                b.kind,
+                BodyKind::Station | BodyKind::Asteroid(_) | BodyKind::Anomaly(_)
+            ) {
                 continue;
             }
             let d = b.pos - p;
             let r2 = d.dot(d).max(1.0);
             a = a + d * (b.gm / (r2 * r2.sqrt()));
         }
-        a
+        a + self.environment_at(p).gravity
     }
 
     /// Stellar flux at the ship relative to 1 AU (for solar panels).
@@ -561,6 +604,7 @@ impl Sim {
         self.update_crew();
         self.update_colonies();
         self.update_fleet();
+        self.tick_research(dt);
     }
 
     /// Advance the crew layer to the current time and apply what the engineers repaired.
@@ -606,6 +650,8 @@ impl Sim {
             self.expire_contracts();
             self.bank_tick();
             self.refresh_bodies();
+            self.update_npcs();
+            self.hazard_tick(dt);
             let b = &self.bodies[st];
             self.ship.pos = b.pos - Vec3::new(0.0, 0.0, b.radius + 60.0);
             self.ship.vel = b.vel;
@@ -659,6 +705,8 @@ impl Sim {
         };
         self.run_systems(&act, dt);
         let mut eff = self.effective.clone();
+        eff.max_rate *= self.env_agility.sqrt();
+        eff.ang_accel *= self.env_agility;
         let pilot = Crew::role_index(&self.data, "pilot");
         eff.ang_accel *= (self.crew.role_efficiency(&self.data, pilot, self.time)
             / crew::NO_CREW_EFF)
@@ -759,6 +807,8 @@ impl Sim {
         self.expire_contracts();
         self.bank_tick();
         self.update_npcs();
+        self.hazard_tick(dt);
+        self.drift_wrecks(dt);
         if self.weapon_cd.len() != self.ship.design.slots.len() {
             self.weapon_cd = vec![0.0; self.ship.design.slots.len()];
         }
@@ -775,6 +825,9 @@ impl Sim {
         {
             let s = &mut self.ship;
             for (i, b) in self.bodies.iter().enumerate() {
+                if matches!(b.kind, BodyKind::Anomaly(_)) {
+                    continue;
+                }
                 let d = s.pos - b.pos;
                 let dist = d.length();
                 let min = b.radius + SHIP_RADIUS;
@@ -1094,7 +1147,11 @@ impl Sim {
     /// Buy a module into the spare-parts stock.
     pub fn shop_buy_module(&mut self, mi: usize) -> Result<f64, &'static str> {
         self.docked.ok_or("non amarre")?;
-        let cost = self.data.modules.get(mi).ok_or("module inconnu")?.cost;
+        let module = self.data.modules.get(mi).ok_or("module inconnu")?;
+        if !self.is_unlocked("module", &module.id) {
+            return Err("technologie non recherchee");
+        }
+        let cost = module.cost;
         if cost > self.credits {
             return Err("fonds insuffisants");
         }
@@ -1153,6 +1210,9 @@ impl Sim {
     pub fn buy_hull(&mut self, hi: usize) -> Result<f64, &'static str> {
         self.docked.ok_or("non amarre")?;
         let new = self.data.hulls.get(hi).ok_or("coque inconnue")?;
+        if !self.is_unlocked("hull", &new.id) {
+            return Err("technologie non recherchee");
+        }
         if hi == self.ship.design.hull {
             return Err("deja cette coque");
         }
@@ -1511,6 +1571,7 @@ mod tests {
         s.spawn_near(si, s.bodies[si].radius + 100.0);
         s.try_dock().expect("dock");
         s.credits = 5.0e6;
+        s.researched.fill(true);
         s
     }
 

@@ -30,12 +30,17 @@ fn menus() -> [Entry; 13] {
     ]
 }
 
-fn controls() -> [Entry; 14] {
+fn controls() -> [Entry; 15] {
     [
         ("ASSISTANCE", "F", Act::Key(KeyCode::KeyF)),
         ("AMARRER", "D", Act::Key(KeyCode::KeyD)),
         ("PILOTE AUTO", "G", Act::Key(KeyCode::KeyG)),
         ("CIBLE SUIVANTE", "TAB", Act::Key(KeyCode::Tab)),
+        (
+            "CIBLE PLANETE",
+            "MAJ+TAB",
+            Act::Call(Game::menu_target_planet, 0),
+        ),
         ("PAUSE", "P", Act::Key(KeyCode::KeyP)),
         ("TEMPS +", "PGUP", Act::Key(KeyCode::PageUp)),
         ("TEMPS -", "PGDN", Act::Key(KeyCode::PageDown)),
@@ -93,6 +98,10 @@ pub fn draw(fb: &mut Framebuffer, g: &Game) {
 }
 
 impl Game {
+    pub fn menu_target_planet(&mut self, _: usize) {
+        self.target_planet();
+    }
+
     pub fn toggle_flight_menu(&mut self) {
         self.flight_menu_open = !self.flight_menu_open;
     }

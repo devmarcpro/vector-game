@@ -56,3 +56,6 @@ Sandbox totalement libre : la recherche ne doit jamais bloquer. A terme, les tec
 
 ## Traductions (note du joueur)
 Langue par défaut : français. L'option Langue existe (une seule entrée) ; les traductions viendront plus tard : il faudra sortir tous les textes du jeu (aide, tutoriel, données .ron) vers des tables par langue.
+
+## Equipement et combat des personnages (note du joueur)
+Equipements des personnages (armes, armures, outils, combinaisons), statistiques de combat (attaque, défense, précision, endurance), à relier à la vue de marche (expéditions), aux implants et aux organes (blessures localisées).

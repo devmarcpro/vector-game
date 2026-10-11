@@ -1,0 +1,16 @@
+# From the start position (next to the home station, no teleport): ask for a jump on the
+# galaxy screen. The ship first flies out of every gravity well by itself, then jumps.
+new 7
+tutorial off
+mark
+key l
+expect screen galaxy
+key enter
+expect screen flight
+scale 1000
+wait 60
+scale 100
+wait 60
+scale 1
+print
+expect jumped yes

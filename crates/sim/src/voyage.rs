@@ -1,7 +1,7 @@
 //! Interstellar travel and discovery: FTL jumps, system persistence (deltas), progressive scanning.
 use crate::design::Activity;
 use crate::market::Market;
-use crate::{Event, Sim};
+use crate::{Event, ShipInput, Sim};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use vector_core::{hash_coord, Mat3, Rng, Vec3};
@@ -132,6 +132,55 @@ impl Sim {
             let d = [v[0] - pos[0], v[1] - pos[1], v[2] - pos[2]];
             (d[0] * d[0] + d[1] * d[1] + d[2] * d[2]).sqrt() <= SEEN_RADIUS_LY
         })
+    }
+
+    /// Speed the ship builds up when flying out to a place where it can jump, m/s.
+    pub const JUMP_RUN_SPEED: f64 = 25_000.0;
+
+    /// Jump to `target`: charge the drive at once when the ship is clear of every massive body,
+    /// otherwise fly out first (the jump starts by itself). Returns whether it is only a
+    /// manoeuvre for now.
+    pub fn jump_or_run(&mut self, target: &StarEntry) -> Result<bool, &'static str> {
+        match self.start_jump(target) {
+            Ok(()) => Ok(false),
+            Err("trop pres d'un corps massif") => {
+                let d = target.distance_to(self.here_pos);
+                if d > self.jump_range() {
+                    return Err("hors de portee de saut");
+                }
+                if self.jump_fuel_cost(d) > self.ship.fuel {
+                    return Err("carburant insuffisant pour ce saut");
+                }
+                self.autopilot = None;
+                self.jump_run = Some(target.clone());
+                Ok(true)
+            }
+            Err(e) => Err(e),
+        }
+    }
+
+    /// Controls of the fly-out: nose away from the body that holds the ship, thrust until fast
+    /// enough, then coast.
+    pub(crate) fn jump_run_input(&mut self) -> ShipInput {
+        let (centre, vel) = match self.ref_body {
+            Some(i) => (self.bodies[i].pos, self.bodies[i].vel),
+            None => (Vec3::ZERO, Vec3::ZERO),
+        };
+        let away = (self.ship.pos - centre).normalized();
+        if away.length() < 0.5 {
+            return ShipInput::default();
+        }
+        self.ship.rot = Mat3::look_at(away, self.ship.rot.col(1));
+        self.ship.ang = Vec3::ZERO;
+        let speed = (self.ship.vel - vel).dot(away);
+        ShipInput {
+            fwd: if speed < Self::JUMP_RUN_SPEED {
+                1.0
+            } else {
+                0.0
+            },
+            ..Default::default()
+        }
     }
 
     /// Begin charging the FTL drive toward `target`.

@@ -96,3 +96,5 @@ Ecran de préparation : Haut/Bas, Espace coche un équipier ou le rover, Entrée
 - **Globe de surface** : glisser avec le bouton gauche pour le faire tourner.
 
 - **Menu de pilotage** (cockpit, à droite) : cliquer un mot ouvre l'écran ou exécute la commande ; les mots « (MAINT.) » agissent tant que le bouton de la souris reste enfoncé. F11 plie ou déplie le menu (Options > Menu de pilotage pour le retirer).
+
+- **Maj + Tab** : cible la planète ou lune suivante. **Pilote auto (G)** : transfert assisté vers la cible, le vaisseau reste garé à l'arrivée (une poussée le libère) ; refusé pour les géantes gazeuses (approche à la main). **Galaxie (L) puis Entrée** : le vaisseau s'éloigne seul des corps massifs puis saute.

@@ -4,7 +4,7 @@ use std::{collections::HashSet, path::PathBuf, sync::Arc};
 use vector_core::{mix64, Vec3};
 use vector_data::GameData;
 use vector_sim::fleet::Endpoint;
-use vector_sim::{autopilot::Autopilot, Event, ShipInput, Sim, SIM_DT};
+use vector_sim::{Event, ShipInput, Sim, SIM_DT};
 use vector_world::galaxy::StarEntry;
 use vector_world::BodyKind;
 use winit::keyboard::KeyCode;
@@ -580,6 +580,10 @@ impl Game {
     }
 
     fn toggle_autopilot(&mut self) {
+        if self.sim.jump_run.take().is_some() {
+            self.say("MANOEUVRE DE SAUT ANNULEE");
+            return;
+        }
         if self.sim.autopilot.take().is_some() {
             self.say("PILOTE AUTO DESACTIVE");
             return;
@@ -588,9 +592,8 @@ impl Game {
             self.say("PILOTE AUTO: AUCUNE CIBLE");
             return;
         };
-        match Autopilot::new(&self.sim, t) {
-            Ok(ap) => {
-                self.sim.autopilot = Some(ap);
+        match self.sim.engage_autopilot(t) {
+            Ok(()) => {
                 self.say("PILOTE AUTO ENGAGE");
             }
             Err(e) => self.say(format!("PILOTE AUTO REFUSE: {e}")),
@@ -615,6 +618,12 @@ impl Game {
     }
 
     /// Cycle targets nearest-first, optionally restricted by a filter.
+    /// Target the next planet or moon (Maj + Tab).
+    pub fn target_planet(&mut self) {
+        self.sim.target_npc = None;
+        self.cycle_target(|k| matches!(k, BodyKind::Planet(_) | BodyKind::Moon(_)));
+    }
+
     pub fn cycle_target(&mut self, filter: impl Fn(&BodyKind) -> bool) {
         let p = self.sim.ship.pos;
         let mut idx: Vec<usize> = (0..self.sim.bodies.len())
@@ -1831,10 +1840,14 @@ impl Game {
             }
             KeyCode::Enter => {
                 if let Some(target) = self.gal_cache.get(self.gal_sel).cloned() {
-                    match self.sim.start_jump(&target) {
-                        Ok(()) => {
+                    match self.sim.jump_or_run(&target) {
+                        Ok(false) => {
                             self.screen = Screen::Flight;
                             self.handle_events();
+                        }
+                        Ok(true) => {
+                            self.screen = Screen::Flight;
+                            self.say("MANOEUVRE : LE VAISSEAU S'ELOIGNE DES CORPS MASSIFS, LE SAUT PARTIRA TOUT SEUL (G ANNULE)");
                         }
                         Err(e) => self.say(format!("SAUT IMPOSSIBLE: {}", e.to_uppercase())),
                     }
@@ -1970,6 +1983,7 @@ impl Game {
                     "ASSISTANCE DE VOL COUPEE"
                 });
             }
+            KeyCode::Tab if self.keys.contains(&KeyCode::ShiftLeft) => self.target_planet(),
             KeyCode::Tab => {
                 self.sim.target_npc = None;
                 self.cycle_target(|_| true);
@@ -2920,7 +2934,7 @@ mod tests {
         // Holding a control word holds the key, and releasing the button lets go.
         // The controls heading is at row 20, their entries from row 21.
         frame(&g);
-        let brake_row = 21 + 9; // the 10th control, FREIN (MAINT.)
+        let brake_row = 21 + 10; // the 11th control, FREIN (MAINT.)
         click(&mut g, brake_row, 20_000);
         assert!(g.keys.contains(&KeyCode::KeyC), "the brake key is held");
         g.pointer_release();
@@ -2931,6 +2945,27 @@ mod tests {
         frame(&g);
         click(&mut g, 6, 30_000);
         assert!(!g.map, "folded: nothing there");
+    }
+
+    #[test]
+    fn shift_tab_targets_planets_and_moons_only() {
+        let mut g = Game::new(data(), 1);
+        g.key(KeyCode::Enter, None, true);
+        g.settings.tutorial = false;
+        g.key(KeyCode::ShiftLeft, None, true);
+        g.key(KeyCode::Tab, None, true);
+        let t = g.sim.target.expect("a target");
+        assert!(matches!(
+            g.sim.bodies[t].kind,
+            BodyKind::Planet(_) | BodyKind::Moon(_)
+        ));
+        g.key(KeyCode::Tab, None, true);
+        let t2 = g.sim.target.expect("next");
+        assert!(matches!(
+            g.sim.bodies[t2].kind,
+            BodyKind::Planet(_) | BodyKind::Moon(_)
+        ));
+        assert_ne!(t, t2, "it cycles");
     }
 
     #[test]

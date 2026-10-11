@@ -254,6 +254,12 @@ pub struct Sim {
     pub time: f64,
     pub events: Vec<Event>,
     pub autopilot: Option<Autopilot>,
+    /// A jump the ship first flies out to (away from every gravity well) and then starts.
+    pub jump_run: Option<vector_world::galaxy::StarEntry>,
+    /// Held in place next to a body (index, offset) until the player thrusts or sets a new course.
+    pub parked: Option<(usize, Vec3)>,
+    /// The autopilot's plan for this step: (target, position and velocity relative to it).
+    pub ride: Option<(usize, Vec3, Vec3)>,
     /// Body used as velocity reference for flight assist (within its influence radius).
     pub ref_body: Option<usize>,
     pub target: Option<usize>,
@@ -375,6 +381,9 @@ impl Sim {
             time: 0.0,
             events: Vec::new(),
             autopilot: None,
+            jump_run: None,
+            parked: None,
+            ride: None,
             ref_body: None,
             target: None,
             credits: START_CREDITS,
@@ -560,6 +569,25 @@ impl Sim {
         a + self.environment_at(p).gravity
     }
 
+    /// Gravity at `p` without the pull of body `skip`.
+    pub fn gravity_excluding(&self, p: Vec3, skip: usize) -> Vec3 {
+        let mut a = Vec3::ZERO;
+        for (i, b) in self.bodies.iter().enumerate() {
+            if i == skip
+                || matches!(
+                    b.kind,
+                    BodyKind::Station | BodyKind::Asteroid(_) | BodyKind::Anomaly(_)
+                )
+            {
+                continue;
+            }
+            let d = b.pos - p;
+            let r2 = d.dot(d).max(1.0);
+            a = a + d * (b.gm / (r2 * r2.sqrt()));
+        }
+        a
+    }
+
     /// Stellar flux at the ship relative to 1 AU (for solar panels).
     pub fn solar_flux(&self) -> f64 {
         let d_au = self.ship.pos.length() / vector_world::orbit::AU;
@@ -584,10 +612,13 @@ impl Sim {
             let vrel = (self.ship.vel - b.vel).length().max(1e-3);
             dt = dt.min(0.15 * alt / vrel);
         }
-        if let Some(ap) = &self.autopilot {
-            dt = dt.min(ap.max_dt(self));
-        }
-        dt.clamp(MIN_DT, 120.0)
+        // Under the autopilot the ship follows an analytic plan: long steps are exact.
+        let longest = if self.autopilot.is_some() {
+            1_800.0
+        } else {
+            120.0
+        };
+        dt.clamp(MIN_DT, longest)
     }
 
     /// Advance by `seconds` of game time, sub-stepping adaptively (time acceleration).
@@ -717,23 +748,39 @@ impl Sim {
             self.transit_step(dt);
             return;
         }
+        if self.jump_run.is_some() && self.ref_body.is_none() {
+            // Clear of every gravity well: charge the drive now.
+            if let Some(star) = self.jump_run.take() {
+                if let Err(e) = self.start_jump(&star) {
+                    self.events.push(Event::JumpAborted(e));
+                }
+            }
+        }
         let input = match self.autopilot.take() {
+            None if self.jump_run.is_some() => self.jump_run_input(),
             Some(mut ap) => {
-                let (mut inp, face, state) = ap.control(self, dt);
-                if let (Some(f), true) = (face, dt > 0.1) {
-                    // Time-accelerated: perfect attitude control (no meaningful rotation dynamics at this dt).
+                let ride = ap.ride(self, dt);
+                if let Some(f) = ride.face {
+                    // The nose follows the plan (no meaningful rotation dynamics at these steps).
                     self.ship.rot = Mat3::look_at(f, self.ship.rot.col(1));
                     self.ship.ang = Vec3::ZERO;
-                    inp.yaw = 0.0;
-                    inp.pitch = 0.0;
                 }
-                match state {
+                self.ride = Some((ap.target, ride.rel_pos, ride.rel_vel));
+                match ride.state {
                     autopilot::State::Running => self.autopilot = Some(ap),
                     autopilot::State::Arrived => {
+                        // The ship is left parked at its destination: hanging above a world it
+                        // would fall on it the moment the pilot lets go.
+                        if matches!(
+                            self.bodies[ap.target].kind,
+                            BodyKind::Planet(_) | BodyKind::Moon(_) | BodyKind::Station
+                        ) {
+                            self.parked = Some((ap.target, ride.rel_pos));
+                        }
                         self.events.push(Event::Arrived { body: ap.target })
                     }
                 }
-                inp
+                ride.input
             }
             None => *manual,
         };
@@ -877,8 +924,26 @@ impl Sim {
         s.pos = s.pos + s.vel * dt;
         self.time += dt;
         self.refresh_bodies();
+        let riding = self.ride.take();
+        if let Some((bi, rp, rv)) = riding {
+            self.ship.pos = self.bodies[bi].pos + rp;
+            self.ship.vel = self.bodies[bi].vel + rv;
+        }
+        if let Some((bi, off)) = self.parked {
+            let thrusting = input.fwd != 0.0 || input.lat != 0.0 || input.vert != 0.0;
+            if thrusting || self.autopilot.is_some() || self.jump.is_some() || self.docked.is_some()
+            {
+                self.parked = None;
+            } else {
+                self.ship.pos = self.bodies[bi].pos + off;
+                self.ship.vel = self.bodies[bi].vel;
+            }
+        }
         self.update_ref();
-        self.collide();
+        // Under the autopilot the plan clears the way: no collisions on the transfer itself.
+        if riding.is_none() {
+            self.collide();
+        }
         self.charge_tick(dt);
         self.scan_tick(dt);
         self.expire_contracts();

@@ -106,6 +106,33 @@ impl Framebuffer {
             }
         }
     }
+    /// Like `text_big` but opaque: the pixels of the glyph replace what is under them instead of
+    /// adding to it (billboards drawn over a bright ground).
+    pub fn text_big_over(&mut self, x: i32, y: i32, s: &str, scale: i32, c: u32) {
+        for (i, ch) in s.chars().enumerate() {
+            let g = font::glyph(ch);
+            let ox = x + i as i32 * font::CELL_W as i32 * scale;
+            for (cx, bits) in g.iter().enumerate() {
+                for cy in 0..7 {
+                    if bits >> cy & 1 == 1 {
+                        for dx in 0..scale {
+                            for dy in 0..scale {
+                                self.px_set(ox + cx as i32 * scale + dx, y + cy * scale + dy, c);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    /// Fill a rectangle, opaque.
+    pub fn rect_over(&mut self, x: i32, y: i32, w: i32, h: i32, c: u32) {
+        for yy in y..y + h {
+            for xx in x..x + w {
+                self.px_set(xx, yy, c);
+            }
+        }
+    }
     /// Text at an arbitrary pixel position.
     pub fn text_at(&mut self, x: i32, y: i32, s: &str, c: u32) {
         for (i, ch) in s.chars().enumerate() {

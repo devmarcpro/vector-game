@@ -367,16 +367,16 @@ pub fn draw(
                 _ => color,
             };
             // Underlay: the densest character, dark; then the ramp by the light; then the edge.
-            fb.text_big(px, py, "@", scale, shade(base, 0.32));
+            fb.rect_over(px, py, cw, ch, shade(base, 0.2));
             match t {
                 Tone::Light => {
-                    fb.text_big(px, py, "O", scale, base);
+                    fb.text_big_over(px, py, "O", scale, base);
                 }
                 _ => {
                     let c = RAMP
                         [((lum * (RAMP.len() - 1) as f64).round() as usize).min(RAMP.len() - 1)]
                         as char;
-                    fb.text_big(
+                    fb.text_big_over(
                         px,
                         py,
                         &c.to_string(),
@@ -384,7 +384,7 @@ pub fn draw(
                         shade(base, 0.55 + 0.45 * lum),
                     );
                     if edge {
-                        fb.text_big(px, py, "#", scale, shade(base, 0.85));
+                        fb.text_big_over(px, py, "#", scale, shade(base, 0.85));
                     }
                 }
             }
@@ -392,7 +392,7 @@ pub fn draw(
     }
     if let Some(m) = mark {
         let (mx, my) = (x0 + (cols / 2) * cw, y0 + (rows / 4) * ch);
-        fb.text_big(mx, my, &m.to_string(), scale, 0x00FF_FFFF);
+        fb.text_big_over(mx, my, &m.to_string(), scale, 0x00FF_FFFF);
     }
 }
 

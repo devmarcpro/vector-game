@@ -284,7 +284,7 @@ pub fn render(
                     let n_dot_l = (-slope * along + light.up) / (1.0 + slope * slope).sqrt();
                     lit = 0.2 + 0.62 * n_dot_l.clamp(0.0, 1.0);
                 }
-                let mut color = scale(base, (lit as f32 * k * 0.82).clamp(0.05, 1.0));
+                let mut color = scale(base, (lit as f32 * k * 0.6).clamp(0.05, 1.0));
                 if sky.air.is_some() {
                     // The air thins with height (scale height 8 km): high above the ground
                     // there is little between the eye and what it looks at.

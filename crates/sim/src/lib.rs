@@ -25,6 +25,7 @@ pub mod intrusion;
 pub mod livestock;
 pub mod market;
 pub mod multiverse;
+pub mod navigation;
 pub mod news;
 pub mod npc;
 pub mod orbit;
@@ -386,6 +387,9 @@ pub struct Sim {
     pub env_sensor: f64,
     pub env_agility: f64,
     pub env_gravity: Vec3,
+    /// Load on the frame this step in g, and heat the air puts into the hull (kW); not saved.
+    pub g_load: f64,
+    pub aero_heat_kw: f64,
     pub rules: rules::Rules,
 }
 
@@ -395,14 +399,6 @@ pub fn mass_flow(force: f64, isp: f64) -> f64 {
         0.0
     } else {
         force.abs() / (isp * G0)
-    }
-}
-
-fn influence_radius(b: &Body) -> f64 {
-    match b.kind {
-        BodyKind::Star(_) | BodyKind::Asteroid(_) | BodyKind::Anomaly(_) => 0.0,
-        BodyKind::Station => 20_000.0,
-        _ => 60.0 * b.radius,
     }
 }
 
@@ -512,6 +508,8 @@ impl Sim {
             env_sensor: 1.0,
             env_agility: 1.0,
             env_gravity: Vec3::ZERO,
+            g_load: 0.0,
+            aero_heat_kw: 0.0,
             rules: rules::Rules::default(),
         };
         s.researched = s.data.techs.iter().map(|t| t.start).collect();
@@ -558,7 +556,7 @@ impl Sim {
     pub(crate) fn update_ref(&mut self) {
         let mut best: Option<(usize, f64)> = None;
         for (i, b) in self.bodies.iter().enumerate() {
-            let infl = influence_radius(b);
+            let infl = self.influence_of(i);
             if infl > 0.0
                 && (self.ship.pos - b.pos).length() < infl
                 && best.is_none_or(|(_, r)| infl < r)
@@ -659,7 +657,7 @@ impl Sim {
     /// Stellar flux at the ship relative to 1 AU (for solar panels).
     pub fn solar_flux(&self) -> f64 {
         let d_au = self.ship.pos.length() / vector_world::orbit::AU;
-        self.system.luminosity / (d_au * d_au).max(1e-6)
+        self.system.luminosity / (d_au * d_au).max(1e-6) * self.sunlight_at(self.ship.pos)
     }
 
     /// Largest step that keeps integration accurate near attractors and surfaces.
@@ -734,6 +732,11 @@ impl Sim {
         self.births_tick();
         self.news_tick();
         let flux = self.solar_flux();
+        let ext_heat_kw = self.external_heat_kw(dt);
+        let act = &Activity {
+            ext_heat_kw,
+            ..*act
+        };
         let mass = self.ship.mass();
         let was_hot = self.ship.sys.overheating;
         let lost_before: Vec<bool> = self.ship.sys.health.iter().map(|&h| h <= 0.0).collect();
@@ -824,7 +827,7 @@ impl Sim {
             self.transit_step(dt);
             return;
         }
-        if self.jump_run.is_some() && self.ref_body.is_none() {
+        if self.jump_run.is_some() && !self.near_well() {
             // Clear of every gravity well: charge the drive now.
             if let Some(star) = self.jump_run.take() {
                 if let Err(e) = self.start_jump(&star) {
@@ -879,6 +882,7 @@ impl Sim {
             rcs_use,
             jumping: self.is_charging_jump(),
             firing: input.fire || input.fire_missile,
+            ext_heat_kw: 0.0,
         };
         self.run_systems(&act, dt);
         let mut eff = self.effective.clone();
@@ -903,6 +907,7 @@ impl Sim {
             || (assist
                 && self.autopilot.is_none()
                 && self.ref_body.is_some()
+                && self.near_well()
                 && self.rel_velocity().length() < ASSIST_MAX_SPEED);
         let ref_vel = match (brake, self.target.filter(|&t| t < self.bodies.len())) {
             (true, Some(t)) => self.bodies[t].vel,
@@ -998,6 +1003,7 @@ impl Sim {
         }
         s.vel = s.vel + (s.rot.mul_vec(acc_b) + grav) * dt;
         s.pos = s.pos + s.vel * dt;
+        self.g_load = acc_b.length() / G0;
         self.time += dt;
         self.refresh_bodies();
         self.atmosphere_drag(dt);

@@ -90,3 +90,6 @@ ponderees par `ground_of`), la neige et la glace apparaissent quand il fait froi
 lave remplace l'eau selon la temperature. Les lieux construits nomment leur matiere (`floor_mat`,
 `wall_mat`). La matiere agit : `slow` multiplie le temps de marche (boue x2, neige x1,5, glace x0,8) et
 un rover la ressent 2,5 fois moins. Sauvegardes : version 35.
+
+## Physique de vol : un seul bilan, pas de systeme parallele (2026-10-11)
+La chaleur exterieure (soleil, air) entre dans `Systems::step` par `Activity.ext_heat_kw`, la dose passe par `hazard_tick`/`irradiate` existants, la sphere d'influence remplace `60 rayons` dans `update_ref`. Le flux solaire des panneaux tient compte des eclipses. La dose cumulee est dans `Systems` (sauvegardee). Non fait : J2 appliquee a la trajectoire (seule la precession est calculee), co-rotation du vaisseau pose, brouillage des communications, effet de la dose sur la detection NPC.

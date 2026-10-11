@@ -168,3 +168,12 @@ Tout est derive (rien n'est stocke, meme graine = memes nombres) et une seule fo
 - Interieur : fraction du noyau selon la densite, flux de chaleur ~ R / age (+ chauffage de maree selon
   l'excentricite), activite (inerte, couvercle fige, plaques, volcanique, fluide), champ magnetique
   (dynamo : noyau fluide + rotation + taille).
+
+## Physique de vol (`sim/navigation.rs`)
+- Orbite osculatrice autour du corps de reference : vecteur excentricite, periapsis h^2/(mu(1+e)), apoapsis a(1+e), periode 2 pi sqrt(a^3/mu). Delta-v : Tsiolkovski avec la masse reelle (coque + modules + soute + ergols) et l'isp des moteurs.
+- Hohmann : dv1, dv2, temps = pi sqrt(a_t^3/mu), angle d'avance pi(1 - ((r1+r2)/2r2)^1.5), attente = modulo de la periode synodique. Oberth : gain d'energie d'une poussee = v dv + dv^2/2. Assistance : deflexion 2 asin(1/(1+rp v^2/mu)), dv = 2 v sin(delta/2).
+- Sphere d'influence de Laplace a (m/M)^(2/5) (plancher 10 rayons) = referentiel du vaisseau.
+- Eclipses : recouvrement de disques (Soleil et corps) en fraction visible ; le flux solaire (panneaux et chauffage) la suit.
+- Thermique : chaleur entrante = reacteurs + conso + flux solaire (1,361 kW/m2 x flux x section x (1 - albedo 0,3)) + entree atmospherique (0,5 rho v^3 A x 3 %, rho gaz parfait) moins la part ablatee par le blindage (armure/(armure+3), 10 MJ par point de coque) ; emission en T^4 (radiateurs). Section = sphere de masse volumique 200 kg/m3.
+- Rayonnement (Gy/h, avant blindage) : cosmique 2e-5 ; etoile 5e-5 x (probabilite d'eruption de la classe / 0,012) / d_UA^2 ; ceinture 0,05 sqrt(champ) exp(-((L-2,5)/1,2)^2) avec le champ magnetique de physics.rs. Blindage : exp(-armure/6) (>= 2 %), amarre x0,05, bouclier x0,12. `Systems.dose_gy` cumule la dose recue ; la medecine peut lire `dose_rate_aboard()`.
+- Structure : charge = max(g de poussee, maree 2 mu L / r^3) ; au-dela de 40 g la coque se dechire. Relativite : gamma de Lorentz affiche au-dessus de 0,1 % de c (les sauts FTL restent hors relativite : temps de voyage de voyage.rs inchange). Lumiere : retard d/c. Detection IR : portee = sqrt(P / 4 pi sensibilite).

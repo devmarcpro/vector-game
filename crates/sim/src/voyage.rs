@@ -202,7 +202,7 @@ impl Sim {
         if d > range {
             return Err("hors de portee de saut");
         }
-        if self.ref_body.is_some() {
+        if self.near_well() {
             return Err("trop pres d'un corps massif");
         }
         let cost = self.jump_fuel_cost(d);

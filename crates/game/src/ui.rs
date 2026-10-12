@@ -34,6 +34,7 @@ pub fn draw(fb: &mut Framebuffer, g: &Game) {
         Screen::MainMenu => draw_main(fb, g),
         Screen::NewGame => crate::newgame::draw(fb, g),
         Screen::Hub => crate::hub::draw(fb, g),
+        Screen::Dashboard => crate::dash_view::draw(fb, g),
         Screen::Pause => {
             fb.text(fb.cols() / 2 - 4, 6, "== PAUSE ==", AMBER);
             menu(fb, g, 9, &PAUSE_MENU, g.menu_sel);
@@ -158,6 +159,7 @@ pub fn draw_overlay(fb: &mut Framebuffer, g: &Game) {
     crate::flight_menu::draw(fb, g);
     // Before the command bar: the bar stays the last zone drawn.
     crate::hub::draw_menu_button(fb, g);
+    crate::dash_view::draw_alert_badge(fb, g);
     if g.settings.ticker && !matches!(g.screen, Screen::MainMenu | Screen::NewGame) {
         draw_ticker(fb, g);
     }

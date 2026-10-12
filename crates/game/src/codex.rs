@@ -2,7 +2,7 @@
 //! weapon, faction, anomaly and condition, generated from the real data (no hand-written numbers).
 use vector_data::GameData;
 
-pub const CATEGORIES: [&str; 47] = [
+pub const CATEGORIES: [&str; 48] = [
     "RESSOURCES",
     "MODULES",
     "ARMES",
@@ -50,6 +50,7 @@ pub const CATEGORIES: [&str; 47] = [
     "PARTIES DU CORPS",
     "BLESSURES",
     "MEDICAMENTS",
+    "SERVICES FINANCIERS",
 ];
 
 /// The category of the reactions: the laboratory.
@@ -58,6 +59,97 @@ pub const LAB_CATEGORY: usize = 34;
 /// Index in the source table of entry `k` of a category (modules and weapons share a table).
 pub fn source_index(data: &GameData, cat: usize, k: usize) -> Option<usize> {
     entries(data, cat).get(k).copied()
+}
+
+/// The financial products and the services of the brokerage, from the constants the sim runs on:
+/// funds, kinds of passengers, bonds, options, insurance, auctions, flea market, ads, regular
+/// lines, customs. Each entry is (name, lines).
+fn finance_catalogue() -> Vec<(String, Vec<String>)> {
+    use vector_sim::{auction as au, economy as ec, lanes as ln, securities as se, trading as tr};
+    let mut v: Vec<(String, Vec<String>)> = Vec::new();
+    for (name, text) in se::FUNDS {
+        v.push((
+            name.to_string(),
+            vec![
+                name.to_string(),
+                format!("Une part d'un panier : {}.", text.to_lowercase()),
+                format!(
+                    "Frais {:.1} % a l'achat et a la vente, {:.1} % par an en parts retirees.",
+                    se::FEE * 100.0,
+                    se::FUND_FEE * 100.0
+                ),
+                "Courtage (D a quai), onglet TITRES.".to_string(),
+            ],
+        ));
+    }
+    for (name, fare, per_ly) in ec::PAX_KINDS {
+        let mut lines = vec![
+            name.to_string(),
+            format!(
+                "Passagers : {fare:.0} CR de base par tete et {per_ly:.0} CR par annee-lumiere."
+            ),
+        ];
+        lines.push(match name {
+            "CROISIERE" => "Plusieurs escales dans l'ordre, dans des systemes que les touristes aiment (beaute et securite) ; hotel a chaque escale.".to_string(),
+            "PELERINAGE" => "Plusieurs lieux saints a visiter dans l'ordre ; les pelerins paient peu mais depensent aux escales.".to_string(),
+            "TOURISTES" => "Le tarif suit les etoiles d'hotel de la destination : beaute du secteur, securite, pas d'epidemie.".to_string(),
+            "MIGRANTS" => "Ils s'installent : la colonie d'arrivee grandit, la production du secteur d'accueil aussi, celle du secteur de depart baisse.".to_string(),
+            _ => "Fuyant la guerre, ils paient peu et sont reconnaissants ; leur arrivee grossit le secteur d'accueil.".to_string(),
+        });
+        lines.push(format!(
+            "Un guide ({:.0} CR par passager et par etape) ajoute {:.0} % au tarif final.",
+            ec::GUIDE_FEE,
+            ec::GUIDE_BONUS * 100.0
+        ));
+        v.push((format!("PASSAGERS : {name}"), lines));
+    }
+    let svc = |name: &str, lines: Vec<String>| {
+        let mut l = vec![name.to_string()];
+        l.extend(lines);
+        (name.to_string(), l)
+    };
+    v.push(svc("OBLIGATIONS D'ETAT", vec![
+        format!("Titres a zero coupon d'un secteur, en sa monnaie, a {:.0} jours : achetes avec une decote qui est le rendement.", se::BOND_DAYS),
+        "Rendement = taux directeur + prime de risque (dette, guerre, krach). Si le rendement monte, le titre perd de la valeur.".to_string(),
+        format!("Defaut partiel ({:.0} % rembourse) si le secteur est en krach profond et trop endette ; frais {:.1} %.", se::RECOVERY * 100.0, se::FEE * 100.0),
+    ]));
+    v.push(svc("OPTIONS", vec![
+        format!("Droit au gain d'une hausse (achat) ou d'une baisse (vente) d'une marchandise, de {:.0} a {:.0} jours, prix fixe a la signature.", se::OPTION_MIN_DAYS, se::OPTION_MAX_DAYS),
+        "La prime croit avec la volatilite du bien et la racine de la duree ; la perte est limitee a la prime, le gain est regle en credits.".to_string(),
+        "Le patrimoine compte les options, les obligations, les fonds et les contrats a terme a leur valeur de marche.".to_string(),
+    ]));
+    v.push(svc("ASSURANCE", vec![
+        format!("Prime = valeur x risque reel du mois x {:.1} (marge de l'assureur) x dossier.", tr::LOADING),
+        format!("Risque de base {:.1} % par mois, plus pirates, guerre, blocus, catastrophe et agressivite du peuple : l'espace libre coute cher.", tr::BASE_ODDS * 100.0),
+        format!("Dossier : +30 % par sinistre de l'annee, +60 % par fraude ; rembourse {:.0} % (soute et coque).", tr::COVER * 100.0),
+        "Declarer une perte inventee est controle : plus de sinistres au dossier, plus d'enquetes ; une fraude annule la police et vaut une amende.".to_string(),
+    ]));
+    v.push(svc("ENCHERES", vec![
+        format!("{} lots par semaine et par station, ouverts {:.0} jours, avec un prix de reserve a {:.0} % de la valeur.", au::LOTS, au::OPEN_DAYS, au::RESERVE * 100.0),
+        "Regle du second prix : vous donnez votre maximum, vous payez 5 % de plus que le meilleur rival. La somme est bloquee jusqu'a la cloture.".to_string(),
+        format!("Un lot gagne attend {:.0} jours a la station ; au-dela la mise est rendue moins 10 % de frais de garde.", au::WAIT_DAYS),
+    ]));
+    v.push(svc("MARCHE AUX PUCES", vec![
+        format!("{} lots par jour, a des prix tres variables ; une part des biens est contrefaite selon le secteur (les marques s'y deprecient).", au::FLEA_LOTS),
+        format!("Une contrefacon ne contient que {:.0} % de vrai ; une expertise coute {:.0} % du prix et la revele.", au::FAKE_SHARE * 100.0, au::APPRAISAL * 100.0),
+        format!("On y vend aussi sa soute, a {:.0} % du prix de reference, sans taxe (mais les biens interdits restent interdits).", au::FLEA_SELL * 100.0),
+    ]));
+    v.push(svc("PUBLICITE", vec![
+        format!("Une campagne de {:.0} jours fait monter la demande, donc le prix, d'un bien autour de la station ({:.0} al) ; effet decroissant avec le budget.", au::AD_DAYS, au::AD_RADIUS_LY),
+        format!("Elle construit aussi la marque de votre maison (jusqu'a +4 % sur vos prix), qui s'estompe en {:.0} jours.", au::BRAND_DAYS),
+    ]));
+    v.push(svc("LIGNES REGULIERES", vec![
+        format!("Entre deux plaques tournantes ({:.0} % des etoiles) a moins de {:.0} al, une paire sur {:.0} est reliee par une ligne de cargos qui part a heure fixe.", ln::P_HUB * 100.0, ln::REACH_LY, 1.0 / ln::P_LINE),
+        "Le bien qu'un bout produit est vraiment emporte : il quitte le stock du depart, vole des jours, arrive. Retards : quarantaine, guerre, blocus. Pirates : meme risque que l'assurance.".to_string(),
+        format!("Ports {:.1} % de la cargaison a chaque bout (plus chez les peuples agressifs) et douanes de l'arrivee (la moitie de la taxe du peuple) ; un bien interdit la-bas n'est jamais transporte.", ln::PORT_FEE * 100.0),
+        format!("Financer un convoi ({:.0} % de frais) partage sa marge reelle et ses pertes.", ln::BROKER_FEE * 100.0),
+    ]));
+    v.push(svc("DOUANES ET PORTS", vec![
+        "Les droits de douane et les frais de port sont lus de la fiche du peuple qui tient le lieu (taxe, agressivite, produits interdits).".to_string(),
+        format!("Frais de port de base {:.1} % de la cargaison, plus selon l'agressivite du peuple ; douane = la moitie de sa taxe sur les ventes.", ln::PORT_FEE * 100.0),
+        "Voir l'onglet ECONOMIE du courtage pour les droits de chaque juridiction.".to_string(),
+    ]));
+    v
 }
 
 /// Number of entries in a category.
@@ -122,6 +214,7 @@ fn entries(data: &GameData, cat: usize) -> Vec<usize> {
         44 => (0..data.body_parts.len()).collect(),
         45 => (0..data.wounds.len()).collect(),
         46 => (0..data.drugs.len()).collect(),
+        47 => (0..finance_catalogue().len()).collect(),
         _ => Vec::new(),
     }
 }
@@ -174,6 +267,7 @@ pub fn names(data: &GameData, cat: usize) -> Vec<String> {
             44 => data.body_parts[i].name.clone(),
             45 => data.wounds[i].name.clone(),
             46 => data.drugs[i].name.clone(),
+            47 => finance_catalogue()[i].0.clone(),
             18 => format!(
                 "Appeler : {}",
                 vector_data::dialogue::ROLES[i].to_lowercase()
@@ -387,6 +481,7 @@ pub fn entry(data: &GameData, cat: usize, k: usize) -> Vec<String> {
     };
     let mut out = Vec::new();
     match cat {
+        47 => out = finance_catalogue()[i].1.clone(),
         0 => {
             let r = &data.resources[i];
             out.push(format!("{}  [{}]", r.name, r.category));
@@ -2101,8 +2196,8 @@ mod tests {
         assert!(entry(&d, 13, k)
             .join("\n")
             .contains("Silicones thermophiles"));
-        assert_eq!(count(&d, 29), d.chemistries.len());
-        let chem = entry(&d, 29, 0).join("\n");
+        assert_eq!(count(&d, 38), d.chemistries.len());
+        let chem = entry(&d, 38, 0).join("\n");
         assert!(
             chem.contains("Serpent de scorie") && chem.contains("K"),
             "{chem}"

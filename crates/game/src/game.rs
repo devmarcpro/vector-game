@@ -3890,7 +3890,7 @@ mod tests {
         g.screen = Screen::Station;
         g.key(KeyCode::KeyD, None, true);
         assert_eq!(g.screen, Screen::Trading);
-        for tab in 0..5 {
+        for tab in 0..crate::trade_view::TABS.len() {
             assert_eq!(g.trade_ui.tab, tab);
             frame(&g);
             g.key(KeyCode::ArrowRight, None, true);
@@ -3915,6 +3915,69 @@ mod tests {
             .iter()
             .any(|c| c.dest_name == g.sim.bodies[g.sim.docked.unwrap()].name));
         frame(&g);
+        g.key(KeyCode::Escape, None, true);
+        assert_eq!(g.screen, Screen::Station);
+    }
+
+    #[test]
+    fn the_economy_tabs_buy_insure_bid_and_draw() {
+        let mut g = Game::new(data(), 1);
+        g.key(KeyCode::Enter, None, true);
+        let (st, _) = g.sim.nearest_station().expect("station");
+        g.sim.spawn_near(st, g.sim.bodies[st].radius + 200.0);
+        g.sim.try_dock().expect("dock");
+        g.sim.credits = 1.0e6;
+        g.sim.time = 200.0 * 86_400.0;
+        g.screen = Screen::Station;
+        g.key(KeyCode::KeyD, None, true);
+        let gold = g.data.resource_index("gold").unwrap();
+        g.sim.ship.cargo.cap_mass = 1.0e7;
+        g.sim.ship.cargo.cap_vol = 1.0e7;
+        let data = std::sync::Arc::clone(&g.data);
+        g.sim.ship.cargo.add(&data, gold, 100.0);
+        // Insurance tab (4): the Enter key and the buttons insure the hold, then the hull.
+        g.trade_ui.tab = 4;
+        let c = g.sim.credits;
+        g.key(KeyCode::Enter, None, true);
+        assert!(g.sim.insured() && g.sim.credits < c, "policy bought");
+        g.click_eco(501);
+        assert!(g.sim.trade.hull_covered > 0.0);
+        frame(&g);
+        // Titles (5): bonds and a fund; the net worth stays about the same minus fees.
+        g.trade_ui.tab = 5;
+        let nw = g.sim.net_worth();
+        g.click_eco(100);
+        g.click_eco(120);
+        assert_eq!(g.sim.trade.folio.bonds.len(), 1);
+        assert!(g.sim.fund_units(0) > 0.0);
+        assert!(
+            g.sim.net_worth() > nw - 0.02 * 2000.0 - 1.0,
+            "only fees are lost"
+        );
+        g.trade_ui.sel = gold;
+        g.click_eco(130);
+        assert_eq!(g.sim.trade.folio.options.len(), 1);
+        frame(&g);
+        // Sales (6): a bid is held, an ad is run.
+        g.trade_ui.tab = 6;
+        g.click_eco(200);
+        assert_eq!(g.sim.trade.dealings.bids.len(), 1);
+        g.click_eco(240);
+        assert_eq!(g.sim.trade.dealings.ads.len(), 1);
+        frame(&g);
+        // Lines (7) and the economic board (8) draw, and a jurisdiction can be picked.
+        g.trade_ui.tab = 7;
+        frame(&g);
+        g.trade_ui.tab = 8;
+        frame(&g);
+        g.click_eco(401);
+        assert_eq!(g.trade_ui.sel, 1);
+        frame(&g);
+        // The arrows move through the goods on the goods tabs.
+        g.trade_ui.tab = 5;
+        g.trade_ui.sel = 0;
+        g.key(KeyCode::ArrowDown, None, true);
+        assert_eq!(g.trade_ui.sel, 1);
         g.key(KeyCode::Escape, None, true);
         assert_eq!(g.screen, Screen::Station);
     }
@@ -3976,6 +4039,9 @@ mod tests {
         let offer = vector_sim::economy::Contract {
             pax: 0,
             pax_kind: 0,
+            legs: Vec::new(),
+            guide: false,
+            origin: [0; 3],
             id: 1,
             dest_star: g.sim.here,
             dest_seed: 0,

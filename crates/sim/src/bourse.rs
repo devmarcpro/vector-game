@@ -160,6 +160,8 @@ pub fn world_factors(data: &GameData, galaxy_seed: u64, pos: [f64; 3], t: f64) -
                 * turmoil.factor(data, r)
                 * local[r]
                 * sick[r]
+                * crate::macroeco::harvest_goods_factor(data, galaxy_seed, pos, t, r)
+                * crate::auction::counterfeit_factor(data, &galaxy, galaxy_seed, pos, t, r)
         })
         .collect()
 }
@@ -182,7 +184,8 @@ impl Sim {
                 let scarcity = (m.reference[r] / m.target[r].max(0.03 * m.reference[r]))
                     .powf(0.35)
                     .clamp(0.25, 4.0);
-                series.push(data.resources[r].value * m.modifier[r] * scarcity * f[r]);
+                let lane = crate::lanes::good_factor(&data, &self.galaxy, pos, t, r);
+                series.push(data.resources[r].value * m.modifier[r] * scarcity * f[r] * lane);
             }
         }
         out

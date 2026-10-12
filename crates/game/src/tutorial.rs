@@ -151,7 +151,7 @@ pub fn hint_line(g: &Game) -> String {
             "HAUT/BAS ANIMAL  GAUCHE/DROITE ESPECE  B ACHETER  P REPRODUIRE  H ABATTRE  ECHAP RETOUR"
         }
         Screen::Trading => {
-            "GAUCHE/DROITE ONGLET  HAUT/BAS CHOIX  +/- MISE  ENTREE AGIR  ECHAP RETOUR"
+            "GAUCHE/DROITE ONGLET  HAUT/BAS CHOIX  +/- MISE  ENTREE AGIR  TOUT TEXTE VERT SE CLIQUE  ECHAP RETOUR"
         }
         Screen::Rogue => {
             "FLECHES/ZQSD DEPLACER  CLIC MARCHER  ENTREE ESCALIER/SITE  X CREUSER  B/N BATIR  V DRONE  R RAPPEL  TAB CHEF"
@@ -276,8 +276,14 @@ pub fn help_lines(screen: Screen) -> &'static [&'static str] {
             "H : abattre (rendement selon les genes)   les animaux mangent des rations",
         ],
         Screen::Trading => &[
-            "Gauche/Droite : onglet (rumeurs, arbitrage, cartels, appels d'offres, assurance)",
-            "Entree : agir   +/- : mise de l'offre",
+            "Gauche/Droite : onglet (rumeurs, arbitrage, cartels, appels d'offres, assurance, titres, ventes, lignes, economie)",
+            "Entree : agir   +/- : mise de l'offre ou de l'enchere   Haut/Bas : choix (un bien pour les options et les ventes)",
+            "Assurance : prime = valeur x risque reel (pirates, guerre, blocus, epidemie, catastrophe) x dossier ; declarer une perte est controle (fraude = amende)",
+            "Titres : obligations d'Etat (monnaie locale, defaut en cas de krach), fonds actions et matieres, options d'achat et de vente ; le patrimoine les compte, futurs compris",
+            "Ventes : encheres hebdomadaires (second prix), marche aux puces (contrefacons : expertise), campagnes de publicite qui font monter la demande locale",
+            "Lignes : convois reguliers de cargos entre plaques tournantes, marchandises reellement en transit ; financer un convoi partage sa marge et ses pertes",
+            "Economie : tableau d'une juridiction (PIB tire de la production, inflation, change, taux, dette, douanes, tourisme) et ses courbes sur 24 mois",
+            "Contrats de passagers : croisieres et pelerinages a plusieurs escales (deliver a chaque escale, hotels selon la beaute et la securite) ; migrants et refugies changent les populations",
         ],
         Screen::Rogue => &[
             "Fin : explorer a pied un lieu a portee (station, epave, ruine, grotte, portail...)",

@@ -55,12 +55,17 @@ pub struct MonthReport {
 }
 
 /// Kinds of passengers: (name, fare per passenger, per light-year).
-pub const PAX_KINDS: [(&str, f64, f64); 4] = [
+pub const PAX_KINDS: [(&str, f64, f64); 6] = [
     ("TOURISTES", 120.0, 90.0),
     ("PELERINS", 60.0, 40.0),
     ("MIGRANTS", 40.0, 30.0),
     ("REFUGIES", 15.0, 10.0),
+    ("CROISIERE", 180.0, 120.0),
+    ("PELERINAGE", 90.0, 60.0),
 ];
+/// Cost of a guide per passenger and per stop, and the share of the fare it adds.
+pub const GUIDE_FEE: f64 = 12.0;
+pub const GUIDE_BONUS: f64 = 0.12;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Contract {
@@ -80,6 +85,34 @@ pub struct Contract {
     pub pax: u32,
     /// Index into `PAX_KINDS`.
     pub pax_kind: u8,
+    /// Stops still to make before the destination (cruises and pilgrimages).
+    pub legs: Vec<Leg>,
+    /// A guide hired for the passengers.
+    pub guide: bool,
+    /// The sector the passengers come from.
+    pub origin: [i64; 3],
+}
+
+/// Goods banned in a faction's space: its own list plus whatever its mœurs forbid.
+pub fn banned_goods_of(data: &vector_data::GameData, faction: usize) -> Vec<usize> {
+    let fac = &data.factions[faction];
+    let values = data.ethos.profile(Some(fac.id.as_str()));
+    (0..data.resources.len())
+        .filter(|&r| {
+            fac.contraband.iter().any(|id| *id == data.resources[r].id)
+                || data.ethos.banned_by(&values, &data.resources, r).is_some()
+        })
+        .collect()
+}
+
+/// A stop of a cruise or a pilgrimage, before the last one.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct Leg {
+    pub star: StarRef,
+    pub seed: u64,
+    pub body: usize,
+    pub name: String,
+    pub system: String,
 }
 
 impl Sim {
@@ -117,6 +150,7 @@ impl Sim {
     /// Price multiplier for the player in the current territory: good standing earns better prices.
     pub fn trade_edge(&self) -> f64 {
         1.0 + 0.002 * f64::from(self.reputation_with(self.faction))
+            + 0.04 * self.brand_at(self.time)
     }
 
     /// Share of a sale withheld by the local authority.
@@ -131,15 +165,7 @@ impl Sim {
 
     /// Goods banned in a faction's space: its own list plus whatever its mœurs forbid.
     pub fn banned_goods(&self, faction: usize) -> Vec<usize> {
-        let data = &self.data;
-        let fac = &data.factions[faction];
-        let values = data.ethos.profile(Some(fac.id.as_str()));
-        (0..data.resources.len())
-            .filter(|&r| {
-                fac.contraband.iter().any(|id| *id == data.resources[r].id)
-                    || data.ethos.banned_by(&values, &data.resources, r).is_some()
-            })
-            .collect()
+        banned_goods_of(&self.data, faction)
     }
 
     /// Contraband inspection at the docks. Returns (kg seized, fine) when something was found.
@@ -224,6 +250,9 @@ impl Sim {
             out.push(Contract {
                 pax: 0,
                 pax_kind: 0,
+                legs: Vec::new(),
+                guide: false,
+                origin: [0; 3],
                 id: hash_coord(here_seed, st as i64, epoch, 1000 + k as i64),
                 dest_star: here,
                 dest_seed: here_seed,
@@ -261,6 +290,9 @@ impl Sim {
                 out.push(Contract {
                     pax: 0,
                     pax_kind: 0,
+                    legs: Vec::new(),
+                    guide: false,
+                    origin: [0; 3],
                     id: hash_coord(here_seed, st as i64, epoch, 2000 + made as i64),
                     dest_star: e.id,
                     dest_seed: e.seed,
@@ -303,6 +335,9 @@ impl Sim {
                 out.push(Contract {
                     pax,
                     pax_kind: kind as u8,
+                    legs: Vec::new(),
+                    guide: false,
+                    origin: crate::politics::cell_of(self.here_pos),
                     id: hash_coord(here_seed, st as i64, epoch, 4000 + k as i64),
                     dest_star: e.id,
                     dest_seed: e.seed,
@@ -314,6 +349,81 @@ impl Sim {
                     kg: 0.0,
                     reward: (f64::from(pax) * (fare + per_ly * d)).round(),
                     expires: self.time + (20.0 + 6.0 * d) * DAY,
+                    faction: self.galaxy.territory(e.pos, data.factions.len()),
+                });
+            }
+        }
+        // Cruises and pilgrimages: several stops, a longer fare, a hotel at each stop.
+        {
+            let near = self.galaxy.nearby(self.here_pos, 14.0);
+            let mut stops = Vec::new();
+            for e in near.into_iter().filter(|e| e.id != here).take(10) {
+                let sys = generate_system(e.seed);
+                if let Some(bi) = sys.bodies.iter().position(|b| b.kind == BodyKind::Station) {
+                    let tour = crate::macroeco::tourism(
+                        &data,
+                        &self.galaxy,
+                        self.galaxy.seed,
+                        e.pos,
+                        self.time,
+                    );
+                    stops.push((tour, e, sys, bi));
+                }
+            }
+            for (k, kind) in [4usize, 5].into_iter().enumerate() {
+                if stops.len() < 3 {
+                    break;
+                }
+                let mut pool: Vec<usize> = (0..stops.len()).collect();
+                if kind == 4 {
+                    // Cruises go where tourists like to be.
+                    pool.sort_by(|a, b| stops[*b].0.total_cmp(&stops[*a].0));
+                } else {
+                    // Pilgrims go where the faith leads: any shrine, picked by the dice.
+                    for i in (1..pool.len()).rev() {
+                        let j = (rng.next_u64() % (i as u64 + 1)) as usize;
+                        pool.swap(i, j);
+                    }
+                }
+                let n = 3.min(pool.len());
+                let route = &pool[..n];
+                let mut total = 0.0;
+                let mut at = self.here_pos;
+                let mut legs = Vec::new();
+                for (i, &si) in route.iter().enumerate() {
+                    let (_, e, sys, bi) = &stops[si];
+                    total += e.distance_to(at);
+                    at = e.pos;
+                    if i + 1 < n {
+                        legs.push(Leg {
+                            star: e.id,
+                            seed: e.seed,
+                            body: *bi,
+                            name: sys.bodies[*bi].name.clone(),
+                            system: sys.name.clone(),
+                        });
+                    }
+                }
+                let (_, e, sys, bi) = &stops[route[n - 1]];
+                let pax = 2 + (rng.next_u64() % 8) as u32;
+                let (_, fare, per_ly) = PAX_KINDS[kind];
+                out.push(Contract {
+                    pax,
+                    pax_kind: kind as u8,
+                    legs,
+                    guide: false,
+                    origin: crate::politics::cell_of(self.here_pos),
+                    id: hash_coord(here_seed, st as i64, epoch, 4100 + k as i64),
+                    dest_star: e.id,
+                    dest_seed: e.seed,
+                    dest_body: *bi,
+                    dest_name: sys.bodies[*bi].name.clone(),
+                    dest_system: sys.name.clone(),
+                    dist_ly: total,
+                    resource: 0,
+                    kg: 0.0,
+                    reward: (f64::from(pax) * (fare * n as f64 + per_ly * total)).round(),
+                    expires: self.time + (30.0 + 8.0 * total) * DAY,
                     faction: self.galaxy.territory(e.pos, data.factions.len()),
                 });
             }
@@ -343,6 +453,9 @@ impl Sim {
             out.push(Contract {
                 pax: 0,
                 pax_kind: 0,
+                legs: Vec::new(),
+                guide: false,
+                origin: [0; 3],
                 id: hash_coord(here_seed, st as i64, epoch, 3000 + k as i64),
                 dest_star: here,
                 dest_seed: here_seed,
@@ -380,6 +493,12 @@ impl Sim {
     pub fn deliver_contract(&mut self, idx: usize) -> Result<f64, &'static str> {
         let st = self.docked_station()?;
         let c = self.contracts.get(idx).ok_or("contrat inconnu")?.clone();
+        if let Some(leg) = c.legs.first() {
+            if leg.star == self.here && leg.body == st {
+                return self.visit_leg(idx);
+            }
+            return Err("ce n'est pas l'etape suivante");
+        }
         if c.dest_star != self.here || c.dest_body != st {
             return Err("ce n'est pas la station de destination");
         }
@@ -423,17 +542,28 @@ impl Sim {
         // Comfort: the emptier the ship, the better the fare (0.8 .. 1.2).
         let crowd = f64::from(c.pax) / f64::from(self.free_berths() + c.pax).max(1.0);
         let comfort = 1.2 - 0.4 * crowd;
-        let pay = c.reward * comfort * (1.0 - self.tax_rate());
+        let kind = c.pax_kind.min(5);
+        // Tourists pay for the hotels of the place: five stars of a safe, lovely sector earn
+        // double what a hostel of a war zone does.
+        let hotel = if matches!(kind, 0 | 4) {
+            0.7 + 0.15 * f64::from(self.hotel_stars_here())
+        } else {
+            1.0
+        };
+        let guide = if c.guide { 1.0 + GUIDE_BONUS } else { 1.0 };
+        let pay = c.reward * comfort * hotel * guide * (1.0 - self.tax_rate());
         self.credits += pay;
-        let kind = c.pax_kind.min(3);
         self.change_reputation(self.faction, if kind == 3 { 6.0 } else { 2.0 });
-        if kind >= 2 {
+        if matches!(kind, 2 | 3) {
             if let Some(ci) = self
                 .colony_at(c.dest_body)
                 .filter(|_| c.dest_star == self.here)
             {
                 self.colonies[ci].pop += f64::from(c.pax);
             }
+            // The people move from one sector to the other: output follows them.
+            let to = crate::politics::cell_of(self.here_pos);
+            self.record_migration(c.origin, to, f64::from(c.pax));
         }
         self.done_contracts.push(c.id);
         if self.done_contracts.len() > 200 {
@@ -460,6 +590,184 @@ impl Sim {
         }
     }
 
+    /// Hotel rating (0..5) of the station the ship is docked at.
+    pub fn hotel_stars_here(&self) -> u8 {
+        let t = crate::macroeco::tourism(
+            &self.data,
+            &self.galaxy,
+            self.galaxy.seed,
+            self.here_pos,
+            self.time,
+        );
+        crate::macroeco::hotel_stars(t, self.system.seed, self.docked.unwrap_or(0))
+    }
+
+    /// Hire a guide for the passengers of contract `idx` at a station: it costs per passenger
+    /// and per stop, and the passengers pay more at the end.
+    pub fn hire_guide(&mut self, idx: usize) -> Result<f64, &'static str> {
+        self.docked.ok_or("non amarre")?;
+        let c = self.contracts.get(idx).ok_or("contrat inconnu")?;
+        if c.pax == 0 {
+            return Err("pas de passagers");
+        }
+        if c.guide {
+            return Err("deja un guide");
+        }
+        let fee = GUIDE_FEE * f64::from(c.pax) * (1.0 + c.legs.len() as f64);
+        if fee > self.credits {
+            return Err("fonds insuffisants");
+        }
+        self.credits -= fee;
+        self.contracts[idx].guide = true;
+        Ok(fee)
+    }
+
+    /// Passengers visit the stop where the ship is docked: they spend at its hotels.
+    fn visit_leg(&mut self, idx: usize) -> Result<f64, &'static str> {
+        let stars = f64::from(self.hotel_stars_here());
+        let c = &mut self.contracts[idx];
+        let leg = c.legs.remove(0);
+        let tip = f64::from(c.pax)
+            * 35.0
+            * (0.5 + 0.25 * stars)
+            * if c.guide {
+                1.0 + 2.0 * GUIDE_BONUS
+            } else {
+                1.0
+            };
+        let tip = tip * (1.0 - self.tax_rate());
+        self.credits += tip;
+        self.change_reputation(self.faction, 0.5);
+        self.events.push(Event::MarketNews(format!(
+            "Escale {} : les passagers depensent {tip:.0} CR a l'hotel ({stars:.0} etoiles).",
+            leg.name.to_uppercase()
+        )));
+        Ok(tip)
+    }
+
+    /// The player moved `n` people from sector `from` to sector `to`.
+    pub(crate) fn record_migration(&mut self, from: [i64; 3], to: [i64; 3], n: f64) {
+        for (cell, d) in [(from, -n), (to, n)] {
+            match self.trade.migrants.iter_mut().find(|(c, _)| *c == cell) {
+                Some((_, v)) => *v += d,
+                None => self.trade.migrants.push((cell, d)),
+            }
+        }
+    }
+
+    /// Net migrants taken into sector `cell` by the player.
+    pub fn net_migrants(&self, cell: [i64; 3]) -> f64 {
+        self.trade
+            .migrants
+            .iter()
+            .find(|(c, _)| *c == cell)
+            .map_or(0.0, |(_, v)| *v)
+    }
+
+    /// Output of the player's colonies in a sector and of the people they moved, credits a day.
+    pub fn outside_output(&self, cell: [i64; 3]) -> f64 {
+        let colonies: f64 = self
+            .colonies
+            .iter()
+            .filter(|c| {
+                self.galaxy
+                    .star(c.star)
+                    .is_some_and(|e| crate::politics::cell_of(e.pos) == cell)
+            })
+            .map(|c| c.pop * (0.5 + c.happiness) * 2.0 + 10.0 * c.buildings.len() as f64)
+            .sum();
+        colonies + (0.8 * self.net_migrants(cell)).clamp(-3000.0, 3000.0)
+    }
+
+    /// The economy of any sector, with what the player's colonies and the people they carried
+    /// add to it.
+    pub fn sector_at(&self, cell: [i64; 3]) -> crate::macroeco::Sector {
+        crate::macroeco::sector_with(
+            &self.data,
+            &self.galaxy,
+            self.galaxy.seed,
+            cell,
+            self.time,
+            self.outside_output(cell),
+        )
+    }
+
+    /// The jurisdictions around the ship, nearest first: one sector per people (and the free
+    /// space) within two sectors, the ship's own first.
+    pub fn jurisdictions(&self) -> Vec<(String, [i64; 3])> {
+        let here = crate::politics::cell_of(self.here_pos);
+        let mut cells = crate::politics::cells_around(here, 2);
+        let d = |c: &[i64; 3]| (0..3).map(|k| (c[k] - here[k]).pow(2)).sum::<i64>();
+        cells.sort_by_key(d);
+        let mut seen: Vec<Option<usize>> = Vec::new();
+        let mut out = Vec::new();
+        for c in cells {
+            let f = crate::politics::faction_of(&self.data, &self.galaxy, c);
+            if seen.contains(&f) {
+                continue;
+            }
+            seen.push(f);
+            let name = f.map_or("ESPACE LIBRE".to_string(), |f| {
+                self.data.factions[f].name.to_uppercase()
+            });
+            out.push((name, c));
+            if out.len() >= 9 {
+                break;
+            }
+        }
+        out
+    }
+
+    /// The board of one jurisdiction: figures now and 24 months of history.
+    pub fn eco_board(&self, cell: [i64; 3], res: usize) -> crate::macroeco::Board {
+        let extra = self.outside_output(cell);
+        let series = |f: fn(&crate::macroeco::Sector) -> f64| -> Vec<f64> {
+            (0..24)
+                .map(|k| {
+                    let t = self.time - (23 - k) as f64 * 30.0 * DAY;
+                    f(&crate::macroeco::sector_with(
+                        &self.data,
+                        &self.galaxy,
+                        self.galaxy.seed,
+                        cell,
+                        t,
+                        extra,
+                    ))
+                })
+                .collect()
+        };
+        let sector = self.sector_at(cell);
+        let pos = crate::politics::cell_center(cell);
+        let (by_industry, _) =
+            crate::macroeco::production(&self.data, self.galaxy.seed, cell, self.time);
+        crate::macroeco::Board {
+            cell,
+            sector,
+            currency: crate::macroeco::currency_name(&self.data, sector.faction),
+            tariff: crate::lanes::tariff(&self.data, sector.faction),
+            port_fee: crate::lanes::port_fee(&self.data, sector.faction),
+            tourism: crate::macroeco::tourism(
+                &self.data,
+                &self.galaxy,
+                self.galaxy.seed,
+                pos,
+                self.time,
+            ),
+            by_industry,
+            gdp: series(|s| s.gdp),
+            inflation: series(|s| s.inflation),
+            fx: series(|s| s.fx),
+            rate: series(|s| s.policy_rate),
+            price: (0..24)
+                .map(|k| {
+                    let t = self.time - (23 - k) as f64 * 30.0 * DAY;
+                    self.reference_price(pos, t, res.min(self.data.resources.len() - 1))
+                })
+                .collect(),
+            price_res: res,
+        }
+    }
+
     // ---- bank ----------------------------------------------------------------
 
     pub fn credit_limit(&self) -> f64 {
@@ -483,13 +791,7 @@ impl Sim {
 
     /// The economy of the sector the ship is in.
     pub fn local_sector(&self) -> crate::macroeco::Sector {
-        crate::macroeco::sector(
-            &self.data,
-            &self.galaxy,
-            self.galaxy.seed,
-            crate::politics::cell_of(self.here_pos),
-            self.time,
-        )
+        self.sector_at(crate::politics::cell_of(self.here_pos))
     }
 
     /// What the ship is worth to a banker: its hull at the shipyard price.
@@ -533,22 +835,12 @@ impl Sim {
             .bank
             .forex
             .iter()
-            .map(|h| {
-                h.amount
-                    * crate::macroeco::sector(
-                        &self.data,
-                        &self.galaxy,
-                        self.galaxy.seed,
-                        h.cell,
-                        self.time,
-                    )
-                    .fx
-            })
+            .map(|h| h.amount * self.sector_at(h.cell).fx)
             .sum();
         let hold: f64 = (0..self.data.resources.len())
             .map(|r| self.ship.cargo.kg[r] * self.data.resources[r].value)
             .sum();
-        self.credits + shares + forex + hold - self.bank.loan
+        self.credits + shares + forex + hold + self.portfolio_value() - self.bank.loan
     }
 
     // ---- currencies -------------------------------------------------------------
@@ -910,6 +1202,9 @@ mod tests {
         let c = Contract {
             pax: 0,
             pax_kind: 0,
+            legs: Vec::new(),
+            guide: false,
+            origin: [0; 3],
             id: 42,
             dest_star: s.here,
             dest_seed: s.system.seed,
@@ -1165,6 +1460,9 @@ mod tests {
         let make = |pax: u32, kind: u8, s: &Sim| Contract {
             pax,
             pax_kind: kind,
+            legs: Vec::new(),
+            guide: false,
+            origin: [0; 3],
             id: 900 + u64::from(pax),
             dest_star: s.here,
             dest_seed: s.system.seed,
@@ -1187,8 +1485,8 @@ mod tests {
         assert_eq!(s.free_berths(), cap - 2, "passengers take berths");
         let pay = s.deliver_contract(0).expect("deliver");
         assert!(
-            pay > 700.0 && pay < 1300.0,
-            "fare within comfort bounds: {pay}"
+            pay > 500.0 && pay < 2000.0,
+            "fare within comfort and hotel bounds: {pay}"
         );
         assert_eq!(s.free_berths(), cap);
         // Migrants join a colony of ours at the destination.
@@ -1198,6 +1496,100 @@ mod tests {
             s.accept_contract(make(3, 2, &s)).expect("accept migrants");
             s.deliver_contract(0).expect("deliver");
             assert!((s.colonies[ci].pop - pop0 - 3.0).abs() < 1e-9);
+        }
+    }
+
+    #[test]
+    fn a_cruise_makes_its_stops_in_order_with_a_guide_and_migrants_move_the_economy() {
+        let mut s = docked_at_hub();
+        let st = s.docked.expect("docked");
+        let here_leg = Leg {
+            star: s.here,
+            seed: s.system.seed,
+            body: st,
+            name: "ESCALE".into(),
+            system: "S".into(),
+        };
+        let far = vector_world::galaxy::StarRef {
+            sector: (999, 0, 0),
+            index: 0,
+        };
+        let make = |s: &Sim, pax: u32, kind: u8, legs: Vec<Leg>, origin: [i64; 3]| Contract {
+            pax,
+            pax_kind: kind,
+            legs,
+            guide: false,
+            origin,
+            id: 700 + u64::from(pax) + u64::from(kind),
+            dest_star: s.here,
+            dest_seed: s.system.seed,
+            dest_body: st,
+            dest_name: "x".into(),
+            dest_system: "y".into(),
+            dist_ly: 0.0,
+            resource: 0,
+            kg: 0.0,
+            reward: 1000.0,
+            expires: s.time + 10.0 * DAY,
+            faction: s.faction,
+        };
+        // A stop that is not the next one is refused; the right one pays a tip and is crossed off.
+        let mut elsewhere = here_leg.clone();
+        elsewhere.star = far;
+        s.accept_contract(make(&s, 2, 4, vec![elsewhere, here_leg.clone()], [0; 3]))
+            .unwrap();
+        assert!(
+            s.deliver_contract(0).is_err(),
+            "the first stop is elsewhere"
+        );
+        s.contracts[0].legs.remove(0);
+        let credits = s.credits;
+        let tip = s.deliver_contract(0).expect("stop");
+        assert!(tip > 0.0 && (s.credits - credits - tip).abs() < 1e-9);
+        assert!(s.contracts[0].legs.is_empty(), "stop crossed off");
+        // A guide costs per passenger and per stop, once, and the final fare is higher.
+        s.contracts[0].legs.push(here_leg.clone());
+        let fee = s.hire_guide(0).expect("guide");
+        assert!((fee - GUIDE_FEE * 2.0 * 2.0).abs() < 1e-9);
+        assert!(s.hire_guide(0).is_err());
+        let guided = s.deliver_contract(0).expect("second stop with a guide");
+        assert!(
+            guided > tip,
+            "a guide makes the passengers spend more: {guided} vs {tip}"
+        );
+        let paid_guided = s.deliver_contract(0).expect("arrival");
+        s.accept_contract(make(&s, 2, 4, vec![], [0; 3])).unwrap();
+        let paid_plain = s.deliver_contract(0).expect("arrival");
+        assert!(
+            (paid_guided / paid_plain - (1.0 + GUIDE_BONUS)).abs() < 0.02,
+            "{paid_guided} vs {paid_plain}"
+        );
+        // Hotels: a safe lovely place pays more than a dangerous one for the same trip.
+        assert!((0..=5).contains(&s.hotel_stars_here()));
+        // Refugees leave a sector and arrive in another: output follows the people.
+        let here_cell = crate::politics::cell_of(s.here_pos);
+        let from = [here_cell[0] + 5, here_cell[1], here_cell[2]];
+        let g0 = s.sector_at(here_cell).gdp;
+        let f0 = s.sector_at(from).gdp;
+        s.accept_contract(make(&s, 2, 3, vec![], from)).unwrap();
+        s.deliver_contract(0).expect("refugees");
+        assert_eq!(s.net_migrants(here_cell), 2.0);
+        assert_eq!(s.net_migrants(from), -2.0);
+        assert!(s.sector_at(here_cell).gdp > g0, "the host sector grows");
+        assert!(s.sector_at(from).gdp < f0, "the origin loses its people");
+    }
+
+    #[test]
+    fn colonies_of_the_player_add_to_the_output_of_their_sector() {
+        let mut s = docked_at_hub();
+        let st = s.docked.expect("docked");
+        let cell = crate::politics::cell_of(s.here_pos);
+        let before = s.sector_at(cell).gdp;
+        assert_eq!(s.outside_output(cell), 0.0);
+        if s.found_colony(st, None).is_ok() {
+            s.colonies[0].pop = 400.0;
+            assert!(s.outside_output(cell) > 400.0);
+            assert!(s.sector_at(cell).gdp > before);
         }
     }
 

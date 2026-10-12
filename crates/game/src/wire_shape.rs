@@ -398,8 +398,8 @@ pub fn shape_for(data: &GameData, cat: usize, k: usize) -> Option<Vec<Seg>> {
             s
         }
         17 => resource("cybernetique"),
-        47 => part_shape(&data.ship_parts.get(i)?.kind),
-        48 => plan_shape(data.ship_plans.get(i)?),
+        57 => part_shape(&data.ship_parts.get(i)?.kind),
+        58 => plan_shape(data.ship_plans.get(i)?),
         _ => return None,
     };
     Some(norm(s))
@@ -440,7 +440,7 @@ mod tests {
         let d = data();
         let n = |cat: usize| crate::codex::count(&d, cat);
         let mut drawn = 0;
-        for cat in [0usize, 1, 2, 3, 4, 12, 13, 16, 17, 47, 48] {
+        for cat in [0usize, 1, 2, 3, 4, 12, 13, 16, 17, 57, 58] {
             for i in 0..n(cat) {
                 let segs = shape_for(&d, cat, i).unwrap_or_else(|| panic!("shape for {cat}/{i}"));
                 assert!(segs.len() >= 4, "{cat}/{i} has {} lines", segs.len());

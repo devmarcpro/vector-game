@@ -2,7 +2,7 @@
 //! weapon, faction, anomaly and condition, generated from the real data (no hand-written numbers).
 use vector_data::GameData;
 
-pub const CATEGORIES: [&str; 61] = [
+pub const CATEGORIES: [&str; 65] = [
     "RESSOURCES",
     "MODULES",
     "ARMES",
@@ -331,7 +331,7 @@ fn entries(data: &GameData, cat: usize) -> Vec<usize> {
         57 => (0..data.ship_parts.len()).collect(),
         58 => (0..data.ship_plans.len()).collect(),
         59 => (0..data.projects.len()).collect(),
-        60 => (0..pilot_topics().len()).collect(),
+        64 => (0..pilot_topics().len()).collect(),
         _ => Vec::new(),
     }
 }
@@ -397,7 +397,7 @@ pub fn names(data: &GameData, cat: usize) -> Vec<String> {
             57 => data.ship_parts[i].name.clone(),
             58 => data.ship_plans[i].name.clone(),
             59 => data.projects[i].name.clone(),
-            60 => pilot_topics()[i].0.clone(),
+            64 => pilot_topics()[i].0.clone(),
             18 => format!(
                 "Appeler : {}",
                 vector_data::dialogue::ROLES[i].to_lowercase()
@@ -2401,7 +2401,7 @@ pub fn entry(data: &GameData, cat: usize, k: usize) -> Vec<String> {
                 b.fertility * 100.0
             ));
         }
-        60 => out.extend(pilot_topics()[i].1.iter().cloned()),
+        64 => out.extend(pilot_topics()[i].1.iter().cloned()),
         _ => {
             let n = &data.industries[i];
             out.push(n.name.clone());

@@ -283,7 +283,7 @@ fn actions() -> Vec<(&'static str, Act)> {
             let _ = s.buy_plan(r.below(s.data.ship_plans.len().max(1)));
             if r.below(3) == 0 {
                 let nb = s.blueprints.len();
-                let _ = s.delete_blueprint(r.below(nb + 1));
+                s.delete_blueprint(r.below(nb + 1));
             }
             let nf = s.fleet.len();
             let _ = s.board_fleet_ship(r.below(nf + 1));
@@ -335,7 +335,7 @@ fn actions() -> Vec<(&'static str, Act)> {
         }),
         ("science", |s, r| {
             let _ = s.start_research(r.below(s.data.techs.len().max(1)));
-            let _ = s.irradiate(r.unit() * 2.0);
+            s.irradiate(r.unit() * 2.0);
         }),
         ("surprise", |s, r| {
             let _ = s.surprise_choose(r.below(3), r.below(3));
@@ -449,6 +449,7 @@ struct Outcome {
     worst_day_ms: f64,
     worst_day: u64,
     hash: u64,
+    summary: String,
     action_ms: BTreeMap<&'static str, (u32, f64)>,
 }
 
@@ -484,6 +485,7 @@ fn play(
         worst_day_ms: 0.0,
         worst_day: 0,
         hash: 0,
+        summary: String::new(),
         action_ms: BTreeMap::new(),
     };
     let mut cfg = StartConfig::new(seed);
@@ -517,7 +519,12 @@ fn play(
         }
     };
     let mut last_action = "";
+    let mut crew_dead = false;
+    let mut min_alive = usize::MAX;
     for day in 0..days {
+        if s.steps > 1_200_000 {
+            break; // step budget: free flight near worlds is expensive, the day count is reported
+        }
         let td = Instant::now();
         // Actions of the day.
         let n_actions = match policy {
@@ -683,6 +690,19 @@ fn play(
                 },
             }
         }
+        let alive = s.crew.members.iter().filter(|p| p.alive).count();
+        if alive == 0 && !crew_dead {
+            crew_dead = true;
+            note(
+                &mut out,
+                "equilibrage",
+                format!("equipage entierement mort au jour {day}"),
+                day,
+            );
+        }
+        if alive < min_alive {
+            min_alive = alive;
+        }
         out.days_done = day + 1;
         if s.destroyed && out.findings.iter().all(|f| f.kind != "mort") {
             // The player died: the world must still run (insurance respawn etc.). Just note it.
@@ -691,6 +711,19 @@ fn play(
     }
     out.secs = t0.elapsed().as_secs_f64();
     out.steps = s.steps;
+    out.summary = format!(
+        "credits {:.0}, carburant {:.0}/{:.0}, coque {:.0}, equipage vivant {}/{} (min {}), colonies {}, flotte {}, detruit {}",
+        s.credits,
+        s.ship.fuel,
+        s.ship.stats.fuel_cap,
+        s.ship.hull,
+        s.crew.members.iter().filter(|p| p.alive).count(),
+        s.crew.members.len(),
+        min_alive,
+        s.colonies.len(),
+        s.fleet.len(),
+        s.destroyed
+    );
     out.hash = s.save_bytes().map(|b| fnv(&b)).unwrap_or(0);
     out
 }
@@ -764,7 +797,6 @@ fn main() {
                         Ok(o) => outs.push(o),
                         Err(_) => {
                             println!("BLOCAGE {label}: pas fini apres {timeout} s ({})", CURRENT.lock().map(|g| g.clone()).unwrap_or_default());
-                            total += 1;
                             std::process::exit(2);
                         }
                     }
@@ -784,6 +816,7 @@ fn main() {
                     total += 1;
                 }
                 println!("{line}");
+                println!("    fin: {}", o.summary);
                 for f in &o.findings {
                     println!("  [{}] jour {}: {}", f.kind, f.day, f.detail);
                     total += 1;

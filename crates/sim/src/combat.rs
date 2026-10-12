@@ -1002,6 +1002,7 @@ impl Sim {
     }
 
     pub fn insurance_respawn(&mut self) {
+        let share = self.rebuild_share();
         self.claim_before_wipe();
         self.destroyed = false;
         self.ship.cargo = crate::cargo::Cargo::new(self.data.resources.len());
@@ -1014,7 +1015,7 @@ impl Sim {
         self.ship.sys.shield_pts = 0.0;
         self.ship.vel = Vec3::ZERO;
         self.ship.ang = Vec3::ZERO;
-        self.credits *= 0.8;
+        self.credits *= 1.0 - share;
         self.projectiles.clear();
         self.autopilot = None;
         self.docked = None;
@@ -1504,8 +1505,30 @@ mod tests {
         s.insurance_respawn();
         assert!(!s.destroyed && s.ship.hull == s.ship.stats.hull_max);
         assert_eq!(s.ship.cargo.mass, 0.0);
-        assert!((s.credits - credits * 0.8).abs() < 1e-6);
+        assert!((s.credits - credits * (1.0 - crate::trading::REBUILD_SHARE)).abs() < 1e-6);
         assert!(s.nearest_station().is_some_and(|(_, d)| d < 5000.0));
+    }
+
+    #[test]
+    fn a_hull_policy_halves_the_rebuild_cost() {
+        // Audit B4: one policy for the cargo, the hull and the rebuild.
+        let mut s = armed_sim();
+        s.ship.cargo.add(&s.data.clone(), 0, 1000.0);
+        s.trade.insured_until = s.time + 1.0e6;
+        s.trade.covered = 5.0e4;
+        s.trade.hull_covered = 1.0e5;
+        s.ship.sys.shield_pts = 0.0;
+        s.damage_player(1.0e7);
+        let credits = s.credits;
+        let pay = (s.cargo_value().min(5.0e4) + 1.0e5) * crate::trading::COVER;
+        s.insurance_respawn();
+        let expect = (credits + pay) * (1.0 - crate::trading::REBUILD_SHARE_INSURED);
+        assert!(
+            (s.credits - expect).abs() < 1e-6,
+            "{} vs {expect}",
+            s.credits
+        );
+        assert!(crate::trading::REBUILD_SHARE_INSURED < crate::trading::REBUILD_SHARE);
     }
 
     #[test]

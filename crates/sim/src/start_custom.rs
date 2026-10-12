@@ -279,7 +279,11 @@ const AI_NAMES: [&str; 12] = [
 /// The name of a civil ship, from the shared grammar (`names.ron`), in capitals like the rest of
 /// the start screen.
 pub fn random_ship_name(h: u64) -> String {
-    let kind = if mix64(h) & 1 == 0 { "ship_civil_m" } else { "ship_civil_f" };
+    let kind = if mix64(h) & 1 == 0 {
+        "ship_civil_m"
+    } else {
+        "ship_civil_f"
+    };
     vector_world::names::Spec::new(kind)
         .name(mix64(h ^ 7))
         .to_uppercase()

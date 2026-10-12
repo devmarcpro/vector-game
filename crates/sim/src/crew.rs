@@ -1481,7 +1481,13 @@ mod tests {
     fn an_injury_event_lays_a_real_wound_on_the_body() {
         // Audit B2: injuries are wounds of the body, not diseases with a frozen effect.
         let d = data();
-        for gone in ["fracture", "entorse", "commotion", "brulure", "blessure_arme"] {
+        for gone in [
+            "fracture",
+            "entorse",
+            "commotion",
+            "brulure",
+            "blessure_arme",
+        ] {
             assert!(d.disease_index(gone).is_none(), "{gone} is a wound now");
         }
         let mut c = crew_of(&d, 2);
@@ -1492,7 +1498,11 @@ mod tests {
         ] {
             c.apply_effect(&d, field, 0.5, 0, None, &mut credits, &mut quits, 1000.0);
             let k = d.wound_index(wound).expect("wound");
-            assert!(c.members[0].body.wounds.iter().any(|w| w.kind as usize == k));
+            assert!(c.members[0]
+                .body
+                .wounds
+                .iter()
+                .any(|w| w.kind as usize == k));
         }
         assert!(c.members[0].disease.is_none());
         // Every event that hurts uses a wound, and the data validates.

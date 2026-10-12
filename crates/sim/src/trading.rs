@@ -24,6 +24,11 @@ pub const INSURANCE_DAYS: f64 = 30.0;
 pub const LOADING: f64 = 1.8;
 pub const BASE_ODDS: f64 = 0.004;
 pub const CLAIM_MEMORY_DAYS: f64 = 365.0;
+/// Share of the credits the rebuild of a destroyed ship costs (the one policy of the hull: the
+/// insurer of the combat respawn and the broker are the same, audit B4). A hull covered by a
+/// running policy pays half of it.
+pub const REBUILD_SHARE: f64 = 0.2;
+pub const REBUILD_SHARE_INSURED: f64 = 0.5 * REBUILD_SHARE;
 /// Chance that a claim of nothing but the player's word is examined, before history.
 pub const AUDIT_BASE: f64 = 0.25;
 /// Cartel seat price, monthly payout at the base markup (0.25), antitrust fine and its monthly odds.
@@ -286,7 +291,7 @@ impl Sim {
         out
     }
 
-    fn cargo_value(&self) -> f64 {
+    pub(crate) fn cargo_value(&self) -> f64 {
         (0..self.data.resources.len())
             .map(|r| self.ship.cargo.kg[r] * self.data.resources[r].value)
             .sum()
@@ -430,6 +435,15 @@ impl Sim {
             self.data.resources[res].name.to_lowercase()
         )));
         Ok(pay)
+    }
+
+    /// Share of the credits the rebuild takes: less when a running policy covers the hull.
+    pub(crate) fn rebuild_share(&self) -> f64 {
+        if self.insured() && self.trade.hull_covered > 0.0 {
+            REBUILD_SHARE_INSURED
+        } else {
+            REBUILD_SHARE
+        }
     }
 
     /// Value of the cargo, for the insurance claim at respawn.

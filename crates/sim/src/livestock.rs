@@ -65,6 +65,24 @@ impl Animal {
     }
 }
 
+/// The genes of a wild animal of species `sp` in `biome` of the world `world`: every population
+/// has its own gene pool (the mean allele of each trait is a fact of the place, as is its local
+/// variant, see `biosphere`) and each animal differs from it by at most one step. `n` tells the
+/// individuals apart. A tame animal caught there arrives in the pens with exactly these genes.
+pub fn wild_genes(world: u64, sp: usize, biome: usize, n: u64) -> [[u8; 2]; 4] {
+    let mut genes = [[0u8; 2]; 4];
+    for (t, gene) in genes.iter_mut().enumerate() {
+        let pool = hash_coord(world ^ 0x6E4E, sp as i64, biome as i64, t as i64);
+        let mean = (pool % (u64::from(ALLELE_MAX) + 1)) as i64;
+        for (k, a) in gene.iter_mut().enumerate() {
+            let h = hash_coord(world ^ 0x1D17, sp as i64, (n % (1 << 40)) as i64, (t * 2 + k) as i64);
+            let step = (h % 3) as i64 - 1;
+            *a = (mean + step).clamp(0, i64::from(ALLELE_MAX)) as u8;
+        }
+    }
+    genes
+}
+
 /// An animal of a given species made by chance (the stock of a station dealer).
 pub(crate) fn random_animal(seed: u64, species: usize, now: f64, n: i64) -> Animal {
     let mut rng = Rng::new(hash_coord(seed ^ 0x11FE, species as i64, n, now as i64));
@@ -82,6 +100,27 @@ pub(crate) fn random_animal(seed: u64, species: usize, now: f64, n: i64) -> Anim
         hunger: 0.0,
         last_birth: f64::MIN,
         gen: 0,
+    }
+}
+
+impl Animal {
+    /// An animal caught in the wild, as old as it was (days), with the genes it carries.
+    pub fn from_wild(species: usize, genes: [[u8; 2]; 4], age_days: f64, now: f64) -> Animal {
+        Animal {
+            species,
+            male: hash_coord(
+                0xA11E,
+                species as i64,
+                now as i64,
+                i64::from(genes[0][0]) * 5 + i64::from(genes[1][0]),
+            ) & 1
+                == 0,
+            born: now - age_days * DAY,
+            genes,
+            hunger: 0.0,
+            last_birth: f64::MIN,
+            gen: 0,
+        }
     }
 }
 

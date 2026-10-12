@@ -29,6 +29,10 @@ pub struct Market {
     pub world: Vec<f64>,
     #[serde(skip)]
     pub world_day: i64,
+    /// Game time up to which the convoys of the regular lines have been counted in the stock
+    /// (derived: after a load it starts again from `updated`).
+    #[serde(skip)]
+    pub lanes_to: f64,
 }
 
 impl Market {
@@ -45,6 +49,7 @@ impl Market {
             updated: time,
             world: Vec::new(),
             world_day: i64::MIN,
+            lanes_to: time,
         };
         for i in 0..n {
             let id = data.resources[i].id.as_str();
@@ -82,6 +87,9 @@ impl Market {
         }
         self.updated = time;
     }
+
+    /// Least game time between two countings of the convoys (they are looked at once an hour).
+    pub const LANE_STEP: f64 = 3600.0;
 
     /// A delivery (`kg` > 0) or a departure (`kg` < 0) of a convoy of a regular line, counted
     /// in the kilograms of the line's system, taken in proportion to this market's size: the

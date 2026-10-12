@@ -8,6 +8,7 @@
 //!   snapshot <file.png>       render the current frame  print            show a state summary
 //!   expect screen <Name>      expect docked yes|no      expect credits > <n>   expect speed < <n>
 //!   expect message <text>     expect target yes|no      expect fuel > <n>
+//!   expect market <tab>       expect crew <tab>         (tabs of the market and crew screens)
 //! Test set-up (not reachable by a player): `near asteroid|station|planet|moon` puts the ship
 //! next to the closest such body with matched velocity and targets it; `give credits <n>`,
 //! `give cargo <resource id> <kg>`, `give module <module id>`; `mark` remembers the current
@@ -316,6 +317,16 @@ pub fn run(
                     "screen" => {
                         let want = w.get(2).copied().unwrap_or("").to_ascii_lowercase();
                         format!("{:?}", g.screen).to_ascii_lowercase() == want
+                    }
+                    // The tab of the market screen (open, black, exchange, brokerage) or of the
+                    // crew screen (list, medicine, cryo, organs, gear, network, family, recruit).
+                    "market" => {
+                        let want = w.get(2).copied().unwrap_or("").to_ascii_lowercase();
+                        format!("{:?}", g.market_tab).to_ascii_lowercase() == want
+                    }
+                    "crew" => {
+                        let want = w.get(2).copied().unwrap_or("").to_ascii_lowercase();
+                        format!("{:?}", g.crew_tab).to_ascii_lowercase() == want
                     }
                     "docked" => g.sim.docked.is_some() == (w.get(2) == Some(&"yes")),
                     "target" => g.sim.target.is_some() == (w.get(2) == Some(&"yes")),

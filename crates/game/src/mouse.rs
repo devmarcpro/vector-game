@@ -581,7 +581,7 @@ mod tests {
         assert_eq!(key_of_word(Screen::Station, "T"), Some(KeyCode::KeyT));
         assert_eq!(key_of_word(Screen::Station, "T/ECHAP"), Some(KeyCode::KeyT));
         assert_eq!(key_of_word(Screen::Crew, "G"), Some(KeyCode::KeyG));
-        assert_eq!(key_of_word(Screen::Bourse, "HAUT/BAS"), None);
+        assert_eq!(key_of_word(Screen::Station, "HAUT/BAS"), None);
         assert_eq!(
             key_of_word(Screen::Flight, "C"),
             None,

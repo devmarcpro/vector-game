@@ -251,11 +251,8 @@ fn module(category: &str) -> Shape {
 
 fn hull(class: &str) -> Shape {
     let mut s = Shape::default();
-    let (len, wid) = match class {
-        "cargo" | "station" | "colonial" => (1.0, 0.45),
-        "combat" | "rapide" => (1.0, 0.25),
-        _ => (1.0, 0.33),
-    };
+    // The proportions are those of the 3D model of the class (`ship_model::look`).
+    let (len, wid) = (1.0, 1.3 * crate::ship_model::class_aspect(class));
     // A long prism with a pointed nose and two fins.
     s.cuboid([-0.1, 0.0, 0.0], [len * 0.7, wid * 0.5, wid * 0.5]);
     s.line([len * 0.6, wid * 0.5, wid * 0.5], [len, 0.0, 0.0]);
@@ -433,6 +430,25 @@ mod tests {
     fn data() -> GameData {
         let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../data");
         GameData::load(&dir).expect("data loads")
+    }
+
+    #[test]
+    fn the_wireframe_of_a_hull_follows_the_proportions_of_its_3d_model() {
+        // One table of the proportions of the classes (`ship_model::class_aspect`).
+        let d = data();
+        let width = |class: &str| {
+            let segs = norm(hull(class));
+            let (lo, hi) = segs.iter().flat_map(|(a, b)| [a[2], b[2]]).fold(
+                (f32::MAX, f32::MIN),
+                |(lo, hi), z| (lo.min(z), hi.max(z)),
+            );
+            hi - lo
+        };
+        assert!(width("cargo") > width("combat"), "a freighter is wider than a fighter");
+        assert!(width("rapide") < width("colonial"));
+        for h in &d.hulls {
+            assert!(crate::ship_model::class_aspect(&h.class) > 0.05);
+        }
     }
 
     #[test]

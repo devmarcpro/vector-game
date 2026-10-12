@@ -317,6 +317,7 @@ impl Game {
             KeyCode::KeyE => self.sim.rogue_reload(),
             KeyCode::KeyG => self.sim.rogue_grenade(),
             KeyCode::KeyC => self.sim.rogue_capture(),
+            KeyCode::KeyL => self.sim.rogue_release(self.farm.animal),
             KeyCode::KeyV => self
                 .sim
                 .rogue_deploy_drone()
@@ -706,6 +707,7 @@ fn draw_run(fb: &mut Framebuffer, g: &Game, r: &Rogue) {
         ("[V] LANCER UN DRONE", KeyCode::KeyV),
         ("[F] VUE A LA PREMIERE PERSONNE", KeyCode::KeyF),
         ("[C] CAPTURER UNE BETE", KeyCode::KeyC),
+        ("[L] RELACHER L'ANIMAL CHOISI DES ENCLOS", KeyCode::KeyL),
         ("[X] CREUSER / CASSER DEVANT", KeyCode::KeyX),
         ("[B] BATIR UN MUR  [N] UN SOL", KeyCode::KeyB),
     ];

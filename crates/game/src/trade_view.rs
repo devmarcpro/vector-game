@@ -1,7 +1,7 @@
 //! The brokerage screen (D at a station): rumours, arbitrage, cartels, tenders, insurance,
 //! securities, sales, regular lines and the economic board (the last five live in `eco_view`),
 //! nine tabs chosen with the arrows or by clicking their names.
-use crate::game::{Game, Screen};
+use crate::game::{Game, MarketTab};
 use crate::hud::{AMBER, DIM, GREEN, UP, WHITE};
 use crate::mouse::Act;
 use vector_render::Framebuffer;
@@ -73,7 +73,7 @@ impl Game {
                 self.trade_ui.bid = self.trade_ui.bid.max(2) - 1;
             }
             KeyCode::Enter | KeyCode::Space => self.trade_action(),
-            KeyCode::Escape | KeyCode::KeyD => self.screen = Screen::Station,
+            KeyCode::Escape | KeyCode::KeyD => self.market_tab = MarketTab::Open,
             _ => {}
         }
     }
@@ -124,25 +124,9 @@ impl Game {
 pub fn draw(fb: &mut Framebuffer, g: &Game) {
     let s = &g.sim;
     let ui = &g.trade_ui;
-    fb.text(1, 1, "== COURTAGE ==", AMBER);
+    fb.text(1, 1, &format!("== COURTAGE : {} ==", TABS[ui.tab.min(TABS.len() - 1)]), AMBER);
     fb.text(18, 1, &format!("CREDITS {:.0}", s.credits), GREEN);
-    let mut x = 1;
-    for (i, t) in TABS.iter().enumerate() {
-        let hov = g.hit_cells(x, 3, t.len(), 1, Act::Call(Game::click_trade_tab, i), None);
-        fb.text(
-            x,
-            3,
-            t,
-            if i == ui.tab {
-                AMBER
-            } else if hov {
-                WHITE
-            } else {
-                GREEN
-            },
-        );
-        x += t.len() + 3;
-    }
+    // The tabs are the words of the bar of the market screen (`ui::market_tab_bar`).
     match ui.tab {
         0 => draw_rumours(fb, g),
         1 => draw_arbitrage(fb, g),

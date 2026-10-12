@@ -24,7 +24,7 @@
 | I | Soute / inventaire (J = jeter la ressource) |
 | D | Amarrer (station < 500 m, vitesse relative < 8 m/s) |
 | I | Soute / inventaire (J = jeter la ressource, F = verser le carburant de la soute dans le reservoir) |
-| K | Equipage (Gauche/Droite poste, T quart, X débarquer à quai, J journal) |
+| K | Equipage : UN écran à onglets (barre cliquable au-dessus de la ligne de commandes : LISTE, MEDECINE M, CRYO C, ORGANES O, EQUIPEMENT E, RESEAU V, ARBRE G, RECRUTEMENT N à quai) ; Gauche/Droite poste, T quart, X débarquer à quai, J journal ; K ou Échap revient à la liste puis quitte |
 | J | Journal de bord (Tab : nouvelles du monde, puis ARCHIVES : histoire du secteur et artefacts ; D dater, C collectionneur, M musée, R restituer, T fouille prudente) |
 | L | Carte galactique (Haut/Bas étoile, +/- zoom, Entrée = saut FTL) ; Retour arrière annule une charge de saut |
 | F2 | Empire (colonies) ; Entrée = détail ; F3 = Flotte |
@@ -57,12 +57,12 @@
 Options de ligne de commande : `--snapshot fichier.png [scene]` (rendu headless), `--bench`, `--script fichier.txt` (jeu scripte sans fenetre, voir `crates/game/src/script.rs`).
 
 ## Station
-Haut/Bas : ressource ; Entree : vendre tout ; S : vendre 100 kg ; B : acheter 100 kg ; F : plein de carburant ; R : reparer ; U : decoller.
+Marche (a quai, K = equipage, T bourse, D courtage, G noir) : UN ecran a onglets, barre cliquable au-dessus des commandes : MARCHE, NOIR, BOURSE, puis les neuf onglets du courtage (RUMEURS, ARBITRAGE, CARTELS, APPELS D'OFFRES, ASSURANCE, TITRES, VENTES, LIGNES, ECONOMIE). Onglet MARCHE : Haut/Bas : ressource ; Entree : vendre tout ; S : vendre 100 kg ; B : acheter 100 kg ; F : plein de carburant ; R : reparer ; U : decoller. Echap depuis un autre onglet revient a MARCHE.
 ## Menu principal
 Haut/Bas + Entree ; taper une graine (nombre ou texte) avant Nouvelle partie.
 
-Station : N = recruter (Entrée embauche au poste de sa meilleure compétence), K = équipage.
-Station : T = bourse (Haut/Bas ressource, PgUp/PgDn x10, Tab ou Gauche/Droite période 30/90/180 jours, T ou Échap retour).
+Station : N = onglet RECRUTEMENT de l'écran d'équipage (Entrée embauche au poste de sa meilleure compétence ; K revient à la liste, Échap à la station), K = équipage.
+Station : T = onglet BOURSE (Haut/Bas ressource, PgUp/PgDn x10, Tab ou Gauche/Droite période 30/90/180 jours, T ou Échap retour au marché).
 Station : C = contrats (Entrée accepter/livrer, X abandonner), E = banque (Haut emprunter 1000, Bas rembourser 1000, Entrée tout rembourser, H hypothéquer le vaisseau / lever l'hypothèque, C acheter 1000 CR de monnaie locale, V la revendre, B blanchir l'argent sale ; le tableau ECONOMIE LOCALE et les rapports mensuels sont sur le même écran).
 
 Ecran colonie : Tab zone (bâtiments / stocks / politiques / construction), Haut/Bas, Espace on/off, R recette, X démolir, D déposer / W retirer (stocks, amarré), Gauche/Droite politique, Entrée construire, T récupérer la caisse, U décoller. F = schéma des chaînes de production, H = suivi sanitaire (épidémies de la colonie, secteur, équipage, journal) ; les mêmes boutons sont cliquables en haut à droite. Onglets des travaux de la colonie (même touche ou Échap pour revenir) : I = industrie (Haut/Bas choisir un bâtiment, Espace on/off, R recette ; limite, charge, usure, qualité, automatisation, goulot), G = agriculture et vivres (C changer de culture, R rotation automatique ; sol, climat, irrigation, engrais, avarie, nutrition, cultures possibles), V = ville (quartiers, densité, assainissement, pollution, criminalité, siège ; courbes de 60 jours), L = logistique (Gauche/Droite destination, Haut/Bas marchandise, Entrée ou boutons texte « ENVOYER 500 / 2000 / 10000 KG », « TOUT ENVOYER » ; convois en route, délais, imports et exports de vivres).
@@ -92,8 +92,8 @@ F10 ou un clic sur « MENU (F10) » (en haut a droite de tous les ecrans) ouvre 
 - 1 PILOTAGE : cockpit / decoller, radio (Entree), portail et temps (Accueil), pause et sauvegarde.
 - 2 NAVIGATION : carte du systeme (M), galaxie et saut FTL (L), NAVIGATION AUTO (pave num. *), surface d'un monde (F8).
 - 3 VAISSEAU : modules et energie (H), soute (I), chantier naval (Y a quai).
-- 4 EQUIPAGE : equipage (K), arbre familial, recrutement (N a quai).
-- 5 COMMERCE / STATION : marche, bourse (T), courtage (D), contrats (C), banque (E), elevage (L), casino (A) ; a quai seulement.
+- 4 EQUIPAGE : un seul ecran a onglets (K) : liste et fiche, medecine, cryo, organes, equipement, reseau, arbre familial (G), recrutement (N a quai).
+- 5 COMMERCE / STATION : un seul ecran a onglets pour le marche, le marche noir (G), la bourse (T) et le courtage (D), puis contrats (C), banque (E), elevage (L), casino (A) ; a quai seulement.
 - 6 EXPLORATION A PIED : explorer a pied (Fin), expedition sur un monde (F8 puis E).
 - 7 COLONIES : empire (F2), colonie, flotte (F3), factions (X), fonder une colonie (O).
 - 8 CODEX / JOURNAL : journal (J), codex (F6), technologies (F4), prototypes d'interface (F12).
@@ -173,13 +173,13 @@ Par défaut AZERTY : tangage Z/S, lacet Q/D, roulis A/E. Options > Clavier bascu
 
 - **Entrée sur une planète ciblée** (Maj+Tab, assez près) : parler à son peuple s'il en a un (voir la ligne CIVILISATION de l'écran de surface F8).
 
-- **Bourse** : B / N contrat à terme à la hausse / à la baisse sur la ressource choisie (100 kg, 30 j, marge 25 %), C clôt un contrat.
+- **Bourse** (onglet BOURSE) : B / N contrat à terme à la hausse / à la baisse sur la ressource choisie (100 kg, 30 j, marge 25 %), C clôt un contrat.
 
 - **Equipage, E** : liste de l'équipement (flèches pour choisir, Entrée équipe depuis la soute, U retire, E ou Echap revient). Clic sur une ligne ARME / ARMURE / OUTIL.
 
-- **Bourse, E** : bascule entre marchandises et entreprises ; sur les entreprises, B achète 10 actions et N en vend 10 (il faut être à quai).
+- **Bourse, E** (onglet BOURSE) : bascule entre marchandises et entreprises ; sur les entreprises, B achète 10 actions et N en vend 10 (il faut être à quai).
 
-- Station : G achete 50 kg, J vend 50 kg de la ressource choisie au marche noir (seulement pour les biens interdits du territoire ; prime ~x1,9 a l'achat, x1,35 a la vente, 12 % de descente de police : amende 600 CR, saisie, reputation -0,25).
+- Station, onglet NOIR (G, ou clic ; G ou Echap revient) : les biens interdits du territoire ; Haut/Bas choisit, B achete 50 kg au contact, S lui vend 50 kg. Le contact est une seconde porte sur le MEME stock que l'onglet MARCHE : il ne vend que ce que la station tient, ce qu'on lui vend y reste, et son prix est celui de la station (rarete comprise) x1,9 a l'achat, x1,35 a la vente ; 12 % de descente de police (moins avec sa confiance). Details : G achete 50 kg, J vend 50 kg de la ressource choisie au marche noir (seulement pour les biens interdits du territoire ; prime ~x1,9 a l'achat, x1,35 a la vente, 12 % de descente de police : amende 600 CR, saisie, reputation -0,25).
 
 - Station : L elevage (B acheter, P reproduire avec le meilleur partenaire, H abattre, Gauche/Droite espece), A casino (Gauche/Droite jeu, Haut/Bas mise, +/- numero, Entree jouer).
 
@@ -187,7 +187,7 @@ Par défaut AZERTY : tangage Z/S, lacet Q/D, roulis A/E. Options > Clavier bascu
   - Assurance : [ASSURER LA SOUTE], [ASSURER SOUTE ET COQUE] (prime selon le risque reel et le dossier), [DECLARER LA SOUTE PERDUE] (controle : fraude = police annulee et amende).
   - Titres : [ACHETER 1000/5000 CR] d'obligations, [VENDRE] ; fonds actions et matieres [ACHETER 1000 CR] / [VENDRE] ; options d'achat et de vente sur le bien choisi (fleches).
   - Ventes : [MISER] sur un lot d'enchere (+/- pour la mise), [EXPERTISE] et [ACHETER] aux puces, [VENDRE TOUT AUX PUCES], [CAMPAGNE DE PUBLICITE 2000 CR] pour le bien choisi.
-  - Lignes : fleches pour choisir une ligne du systeme, [FINANCER 1000 CR] sur un convoi encore a quai.
+  - Lignes : fleches pour choisir une ligne du systeme, [FINANCER 1000 CR] sur un convoi encore a quai. Les convois chargent et dechargent le stock REEL des stations du systeme (depart = stock en moins a l'origine, retard = rayons vides, arrivee = stock en plus) : ce que vous videz ou remplissez au marche change la marge de la ligne.
   - Economie : clic sur une juridiction pour son tableau et ses courbes (24 mois).
 - Contrats (C) : les croisieres et pelerinages ont plusieurs escales ; Entree a chaque escale (dans l'ordre), puis a l'arrivee.
 
@@ -200,6 +200,7 @@ Par défaut AZERTY : tangage Z/S, lacet Q/D, roulis A/E. Options > Clavier bascu
 - Exploration à pied (un seul système pour les mondes, stations, épaves, ruines, grottes, portails, dimensions) : touche Fin en vol ou à quai, ou E sur la carte de surface (F8). Mondes : « Atterrir » ; la surface a ses sites qui mènent aux étages des lieux.
 - Pilotage : Inser (ou « ORBITE CIRCULAIRE » du menu) met le vaisseau sur une orbite circulaire autour du monde le plus proche (dans 12 rayons), payee en carburant. Le contact avec un monde solide est juge sur la vitesse, la pente et l'inclinaison du nez (voir SIM_MODEL, atterrissage) : propre, dur (degats, rebond), bascule (couche sur le flanc) ou destruction. Le vaisseau pose reste sur le terrain (il tourne avec le monde) jusqu'a ce que la poussee depasse le poids ; Fin pour explorer a pied. L'air des mondes freine les plongees.
 - Exploration a pied : F bascule la vue a la premiere personne (prototype a la Daggerfall : memes etages, memes tours ; gauche/droite tournent d'un huitieme de tour, haut/bas avancent et reculent ; creatures, gens, arbres, plantes, bornes et escaliers sont des panneaux faits d'ASCII).
+- Bêtes (exploration à pied) : **C** capture une bête domestique à côté de l'équipe (elle va dans les enclos avec ses gènes : même espèce, mêmes gènes que les animaux de l'élevage) ; **L** relâche l'animal choisi dans l'écran ÉLEVAGE (flèches de l'écran des enclos) sur la case libre voisine, seulement sur la surface d'un monde où son espèce peut vivre ; sur le territoire d'une colonie la capture retire sa masse du réseau trophique et le relâchement l'y remet.
 - Matiere (exploration à pied) : X creuse ou casse la case devant (outil et dureté = temps ; donne les ressources de la matière selon la physique du monde), B construit un mur de pierre taillée, N pose un sol de tôle (ou un pont sur l'eau) avec ce que porte l'équipe ; les cases bâties sont à vous. La glace fait déraper, soufre et lave blessent, le froid mord sans vêtements chauds.
 
 - Panneau de physique (pilotage, ecran assez haut) : ORBITE (periapsis/apoapsis sont des altitudes, periode, vitesses circulaire et de liberation, excentricite), HOHMANN vers la cible (dv, duree, attente de la fenetre), flux solaire, retard de la lumiere de l'etoile, charge en g, dose (mGy/h et cumulee) et signature infrarouge. Aucune touche nouvelle.

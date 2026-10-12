@@ -1485,14 +1485,21 @@ impl Sim {
         // The convoys of the regular lines since the market was last looked at: they load and
         // unload the real stock of the station.
         let flows = match self.markets.get(&i) {
-            Some(m) if time > m.updated => crate::lanes::flows_between(
-                &data,
-                &self.galaxy,
-                self.here_pos,
-                m.updated.max(time - 30.0 * bourse::DAY),
-                time,
-            ),
-            _ => Vec::new(),
+            Some(m) => {
+                let from = if m.lanes_to > 0.0 { m.lanes_to } else { m.updated };
+                if time - from >= Market::LANE_STEP {
+                    crate::lanes::flows_between(
+                        &data,
+                        &self.galaxy,
+                        self.here_pos,
+                        from.max(time - 30.0 * bourse::DAY),
+                        time,
+                    )
+                } else {
+                    Vec::new()
+                }
+            }
+            None => Vec::new(),
         };
         let day = (time / bourse::DAY).floor() as i64;
         // What the world does to prices changes slowly: refresh it once a day.
@@ -1507,9 +1514,16 @@ impl Sim {
         let m = self.markets.entry(i).or_insert_with(|| {
             Market::new(hash_coord(seed, i as i64, 0, 0), i, &data, time, industry)
         });
-        for f in flows {
-            m.relax_to(f.t);
-            m.apply_flow(f.res, f.kg);
+        if !flows.is_empty() {
+            for f in flows {
+                if f.t > m.updated {
+                    m.relax_to(f.t);
+                }
+                m.apply_flow(f.res, f.kg);
+            }
+        }
+        if time - m.lanes_to >= Market::LANE_STEP || m.lanes_to <= 0.0 {
+            m.lanes_to = time;
         }
         m.relax_to(time);
         if let Some(w) = world {

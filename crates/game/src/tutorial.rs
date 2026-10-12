@@ -1,5 +1,5 @@
 //! Guided tutorial (state-driven, skippable) and contextual help (F1) per screen.
-use crate::game::{CrewTab, Game, Screen};
+use crate::game::{CrewTab, Game, MarketTab, Screen};
 use winit::keyboard::KeyCode;
 
 /// One tutorial step: instruction text and the condition that completes it.
@@ -131,6 +131,15 @@ pub fn hint_line(g: &Game) -> String {
         Screen::Flight => {
             "WASD/QE ROT  ESP/X POUSSEE  MAJ BOOST  C FREIN  F ASSIST  TAB CIBLE  G AUTO  D AMARRER  V LASER  F10 MENU  M CARTE  F1 AIDE"
         }
+        Screen::Station if g.market_tab == MarketTab::Black => {
+            "HAUT/BAS BIEN INTERDIT  B ACHETER 50 KG  S VENDRE 50 KG  G/ECHAP RETOUR AU MARCHE  (RISQUE DE DESCENTE)"
+        }
+        Screen::Station if g.market_tab == MarketTab::Exchange => {
+            "HAUT/BAS RESSOURCE  TAB PERIODE  B HAUSSE  N BAISSE  C CLORE  E ENTREPRISES (ACTIONS)  T/ECHAP RETOUR AU MARCHE"
+        }
+        Screen::Station if g.market_tab == MarketTab::Brokerage => {
+            "GAUCHE/DROITE ONGLET  HAUT/BAS CHOIX  +/- MISE  ENTREE AGIR  TOUT TEXTE VERT SE CLIQUE  ECHAP RETOUR AU MARCHE"
+        }
         Screen::Station => {
             "ENTREE VENDRE  F PLEIN  R REPARER  FIN VISITER LA STATION (TOUS LES SERVICES)  H NAVIRE  T BOURSE  U DECOLLER"
         }
@@ -189,9 +198,6 @@ pub fn hint_line(g: &Game) -> String {
         Screen::Livestock => {
             "HAUT/BAS ANIMAL  GAUCHE/DROITE ESPECE  B ACHETER  P REPRODUIRE  H ABATTRE  ECHAP RETOUR"
         }
-        Screen::Trading => {
-            "GAUCHE/DROITE ONGLET  HAUT/BAS CHOIX  +/- MISE  ENTREE AGIR  TOUT TEXTE VERT SE CLIQUE  ECHAP RETOUR"
-        }
         Screen::Rogue => {
             "FLECHES/ZQSD DEPLACER  CLIC MARCHER  ENTREE ESCALIER/SITE  X CREUSER  B/N BATIR  V DRONE  R RAPPEL  TAB CHEF"
         }
@@ -216,9 +222,6 @@ pub fn hint_line(g: &Game) -> String {
         Screen::Rules => "HAUT/BAS REGLE  GAUCHE/DROITE MODIFIER  R DEFAUTS  ECHAP RETOUR",
         Screen::Options => "HAUT/BAS REGLAGE  GAUCHE/DROITE CHANGER  ENTREE/ECHAP RETOUR",
         Screen::Codex => "GAUCHE/DROITE CATEGORIE  HAUT/BAS ENTREE  ECHAP RETOUR",
-        Screen::Bourse => {
-            "HAUT/BAS RESSOURCE  TAB PERIODE  B HAUSSE  N BAISSE  C CLORE  E ENTREPRISES (ACTIONS)  T/ECHAP RETOUR"
-        }
         Screen::Surface if g.surf_globe => {
             "GLOBE  GAUCHE/DROITE TOURNER  TAB COUCHE  V ESPECE (BIOSPHERE)  G CARTE  F CODEX  F8/ECHAP RETOUR"
         }
@@ -277,6 +280,24 @@ pub fn help_lines(screen: Screen) -> &'static [&'static str] {
             "H : vaisseau   Y : chantier naval   N : recruter",
             "K : equipage   C : contrats   E : banque   T : bourse (courbes de prix)",
             "F2 : empire   F3 : flotte   U : decoller",
+            "ONGLETS (barre cliquable au-dessus des commandes) : MARCHE, NOIR (G), BOURSE (T), puis le courtage (D) : rumeurs, arbitrage, cartels, appels d'offres, assurance, titres, ventes, lignes, economie ; Echap revient au marche",
+            "NOIR : les biens interdits ici ; B achete 50 kg au contact, S lui en vend 50 kg ; il ne vend que le stock de la station, et ce qu'on lui vend y reste ; risque de descente de police",
+            "Haut/Bas : ressource   PgUp/PgDn : sauter de 10",
+            "B / N : contrat a terme a la hausse / baisse (100 kg, 30 j, marge 25 %)",
+            "C : clore un contrat (gain ou perte au prix de reference du jour)",
+            "E : entreprises cotees ; B achete 10 actions, N en vend 10 ; dividende chaque mois",
+            "Tab ou Gauche/Droite : periode du graphique (30, 90, 180 jours)",
+            "Courbe pleine : prix de reference ; ligne ambre : moyenne sur 7 jours",
+            "Bandes colorees : evenements du monde qui touchent cette ressource",
+            "T ou Echap : retour a la station",
+            "Gauche/Droite : onglet (rumeurs, arbitrage, cartels, appels d'offres, assurance, titres, ventes, lignes, economie)",
+            "Entree : agir   +/- : mise de l'offre ou de l'enchere   Haut/Bas : choix (un bien pour les options et les ventes)",
+            "Assurance : prime = valeur x risque reel (pirates, guerre, blocus, epidemie, catastrophe) x dossier ; declarer une perte est controle (fraude = amende)",
+            "Titres : obligations d'Etat (monnaie locale, defaut en cas de krach), fonds actions et matieres, options d'achat et de vente ; le patrimoine les compte, futurs compris",
+            "Ventes : encheres hebdomadaires (second prix), marche aux puces (contrefacons : expertise), campagnes de publicite qui font monter la demande locale",
+            "Lignes : convois reguliers de cargos entre plaques tournantes, marchandises reellement en transit ; financer un convoi partage sa marge et ses pertes",
+            "Economie : tableau d'une juridiction (PIB tire de la production, inflation, change, taux, dette, douanes, tourisme) et ses courbes sur 24 mois",
+            "Contrats de passagers : croisieres et pelerinages a plusieurs escales (deliver a chaque escale, hotels selon la beaute et la securite) ; migrants et refugies changent les populations",
         ],
         Screen::Inventory => &[
             "Haut/Bas : ressource   J : jeter   Echap : retour",
@@ -356,16 +377,6 @@ pub fn help_lines(screen: Screen) -> &'static [&'static str] {
             "B : acheter un animal   P : reproduire avec le meilleur partenaire",
             "H : abattre (rendement selon les genes)   les animaux mangent des rations",
         ],
-        Screen::Trading => &[
-            "Gauche/Droite : onglet (rumeurs, arbitrage, cartels, appels d'offres, assurance, titres, ventes, lignes, economie)",
-            "Entree : agir   +/- : mise de l'offre ou de l'enchere   Haut/Bas : choix (un bien pour les options et les ventes)",
-            "Assurance : prime = valeur x risque reel (pirates, guerre, blocus, epidemie, catastrophe) x dossier ; declarer une perte est controle (fraude = amende)",
-            "Titres : obligations d'Etat (monnaie locale, defaut en cas de krach), fonds actions et matieres, options d'achat et de vente ; le patrimoine les compte, futurs compris",
-            "Ventes : encheres hebdomadaires (second prix), marche aux puces (contrefacons : expertise), campagnes de publicite qui font monter la demande locale",
-            "Lignes : convois reguliers de cargos entre plaques tournantes, marchandises reellement en transit ; financer un convoi partage sa marge et ses pertes",
-            "Economie : tableau d'une juridiction (PIB tire de la production, inflation, change, taux, dette, douanes, tourisme) et ses courbes sur 24 mois",
-            "Contrats de passagers : croisieres et pelerinages a plusieurs escales (deliver a chaque escale, hotels selon la beaute et la securite) ; migrants et refugies changent les populations",
-        ],
         Screen::Rogue => &[
             "Fin : explorer a pied un lieu a portee (station, epave, ruine, grotte, portail...)",
             "Souris : CLIC DROIT sur une case = marcher jusque-la, attaquer ou parler, ramasser, creuser, batir, escalier, borne, drone, rappel, fiche",
@@ -374,6 +385,7 @@ pub fn help_lines(screen: Screen) -> &'static [&'static str] {
             "V : lance un drone (robotique) qui ramasse a proximite ; R : rappelle l'equipe depuis la surface",
             "X : creuse ou casse la case devant (outil et durete = temps ; la matiere donne ses ressources)",
             "B : construit un mur, N : pose un sol (tole, pont sur l'eau) avec ce que porte l'equipe : ces cases sont a vous",
+            "C : capture une bete domestique a cote (elle va aux enclos avec ses genes)   L : relache l'animal choisi des enclos (ecran ELEVAGE) la ou son espece vit",
             "T : tirer avec les armes a feu (chargeur, recul, portee, bruit)   E : recharger depuis la soute   G : lancer une grenade (charge chimique, rayon 2)",
         ],
         Screen::Cosmos => &[
@@ -419,16 +431,6 @@ pub fn help_lines(screen: Screen) -> &'static [&'static str] {
             "Gauche/Droite : categorie   Haut/Bas : entree",
             "PgUp/PgDn : sauter de 10   Echap ou F6 : retour",
             "Categorie REACTIONS (laboratoire) : L ou Entree lance un lot de 100 kg sur la soute",
-        ],
-        Screen::Bourse => &[
-            "Haut/Bas : ressource   PgUp/PgDn : sauter de 10",
-            "B / N : contrat a terme a la hausse / baisse (100 kg, 30 j, marge 25 %)",
-            "C : clore un contrat (gain ou perte au prix de reference du jour)",
-            "E : entreprises cotees ; B achete 10 actions, N en vend 10 ; dividende chaque mois",
-            "Tab ou Gauche/Droite : periode du graphique (30, 90, 180 jours)",
-            "Courbe pleine : prix de reference ; ligne ambre : moyenne sur 7 jours",
-            "Bandes colorees : evenements du monde qui touchent cette ressource",
-            "T ou Echap : retour a la station",
         ],
         Screen::Surface => &[
             "Fleches : deplacer le curseur (Maj : x4)",

@@ -822,18 +822,19 @@ mod tests {
             .expect("a convoy ahead");
         let t_event = if origin { c.depart } else { c.arrive };
         // Just before the event the shelves are at the station's usual level.
-        s.time = t_event - 0.01 * DAY;
+        s.time = t_event - DAY / 24.0;
         let before = s.market(st).stock[r];
         let target = s.market(st).target[r];
         let reference = s.market(st).reference[r];
-        s.time = t_event + 0.01 * DAY;
+        // (the markets count the convoys once an hour)
+        s.time = t_event + 2.0 * DAY / 24.0;
         let after = s.market(st).stock[r];
         let moved = after - before;
         let expected = if origin { -c.loaded } else { c.delivered() } * reference
             / MARKET_KG;
-        // (the stock also relaxes a little in the 0.02 day of the window)
+        // (the stock also relaxes a little in the two hours of the window)
         assert!(
-            (moved - expected).abs() < 0.05 * expected.abs() + 0.01 * (target - before).abs() + 1.0,
+            (moved - expected).abs() < 0.05 * expected.abs() + 0.05 * (target - before).abs() + 1.0,
             "moved {moved}, expected {expected}"
         );
         assert!(moved.signum() == expected.signum() || expected == 0.0);

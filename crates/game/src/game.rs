@@ -155,6 +155,12 @@ pub struct Game {
     pub organ_sel: usize,
     /// The piloting menu column is unfolded.
     pub flight_menu_open: bool,
+    /// Third-person view of the ship (SUPPR): orbit angles, distance in ship lengths, chase or free.
+    pub ext_view: bool,
+    pub ext_yaw: f64,
+    pub ext_pitch: f64,
+    pub ext_zoom: f64,
+    pub ext_chase: bool,
     /// Expedition: who goes (per crew index), the rover, the selected row, and the walk itself.
     pub exp_party: Vec<bool>,
     pub exp_vehicle: bool,
@@ -334,6 +340,11 @@ impl Game {
             gear_sel: 0,
             organ_sel: 0,
             flight_menu_open: true,
+            ext_view: false,
+            ext_yaw: crate::ext_view::ZOOM_YAW,
+            ext_pitch: 0.3,
+            ext_zoom: 1.9,
+            ext_chase: true,
             exp_party: Vec::new(),
             exp_vehicle: false,
             exp_sel: 0,
@@ -2621,7 +2632,11 @@ impl Game {
     }
 
     fn flight_key(&mut self, code: KeyCode) {
+        if self.ext_key(code) {
+            return;
+        }
         match code {
+            KeyCode::Delete => self.toggle_ext_view(),
             KeyCode::Home => self.screen = Screen::Cosmos,
             KeyCode::Insert => match self.sim.orbit_here() {
                 Ok(m) => self.say(m),

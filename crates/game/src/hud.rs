@@ -377,10 +377,21 @@ fn draw_reticle(fb: &mut Framebuffer, x: f32, y: f32, r: f32) {
 
 fn draw_cockpit(fb: &mut Framebuffer, v: &View) {
     let ship = &v.sim.ship;
-    let cam = Camera {
-        pos: ship.pos,
-        rot: ship.rot.transpose(),
-        fov_y: if v.boost { 1.4 } else { 1.2 },
+    // Third-person view: the same scene seen from a camera orbiting the ship.
+    let ext = v.game.ext_active();
+    let gr = if ext {
+        crate::ext_view::ground(v.game, v.sim)
+    } else {
+        None
+    };
+    let cam = if ext {
+        crate::ext_view::camera(v.game, v.sim, gr.as_ref())
+    } else {
+        Camera {
+            pos: ship.pos,
+            rot: ship.rot.transpose(),
+            fov_y: if v.boost { 1.4 } else { 1.2 },
+        }
     };
     let focal = fb.h as f64 * 0.5 / (cam.fov_y * 0.5).tan();
 
@@ -436,7 +447,10 @@ fn draw_cockpit(fb: &mut Framebuffer, v: &View) {
                 let pulse = 1.0 + 0.08 * (v.sim.time * 0.7).sin();
                 cam.draw_sphere(fb, b.pos, b.radius * pulse, &spin, 3, 5, 0x00C0_60FF);
             }
+            BodyKind::Asteroid(_) if ext && px > 3.0 => draw_ball(fb, &cam, v, i, col, false),
             BodyKind::Asteroid(_) => cam.draw_sphere(fb, b.pos, b.radius, &spin, 4, 6, col),
+            // Solid stations are drawn with the ships, below.
+            BodyKind::Station if ext => {}
             BodyKind::Station => {
                 let r = Mat3::rot_y(v.sim.time * 0.2);
                 Wireframe::cube(b.radius * 0.5).draw(&cam, fb, &r, b.pos, col);
@@ -487,7 +501,14 @@ fn draw_cockpit(fb: &mut Framebuffer, v: &View) {
         }
     }
 
-    let down = ship.rot.col(1) * -6.0;
+    if ext {
+        crate::ext_view::draw_ships(fb, &cam, v, gr.as_ref());
+    }
+    let down = if ext {
+        ship.rot.col(2) * (crate::ext_view::ship_length(v.sim) * 0.5)
+    } else {
+        ship.rot.col(1) * -6.0
+    };
     for (a, b, mine) in &v.sim.beams {
         cam.draw_line(fb, *a + down, *b, if *mine { RED } else { AMBER });
     }
@@ -527,7 +548,7 @@ fn draw_cockpit(fb: &mut Framebuffer, v: &View) {
         } else {
             npc_color(n.role)
         };
-        if d < 6.0e4 {
+        if d < 6.0e4 && !ext {
             let fwd = if n.vel.length() > 1.0 {
                 n.vel
             } else {
@@ -581,12 +602,16 @@ fn draw_cockpit(fb: &mut Framebuffer, v: &View) {
 
     let (w, h) = (fb.w as f32, fb.h as f32);
     let (cx, cy) = (w / 2.0, h / 2.0);
-    for (dx, dy, ex, ey) in [
-        (-14.0, 0.0, 6.0, 0.0),
-        (8.0, 0.0, 6.0, 0.0),
-        (0.0, -14.0, 0.0, 6.0),
-        (0.0, 8.0, 0.0, 6.0),
-    ] {
+    for (dx, dy, ex, ey) in if ext {
+        [(0.0, 0.0, 0.0, 0.0); 4]
+    } else {
+        [
+            (-14.0, 0.0, 6.0, 0.0),
+            (8.0, 0.0, 6.0, 0.0),
+            (0.0, -14.0, 0.0, 6.0),
+            (0.0, 8.0, 0.0, 6.0),
+        ]
+    } {
         fb.line(cx + dx, cy + dy, cx + dx + ex, cy + dy + ey, GREEN);
     }
     // Prograde marker (relative to the reference frame).
@@ -620,7 +645,7 @@ fn draw_cockpit(fb: &mut Framebuffer, v: &View) {
             }
         }
     }
-    if v.sim.laser_on {
+    if v.sim.laser_on && !ext {
         if let Some((x, y)) = v
             .sim
             .target
@@ -631,6 +656,9 @@ fn draw_cockpit(fb: &mut Framebuffer, v: &View) {
             fb.line(cx + 30.0, h - 90.0, x - flick, y, RED);
             fb.circle(x, y, 4.0 + flick.abs(), AMBER);
         }
+    }
+    if ext {
+        crate::ext_view::overlay(fb, v.game);
     }
     draw_radar(fb, v);
 }

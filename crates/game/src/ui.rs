@@ -423,7 +423,25 @@ fn draw_codex(fb: &mut Framebuffer, g: &Game) {
     }
     if let Some(segs) = &shape {
         let t = crate::proto_view::anim_time();
-        crate::wire_shape::draw(fb, segs, 1140.0, 150.0, 190.0, t * 0.8, GREEN);
+        if g.codex_cat == 3 {
+            // A hull is shown solid, as the third-person view draws it.
+            if let Some(h) = codex::source_index(&g.data, 3, sel) {
+                let d = crate::ship_model::showcase_design(&g.data, h);
+                let st = crate::ship_model::State::idle(&d);
+                crate::ship_model::turntable(
+                    fb,
+                    &g.data,
+                    &d,
+                    &st,
+                    1140,
+                    150,
+                    200,
+                    f64::from(t) * 0.6,
+                );
+            }
+        } else {
+            crate::wire_shape::draw(fb, segs, 1140.0, 150.0, 190.0, t * 0.8, GREEN);
+        }
     }
     // Cross-links: entries named in this one.
     let links = codex::links(&g.data, g.codex_cat, sel);
@@ -910,6 +928,12 @@ fn draw_shipyard(fb: &mut Framebuffer, g: &Game) {
         "COQUE                    CLASSE        MASSE    EMPL.    PRIX (REPRISE DEDUITE)",
         DIM,
     );
+    {
+        let d = crate::ship_model::showcase_design(&g.data, g.yard_sel.min(g.data.hulls.len() - 1));
+        let st = crate::ship_model::State::idle(&d);
+        let t = f64::from(crate::proto_view::anim_time());
+        crate::ship_model::turntable(fb, &g.data, &d, &st, 1130, 200, 260, t * 0.6);
+    }
     for (i, h) in g.data.hulls.iter().enumerate() {
         let sel = i == g.yard_sel;
         let hover = g.hit_cells(

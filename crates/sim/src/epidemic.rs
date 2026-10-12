@@ -161,6 +161,8 @@ pub struct EpiCtx {
     pub crowd: f64,
     pub food_sat: f64,
     pub water_sat: f64,
+    /// Multiplier on spontaneous outbreaks (the world setting of the start).
+    pub freq: f64,
 }
 
 fn trigger_factor(data: &GameData, trigger: &str, c: &Colony, x: &EpiCtx) -> f64 {
@@ -280,6 +282,7 @@ impl Colony {
             let day = (now / DAY) as i64;
             let q = self.quarantine_level(data);
             let p = EPIDEMIC_RATE
+                * x.freq
                 * days
                 * (self.pop / 100.0).clamp(0.2, 6.0)
                 * (1.0 - 0.7 * x.med)
@@ -1091,5 +1094,32 @@ mod tests {
         assert!(r0.clone().fold(f64::MAX, f64::min) < 1.5 && r0.fold(0.0, f64::max) > 4.0);
         assert!(d.pathogens.iter().any(|p| p.immunity_days == 0.0));
         assert!(d.pathogens.iter().any(|p| p.vaccine_eff == 0.0));
+    }
+
+    #[test]
+    fn the_start_setting_scales_spontaneous_outbreaks() {
+        let count = |freq: f64| {
+            let (mut s, ci) = founded();
+            let d = Arc::clone(&s.data);
+            s.colonies[ci].pop = 400.0;
+            s.colonies[ci].outbreaks.clear();
+            let mut msgs = Vec::new();
+            let x = EpiCtx {
+                med: 0.0,
+                crowd: 0.3,
+                food_sat: 1.0,
+                water_sat: 1.0,
+                freq,
+            };
+            let mut n = 0;
+            for day in 0..40 {
+                let before = s.colonies[ci].outbreaks.len();
+                s.colonies[ci].epidemics_tick(&d, (day as f64 + 1.0) * DAY, 1.0, &x, &mut msgs);
+                n += usize::from(s.colonies[ci].outbreaks.len() > before);
+            }
+            n
+        };
+        assert_eq!(count(0.0), 0, "no spontaneous outbreak at all");
+        assert!(count(200.0) > count(1.0), "a crowded world falls ill more");
     }
 }

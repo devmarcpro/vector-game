@@ -32,6 +32,8 @@ pub const COSMIC_GY_H: f64 = 2.0e-5;
 pub const STELLAR_GY_H_1AU: f64 = 5.0e-5;
 /// Dose rate at the peak of the belt of an Earth-strength magnetic field (Gy/h).
 pub const BELT_GY_H: f64 = 0.05;
+/// Share of the outside dose that reaches a crew docked at a station (its radiation shelters).
+pub const DOCKED_COVER: f64 = 0.005;
 /// Armour rating at which plating cuts the dose by a factor e.
 pub const SHIELD_E_FOLD: f64 = 6.0;
 /// The frame holds up to this many g (thrust, drag or tide) before it starts to tear.
@@ -458,7 +460,7 @@ impl Sim {
     /// How much of an outside dose reaches the crew (docked, behind shields, behind plating).
     pub fn dose_protection(&self) -> f64 {
         let cover = if self.docked.is_some() {
-            0.05
+            DOCKED_COVER
         } else if self.ship.sys.shield_pts > 0.0 {
             0.12
         } else {
@@ -539,6 +541,22 @@ mod tests {
     use std::sync::Arc;
     use vector_data::GameData;
     use vector_world::orbit::{M_EARTH, M_SUN, R_EARTH};
+
+    #[test]
+    fn a_station_shelters_its_crew_from_the_belts_and_the_flares() {
+        let mut s = sim();
+        let st = s
+            .bodies
+            .iter()
+            .position(|b| b.kind == BodyKind::Station)
+            .expect("station");
+        let free = s.dose_protection();
+        s.docked = Some(st);
+        let docked = s.dose_protection();
+        assert!(docked <= 0.01 * free, "docked {docked} vs free {free}");
+        // A belt of 0.1 Gy/h outside leaves under the 1 mGy/h that sickens nobody in a dock.
+        assert!(0.1 * docked < 1.0e-3);
+    }
 
     fn sim() -> Sim {
         let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../data");

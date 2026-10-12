@@ -54,6 +54,7 @@ pub enum Topic {
     War,
     Malware,
     Yard,
+    Cryo,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -329,6 +330,27 @@ impl Sim {
             }
             if p.hunger >= NEED_WARNING || p.thirst >= NEED_WARNING {
                 needy += 1;
+            }
+        }
+        let st = self.cryo_status();
+        if st.sleepers > st.held {
+            out.push(al(
+                Critical,
+                Topic::Cryo,
+                format!(
+                    "{} DORMEUR(S) SANS CAISSON ALIMENTE : ILS SE RECHAUFFENT",
+                    st.sleepers - st.held
+                ),
+            ));
+        }
+        if st.sleepers > 0 || st.colonists > 0 {
+            let spare = self.data.resource_index("spare_parts");
+            if st.pods > 0 && spare.is_some_and(|r| self.ship.cargo.kg[r] < 0.5) {
+                out.push(al(
+                    Warning,
+                    Topic::Cryo,
+                    "CAISSONS CRYO SANS PIECES DETACHEES : LES PANNES SE MULTIPLIENT".to_string(),
+                ));
             }
         }
         if sick > 0 {

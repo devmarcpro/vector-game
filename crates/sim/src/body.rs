@@ -63,7 +63,20 @@ pub struct Body {
     pub drugs: Vec<DrugState>,
     /// Permanent disability 0..1 per body part.
     pub disability: Vec<f32>,
+    /// In cryostasis (see `cryo`): the body is cooled to the service temperature of its caisson.
     pub cryo: bool,
+    /// Cryoprotectant loaded 0..1 (against ice), ice damage 0..1 (death at 1), hours of
+    /// controlled rewarming left (0 = not waking), the date the sleep began, the date of the last
+    /// thaw, the cryo sickness 0..1 that follows a waking, and the temperature (C) the caisson holds.
+    pub cryo_cpa: f32,
+    pub cryo_ice: f32,
+    pub cryo_wake: f32,
+    pub cryo_since: f64,
+    pub cryo_last: f64,
+    pub cryo_sick: f32,
+    pub cryo_set: f32,
+    /// The rewarming was an emergency one (cut short: riskier).
+    pub cryo_urgent: bool,
     /// Date of the last resuscitation.
     pub revived_at: f64,
 }
@@ -84,6 +97,14 @@ impl Default for Body {
             drugs: Vec::new(),
             disability: Vec::new(),
             cryo: false,
+            cryo_cpa: 0.0,
+            cryo_ice: 0.0,
+            cryo_wake: 0.0,
+            cryo_since: 0.0,
+            cryo_last: -1.0e18,
+            cryo_sick: 0.0,
+            cryo_set: -130.0,
+            cryo_urgent: false,
             revived_at: -1.0e18,
         }
     }
@@ -487,7 +508,7 @@ impl Body {
         };
         self.ensure(data);
         if self.cryo {
-            self.core_temp += (4.0 - self.core_temp) * relax(hours, 0.5);
+            // A sleeper is stepped by `sleep_step` (caisson, ice, dose); this is the bare fallback.
             self.oxygen = 1.0;
             return out;
         }
@@ -802,10 +823,112 @@ impl Body {
     }
 
     /// Wake from cryostasis: the body is rewarmed.
-    pub fn thaw(&mut self) {
+    pub fn thaw(&mut self, now: f64) {
         self.cryo = false;
-        self.core_temp = 36.0;
+        self.core_temp = NORMAL_CORE;
+        self.cryo_wake = 0.0;
+        self.cryo_urgent = false;
+        self.cryo_last = now;
+        self.cryo_cpa = 0.0;
     }
+
+    /// One step of a sleeper. `held`: a powered caisson keeps it at its set temperature, else it
+    /// drifts to `ambient` (C). The core cools (or rewarms) by first order lags; crossing the band
+    /// of freezing water (-40..0 C) grows ice crystals unless the blood carries cryoprotectant, and
+    /// much more when nothing controls the crossing. A caisson that is too warm to vitrify lets
+    /// the ice grow back slowly. Radiation keeps adding up: frozen cells mend nothing.
+    pub fn sleep_step(
+        &mut self,
+        hours: f32,
+        held: bool,
+        ambient: f32,
+        rad_sv_day: f64,
+    ) -> SleepOut {
+        let mut out = SleepOut::default();
+        let before = self.core_temp;
+        let waking = self.cryo_wake > 0.0;
+        if waking {
+            let k = (hours / self.cryo_wake.max(hours)).min(1.0);
+            self.core_temp += (NORMAL_CORE - self.core_temp) * k;
+            self.cryo_wake = (self.cryo_wake - hours).max(0.0);
+            if self.cryo_wake <= 0.0 {
+                self.core_temp = NORMAL_CORE;
+                out.waking_done = true;
+            }
+        } else {
+            let target = if held { self.cryo_set } else { ambient };
+            let tau = if target < self.core_temp {
+                SLEEP_COOL_TAU
+            } else {
+                SLEEP_WARM_TAU
+            };
+            self.core_temp += (target - self.core_temp) * relax(hours, tau);
+        }
+        let controlled = held || waking;
+        let crossed = band_crossed(before, self.core_temp);
+        if crossed > 0.0 {
+            let open = if controlled { 1.0 } else { UNCONTROLLED_ICE };
+            let hurt = crossed * ICE_CROSSING * (1.0 - ICE_PROTECTION * self.cryo_cpa) * open;
+            self.cryo_ice += hurt;
+            out.ice = hurt;
+        }
+        if held && !waking && self.core_temp > RECRYSTALLISE_BELOW {
+            // Too warm to be glass: the ice grows back (per day).
+            let warm = ((self.core_temp - RECRYSTALLISE_BELOW) / 110.0).clamp(0.0, 1.0);
+            let hurt = RECRYSTALLISE * warm * (1.0 - ICE_PROTECTION * self.cryo_cpa) * hours / 24.0;
+            self.cryo_ice += hurt;
+            out.ice += hurt;
+        }
+        if !held && !waking && self.core_temp > 8.0 {
+            // Thawed without care: the tissues die in hours.
+            let hurt = UNCONTROLLED_THAW * hours;
+            self.cryo_ice += hurt;
+            out.ice += hurt;
+        }
+        self.cryo_ice = self.cryo_ice.min(1.5);
+        // Radiation: the dose adds up and nothing repairs it while frozen.
+        let received = (rad_sv_day / 24.0 * f64::from(hours)) as f32 + self.pending_dose;
+        self.pending_dose = 0.0;
+        self.acute_dose += received;
+        self.total_dose += received;
+        out.dose = received;
+        self.oxygen = 1.0;
+        out
+    }
+}
+
+/// What a sleeper's step reports.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct SleepOut {
+    pub ice: f32,
+    pub dose: f32,
+    pub waking_done: bool,
+}
+
+/// Time constants (hours) of the cooling and of the drift toward the room.
+pub const SLEEP_COOL_TAU: f32 = 2.0;
+pub const SLEEP_WARM_TAU: f32 = 3.0;
+/// Ice grown by one full crossing of the freezing band without protection, share saved by a full
+/// load of cryoprotectant, and the multiplier when the crossing is not controlled.
+pub const ICE_CROSSING: f32 = 0.45;
+pub const ICE_PROTECTION: f32 = 0.92;
+pub const UNCONTROLLED_ICE: f32 = 2.0;
+/// Above this temperature (C) a held sleeper regrows ice, per day at the worst.
+pub const RECRYSTALLISE_BELOW: f32 = -110.0;
+pub const RECRYSTALLISE: f32 = 0.004;
+/// Ice per hour of an uncontrolled thaw above 8 C.
+pub const UNCONTROLLED_THAW: f32 = 0.06;
+
+/// Share (0..1) of the freezing band (-40..0 C) crossed when the core goes from `a` to `b`.
+pub fn band_crossed(a: f32, b: f32) -> f32 {
+    let (lo, hi) = (a.min(b), a.max(b));
+    ((hi.min(0.0) - lo.max(-40.0)) / 40.0).clamp(0.0, 1.0)
+}
+
+/// How fast a body ages at core temperature `t` (C): 1 warm, about a thousandth in a caisson at
+/// -80 C, a five thousandth deeper (the floor).
+pub fn bio_rate(t: f32) -> f64 {
+    10f64.powf((f64::from(t) - 30.0) / 40.0).clamp(0.0002, 1.0)
 }
 
 /// Wear of the organs with age, integrity per day (the heart and the brain mend slowest and

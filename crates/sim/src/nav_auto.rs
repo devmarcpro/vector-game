@@ -754,6 +754,9 @@ impl Sim {
             let cur = nav.cursor();
             if cur >= nav.orders.len() {
                 nav.say(ev, "NAVIGATION AUTO : PLAN ACHEVE");
+                if nav.orders.iter().any(|e| e.status == Status::Done) {
+                    self.cryo_arrival_wake();
+                }
                 nav.run = Run::Idle;
                 nav.emergency = false;
                 return input;
@@ -847,6 +850,20 @@ impl Sim {
             }
             if self.dose_rate_aboard() > lim.dose_return {
                 return Some(format!("!RADIATION ({:.2} GY/H)", self.dose_rate_aboard()));
+            }
+        }
+        // The unified alerts: a critical one about the ship itself sends it home.
+        if !emergency_on && self.steps.is_multiple_of(150) {
+            use crate::alerts::{Severity, Topic};
+            if let Some(al) = self.alerts().into_iter().find(|a| {
+                a.sev == Severity::Critical
+                    && (a.topic != Topic::Radiation || lim.dose_return < 5.0)
+                    && matches!(
+                        a.topic,
+                        Topic::Hull | Topic::Fuel | Topic::Radiation | Topic::Heat | Topic::Power
+                    )
+            }) {
+                return Some(format!("!ALERTE CRITIQUE : {}", al.text.to_uppercase()));
             }
         }
         if self.combat_active() {
@@ -2540,5 +2557,23 @@ mod tests {
         });
         t.nav_arrival(&mut nav, &mut ev);
         assert_eq!(nav.run, Run::Running, "it flees by the next jump");
+    }
+
+    #[test]
+    fn the_end_of_a_plan_fires_the_wakes_scheduled_on_arrival() {
+        let mut s = orbiting(1, 2, 1.5);
+        s.crew.cryo.orders.push(crate::cryo::WakeOrder {
+            who: crate::cryo::Who::All,
+            when: crate::cryo::When::Arrival,
+        });
+        s.crew.cryo.orders.push(crate::cryo::WakeOrder {
+            who: crate::cryo::Who::All,
+            when: crate::cryo::When::At(1.0e12),
+        });
+        s.nav_add(Order::Wait(5.0)).unwrap();
+        s.nav_start().unwrap();
+        run(&mut s, 100.0, 1.0);
+        assert_eq!(s.nav.run, Run::Idle);
+        assert_eq!(s.crew.cryo.orders.len(), 1, "only the dated wake is left");
     }
 }

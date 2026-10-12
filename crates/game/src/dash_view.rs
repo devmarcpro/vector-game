@@ -145,7 +145,7 @@ pub fn topic_screen(t: Topic) -> (Screen, bool) {
         Hull | Modules | Heat | Power | Radiation | Structure | Antimatter => (Screen::Ship, false),
         Fuel => (Screen::Inventory, false),
         Collision => (Screen::Flight, false),
-        Health | Disease | Wounds | Needs | Pay => (Screen::Crew, false),
+        Health | Disease | Wounds | Needs | Pay | Cryo => (Screen::Crew, false),
         Debt => (Screen::Bank, false),
         Insurance => (Screen::Trading, false),
         Law | War => (Screen::Factions, false),
@@ -480,7 +480,14 @@ fn draw_ship(fb: &mut Framebuffer, g: &Game, (x, y, w, h): Rect) {
     } else {
         "EN VOL"
     };
-    put(fb, x, r, wi, &format!("ETAT : {state}"), GREEN);
+    let auto = match (&s.nav.run, s.nav.pending()) {
+        (vector_sim::nav_auto::Run::Running, _) => "  AUTOMATE EN COURS",
+        (vector_sim::nav_auto::Run::Halted(_), _) => "  AUTOMATE ARRETE",
+        (vector_sim::nav_auto::Run::Paused, _) => "  AUTOMATE EN PAUSE",
+        (_, n) if n > 0 => "  AUTOMATE PRET",
+        _ => "",
+    };
+    put(fb, x, r, wi, &format!("ETAT : {state}{auto}"), GREEN);
     r += 1;
     let hf = ship.hull / ship.stats.hull_max.max(1.0);
     meter(

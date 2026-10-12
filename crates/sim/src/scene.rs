@@ -7,7 +7,7 @@ use vector_world::galaxy::{Galaxy, StarEntry};
 use vector_world::{generate_system, BodyKind};
 
 /// Is this system a good place to start (station, belt, a few planets)?
-fn good_home(seed: u64) -> bool {
+pub(crate) fn good_home(seed: u64) -> bool {
     let sys = generate_system(seed);
     sys.bodies.iter().any(|b| b.kind == BodyKind::Station)
         && !sys.belts.is_empty()
@@ -36,7 +36,12 @@ pub fn pick_home(galaxy: &Galaxy) -> StarEntry {
 pub fn base_sim(seed: u64, data: Arc<GameData>) -> Sim {
     let galaxy = Galaxy::new(seed);
     let home = pick_home(&galaxy);
-    let mut sim = Sim::new_in_galaxy(galaxy, &home, data);
+    base_sim_at(galaxy, &home, data)
+}
+
+/// The same world with another system as home (see `start_custom::home_for`).
+pub fn base_sim_at(galaxy: Galaxy, home: &StarEntry, data: Arc<GameData>) -> Sim {
+    let mut sim = Sim::new_in_galaxy(galaxy, home, data);
     let station = sim
         .system
         .bodies

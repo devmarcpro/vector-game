@@ -187,6 +187,11 @@ pub struct Game {
     pub med_mode: bool,
     pub med_drug: usize,
     pub med_wound: usize,
+    /// Crew screen: the CRYO tab (caissons, sleepers, scheduled wakes); the delay chosen for a
+    /// dated wake (index into `cryo_view::DELAYS`) and the number of watchers the auto plan keeps.
+    pub cryo_mode: bool,
+    pub cryo_delay: usize,
+    pub cryo_keep: usize,
     /// Crew screen: the equipment list of the selected person has the keys.
     pub gear_mode: bool,
     pub gear_sel: usize,
@@ -402,6 +407,9 @@ impl Game {
             med_mode: false,
             med_drug: 0,
             med_wound: 0,
+            cryo_mode: false,
+            cryo_delay: 1,
+            cryo_keep: 1,
             gear_mode: false,
             gear_sel: 0,
             organ_sel: 0,
@@ -515,7 +523,7 @@ impl Game {
             }
         };
         let seed = cfg.seed;
-        let wreck = self.data.scenarios[cfg.scenario].wreck;
+        let wreck = vector_sim::start::is_wreck(&self.data, cfg);
         self.sim = sim;
         self.help_open = false;
         self.tut_step = None;
@@ -531,6 +539,11 @@ impl Game {
         self.timescale = 1.0;
         self.keys.clear();
         self.messages = vec![format!("NOUVELLE PARTIE - GRAINE {seed}")];
+        let id = &self.sim.custom;
+        self.messages.push(format!(
+            "VAISSEAU {} ({}) - {} - IA {}",
+            id.ship_name, id.registration, id.company, id.ai_name
+        ));
         if wreck && self.sim.rogue.is_some() {
             self.messages.push(
                 "NAUFRAGE : CHERCHEZ DES PIECES DETACHEES ET DU CARBURANT (EPAVES, CAMPEMENTS, RUINES)".into(),
@@ -945,6 +958,10 @@ impl Game {
     }
 
     pub fn save_game(&mut self) {
+        if let Err(e) = self.sim.custom.may_save(self.sim.docked.is_some()) {
+            self.say(format!("SAUVEGARDE REFUSEE : {}", e.to_uppercase()));
+            return;
+        }
         let result = self
             .sim
             .save_bytes()
@@ -1959,6 +1976,96 @@ impl Game {
         }
     }
 
+    /// Keys of the CRYO tab of the crew screen.
+    fn cryo_key(&mut self, code: KeyCode) {
+        use vector_sim::cryo::{When, Who};
+        let n = self.sim.crew.members.len();
+        let member = self.crew_sel.min(n.saturating_sub(1));
+        let (id, asleep) = self
+            .sim
+            .crew
+            .members
+            .get(member)
+            .map_or((0, false), |p| (p.id, p.alive && p.body.cryo));
+        let who = if asleep { Who::One(id) } else { Who::All };
+        let result: Result<String, &'static str> = match code {
+            KeyCode::ArrowUp if n > 0 => {
+                self.crew_sel = (self.crew_sel + n - 1) % n;
+                return;
+            }
+            KeyCode::ArrowDown if n > 0 => {
+                self.crew_sel = (self.crew_sel + 1) % n;
+                return;
+            }
+            KeyCode::ArrowLeft => {
+                self.cryo_delay = self.cryo_delay.saturating_sub(1);
+                return;
+            }
+            KeyCode::ArrowRight => {
+                self.cryo_delay = (self.cryo_delay + 1).min(crate::cryo_view::DELAYS.len() - 1);
+                return;
+            }
+            KeyCode::PageUp => {
+                self.cryo_keep = (self.cryo_keep + 1).min(n.saturating_sub(1));
+                return;
+            }
+            KeyCode::PageDown => {
+                self.cryo_keep = self.cryo_keep.saturating_sub(1);
+                return;
+            }
+            KeyCode::Escape | KeyCode::KeyC => {
+                self.cryo_mode = false;
+                return;
+            }
+            KeyCode::KeyE if n > 0 => self.sim.cryo_put(member),
+            KeyCode::KeyR if n > 0 => self.sim.cryo_wake(member),
+            KeyCode::KeyU if n > 0 => self.sim.cryo_wake_with(member, true),
+            KeyCode::KeyA => Ok(self.sim.cryo_order(who, When::Arrival)),
+            KeyCode::KeyL => Ok(self.sim.cryo_order(Who::Best, When::Alert)),
+            KeyCode::KeyD => {
+                let at = self.sim.time
+                    + crate::cryo_view::DELAYS
+                        [self.cryo_delay.min(crate::cryo_view::DELAYS.len() - 1)]
+                        * 86_400.0;
+                Ok(self.sim.cryo_order(who, When::At(at)))
+            }
+            KeyCode::KeyX => {
+                self.sim.cryo_clear_orders();
+                Ok("PROGRAMMES EFFACES".to_string())
+            }
+            KeyCode::KeyP => self.sim.cryo_auto_plan(self.cryo_keep),
+            KeyCode::KeyT => {
+                let cur = self.sim.crew.cryo.rotation_days;
+                let rots = crate::cryo_view::ROTATIONS;
+                let k = rots
+                    .iter()
+                    .position(|r| (*r - cur).abs() < 0.5)
+                    .unwrap_or(0);
+                let next = rots[(k + 1) % rots.len()];
+                self.sim.cryo_set_rotation(next);
+                Ok(if next > 0.0 {
+                    format!("ROTATION DES VEILLEURS TOUS LES {next:.0} J")
+                } else {
+                    "ROTATION ARRETEE".to_string()
+                })
+            }
+            KeyCode::KeyK => {
+                let heads = self
+                    .data
+                    .resource_index("colonists")
+                    .map_or(0.0, |r| self.sim.ship.cargo.kg[r])
+                    / vector_sim::colony::COLONIST_KG;
+                self.sim.cryo_load_colonists(heads.floor() as u32)
+            }
+            KeyCode::KeyB => self.sim.cryo_land_colonists(),
+            _ => return,
+        };
+        match result {
+            Ok(r) => self.say(r.to_uppercase()),
+            Err(e) => self.say(e.to_uppercase()),
+        }
+    }
+
     pub fn click_wound(&mut self, k: usize) {
         self.med_wound = k;
     }
@@ -1966,6 +2073,10 @@ impl Game {
     pub fn crew_key(&mut self, code: KeyCode) {
         if self.med_mode {
             self.med_key(code);
+            return;
+        }
+        if self.cryo_mode {
+            self.cryo_key(code);
             return;
         }
         if self.organ_mode {
@@ -1994,6 +2105,7 @@ impl Game {
             KeyCode::KeyV => self.crew_net = !self.crew_net,
             KeyCode::KeyO if n > 0 => self.organ_mode = true,
             KeyCode::KeyM if n > 0 => self.med_mode = true,
+            KeyCode::KeyC if n > 0 => self.cryo_mode = true,
             KeyCode::KeyE if n > 0 => self.gear_mode = true,
             KeyCode::KeyT if n > 0 => {
                 let p = &mut self.sim.crew.members[self.crew_sel.min(n - 1)];
@@ -4777,10 +4889,10 @@ mod tests {
         g.menu_sel = 1;
         press(g, KeyCode::Enter);
         assert_eq!(g.screen, Screen::NewGame);
-        for _ in 0..6 {
+        for _ in 0..8 {
             press(g, KeyCode::Enter);
         }
-        assert_eq!(g.ng.step, 6, "the recap is the seventh step");
+        assert_eq!(g.ng.step, 8, "the recap is the ninth step");
     }
 
     #[test]
@@ -4813,7 +4925,7 @@ mod tests {
             g.save_path = std::env::temp_dir().join("vector_test_flow.sav");
             to_recap(&mut g);
             g.click_ng_scenario(i);
-            g.ng_goto(6);
+            g.ng_goto(8);
             press(&mut g, KeyCode::Enter);
             let (id, wreck, credits) = {
                 let sc = &g.data.scenarios[i];
@@ -4841,22 +4953,22 @@ mod tests {
         to_recap(&mut g);
         let trader = g.data.scenario_index("marchand").expect("sc");
         g.click_ng_scenario(trader);
-        g.click_ng_ship(1);
+        g.ng.ship = 1;
         g.ng.seed_text = "ANDROMEDE".into();
-        g.ng_goto(4);
+        g.ng_goto(5);
         press(&mut g, KeyCode::Backspace);
         assert_eq!(g.ng.seed_text, "ANDROMED");
         g.key(KeyCode::KeyX, Some("X"), true);
         assert_eq!(g.ng.seed_text, "ANDROMEDX", "typed text goes to the seed");
-        g.ng.opt_sel = 3;
-        g.ng_goto(5);
+        g.ng.row[7] = 3;
+        g.ng_goto(7);
         press(&mut g, KeyCode::ArrowRight);
         assert_eq!(
             vector_sim::start::difficulty_of(&g.pending_rules),
             Some(2),
             "the difficulty line sets the rules"
         );
-        g.ng_goto(6);
+        g.ng_goto(8);
         press(&mut g, KeyCode::Enter);
         assert_eq!(g.screen, Screen::Flight);
         let hauler = g.data.hull_index("hauler").expect("hull");
@@ -4900,7 +5012,7 @@ mod tests {
         press(&mut g, KeyCode::ArrowRight);
         assert_ne!(g.ng.picks[0].role, role);
         // The chosen crew is the crew of the game.
-        g.ng_goto(6);
+        g.ng_goto(8);
         press(&mut g, KeyCode::Enter);
         assert_eq!(g.sim.crew.alive().count(), 1);
         assert_eq!(g.sim.crew.members[0].role, g.ng.picks[0].role);
@@ -4911,7 +5023,7 @@ mod tests {
         let mut g = Game::new(data(), 1);
         to_recap(&mut g);
         g.click_ng_scenario(g.data.scenario_index("naufrage").expect("sc"));
-        g.ng_goto(6);
+        g.ng_goto(8);
         press(&mut g, KeyCode::Enter);
         assert_eq!(g.screen, Screen::Rogue);
         assert!(
@@ -5114,7 +5226,7 @@ mod tests {
             let _ = crate::hub::place_of(s);
         }
         g.open_new_game();
-        for step in 0..7 {
+        for step in 0..9 {
             g.ng.step = step;
             let line = crate::tutorial::hint_line(&g);
             assert!(line.len() <= 126, "step {step}: {} chars", line.len());

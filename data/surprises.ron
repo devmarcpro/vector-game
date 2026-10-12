@@ -213,4 +213,12 @@
   when:[WorldEvent("greve"), Rel(Faction("ceintures"), Gt, 0.3)],
   effects:[Rel(Faction("ceintures"), 0.05), Shock("cat:metal", 1.2, 15.0)],
   text:"Les mineurs de l'Union des Ceintures saluent votre soutien : la grève se prolonge et le métal reste cher."),
+ (id:"caveau_cryo", name:"Un caveau cryo", tag:"SCIENCE", weight:0.5, cooldown:240.0,
+  when:[InFlight, Anomaly],
+  choices:[
+   (label:"Reveiller les dormeurs", result:"Six personnes sortent du froid et parlent une langue d'avant : elles montent a bord avec leurs savoirs, et quelques dilemmes. Vous pouvez les rendormir dans vos caissons (K).", effects:[Cargo("colonists", 480.0), Research(40.0), Morale(0.05)]),
+   (label:"Piller les caissons", result:"Les caissons vides sonnent creux, les pieces et les cryoprotecteurs se revendent bien ; l'equipage evite de regarder les occupants.", effects:[Cargo("spare_parts", 120.0), Cargo("cryoprotectant", 40.0), Credits(8000.0), Morale(-0.12)]),
+   (label:"Les laisser dormir", result:"Vous notez la position du caveau : d'autres sauront peut-etre quoi en faire.", effects:[Research(10.0)]),
+  ], window:20.0,
+  text:"Dans une epave pres de {place}, un caveau gele tient encore : six dormeurs d'un age ancien, dans des caissons dont le courant tient par miracle. Sur la plaque, une langue que personne ne lit."),
 ]

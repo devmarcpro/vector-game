@@ -177,10 +177,13 @@ impl Sim {
             Kind::Faction => d.factions.get(e.id as usize).map(|f| f.name.clone()),
             Kind::Cartel => d.cartels.get(e.id as usize).map(|c| c.name.clone()),
             Kind::Company => d.companies.get(e.id as usize).map(|c| c.name.clone()),
-            Kind::Contact => d
-                .factions
-                .get(e.id as usize)
-                .map(|f| format!("Contact de {}", f.name)),
+            Kind::Contact => d.factions.get(e.id as usize).map(|f| {
+                // A contact named at the start (a friend) is called by name.
+                match self.relations.labels.iter().find(|(k, _)| *k == e) {
+                    Some((_, n)) => format!("{n}, contact de {}", f.name),
+                    None => format!("Contact de {}", f.name),
+                }
+            }),
             Kind::Civ => self
                 .relations
                 .labels

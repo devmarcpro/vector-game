@@ -3,11 +3,13 @@ pub mod chemistry;
 pub mod dialogue;
 pub mod medical;
 pub mod ship;
+pub mod startopts;
 pub mod surprise;
 pub use medical::{BodyPart, Drug, WoundKind};
 pub mod projects;
 use serde::{Deserialize, Serialize};
 pub use ship::{ShipPart, ShipPlanDef};
+pub use startopts::StartData;
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 
@@ -124,6 +126,13 @@ pub struct Module {
     pub decoy: f64,
     /// Active sensor: radiated power (kW) that lights up the ship for any passive sensor.
     pub sensor: f64,
+    /// Cryostasis: sleepers one powered module holds, its service temperature (C, below zero),
+    /// its reliability 0..1 (the chance a long sleep ends well) and the spare parts (kg) it
+    /// eats per sleeper and per day.
+    pub cryo: f64,
+    pub cryo_temp: f64,
+    pub reliability: f64,
+    pub cryo_upkeep: f64,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -1146,6 +1155,7 @@ pub struct GameData {
     pub religions: Vec<Religion>,
     pub cartels: Vec<Cartel>,
     pub scenarios: Vec<Scenario>,
+    pub start: StartData,
     pub dimensions: Vec<Dimension>,
     pub exotics: Vec<Exotic>,
     pub rogue_monsters: Vec<RogueMonster>,
@@ -1359,6 +1369,7 @@ impl GameData {
             religions: read(&dir.join("religions.ron"))?,
             cartels: read(&dir.join("cartels.ron"))?,
             scenarios: read(&dir.join("scenarios.ron"))?,
+            start: read(&dir.join("start_options.ron"))?,
             dimensions: read(&dir.join("dimensions.ron"))?,
             exotics: read(&dir.join("exotic.ron"))?,
             rogue_monsters: read(&dir.join("rogue_monsters.ron"))?,
@@ -1596,6 +1607,18 @@ impl GameData {
             }
             if !(1..=4).contains(&m.size) || m.mass <= 0.0 || m.hp <= 0.0 || m.cost < 0.0 {
                 return bad(format!("module invalide: {}", m.id));
+            }
+            if m.cryo < 0.0
+                || m.cryo_upkeep < 0.0
+                || m.cryo > 0.0
+                    && (m.cryo_temp >= -20.0
+                        || !(0.5..=1.0).contains(&m.reliability)
+                        || m.power >= 0.0)
+            {
+                return bad(format!(
+                    "caisson cryo {}: froid (temperature < -20 C), fiabilite 0.5..1 et puissance consommee requis",
+                    m.id
+                ));
             }
             if !m.weapon.is_empty() {
                 if !["beam", "kinetic", "missile", "mine", "pd", "ecm", "decoy"]
@@ -1952,6 +1975,7 @@ impl GameData {
         self.validate_society()?;
         self.validate_cartels()?;
         self.validate_scenarios()?;
+        self.validate_start_options()?;
         self.validate_dimensions()?;
         self.validate_exotics()?;
         self.validate_materials()?;
@@ -3684,6 +3708,46 @@ mod tests {
             s.wreck = true;
         }
         assert!(d.validate().is_err(), "at least one start in flight");
+    }
+
+    #[test]
+    fn start_options_are_validated() {
+        let ok = GameData::load(&dir()).expect("data loads");
+        assert!(ok.start.ai_traits.len() >= 5 && ok.start.presets.len() >= 3);
+        assert!(ok.ai_trait_index("prudente").is_some());
+        let mut d = ok.clone();
+        d.start.ai_traits[1].bias[0] = 0.9;
+        assert!(d.validate().is_err(), "bias too strong");
+        let mut d = ok.clone();
+        d.start.ai_traits[1].alloc.pop();
+        assert!(d.validate().is_err(), "five tasks");
+        let mut d = ok.clone();
+        d.start.ai_traits[0].bias[2] = 0.1;
+        assert!(d.validate().is_err(), "the first personality is neutral");
+        let mut d = ok.clone();
+        d.start.backgrounds[1].skills[0].0 = "magie".into();
+        assert!(d.validate().is_err(), "unknown skill");
+        let mut d = ok.clone();
+        d.start.backgrounds[1]
+            .reputation
+            .push(("nulle_part".into(), 1.0));
+        assert!(d.validate().is_err(), "unknown faction");
+        let mut d = ok.clone();
+        d.start.presets[0].settings.push(("inconnu".into(), 1.0));
+        assert!(d.validate().is_err(), "unknown preset key");
+        let mut d = ok.clone();
+        let dup = d.start.presets[0].clone();
+        d.start.presets.push(dup);
+        assert!(d.validate().is_err(), "duplicate preset");
+        let mut d = ok.clone();
+        d.start.systems.pop();
+        assert!(d.validate().is_err(), "the kinds are the code's");
+        let mut d = ok.clone();
+        d.start.ai_cores[0].cost = 1;
+        assert!(d.validate().is_err(), "the first core is free");
+        let mut d = ok;
+        d.start.ai_cores[1].power = f64::NAN;
+        assert!(d.validate().is_err(), "finite numbers");
     }
 
     #[test]

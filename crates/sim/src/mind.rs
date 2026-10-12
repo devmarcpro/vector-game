@@ -69,6 +69,12 @@ pub struct Mind {
     pub peers: Vec<PeerRel>,
     /// Last time the days of work were done.
     pub last_t: f64,
+    /// Permanent bonus or malus on each task from the personality chosen at the start
+    /// (see `start_custom`); not saved.
+    pub bias: [f64; N_TASKS],
+    /// Computing power and memory of the core chosen at the start, added to the bare ship's.
+    pub power_bonus: f64,
+    pub memory_bonus: u32,
 }
 
 impl Default for Mind {
@@ -80,6 +86,9 @@ impl Default for Mind {
             ciphers: Vec::new(),
             peers: Vec::new(),
             last_t: 0.0,
+            bias: [0.0; N_TASKS],
+            power_bonus: 0.0,
+            memory_bonus: 0,
         }
     }
 }
@@ -208,7 +217,7 @@ impl Sim {
     /// Total computing power of the mind.
     pub fn mind_capacity(&self) -> f64 {
         let allies = self.mind.peers.iter().filter(|p| p.allied).count() as f64;
-        (BASE_POWER + LAB_POWER * self.mind_servers())
+        (BASE_POWER + self.mind.power_bonus + LAB_POWER * self.mind_servers())
             * self.mind_throttle()
             * (1.0 - 0.6 * self.mind.malware.clamp(0.0, 1.0))
             * (1.0 + 0.1 * allies)
@@ -221,7 +230,7 @@ impl Sim {
             .modules(&self.data)
             .filter(|(i, m)| m.science > 0.0 && self.ship.sys.powered[*i])
             .count() as u32;
-        BASE_MEMORY + LAB_MEMORY * labs
+        BASE_MEMORY + self.mind.memory_bonus + LAB_MEMORY * labs
     }
 
     pub fn mind_memory_used(&self) -> u32 {
@@ -253,14 +262,16 @@ impl Sim {
     /// Sum of the bonuses of the software that serves a task (a level adds half the bonus again).
     pub fn mind_software_bonus(&self, task: usize) -> f64 {
         let id = &self.data.mind.tasks[task].id;
-        self.mind
-            .software
-            .iter()
-            .filter_map(|(sid, lvl)| {
-                let s = &self.data.mind.software[self.data.software_index(sid)?];
-                (s.task == *id).then(|| s.bonus * (1.0 + 0.5 * f64::from(*lvl - 1)))
-            })
-            .sum()
+        self.mind.bias[task]
+            + self
+                .mind
+                .software
+                .iter()
+                .filter_map(|(sid, lvl)| {
+                    let s = &self.data.mind.software[self.data.software_index(sid)?];
+                    (s.task == *id).then(|| s.bonus * (1.0 + 0.5 * f64::from(*lvl - 1)))
+                })
+                .sum::<f64>()
     }
 
     /// Saturating multiplier of a task: 0.5 with nothing, 1.0 at an even split of a bare ship,

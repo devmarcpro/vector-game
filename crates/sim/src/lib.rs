@@ -22,6 +22,7 @@ pub mod colony_works;
 pub mod combat;
 pub mod companies;
 pub mod crew;
+pub mod cryo;
 pub mod design;
 pub mod dialogue;
 pub mod ecology;
@@ -67,6 +68,7 @@ pub mod securities;
 pub mod shipwright;
 pub mod society;
 pub mod start;
+pub mod start_custom;
 pub mod surgery;
 pub mod surprises;
 pub mod terraform;
@@ -366,6 +368,9 @@ pub struct Sim {
     pub intrusion_day: i64,
     /// The AI's computing budget, software, ciphers and relations with other minds.
     pub mind: mind::Mind,
+    /// What the new-game flow chose beyond the rules (names, personality, world frequencies,
+    /// save mode); not saved yet (see docs/DECISIONS.md).
+    pub custom: start_custom::Runtime,
     /// Finds of digs and their disposal.
     pub archive: archive::Archive,
     /// Animals kept aboard, a counter for the dealer's stock, and the last day they were fed.
@@ -558,6 +563,7 @@ impl Sim {
             last_dividend_month: i64::MIN,
             intrusion_day: i64::MIN,
             mind: Default::default(),
+            custom: Default::default(),
             archive: Default::default(),
             herd: Vec::new(),
             herd_counter: 0,
@@ -820,7 +826,13 @@ impl Sim {
         if self.pilot.is_some() {
             dt = 0.1;
         }
+        // Under the autopilot the ship rides an analytic plan: only the destination limits the
+        // step (a transfer that crosses another world must not crawl at the smallest step).
+        let ap_target = self.autopilot.as_ref().map(|a| a.target);
         for (i, b) in self.bodies.iter().enumerate() {
+            if ap_target.is_some_and(|t| t != i) {
+                continue;
+            }
             let d = (self.ship.pos - b.pos).length();
             let alt = (d - b.radius).max(1.0);
             if b.gm > 1e6 && !matches!(b.kind, BodyKind::Asteroid(_)) {
@@ -920,6 +932,7 @@ impl Sim {
         }
         self.ship.refresh_stats(&self.data);
         self.update_crew();
+        self.cryo_tick();
         self.update_colonies();
         self.epidemic_tick();
         self.update_fleet();
@@ -962,6 +975,7 @@ impl Sim {
             accel_g: accel,
             ..crate::body::Exposure::CABIN
         };
+        self.crew.cryo_ctx = self.cryo_ctx_now();
         let mut ctx = CrewCtx {
             data: &data,
             cargo: &mut self.ship.cargo,
@@ -1054,6 +1068,13 @@ impl Sim {
                             BodyKind::Planet(_) | BodyKind::Moon(_) | BodyKind::Station
                         ) {
                             self.parked = Some((ap.target, ride.rel_pos));
+                        }
+                        // At a station the nose is brought onto the port axis: docking crooked
+                        // costs hull (`dock_damage`), and a ride must end ready to dock.
+                        if self.bodies[ap.target].kind == BodyKind::Station {
+                            self.ship.rot =
+                                Mat3::look_at(Vec3::new(0.0, 0.0, 1.0), Vec3::new(0.0, 1.0, 0.0));
+                            self.ship.ang = Vec3::ZERO;
                         }
                         self.events.push(Event::Arrived { body: ap.target })
                     }
@@ -1877,6 +1898,20 @@ mod tests {
             GameData::load(&std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../data"))
                 .expect("data"),
         )
+    }
+
+    #[test]
+    fn autopilot_crossing_another_world_keeps_long_steps() {
+        let mut s = crate::scene::new_sim(3, data());
+        let planets: Vec<usize> = (0..s.bodies.len())
+            .filter(|&i| matches!(s.bodies[i].kind, BodyKind::Planet(_)))
+            .collect();
+        let (a, b) = (planets[0], planets[1]);
+        s.ship.pos = s.bodies[a].pos + Vec3::new(s.bodies[a].radius * 0.5, 0.0, 0.0);
+        s.ship.vel = s.bodies[a].vel;
+        s.autopilot = Some(autopilot::Autopilot::new(&s, b).expect("plan"));
+        s.ship.vel = s.bodies[a].vel + Vec3::new(0.0, 2.0e4, 0.0);
+        assert!(s.safe_dt() > 10.0, "crawls at {} s", s.safe_dt());
     }
 
     /// A system with a single, nearly massless star: gravity-free flight.

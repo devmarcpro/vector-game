@@ -1024,6 +1024,10 @@ fn draw_crew(fb: &mut Framebuffer, g: &Game) {
         crate::medicine_view::draw(fb, g);
         return;
     }
+    if g.cryo_mode {
+        crate::cryo_view::draw(fb, g);
+        return;
+    }
     let top = 8;
     fb.text(
         1,

@@ -146,6 +146,14 @@ pub struct Colony {
     /// Species just seeded, to bring into the food web of the territory (not saved).
     #[serde(skip)]
     pub introduced: Vec<usize>,
+    /// Multiplier on spontaneous outbreaks, set by the sim from the world setting of the start
+    /// (not saved).
+    #[serde(skip, default = "one_f64")]
+    pub epi_freq: f64,
+}
+
+fn one_f64() -> f64 {
+    1.0
 }
 
 /// Which site tags a body carries.
@@ -945,6 +953,7 @@ impl Colony {
                 crowd: (crowd + city.crowd).min(0.5),
                 food_sat,
                 water_sat,
+                freq: self.epi_freq,
             },
             &mut messages,
         );
@@ -1096,8 +1105,18 @@ impl Sim {
             ("food", KIT_FOOD),
             ("water", KIT_WATER),
         ];
+        // Colonists asleep in the caissons count as the colonists of the kit (and all of them wake).
+        let kit_heads = (KIT_COLONISTS_KG / COLONIST_KG).ceil() as u32;
+        let colon = data
+            .resource_index("colonists")
+            .ok_or("donnees incompletes")?;
+        let dormant = self.crew.cryo.colonists >= kit_heads
+            && self.ship.cargo.kg[colon] + 1e-6 < KIT_COLONISTS_KG;
         for (id, kg) in need {
             let r = data.resource_index(id).ok_or("donnees incompletes")?;
+            if dormant && r == colon {
+                continue;
+            }
             if self.ship.cargo.kg[r] + 1e-6 < kg {
                 return Err("kit de colonisation incomplet (materiaux, colons, vivres, eau)");
             }
@@ -1105,9 +1124,16 @@ impl Sim {
         if self.credits < PERMIT_COST {
             return Err("permis de colonisation : fonds insuffisants");
         }
+        let mut founders_pop = KIT_COLONISTS_KG / COLONIST_KG;
         for (id, kg) in need {
             let r = data.resource_index(id).ok_or("donnees incompletes")?;
+            if dormant && r == colon {
+                continue;
+            }
             self.ship.cargo.remove(&data, r, kg);
+        }
+        if dormant {
+            founders_pop = f64::from(self.cryo_thaw_colonists()).max(1.0);
         }
         self.credits -= PERMIT_COST;
         let mut tags = site_tags(&cb);
@@ -1166,7 +1192,7 @@ impl Sim {
             charge: 0.0,
             founded: self.time,
             last_tick: self.time,
-            pop: KIT_COLONISTS_KG / COLONIST_KG,
+            pop: founders_pop,
             happiness: 0.7,
             unrest: 0.0,
             pest: 0.0,
@@ -1186,6 +1212,7 @@ impl Sim {
             log: Vec::new(),
             works: crate::colony_works::Works::default(),
             caps: 0,
+            epi_freq: 1.0,
             terra: Some(crate::terraform::Terra::new(
                 &self.system,
                 i,
@@ -1391,9 +1418,11 @@ impl Sim {
             }
         }
         let mut advanced = Vec::new();
+        let epi_freq = self.custom.epidemics;
         for (ci, c) in self.colonies.iter_mut().enumerate() {
             let (before, t0) = (c.log.len(), c.last_tick);
             c.caps = caps;
+            c.epi_freq = epi_freq;
             c.update(&data, now);
             if c.last_tick > t0 {
                 advanced.push((ci, t0, c.last_tick));

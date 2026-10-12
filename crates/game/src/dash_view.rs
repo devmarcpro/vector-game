@@ -90,11 +90,7 @@ pub fn links(panel: usize) -> &'static [Link] {
         link("CHANTIER NAVAL", Screen::Shipyard),
         link("GALAXIE ET SAUT FTL", Screen::Galaxy),
     ];
-    const CREW: [Link; 3] = [
-        link("EQUIPAGE", Screen::Crew),
-        link("ARBRE FAMILIAL", Screen::Family),
-        link("RECRUTEMENT", Screen::Recruit),
-    ];
+    const CREW: [Link; 1] = [link("EQUIPAGE", Screen::Crew)];
     const MONEY: [Link; 3] = [
         link("BANQUE", Screen::Bank),
         link("BOURSE", Screen::Bourse),

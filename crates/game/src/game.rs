@@ -46,8 +46,8 @@ pub enum Screen {
     Ship,
     Shipyard,
     Designer,
+    /// The one crew screen, with its tabs (see `CrewTab`).
     Crew,
-    Recruit,
     Journal,
     Galaxy,
     Contracts,
@@ -67,7 +67,6 @@ pub enum Screen {
     Codex,
     Surface,
     Bourse,
-    Family,
     Factions,
     Proto,
     Dialogue,
@@ -80,6 +79,53 @@ pub enum Screen {
     Dashboard,
     /// The navigation computer: the queue of orders, the planner, the thresholds (see `nav_view`).
     NavAuto,
+}
+
+/// The tabs of the one crew screen (`Screen::Crew`): the list with the sheet of the chosen
+/// person, then the views of the same people (medicine, cryo, organs, equipment, relations
+/// network, family tree) and the recruitment. One screen, one navigation (audit B14).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum CrewTab {
+    #[default]
+    List,
+    Medicine,
+    Cryo,
+    Organs,
+    Gear,
+    Network,
+    Family,
+    Recruit,
+}
+
+impl CrewTab {
+    pub const ALL: [CrewTab; 8] = [
+        CrewTab::List,
+        CrewTab::Medicine,
+        CrewTab::Cryo,
+        CrewTab::Organs,
+        CrewTab::Gear,
+        CrewTab::Network,
+        CrewTab::Family,
+        CrewTab::Recruit,
+    ];
+
+    /// The word of the tab bar.
+    pub fn label(self) -> &'static str {
+        match self {
+            CrewTab::List => "LISTE",
+            CrewTab::Medicine => "MEDECINE",
+            CrewTab::Cryo => "CRYO",
+            CrewTab::Organs => "ORGANES",
+            CrewTab::Gear => "EQUIPEMENT",
+            CrewTab::Network => "RESEAU",
+            CrewTab::Family => "ARBRE",
+            CrewTab::Recruit => "RECRUTEMENT",
+        }
+    }
+
+    pub fn from_index(i: usize) -> CrewTab {
+        CrewTab::ALL[i.min(CrewTab::ALL.len() - 1)]
+    }
 }
 
 /// Route being composed in the fleet screen.
@@ -179,21 +225,17 @@ pub struct Game {
     pub war_agent: usize,
     pub war_target: usize,
     pub war_cells: Vec<vector_sim::politics::Cell>,
-    /// Crew screen: relations network instead of the table.
-    pub crew_net: bool,
-    /// Crew screen: the organ list of the selected person has the keys.
-    pub organ_mode: bool,
-    /// Crew screen: the MEDECINE tab (silhouette, wounds, drugs, care).
-    pub med_mode: bool,
+    /// Crew screen: the tab shown (list, medicine, cryo, organs, equipment, network, family
+    /// tree, recruitment). The sub-views below keep their own selection.
+    pub crew_tab: CrewTab,
+    /// MEDECINE tab: silhouette, wounds, drugs, care.
     pub med_drug: usize,
     pub med_wound: usize,
-    /// Crew screen: the CRYO tab (caissons, sleepers, scheduled wakes); the delay chosen for a
-    /// dated wake (index into `cryo_view::DELAYS`) and the number of watchers the auto plan keeps.
-    pub cryo_mode: bool,
+    /// CRYO tab (caissons, sleepers, scheduled wakes): the delay chosen for a dated wake (index
+    /// into `cryo_view::DELAYS`) and the number of watchers the auto plan keeps.
     pub cryo_delay: usize,
     pub cryo_keep: usize,
-    /// Crew screen: the equipment list of the selected person has the keys.
-    pub gear_mode: bool,
+    /// EQUIPEMENT tab: the equipment list of the selected person has the keys.
     pub gear_sel: usize,
     pub organ_sel: usize,
     /// The piloting menu column is unfolded.
@@ -406,15 +448,11 @@ impl Game {
             war_agent: 0,
             war_target: 0,
             war_cells: Vec::new(),
-            crew_net: false,
-            organ_mode: false,
-            med_mode: false,
+            crew_tab: CrewTab::List,
             med_drug: 0,
             med_wound: 0,
-            cryo_mode: false,
             cryo_delay: 1,
             cryo_keep: 1,
-            gear_mode: false,
             gear_sel: 0,
             organ_sel: 0,
             flight_menu_open: true,
@@ -1143,7 +1181,6 @@ impl Game {
             Screen::Shipyard => self.shipyard_key(code),
             Screen::Designer => self.designer_key(code, text),
             Screen::Crew => self.crew_key(code),
-            Screen::Recruit => self.recruit_key(code),
             Screen::Journal => self.journal_key(code),
             Screen::Galaxy => self.galaxy_key(code),
             Screen::Contracts => self.contracts_key(code),
@@ -1166,7 +1203,6 @@ impl Game {
             Screen::Proto => self.proto_key(code),
             Screen::Dialogue => self.dialogue_key(code),
             Screen::Expedition => self.expedition_key(code),
-            Screen::Family => self.family_key(code),
             Screen::Destroyed => {
                 if code == KeyCode::Enter {
                     if self.sim.can_respawn() {
@@ -1353,7 +1389,7 @@ impl Game {
         ));
     }
 
-    fn family_key(&mut self, code: KeyCode) {
+    pub(crate) fn family_key(&mut self, code: KeyCode) {
         let n = self.sim.crew.members.len().max(1);
         match code {
             KeyCode::ArrowLeft | KeyCode::ArrowUp => {
@@ -1367,7 +1403,7 @@ impl Game {
             KeyCode::Tab => self.family_tab = 1 - self.family_tab,
             KeyCode::Escape | KeyCode::KeyG | KeyCode::KeyK => {
                 self.crew_sel = self.family_member;
-                self.screen = Screen::Crew;
+                self.crew_tab = CrewTab::List;
             }
             _ => {}
         }
@@ -1679,10 +1715,7 @@ impl Game {
                 self.contract_sel = 0;
                 self.screen = Screen::Contracts;
             }
-            "recrutement" => {
-                self.screen = Screen::Recruit;
-                self.recruit_sel = 0;
-            }
+            "recrutement" => self.open_recruitment(),
             "eleveur" | "elevage" => {
                 self.farm.dealer = id == "eleveur";
                 self.screen = Screen::Livestock;
@@ -1747,8 +1780,7 @@ impl Game {
                 return;
             }
             KeyCode::KeyN => {
-                self.screen = Screen::Recruit;
-                self.recruit_sel = 0;
+                self.open_recruitment();
                 return;
             }
             KeyCode::KeyK => {
@@ -1833,7 +1865,7 @@ impl Game {
                 return;
             }
             KeyCode::Escape | KeyCode::KeyO => {
-                self.organ_mode = false;
+                self.crew_tab = CrewTab::List;
                 return;
             }
             KeyCode::Enter if n > 0 => {
@@ -1879,8 +1911,44 @@ impl Game {
         }
     }
 
+    /// The recruitment tab of the crew screen.
+    pub fn open_recruitment(&mut self) {
+        self.screen = Screen::Crew;
+        self.crew_tab = CrewTab::Recruit;
+        self.recruit_sel = 0;
+    }
+
+    /// Open the crew screen on a tab (a click on the tab bar, the hub, the dashboard).
+    pub fn open_crew_tab(&mut self, tab: CrewTab) {
+        let n = self.sim.crew.members.len();
+        if n == 0 && !matches!(tab, CrewTab::List | CrewTab::Recruit) {
+            self.say("PERSONNE A BORD");
+            return;
+        }
+        if tab == CrewTab::Recruit && self.sim.docked.is_none() {
+            self.say("RECRUTEMENT A QUAI SEULEMENT");
+            return;
+        }
+        self.screen = Screen::Crew;
+        self.crew_sel = self.crew_sel.min(n.saturating_sub(1));
+        match tab {
+            CrewTab::Family => {
+                self.family_member = self.crew_sel;
+                self.refresh_family();
+            }
+            CrewTab::Recruit => self.recruit_sel = 0,
+            _ => {}
+        }
+        self.crew_tab = tab;
+    }
+
+    /// Click on a word of the tab bar.
+    pub fn click_crew_tab(&mut self, i: usize) {
+        self.open_crew_tab(CrewTab::from_index(i));
+    }
+
     pub fn click_organ(&mut self, i: usize) {
-        self.organ_mode = true;
+        self.crew_tab = CrewTab::Organs;
         self.organ_sel = i;
     }
 
@@ -1899,7 +1967,7 @@ impl Game {
                 return;
             }
             KeyCode::Escape | KeyCode::KeyE => {
-                self.gear_mode = false;
+                self.crew_tab = CrewTab::List;
                 return;
             }
             KeyCode::Enter if n > 0 => self.sim.equip(member, self.gear_sel),
@@ -1917,7 +1985,7 @@ impl Game {
 
     /// Click on a slot line: open the equipment list on what is worn there (or the first item).
     pub fn click_gear_slot(&mut self, slot: usize) {
-        self.gear_mode = true;
+        self.crew_tab = CrewTab::Gear;
         let worn = self
             .sim
             .crew
@@ -1958,7 +2026,7 @@ impl Game {
                 return;
             }
             KeyCode::Escape | KeyCode::KeyM => {
-                self.med_mode = false;
+                self.crew_tab = CrewTab::List;
                 return;
             }
             KeyCode::KeyA if n > 0 => self.sim.first_aid(member),
@@ -2030,7 +2098,7 @@ impl Game {
                 return;
             }
             KeyCode::Escape | KeyCode::KeyC => {
-                self.cryo_mode = false;
+                self.crew_tab = CrewTab::List;
                 return;
             }
             KeyCode::KeyE if n > 0 => self.sim.cryo_put(member),
@@ -2087,21 +2155,15 @@ impl Game {
     }
 
     pub fn crew_key(&mut self, code: KeyCode) {
-        if self.med_mode {
-            self.med_key(code);
-            return;
-        }
-        if self.cryo_mode {
-            self.cryo_key(code);
-            return;
-        }
-        if self.organ_mode {
-            self.organ_key(code);
-            return;
-        }
-        if self.gear_mode {
-            self.gear_key(code);
-            return;
+        match self.crew_tab {
+            CrewTab::Medicine => return self.med_key(code),
+            CrewTab::Cryo => return self.cryo_key(code),
+            CrewTab::Organs => return self.organ_key(code),
+            CrewTab::Gear => return self.gear_key(code),
+            CrewTab::Family => return self.family_key(code),
+            CrewTab::Recruit => return self.recruit_key(code),
+            // The network keeps the list's keys (arrows choose, V comes back).
+            CrewTab::List | CrewTab::Network => {}
         }
         let n = self.sim.crew.members.len();
         let docked = self.sim.docked.is_some();
@@ -2118,11 +2180,17 @@ impl Game {
                 };
                 self.sim.set_role(self.crew_sel.min(n - 1), next);
             }
-            KeyCode::KeyV => self.crew_net = !self.crew_net,
-            KeyCode::KeyO if n > 0 => self.organ_mode = true,
-            KeyCode::KeyM if n > 0 => self.med_mode = true,
-            KeyCode::KeyC if n > 0 => self.cryo_mode = true,
-            KeyCode::KeyE if n > 0 => self.gear_mode = true,
+            KeyCode::KeyV => {
+                self.crew_tab = if self.crew_tab == CrewTab::Network {
+                    CrewTab::List
+                } else {
+                    CrewTab::Network
+                }
+            }
+            KeyCode::KeyO if n > 0 => self.crew_tab = CrewTab::Organs,
+            KeyCode::KeyM if n > 0 => self.crew_tab = CrewTab::Medicine,
+            KeyCode::KeyC if n > 0 => self.crew_tab = CrewTab::Cryo,
+            KeyCode::KeyE if n > 0 => self.crew_tab = CrewTab::Gear,
             KeyCode::KeyT if n > 0 => {
                 let p = &mut self.sim.crew.members[self.crew_sel.min(n - 1)];
                 p.shift = (p.shift + 1) % 3;
@@ -2138,14 +2206,11 @@ impl Game {
                 )),
             },
             KeyCode::KeyJ => self.screen = Screen::Journal,
-            KeyCode::KeyG if n > 0 => {
-                self.family_member = self.crew_sel.min(n - 1);
-                self.refresh_family();
-                self.screen = Screen::Family;
-            }
-            KeyCode::KeyN if docked => {
-                self.screen = Screen::Recruit;
-                self.recruit_sel = 0;
+            KeyCode::KeyG if n > 0 => self.open_crew_tab(CrewTab::Family),
+            KeyCode::KeyN if docked => self.open_crew_tab(CrewTab::Recruit),
+            // From the network, Escape comes back to the list first.
+            KeyCode::Escape | KeyCode::KeyK if self.crew_tab == CrewTab::Network => {
+                self.crew_tab = CrewTab::List;
             }
             KeyCode::Escape | KeyCode::KeyK => {
                 self.screen = if docked {
@@ -2181,8 +2246,11 @@ impl Game {
                     }
                 }
             }
-            KeyCode::KeyK => self.screen = Screen::Crew,
-            KeyCode::Escape => self.screen = Screen::Station,
+            KeyCode::KeyK => self.crew_tab = CrewTab::List,
+            KeyCode::Escape => {
+                self.crew_tab = CrewTab::List;
+                self.screen = Screen::Station;
+            }
             _ => {}
         }
     }
@@ -3308,7 +3376,6 @@ mod tests {
             Screen::Shipyard,
             Screen::Designer,
             Screen::Crew,
-            Screen::Recruit,
             Screen::Journal,
             Screen::Galaxy,
             Screen::Contracts,
@@ -3328,7 +3395,6 @@ mod tests {
             Screen::Codex,
             Screen::Surface,
             Screen::Bourse,
-            Screen::Family,
             Screen::Factions,
             Screen::Proto,
             Screen::Dialogue,
@@ -3336,6 +3402,13 @@ mod tests {
             Screen::NavAuto,
         ] {
             g.screen = s;
+            // Every tab of the crew screen has its own bar as well.
+            for tab in CrewTab::ALL {
+                g.crew_tab = tab;
+                let line = crate::tutorial::hint_line(&g);
+                assert!(!line.is_empty() && line.chars().count() <= 128, "{tab:?}: {line}");
+            }
+            g.crew_tab = CrewTab::List;
             let line = crate::tutorial::hint_line(&g);
             assert!(
                 !line.is_empty() && line.len() <= 126,
@@ -3452,6 +3525,63 @@ mod tests {
     }
 
     #[test]
+    fn the_three_crew_screens_are_one_screen_with_tabs() {
+        // Audit B14: list, medicine, cryo, organs, equipment, network, family tree and
+        // recruitment are tabs of `Screen::Crew`; one navigation, one entry in the menu.
+        let mut g = Game::new(data(), 1);
+        g.key(KeyCode::Enter, None, true);
+        let (st, _) = g.sim.nearest_station().expect("station");
+        g.sim.spawn_near(st, g.sim.bodies[st].radius + 200.0);
+        g.key(KeyCode::KeyD, None, true);
+        g.key(KeyCode::KeyK, None, true);
+        assert_eq!((g.screen, g.crew_tab), (Screen::Crew, CrewTab::List));
+        for (key, tab) in [
+            (KeyCode::KeyM, CrewTab::Medicine),
+            (KeyCode::KeyC, CrewTab::Cryo),
+            (KeyCode::KeyO, CrewTab::Organs),
+            (KeyCode::KeyE, CrewTab::Gear),
+            (KeyCode::KeyV, CrewTab::Network),
+            (KeyCode::KeyG, CrewTab::Family),
+            (KeyCode::KeyN, CrewTab::Recruit),
+        ] {
+            g.key(key, None, true);
+            assert_eq!((g.screen, g.crew_tab), (Screen::Crew, tab), "{key:?}");
+            frame(&g);
+            // Every tab draws the bar: one click zone per tab, whatever is shown below.
+            let bar = g
+                .pointer
+                .hits
+                .borrow()
+                .iter()
+                .filter(|h| h.rect.1 > 400)
+                .count();
+            assert!(bar >= CrewTab::ALL.len(), "{tab:?}: {bar} zones on the bar");
+            g.key(KeyCode::Escape, None, true);
+            let back = if tab == CrewTab::Recruit {
+                Screen::Station
+            } else {
+                Screen::Crew
+            };
+            assert_eq!((g.screen, g.crew_tab), (back, CrewTab::List), "{tab:?}");
+            if back != Screen::Crew {
+                g.key(KeyCode::KeyK, None, true);
+            }
+        }
+        // A click on a word of the bar opens the tab, from any tab.
+        for (i, tab) in CrewTab::ALL.into_iter().enumerate() {
+            g.click_crew_tab(i);
+            assert_eq!((g.screen, g.crew_tab), (Screen::Crew, tab));
+        }
+        // The old screens are gone: no other screen draws or answers for the crew.
+        assert_eq!(
+            crate::hub::place_of(Screen::Crew),
+            crate::hub::Place::Space(crate::hub::EQUIPAGE)
+        );
+        let crew_entries = crate::hub::SPACES[crate::hub::EQUIPAGE].entries.len();
+        assert_eq!(crew_entries, 1, "a single entry in the menu");
+    }
+
+    #[test]
     fn the_family_screen_opens_from_the_crew_and_walks_through_the_members() {
         let mut g = Game::new(data(), 1);
         g.key(KeyCode::Enter, None, true);
@@ -3468,7 +3598,7 @@ mod tests {
         g.key(KeyCode::KeyK, None, true);
         assert_eq!(g.screen, Screen::Crew);
         g.key(KeyCode::KeyG, None, true);
-        assert_eq!(g.screen, Screen::Family);
+        assert_eq!((g.screen, g.crew_tab), (Screen::Crew, CrewTab::Family));
         let ped = g.family_ped.as_ref().expect("pedigree");
         assert_eq!(ped.parents.len(), 2);
         assert!(
@@ -3480,7 +3610,7 @@ mod tests {
         assert_ne!(g.family_member, first);
         assert!(g.family_ped.is_some());
         g.key(KeyCode::Escape, None, true);
-        assert_eq!(g.screen, Screen::Crew);
+        assert_eq!((g.screen, g.crew_tab), (Screen::Crew, CrewTab::List));
     }
 
     #[test]
@@ -3670,7 +3800,8 @@ mod tests {
         g.sim.crew.hire(&data, p, 2, 0.0);
         g.family_member = 0;
         g.refresh_family();
-        g.screen = Screen::Family;
+        g.screen = Screen::Crew;
+        g.crew_tab = CrewTab::Family;
         frame(&g);
         // Click every zone of the tree: one of them is the brother, whose tree then opens.
         let zones: Vec<(i32, i32)> = g
@@ -3811,7 +3942,7 @@ mod tests {
         let n = g.sim.crew.members.len();
         assert!(n >= 2, "two people aboard");
         g.key(KeyCode::KeyV, None, true);
-        assert!(g.crew_net);
+        assert_eq!(g.crew_tab, CrewTab::Network);
         frame(&g);
         // The command bar adds zones too; the boxes are the ones with a double-click action.
         let boxes: Vec<_> = g
@@ -3830,7 +3961,7 @@ mod tests {
         g.pointer_click(x, y, 1_000);
         assert_eq!(g.crew_sel, n - 1);
         g.key(KeyCode::KeyV, None, true);
-        assert!(!g.crew_net);
+        assert_eq!(g.crew_tab, CrewTab::List);
     }
 
     #[test]
@@ -3839,7 +3970,7 @@ mod tests {
         g.key(KeyCode::Enter, None, true);
         g.screen = Screen::Crew;
         g.key(KeyCode::KeyM, None, true);
-        assert!(g.med_mode);
+        assert_eq!(g.crew_tab, CrewTab::Medicine);
         frame(&g);
         // Nothing to dress yet.
         g.key(KeyCode::KeyA, None, true);
@@ -3862,7 +3993,7 @@ mod tests {
             "the care words are clickable"
         );
         g.key(KeyCode::KeyM, None, true);
-        assert!(!g.med_mode);
+        assert_eq!(g.crew_tab, CrewTab::List);
     }
 
     #[test]
@@ -3930,7 +4061,7 @@ mod tests {
         g.screen = Screen::Crew;
         g.crew_sel = 0;
         g.key(KeyCode::KeyO, None, true);
-        assert!(g.organ_mode);
+        assert_eq!(g.crew_tab, CrewTab::Organs);
         g.organ_sel = lungs;
         g.sim.crew.members[0].organs[lungs] = 0.2;
         g.key(KeyCode::KeyP, None, true);
@@ -3938,7 +4069,7 @@ mod tests {
         assert_eq!(g.sim.crew.members[0].organ_kind[lungs], 2);
         frame(&g);
         g.key(KeyCode::Escape, None, true);
-        assert!(!g.organ_mode);
+        assert_eq!(g.crew_tab, CrewTab::List);
         assert_eq!(g.screen, Screen::Crew, "Escape only left the organ list");
     }
 
@@ -4290,7 +4421,7 @@ mod tests {
         g.screen = Screen::Crew;
         g.crew_sel = 0;
         g.key(KeyCode::KeyE, None, true);
-        assert!(g.gear_mode);
+        assert_eq!(g.crew_tab, CrewTab::Gear);
         g.gear_sel = d.gear_index("fusil").unwrap();
         g.key(KeyCode::Enter, None, true);
         assert_eq!(g.sim.crew.members[0].gear[0], Some(g.gear_sel));
@@ -4300,7 +4431,7 @@ mod tests {
         assert!(g.sim.crew.members[0].gear[0].is_none());
         assert!(g.sim.ship.cargo.kg[item] >= 0.99, "back in the hold");
         g.key(KeyCode::Escape, None, true);
-        assert!(!g.gear_mode);
+        assert_eq!(g.crew_tab, CrewTab::List);
         assert_eq!(g.screen, Screen::Crew);
     }
 
@@ -4697,7 +4828,6 @@ mod tests {
             Screen::Shipyard,
             Screen::Designer,
             Screen::Crew,
-            Screen::Recruit,
             Screen::Journal,
             Screen::Galaxy,
             Screen::Contracts,
@@ -4751,7 +4881,7 @@ mod tests {
         let cases = [
             (KeyCode::KeyH, Screen::Ship),
             (KeyCode::KeyY, Screen::Shipyard),
-            (KeyCode::KeyN, Screen::Recruit),
+            (KeyCode::KeyN, Screen::Crew),
             (KeyCode::KeyK, Screen::Crew),
             (KeyCode::KeyC, Screen::Contracts),
             (KeyCode::KeyE, Screen::Bank),
@@ -5124,11 +5254,13 @@ mod tests {
         );
         press(&mut g, KeyCode::Escape);
         assert_eq!(g.screen, Screen::Flight, "then where the menu was opened");
-        // Two levels deep: crew -> family tree -> back to the crew -> back to the page.
-        g.hub_activate(crate::hub::EQUIPAGE, 1);
-        assert_eq!(g.screen, Screen::Family);
+        // Two levels deep: crew -> family tab -> back to the list -> back to the page.
+        g.hub_activate(crate::hub::EQUIPAGE, 0);
+        assert_eq!((g.screen, g.crew_tab), (Screen::Crew, CrewTab::List));
+        press(&mut g, KeyCode::KeyG);
+        assert_eq!((g.screen, g.crew_tab), (Screen::Crew, CrewTab::Family));
         press(&mut g, KeyCode::Escape);
-        assert_eq!(g.screen, Screen::Crew);
+        assert_eq!((g.screen, g.crew_tab), (Screen::Crew, CrewTab::List));
         press(&mut g, KeyCode::Escape);
         assert_eq!(g.screen, Screen::Hub);
         press(&mut g, KeyCode::Escape);

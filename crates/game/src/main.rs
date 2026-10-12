@@ -1666,11 +1666,20 @@ fn snapshot(path: &str, scene: &str, data: Arc<GameData>) {
             }
             g.sim.advance(days * 86_400.0, &ShipInput::default());
             g.screen = match scene {
-                "crew" | "crewnet" | "medicine" | "cryo" => {
-                    g.crew_net = scene == "crewnet";
-                    g.med_mode = scene == "medicine";
-                    g.cryo_mode = scene == "cryo";
-                    if g.med_mode {
+                "crew" | "crewnet" | "medicine" | "cryo" | "family" | "recruit" => {
+                    use crate::game::CrewTab;
+                    g.crew_tab = match scene {
+                        "crewnet" => CrewTab::Network,
+                        "medicine" => CrewTab::Medicine,
+                        "cryo" => CrewTab::Cryo,
+                        "family" => CrewTab::Family,
+                        "recruit" => CrewTab::Recruit,
+                        _ => CrewTab::List,
+                    };
+                    if g.crew_tab == CrewTab::Family {
+                        g.refresh_family();
+                    }
+                    if g.crew_tab == CrewTab::Medicine {
                         // A few injuries to look at.
                         let d = Arc::clone(&g.data);
                         let b = &mut g.sim.crew.members[0].body;
@@ -1683,7 +1692,6 @@ fn snapshot(path: &str, scene: &str, data: Arc<GameData>) {
                     }
                     Screen::Crew
                 }
-                "recruit" => Screen::Recruit,
                 _ => Screen::Journal,
             };
         }

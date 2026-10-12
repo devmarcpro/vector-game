@@ -1,5 +1,5 @@
 //! Text-grid screens: main menu, pause, station market, inventory.
-use crate::game::{Game, Screen, MAIN_MENU, PAUSE_MENU};
+use crate::game::{CrewTab, Game, Screen, MAIN_MENU, PAUSE_MENU};
 use crate::hud::{AMBER, DIM, GREEN, HOVER, RED};
 use crate::mouse::{arrow_of_word, key_of_word, pair_of_word, Act};
 use winit::keyboard::KeyCode;
@@ -72,7 +72,6 @@ pub fn draw(fb: &mut Framebuffer, g: &Game) {
         Screen::Shipyard => draw_shipyard(fb, g),
         Screen::Designer => crate::designer_view::draw(fb, g),
         Screen::Crew => draw_crew(fb, g),
-        Screen::Recruit => draw_recruit(fb, g),
         Screen::Journal => draw_journal(fb, g),
         Screen::Galaxy => draw_galaxy(fb, g),
         Screen::Contracts => draw_contracts(fb, g),
@@ -95,7 +94,6 @@ pub fn draw(fb: &mut Framebuffer, g: &Game) {
         Screen::Proto => crate::proto_view::draw(fb, g),
         Screen::Dialogue => crate::dialogue_view::draw(fb, g),
         Screen::Expedition => crate::expedition_view::draw_prep(fb, g),
-        Screen::Family => crate::family_view::draw(fb, g),
         Screen::NavAuto => crate::nav_view::draw(fb, g),
         Screen::Destroyed => {
             let cols = fb.cols();
@@ -1093,7 +1091,33 @@ fn stamp(t: f64) -> String {
     format!("J{:<4}{:02}h", day as i64, hour as i64)
 }
 
+/// The tab bar of the crew screen, above the command line at the foot of the screen: one
+/// clickable word per tab, the open one in amber.
+fn crew_tab_bar(fb: &mut Framebuffer, g: &Game) {
+    let y = fb.rows().saturating_sub(6);
+    let mut x = 1;
+    for (i, tab) in CrewTab::ALL.iter().enumerate() {
+        let w = tab.label().len();
+        let hover = g.hit_cells(x, y, w, 1, Act::Call(Game::click_crew_tab, i), None);
+        let c = if *tab == g.crew_tab {
+            AMBER
+        } else if hover {
+            HOVER
+        } else {
+            DIM
+        };
+        fb.text(x, y, tab.label(), c);
+        x += w + 2;
+    }
+}
+
 fn draw_crew(fb: &mut Framebuffer, g: &Game) {
+    crew_tab_bar(fb, g);
+    match g.crew_tab {
+        CrewTab::Family => return crate::family_view::draw(fb, g),
+        CrewTab::Recruit => return draw_recruit(fb, g),
+        _ => {}
+    }
     let s = &g.sim;
     header(fb, g, "EQUIPAGE");
     let crew = &s.crew;
@@ -1109,15 +1133,15 @@ fn draw_crew(fb: &mut Framebuffer, g: &Game) {
         ),
         GREEN,
     );
-    if g.crew_net {
+    if g.crew_tab == CrewTab::Network {
         crate::crew_net_view::draw(fb, g);
         return;
     }
-    if g.med_mode {
+    if g.crew_tab == CrewTab::Medicine {
         crate::medicine_view::draw(fb, g);
         return;
     }
-    if g.cryo_mode {
+    if g.crew_tab == CrewTab::Cryo {
         crate::cryo_view::draw(fb, g);
         return;
     }
@@ -1256,7 +1280,7 @@ fn draw_crew(fb: &mut Framebuffer, g: &Game) {
             ),
             DIM,
         );
-        if g.gear_mode {
+        if g.crew_tab == CrewTab::Gear {
             if let Some(it) = g.data.gear.get(g.gear_sel) {
                 let held = g
                     .data
@@ -1290,7 +1314,7 @@ fn draw_crew(fb: &mut Framebuffer, g: &Game) {
                 if on { GREEN } else { RED },
             );
         }
-        if g.organ_mode {
+        if g.crew_tab == CrewTab::Organs {
             if let Some(c) = g.data.cybernetics.get(g.cyber_sel) {
                 fb.text(
                     x,
@@ -1311,7 +1335,7 @@ fn draw_crew(fb: &mut Framebuffer, g: &Game) {
                 Act::Call(Game::click_organ, k),
                 None,
             );
-            let picked = g.organ_mode && k == g.organ_sel;
+            let picked = g.crew_tab == CrewTab::Organs && k == g.organ_sel;
             let kind = match p.organ_kind.get(k) {
                 Some(1) => 'G',
                 Some(2) => 'P',
@@ -1422,7 +1446,7 @@ fn draw_recruit(fb: &mut Framebuffer, g: &Game) {
         g,
         1,
         b,
-        "HAUT/BAS:CHOISIR  ENTREE:EMBAUCHER  K:EQUIPAGE  ECHAP:RETOUR",
+        "HAUT/BAS:CHOISIR  ENTREE:EMBAUCHER  K:LISTE  ECHAP:RETOUR A LA STATION",
     );
     for (i, msg) in g.messages.iter().rev().take(2).enumerate() {
         fb.text(1, b + 1 + i, msg, if i == 0 { AMBER } else { DIM });

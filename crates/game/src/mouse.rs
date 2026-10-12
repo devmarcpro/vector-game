@@ -408,7 +408,7 @@ impl Game {
     /// Double click on a crew member: their family tree.
     pub fn open_family_of(&mut self, i: usize) {
         self.crew_sel = i;
-        self.run_act(Act::Key(KeyCode::KeyG));
+        self.open_crew_tab(crate::game::CrewTab::Family);
     }
 
     /// Click on a body of the cockpit or of the map: target it.

@@ -71,7 +71,7 @@ pub fn place_of(s: Screen) -> Place {
         Flight | Dialogue | Cosmos => Place::Space(PILOTAGE),
         Galaxy | Surface | NavAuto => Place::Space(NAVIGATION),
         Ship | Inventory | Shipyard => Place::Space(VAISSEAU),
-        Crew | Recruit | Family => Place::Space(EQUIPAGE),
+        Crew => Place::Space(EQUIPAGE),
         Station | Contracts | Bank | Trading | Bourse | Livestock | Casino => {
             Place::Space(COMMERCE)
         }
@@ -85,7 +85,7 @@ pub fn place_of(s: Screen) -> Place {
 }
 
 /// Every screen of the game (the menu's test walks it; the help of a screen is found by its place).
-pub const ALL_SCREENS: [Screen; 38] = [
+pub const ALL_SCREENS: [Screen; 36] = [
     Screen::Dashboard,
     Screen::Designer,
     Screen::MainMenu,
@@ -98,7 +98,6 @@ pub const ALL_SCREENS: [Screen; 38] = [
     Screen::Ship,
     Screen::Shipyard,
     Screen::Crew,
-    Screen::Recruit,
     Screen::Journal,
     Screen::Galaxy,
     Screen::Contracts,
@@ -118,7 +117,6 @@ pub const ALL_SCREENS: [Screen; 38] = [
     Screen::Codex,
     Screen::Surface,
     Screen::Bourse,
-    Screen::Family,
     Screen::Factions,
     Screen::Proto,
     Screen::Dialogue,
@@ -302,32 +300,11 @@ pub static SPACES: [Space; 8] = [
             entry(
                 "EQUIPAGE",
                 "K",
-                "Postes, quarts, besoins, equipement, organes, relations.",
+                "Un seul ecran a onglets : liste et fiche, medecine, cryo, organes, equipement, reseau, arbre familial, recrutement (a quai).",
                 Some(Screen::Crew),
                 Need::Any,
                 true,
-                |g| g.screen = Screen::Crew,
-            ),
-            entry(
-                "ARBRE FAMILIAL",
-                "G DANS K",
-                "La famille de la personne choisie : parents, fratrie, genes.",
-                Some(Screen::Family),
-                Need::Any,
-                true,
-                |g| {
-                    g.screen = Screen::Crew;
-                    g.crew_key(KeyCode::KeyG);
-                },
-            ),
-            entry(
-                "RECRUTEMENT",
-                "N A QUAI",
-                "Embaucher des candidats de la station.",
-                Some(Screen::Recruit),
-                Need::Docked,
-                false,
-                |g| g.station_key(KeyCode::KeyN),
+                |g| g.open_crew_tab(crate::game::CrewTab::List),
             ),
         ],
     },

@@ -32,7 +32,7 @@ fn menus() -> [Entry; 15] {
     ]
 }
 
-fn controls() -> [Entry; 17] {
+fn controls() -> [Entry; 20] {
     [
         ("ASSISTANCE", "F", Act::Key(KeyCode::KeyF)),
         ("AMARRER", "D", Act::Key(KeyCode::KeyD)),
@@ -55,6 +55,9 @@ fn controls() -> [Entry; 17] {
         ("SAUVER", "F5", Act::Key(KeyCode::F5)),
         ("ORBITE CIRCULAIRE", "INSER", Act::Key(KeyCode::Insert)),
         ("VUE EXTERNE", "SUPPR", Act::Key(KeyCode::Delete)),
+        ("TRAIN D'ATTERRISSAGE", "PAV3", Act::Key(KeyCode::Numpad3)),
+        ("PILOTE SOL / STATION", "PAV4", Act::Key(KeyCode::Numpad4)),
+        ("SITE PLAT", "PAV7", Act::Key(KeyCode::Numpad7)),
     ]
 }
 

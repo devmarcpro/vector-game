@@ -15,6 +15,13 @@
 | R | Cibler le vaisseau PNJ le plus proche (cycle) |
 | T / Y | Cible : asteroide / station le(la) plus proche |
 | V (maintenir) | Laser de minage (cible asteroide a < 2 km, visee dans le cone) |
+| D | Amarrer (station < 500 m, vitesse relative < 8 m/s ; au-dessus de 2 m/s ou nez a plus de 15 deg de l'axe du port, la prise est brutale et coute de la coque) |
+| 0 a 9 (rangee du haut) | Maintien d'attitude (SAS) : 0 coupe, 1 cap, 2 prograde, 3 retrograde, 4 normale, 5 anti-normale, 6 radial sortant, 7 radial entrant, 8 vers la cible, 9 verticale (normale du sol). La main sur tangage/lacet/roulis reprend la main ; le cap est retenu la ou on lache |
+| Pave num. 3 | Train d'atterrissage sorti / rentre (sorti : 6 m/s de contact sur et 3 m/s lateral ; rentre : 1,5 et 1) |
+| Pave num. 8 / 2 / 0 / 5 | Accelerateur +10 % / -10 % / coupure / plein (Espace pousse a ce taux) |
+| Pave num. 7 / 9 | Marquer le site d'atterrissage le plus plat pres du point sous le vaisseau / l'effacer |
+| Pave num. 4 | Pilote : pose le vaisseau (au-dessus d'un sol), le fait decoller jusqu'a l'orbite (pose), ou l'amene au port (pres d'une station) ; refaire F10 ou toucher aux commandes le debraye. |
+| I | Soute / inventaire (J = jeter la ressource) |
 | D | Amarrer (station < 500 m, vitesse relative < 8 m/s) |
 | I | Soute / inventaire (J = jeter la ressource, F = verser le carburant de la soute dans le reservoir) |
 | K | Equipage (Gauche/Droite poste, T quart, X débarquer à quai, J journal) |
@@ -39,6 +46,7 @@
 | ~ (Backquote) | Console de debug : help, list, tp, tpbody, stop, speed, fuel, repair, assist, time |
 | F1 | Aide contextuelle de l'ecran courant (re-appuyer pour fermer) |
 | F6 | Codex (Gauche/Droite categorie, Haut/Bas entree ; categorie REACTIONS = laboratoire : L ou Entree lance un lot de 100 kg de reactifs tires de la soute) |
+| F10 (tutoriel en cours) | Ignorer le tutoriel |
 | F10 | Ignorer le tutoriel |
 | F6 | Codex (Gauche/Droite categorie, Haut/Bas entree) |
 | F10 | Menu principal : les huit espaces qui regroupent tous les ecrans (voir « Le menu principal ») ; re-appuyer ferme |
@@ -172,7 +180,7 @@ Par défaut AZERTY : tangage Z/S, lacet Q/D, roulis A/E. Options > Clavier bascu
 
 - Fin (vol ou quai) : explorer a pied (fleches / pave numerique, Entree escalier, Espace attendre, Tab chef, clic = marcher).
 - Exploration à pied (un seul système pour les mondes, stations, épaves, ruines, grottes, portails, dimensions) : touche Fin en vol ou à quai, ou E sur la carte de surface (F8). Mondes : « Atterrir » ; la surface a ses sites qui mènent aux étages des lieux.
-- Pilotage : Inser (ou « ORBITE CIRCULAIRE » du menu) met le vaisseau sur une orbite circulaire autour du monde le plus proche (dans 12 rayons), payee en carburant. Un contact a moins de 25 m/s avec un monde solide est un atterrissage (le vaisseau reste pose jusqu'a la poussee ; Fin pour explorer a pied) ; plus vite, c'est un impact. L'air des mondes freine les plongees.
+- Pilotage : Inser (ou « ORBITE CIRCULAIRE » du menu) met le vaisseau sur une orbite circulaire autour du monde le plus proche (dans 12 rayons), payee en carburant. Le contact avec un monde solide est juge sur la vitesse, la pente et l'inclinaison du nez (voir SIM_MODEL, atterrissage) : propre, dur (degats, rebond), bascule (couche sur le flanc) ou destruction. Le vaisseau pose reste sur le terrain (il tourne avec le monde) jusqu'a ce que la poussee depasse le poids ; Fin pour explorer a pied. L'air des mondes freine les plongees.
 - Exploration a pied : F bascule la vue a la premiere personne (prototype a la Daggerfall : memes etages, memes tours ; gauche/droite tournent d'un huitieme de tour, haut/bas avancent et reculent ; creatures, gens, arbres, plantes, bornes et escaliers sont des panneaux faits d'ASCII).
 - Matiere (exploration à pied) : X creuse ou casse la case devant (outil et dureté = temps ; donne les ressources de la matière selon la physique du monde), B construit un mur de pierre taillée, N pose un sol de tôle (ou un pont sur l'eau) avec ce que porte l'équipe ; les cases bâties sont à vous. La glace fait déraper, soufre et lave blessent, le froid mord sans vêtements chauds.
 

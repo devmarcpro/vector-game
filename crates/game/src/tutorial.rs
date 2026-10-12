@@ -81,7 +81,7 @@ pub const STEPS: [Step; 17] = [
     },
     Step {
         text: "F10 ouvre le menu : huit espaces qui regroupent tous les ecrans. F1 donne l'aide du contexte. Bon vol !",
-        done: |g| pressed(g, Screen::Flight, KeyCode::F10) || matches!(g.screen, Screen::Hub | Screen::Tech | Screen::Codex | Screen::Empire),
+        done: |g| pressed(g, Screen::Flight, KeyCode::Numpad4) || matches!(g.screen, Screen::Hub | Screen::Tech | Screen::Codex | Screen::Empire),
     },
     Step {
         text: "F8 ouvre la surface d'un monde releve (G : globe) ; E y lance une expedition a pied ; Entree en vol sur une planete ciblee parle a son peuple.",
@@ -120,6 +120,9 @@ pub fn hint_line(g: &Game) -> String {
         Screen::Flight if g.sim.in_transit() => "TRANSIT FTL  P PAUSE  F1 AIDE",
         Screen::Flight if g.sim.autopilot.is_some() => {
             "PILOTE AUTO ACTIF  G ANNULER  PGUP/PGDN TEMPS  TAB CIBLE  M CARTE  P PAUSE  F1 AIDE"
+        }
+        Screen::Flight if g.sim.surface_state().is_some() => {
+            "0-9 SAS  PAV3 TRAIN  PAV4 PILOTE ATTERR./DECOLL.  PAV 8/2/0/5 ACCEL  PAV7 SITE  ESP POUSSEE  C FREIN  F1 AIDE"
         }
         Screen::Flight => {
             "WASD/QE ROT  ESP/X POUSSEE  MAJ BOOST  C FREIN  F ASSIST  TAB CIBLE  G AUTO  D AMARRER  V LASER  F10 MENU  M CARTE  F1 AIDE"
@@ -210,6 +213,21 @@ pub fn hint_line(g: &Game) -> String {
         }
     };
     s.to_string()
+}
+
+/// The landing lesson, shown above the flight help while the ship is low over a solid world.
+pub fn landing_help() -> &'static [&'static str] {
+    &[
+        "== ATTERRIR EN 5 TEMPS ==",
+        "1 Ralentir : 3 (SAS retrograde) puis ESPACE ; visez une vitesse horizontale proche de 0",
+        "2 Site : pav. num. 7 marque la zone la plus plate ; la pente max est de 20 deg",
+        "3 Train : PAV3 avant le sol (sans train, 1.5 m/s au plus ; avec, 6 m/s)",
+        "4 Allumage : le panneau DESCENTE donne l'altitude du freinage ; allumez quand il clignote",
+        "5 Contact : ~1 m/s, nez vertical (9), moteurs coupes (pav. 0) ; trop vite = coque perdue",
+        "PAV4 : le pilote fait tout (et se debraye a la moindre touche) ; il peut echouer",
+        "Decollage : la poussee doit depasser le poids ; PAV4 ou ESPACE nez vers le haut",
+        "Amarrage : PAV4 pres d'une station aligne le port ; sinon visez l'axe a moins de 2 m/s",
+    ]
 }
 
 /// Contextual help lines for a screen (what the player can do here).

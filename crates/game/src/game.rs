@@ -291,6 +291,8 @@ pub struct Game {
     pub family_tab: usize,
     pub family_ped: Option<vector_sim::genealogy::Pedigree>,
     pub help_open: bool,
+    /// The cockpit looks astern (at the ground of a ship landing tail first).
+    pub rear_view: bool,
     pub tut_step: Option<usize>,
     pub tut_keys: Vec<(Screen, KeyCode)>,
     pub save_path: PathBuf,
@@ -476,6 +478,7 @@ impl Game {
             family_tab: 0,
             family_ped: None,
             help_open: false,
+            rear_view: false,
             tut_step: None,
             tut_keys: Vec::new(),
             save_path: PathBuf::from("saves").join("slot1.sav"),
@@ -652,6 +655,7 @@ impl Game {
         } else {
             self.input()
         };
+        self.update_ground();
         self.sim.events.clear();
         if self.timescale <= 1.0 {
             let steps = (seconds / SIM_DT).round() as usize;
@@ -684,14 +688,17 @@ impl Game {
     }
 
     /// Write a line in the ship's journal in the AI's own voice.
-    fn note(&mut self, text: String) {
+    pub(crate) fn note(&mut self, text: String) {
         let now = self.sim.time;
         self.sim.crew.log_event(now, format!("IA : {text}"));
     }
 
-    fn handle_events(&mut self) {
+    pub(crate) fn handle_events(&mut self) {
         let evs = std::mem::take(&mut self.sim.events);
         for e in evs {
+            if self.say_pilot_event(&e) {
+                continue;
+            }
             match e {
                 Event::Impact {
                     body,
@@ -714,6 +721,11 @@ impl Game {
                     self.timescale = 1.0;
                 }
                 Event::Orbit { .. } => {}
+                Event::Toppled { .. }
+                | Event::PilotDone(_)
+                | Event::PilotFailed(_)
+                | Event::TooHeavy
+                | Event::HardDock { .. } => {}
                 Event::OutOfFuel => self.say("CARBURANT EPUISE"),
                 Event::Arrived { body } => {
                     let name = self.sim.bodies[body].name.clone();
@@ -2879,6 +2891,9 @@ impl Game {
 
     fn flight_key(&mut self, code: KeyCode) {
         if self.ext_key(code) {
+            return;
+        }
+        if self.pilot_aid_key(code) {
             return;
         }
         match code {

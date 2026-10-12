@@ -81,14 +81,13 @@ pub fn body_orient(sim: &Sim, i: usize, tilt: f64) -> Mat3 {
 
 /// Landing gear (0 stowed .. 1 down): out when low and slow over a ground.
 pub fn gear_for(sim: &Sim, gr: Option<&Ground>) -> f64 {
-    let Some(gr) = gr else {
-        return 0.0;
-    };
-    let speed = sim.rel_velocity().length();
-    if speed > 250.0 {
-        return 0.0;
+    // The same gear the contact model uses (`Sim::gear_down`: automatic under flight assist when
+    // low and slow, by hand otherwise); drawn only where there is a ground to stand on.
+    if gr.is_some() && sim.gear_down {
+        1.0
+    } else {
+        0.0
     }
-    ((600.0 - gr.h) / 450.0).clamp(0.0, 1.0)
 }
 
 /// The orbiting camera: behind the ship by default, turning around it with the mouse.
@@ -478,7 +477,8 @@ mod tests {
 
     #[test]
     fn the_gear_comes_down_close_to_the_ground_only() {
-        let g = game();
+        let mut g = game();
+        g.sim.gear_down = true;
         let near = Ground {
             up: Vec3::new(0.0, 1.0, 0.0),
             h: 30.0,
@@ -488,8 +488,10 @@ mod tests {
             ..near_like(&near)
         };
         assert_eq!(gear_for(&g.sim, Some(&near)), 1.0);
-        assert_eq!(gear_for(&g.sim, Some(&far)), 0.0);
         assert_eq!(gear_for(&g.sim, None), 0.0);
+        g.sim.gear_down = false;
+        assert_eq!(gear_for(&g.sim, Some(&near)), 0.0);
+        let _ = far;
     }
 
     fn near_like(g: &Ground) -> Ground {

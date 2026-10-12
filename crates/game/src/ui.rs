@@ -241,7 +241,6 @@ fn draw_overlay_inner(fb: &mut Framebuffer, g: &Game) {
             | Screen::Codex
             | Screen::Factions
             | Screen::Surface
-            | Screen::Bourse
             | Screen::Dashboard
     ) {
         if let Some(m) = g.messages.last() {

@@ -52,6 +52,8 @@
  (id:"workshop_mk2", name:"Atelier Mk2", category:"workshop", slot:Internal, size:2, mass:2400.0, hp:170.0, cost:52000.0, repair:3.0, power:-700.0, priority:2),
  (id:"greenhouse_mk1", name:"Serre Mk1", category:"greenhouse", slot:Internal, size:1, mass:1000.0, hp:70.0, cost:14000.0, food:2.0, power:-200.0, priority:2),
  (id:"greenhouse_mk2", name:"Serre Mk2", category:"greenhouse", slot:Internal, size:2, mass:2200.0, hp:110.0, cost:34000.0, food:6.0, power:-450.0, priority:2),
+ (id:"hydroponics_mk1", name:"Hydroponie Mk1", category:"hydroponics", slot:Internal, size:1, mass:1400.0, hp:70.0, cost:22000.0, food:4.0, power:-650.0, priority:2),
+ (id:"fishtank_mk1", name:"Viviers Mk1", category:"aquarium", slot:Internal, size:1, mass:1800.0, hp:60.0, cost:19000.0, food:3.0, power:-300.0, priority:2),
  (id:"scanner_mk1", name:"Scanner Mk1", category:"scanner", slot:External, size:1, mass:200.0, hp:50.0, cost:9000.0, scan_range:300000000.0, power:-100.0, priority:2),
  (id:"scanner_mk2", name:"Scanner Mk2", category:"scanner", slot:External, size:2, mass:450.0, hp:80.0, cost:26000.0, scan_range:30000000000.0, power:-300.0, priority:2),
  (id:"scanner_mk3", name:"Scanner Mk3", category:"scanner", slot:External, size:3, mass:900.0, hp:120.0, cost:80000.0, scan_range:3000000000000.0, power:-900.0, priority:2),

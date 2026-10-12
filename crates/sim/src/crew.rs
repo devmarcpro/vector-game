@@ -219,6 +219,9 @@ pub struct Crew {
     pub families: Families,
     /// Expected children: (mother id, father id, due date).
     pub pregnancies: Vec<(u32, u32, f64)>,
+    /// Monotony of the diet, 0..1: it climbs while the crew lives on stored rations and falls
+    /// with fresh food from greenhouses, hydroponics and tanks; it weighs on the nerves.
+    pub monotony: f32,
     /// What the cabin exposes the crew to (set by the sim every update, never saved).
     #[serde(skip)]
     pub env: Exposure,
@@ -595,6 +598,18 @@ impl Crew {
             let got = ctx.cargo.remove(data, water, need);
             water_frac = if need > 0.0 { (got / need) as f32 } else { 1.0 };
         }
+        // Fresh food (greenhouses, hydroponics, fish tanks) against rations kept for months.
+        if ctx.needs {
+            let need = appetite * FOOD_KG_PER_DAY * days;
+            let fresh = if need > 0.0 {
+                (ctx.food_per_day * days / need).min(1.0) as f32
+            } else {
+                1.0
+            };
+            let k = (1.0 - (-days / 30.0).exp()) as f32;
+            self.monotony = (self.monotony + ((1.0 - fresh) - self.monotony) * k).clamp(0.0, 1.0);
+        }
+        let monotony = self.monotony;
         let hungry_before = self.alive().any(|p| p.hunger > 0.7);
         let thirsty_before = self.alive().any(|p| p.thirst > 0.7);
 
@@ -764,6 +779,7 @@ impl Crew {
             let others = (n_alive as f32 - 1.0).min(2.0) / 2.0;
             p.social = sat(p.social + hours * (0.02 * (1.0 + t_social).max(0.1) - 0.018 * others));
             let stress_target = (0.1
+                + 0.1 * monotony
                 + 0.4 * p.fatigue
                 + 0.3 * p.hunger.max(p.thirst)
                 + 0.3 * (1.0 - self.air)
@@ -1373,6 +1389,25 @@ mod tests {
             needs: true,
             event_freq: 1.0,
         }
+    }
+
+    #[test]
+    fn a_diet_of_stored_rations_wears_the_crew_down_and_fresh_food_restores_it() {
+        let d = data();
+        let live = |fresh_kg_per_day: f64| {
+            let mut crew = crew_of(&d, 4);
+            let mut cargo = cargo_with(&d, &[("food", 5000.0), ("water", 5000.0)]);
+            let mut credits = 1.0e6;
+            for day in 1..=60 {
+                let mut c = ctx(&d, &mut cargo, &mut credits, true);
+                c.food_per_day = fresh_kg_per_day;
+                crew.update(&mut c, f64::from(day) * DAY);
+            }
+            crew.monotony
+        };
+        let (rations, garden) = (live(0.0), live(8.0));
+        assert!(rations > 0.5, "{rations}");
+        assert!(garden < 0.2, "{garden}");
     }
 
     #[test]

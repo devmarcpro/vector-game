@@ -128,6 +128,30 @@ mod tests {
     }
 
     #[test]
+    fn panels_of_a_ship_in_the_air_are_dimmed_like_the_solar_farms_of_a_colony() {
+        let mut s = sim();
+        assert!(
+            (s.solar_dimming() - 1.0).abs() < 1e-9,
+            "no air in deep space"
+        );
+        let i = (0..s.bodies.len())
+            .find(|&i| s.air_of(i).is_some_and(|a| a.ground > 0.5))
+            .expect("a world with air");
+        let ground = s.air_of(i).expect("air").ground;
+        s.ship.pos = s.bodies[i].pos + vector_core::Vec3::new(0.0, 0.0, s.bodies[i].radius + 10.0);
+        let low = s.solar_dimming();
+        assert!(low < 0.95, "{low}");
+        assert!(
+            (low - crate::colony::solar_transmittance(ground)).abs() < 0.02,
+            "the same law as the colonies: {low}"
+        );
+        let top = s.air_of(i).expect("air").top();
+        s.ship.pos =
+            s.bodies[i].pos + vector_core::Vec3::new(0.0, 0.0, s.bodies[i].radius + top * 0.5);
+        assert!(s.solar_dimming() > low, "thinner air up there");
+    }
+
+    #[test]
     fn the_scale_height_follows_gravity_temperature_and_composition() {
         let earth = Air::new(1.0, 288.0, 29.0, 9.8);
         assert!((earth.height - 8_400.0).abs() < 300.0, "{}", earth.height);

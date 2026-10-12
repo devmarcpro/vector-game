@@ -1976,9 +1976,22 @@ fn draw_colony(fb: &mut Framebuffer, g: &Game) {
         ),
         GREEN,
     );
-    fb.text(100, 1, "[F] CHAINES  [H] SANTE", DIM);
-    g.hit_cells(100, 1, 10, 1, Act::Key(KeyCode::KeyF), None);
-    g.hit_cells(112, 1, 9, 1, Act::Key(KeyCode::KeyH), None);
+    fb.text(
+        74,
+        1,
+        "[F] CHAINES [H] SANTE [I] INDUSTRIE [G] AGRICULTURE [V] VILLE [L] LOGISTIQUE",
+        DIM,
+    );
+    g.hit_cells(74, 1, 11, 1, Act::Key(KeyCode::KeyF), None);
+    g.hit_cells(86, 1, 9, 1, Act::Key(KeyCode::KeyH), None);
+    g.hit_cells(96, 1, 13, 1, Act::Key(KeyCode::KeyI), None);
+    g.hit_cells(110, 1, 15, 1, Act::Key(KeyCode::KeyG), None);
+    g.hit_cells(126, 1, 9, 1, Act::Key(KeyCode::KeyV), None);
+    g.hit_cells(136, 1, 14, 1, Act::Key(KeyCode::KeyL), None);
+    if g.col_tab != 0 {
+        crate::works_view::draw(fb, g);
+        return;
+    }
     if g.col_flow {
         crate::flow_view::draw(fb, g);
         return;

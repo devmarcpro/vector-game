@@ -35,6 +35,7 @@ mod trade_view;
 mod tutorial;
 mod ui;
 mod wire_shape;
+mod works_view;
 
 use game::{Game, Screen, DEFAULT_SEED};
 use std::{num::NonZeroU32, rc::Rc, sync::Arc, time::Instant};
@@ -782,7 +783,8 @@ fn snapshot(path: &str, scene: &str, data: Arc<GameData>) {
                 g.advance(1.0 / 30.0);
             }
         }
-        "empire" | "colony" | "fleet" | "fleetmap" | "flow" => {
+        "empire" | "colony" | "fleet" | "fleetmap" | "flow" | "industry" | "farm" | "city"
+        | "logistics" => {
             let data = Arc::clone(&g.data);
             let planet = g
                 .sim
@@ -832,6 +834,7 @@ fn snapshot(path: &str, scene: &str, data: Arc<GameData>) {
                         enabled: true,
                         recipe: 0,
                         health: 1.0,
+                        ops: Default::default(),
                     });
             }
             let d = data.building_index("fission_plant").expect("building");
@@ -843,6 +846,7 @@ fn snapshot(path: &str, scene: &str, data: Arc<GameData>) {
                     enabled: true,
                     recipe: 0,
                     health: 1.0,
+                    ops: Default::default(),
                 });
             for (id, kg) in [
                 ("food", 4000.0),
@@ -863,6 +867,9 @@ fn snapshot(path: &str, scene: &str, data: Arc<GameData>) {
             g.screen = Screen::Colony;
             if scene == "flow" {
                 g.col_flow = true;
+            }
+            if matches!(scene, "industry" | "farm" | "city" | "logistics") {
+                works_scene(&mut g, ci, scene);
             }
             if scene == "empire" {
                 g.screen = Screen::Empire;
@@ -1015,6 +1022,162 @@ fn bench(data: Arc<GameData>) {
         "save: {bytes} bytes in {:.3} ms",
         t.elapsed().as_secs_f64() * 1000.0
     );
+}
+
+/// The tabs of the colony works (industry, farming, city, logistics) on a colony with enough
+/// buildings, stocks and time to show something: all technologies are on, the climate of the
+/// city is made temperate (a snapshot is not the place to look for a lucky planet).
+fn works_scene(g: &mut game::Game, ci: usize, scene: &str) {
+    use vector_sim::colony::BuildingInst;
+    let data = Arc::clone(&g.data);
+    g.sim.rules.tech_locks = false;
+    let put = |g: &mut game::Game, id: &str, n: usize| {
+        let def = data.building_index(id).expect("building");
+        for _ in 0..n {
+            g.sim.colonies[ci].buildings.push(BuildingInst {
+                def,
+                progress: 1.0,
+                enabled: true,
+                recipe: 0,
+                health: 1.0,
+                ops: Default::default(),
+            });
+        }
+    };
+    let stock = |g: &mut game::Game, id: &str, kg: f64| {
+        g.sim.colonies[ci].storage[data.resource_index(id).expect("res")] += kg;
+    };
+    {
+        let c = &mut g.sim.colonies[ci];
+        c.works.env.ready = true;
+        c.works.env.air = true;
+        c.works.env.fertility = 0.7;
+        c.works.env.hum = 0.55;
+        c.works.env.t_mean = 286.0;
+        c.works.env.t_amp = 12.0;
+        c.works.env.year = 2.6e7;
+        c.works.soil = 0.7;
+    }
+    for id in [
+        "spare_parts",
+        "tools",
+        "construction_materials",
+        "fertilizer",
+        "iron",
+        "carbon",
+        "water",
+        "food",
+        "consumer_goods",
+    ] {
+        stock(g, id, 6000.0);
+    }
+    match scene {
+        "industry" => {
+            for (id, n) in [
+                ("solar_farm", 4),
+                ("workshop", 2),
+                ("automation_hub", 1),
+                ("standards_office", 1),
+                ("component_factory", 1),
+                ("electronics_fab", 1),
+                ("chemical_plant", 1),
+                ("recycler", 1),
+                ("residential_block", 2),
+            ] {
+                put(g, id, n);
+            }
+            g.sim.colonies[ci].pop = 650.0;
+            g.sim.colonies[ci].treasury = 20_000.0;
+            stock(g, "steel", 3000.0);
+            stock(g, "electronics", 400.0);
+            g.col_tab = 1;
+            g.tab_sel = 5;
+        }
+        "farm" => {
+            for (id, n) in [
+                ("farmland", 3),
+                ("greenhouse_hall", 1),
+                ("irrigation_net", 2),
+                ("cold_store", 1),
+                ("canteen", 1),
+                ("fish_farm", 1),
+                ("cannery", 1),
+                ("residential_block", 2),
+            ] {
+                put(g, id, n);
+            }
+            g.sim.colonies[ci].pop = 220.0;
+            g.sim.colonies[ci].treasury = 20_000.0;
+            stock(g, "food", 3000.0);
+            stock(g, "organics", 1500.0);
+            g.col_tab = 2;
+        }
+        "city" => {
+            for (id, n) in [
+                ("residential_block", 5),
+                ("arcology", 1),
+                ("warehouse", 3),
+                ("sewage_plant", 1),
+                ("composter", 1),
+                ("waste_sorting", 1),
+                ("road_network", 2),
+                ("tram_line", 1),
+                ("police_station", 2),
+                ("air_scrubber", 1),
+                ("smelter", 3),
+                ("chemical_plant", 2),
+                ("school", 1),
+                ("recreation_center", 1),
+                ("solar_farm", 6),
+            ] {
+                put(g, id, n);
+            }
+            g.sim.colonies[ci].pop = 900.0;
+            g.sim.colonies[ci].treasury = 20_000.0;
+            stock(g, "ammonia", 8000.0);
+            stock(g, "phosphorus", 3000.0);
+            g.col_tab = 3;
+        }
+        _ => {
+            for (id, n) in [
+                ("convoy_depot", 1),
+                ("road_network", 2),
+                ("orbital_elevator", 1),
+                ("residential_block", 2),
+            ] {
+                put(g, id, n);
+            }
+            let mut other = g.sim.colonies[ci].clone();
+            other.id += 100;
+            other.name = "Port Nuage".into();
+            other.body = if other.body == 1 { 2 } else { 1 };
+            other.storage.iter_mut().for_each(|v| *v = 0.0);
+            other.buildings.truncate(3);
+            g.sim.colonies.push(other);
+            g.sim.colonies[ci].treasury = 50_000.0;
+            g.col_tab = 4;
+        }
+    }
+    g.sim.time += 60.0 * 86_400.0;
+    g.sim.update_colonies_pub();
+    if scene == "logistics" {
+        let to = g.sim.colonies.len() - 1;
+        let items: Vec<usize> = (0..data.resources.len())
+            .filter(|&i| g.sim.colonies[ci].storage[i] > 0.5)
+            .collect();
+        g.ship_res = items
+            .iter()
+            .position(|&i| data.resources[i].id == "food")
+            .unwrap_or(0);
+        for (res, kg) in [
+            (data.resource_index("food").expect("res"), 2500.0),
+            (data.resource_index("steel").expect("res"), 800.0),
+        ] {
+            g.sim.colonies[ci].storage[res] += kg;
+            let _ = g.sim.colony_dispatch(ci, to, res, kg);
+        }
+        g.sim.colonies[ci].works.food_price = 1.35;
+    }
 }
 
 fn main() {

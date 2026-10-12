@@ -132,6 +132,12 @@ pub struct Game {
     pub col_flow: bool,
     /// Colony screen: health tracking (epidemics) instead of the lists.
     pub col_health: bool,
+    /// Colony screen: 0 the lists, 1 industry, 2 farming, 3 the city, 4 logistics (`works_view`).
+    pub col_tab: u8,
+    /// Selected building of the industry tab, destination colony and goods of the logistics tab.
+    pub tab_sel: usize,
+    pub ship_to: usize,
+    pub ship_res: usize,
     pub fac_sel: usize,
     /// Factions screen: the registry of relations (every entity) instead of the ring.
     pub rel_page: bool,
@@ -312,6 +318,10 @@ impl Game {
             col_focus: 0,
             col_flow: false,
             col_health: false,
+            col_tab: 0,
+            tab_sel: 0,
+            ship_to: 0,
+            ship_res: 0,
             fac_sel: 0,
             rel_page: false,
             rel_sel: 0,
@@ -1977,14 +1987,19 @@ impl Game {
         let nb = self.sim.colonies[ci].buildings.len();
         let nres = self.data.resources.len();
         let np = self.data.policies.len();
+        if self.colony_tab_key(code, ci) {
+            return;
+        }
         match code {
             KeyCode::KeyF => {
                 self.col_flow = !self.col_flow;
                 self.col_health = false;
+                self.col_tab = 0;
             }
             KeyCode::KeyH => {
                 self.col_health = !self.col_health;
                 self.col_flow = false;
+                self.col_tab = 0;
             }
             KeyCode::Tab => self.col_focus = (self.col_focus + 1) % 4,
             KeyCode::ArrowUp => match self.col_focus {
@@ -2059,6 +2074,97 @@ impl Game {
             _ => {}
         }
         let _ = here;
+    }
+
+    /// Keys of the works tabs (industry, farming, city, logistics). True when the key was used.
+    fn colony_tab_key(&mut self, code: KeyCode, ci: usize) -> bool {
+        for (i, (_, key, _)) in crate::works_view::TABS.iter().enumerate() {
+            if code == *key {
+                let tab = (i + 1) as u8;
+                self.col_tab = if self.col_tab == tab { 0 } else { tab };
+                self.col_flow = false;
+                self.col_health = false;
+                return true;
+            }
+        }
+        if self.col_tab == 0 {
+            return false;
+        }
+        let nb = self.sim.colonies[ci].buildings.len();
+        match (self.col_tab, code) {
+            (_, KeyCode::Escape) => self.col_tab = 0,
+            (1, KeyCode::ArrowUp) if nb > 0 => self.tab_sel = (self.tab_sel + nb - 1) % nb,
+            (1, KeyCode::ArrowDown) if nb > 0 => self.tab_sel = (self.tab_sel + 1) % nb,
+            (1, KeyCode::Space) if nb > 0 => {
+                let b = &mut self.sim.colonies[ci].buildings[self.tab_sel.min(nb - 1)];
+                b.enabled = !b.enabled;
+            }
+            (1, KeyCode::KeyR) if nb > 0 => {
+                self.sim.colonies[ci].buildings[self.tab_sel.min(nb - 1)].recipe += 1;
+            }
+            (2, KeyCode::KeyC) => {
+                let n = self.data.crops.len();
+                let w = &mut self.sim.colonies[ci].works;
+                if n > 0 {
+                    w.prev_crop = w.crop;
+                    w.crop = if w.crop >= n { 0 } else { (w.crop + 1) % n };
+                    w.planted = self.sim.time;
+                    self.say("NOUVELLE CULTURE SEMEE");
+                }
+            }
+            (2, KeyCode::KeyR) => {
+                let w = &mut self.sim.colonies[ci].works;
+                w.rotate = !w.rotate;
+            }
+            (4, KeyCode::ArrowLeft) => self.ship_to = self.ship_to.saturating_sub(1),
+            (4, KeyCode::ArrowRight) => self.ship_to += 1,
+            (4, KeyCode::ArrowUp) => self.ship_res = self.ship_res.saturating_sub(1),
+            (4, KeyCode::ArrowDown) => self.ship_res += 1,
+            (4, KeyCode::Enter) => self.click_ship(1),
+            _ => return false,
+        }
+        true
+    }
+
+    /// Send a convoy of the goods and destination chosen in the logistics tab: 0..2 the preset
+    /// loads, 3 everything.
+    pub fn click_ship(&mut self, which: usize) {
+        let ci = self.col_idx;
+        let Some(c) = self.sim.colonies.get(ci) else {
+            return;
+        };
+        let dests: Vec<usize> = self
+            .sim
+            .colonies
+            .iter()
+            .enumerate()
+            .filter(|(i, o)| *i != ci && o.system_seed == c.system_seed)
+            .map(|(i, _)| i)
+            .collect();
+        let items: Vec<usize> = (0..self.data.resources.len())
+            .filter(|&i| c.storage[i] > 0.5)
+            .collect();
+        if dests.is_empty() || items.is_empty() {
+            self.say("RIEN A ENVOYER OU PERSONNE A QUI L'ENVOYER");
+            return;
+        }
+        let to = dests[self.ship_to % dests.len()];
+        let res = items[self.ship_res % items.len()];
+        let kg = match which {
+            0 => 500.0,
+            1 => 2000.0,
+            2 => 10_000.0,
+            _ => c.storage[res],
+        }
+        .min(c.storage[res]);
+        match self.sim.colony_dispatch(ci, to, res, kg) {
+            Ok(d) => self.say(format!("CONVOI PARTI : ARRIVEE DANS {d:.1} JOURS")),
+            Err(e) => self.say(e.to_uppercase()),
+        }
+    }
+
+    pub fn click_tab_row(&mut self, k: usize) {
+        self.tab_sel = k;
     }
 
     fn fleet_key(&mut self, code: KeyCode) {

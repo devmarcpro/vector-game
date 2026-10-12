@@ -15,6 +15,7 @@ pub mod chemistry;
 pub mod civ;
 pub mod colony;
 pub mod colony_life;
+pub mod colony_works;
 pub mod combat;
 pub mod companies;
 pub mod crew;
@@ -406,6 +407,9 @@ pub struct Sim {
     pub research_progress: f64,
     /// Anomalies already explored (per body of the current system).
     pub explored: Vec<bool>,
+    /// Discoveries made so far (`resource:x`, `anomaly:x`, `artefact:x`, `wreck:salvaged`,
+    /// `study:colony|lab`): the research of some technologies cannot start without them.
+    pub findings: std::collections::BTreeSet<String>,
     pub flare_day: i64,
     pub pending_flare: Option<(f64, f64, bool)>,
     pub env_sensor: f64,
@@ -530,6 +534,7 @@ impl Sim {
             current_research: None,
             research_progress: 0.0,
             explored: vec![false; n],
+            findings: Default::default(),
             flare_day: -1,
             pending_flare: None,
             env_sensor: 1.0,
@@ -680,6 +685,14 @@ impl Sim {
         a
     }
 
+    /// Share of the starlight the air above the ship lets through: the same law that dims the
+    /// solar farms of a colony (`colony::solar_transmittance`), 1 in the void.
+    pub fn solar_dimming(&self) -> f64 {
+        self.in_air().map_or(1.0, |(_, air, alt)| {
+            colony::solar_transmittance(air.pressure(alt))
+        })
+    }
+
     /// Stellar flux at the ship relative to 1 AU (for solar panels).
     pub fn solar_flux(&self) -> f64 {
         let d_au = self.ship.pos.length() / vector_world::orbit::AU;
@@ -760,7 +773,8 @@ impl Sim {
         self.mind_tick();
         self.births_tick();
         self.news_tick();
-        let flux = self.solar_flux();
+        // The same air dims the panels of a ship and those of a colony (`solar_transmittance`).
+        let flux = self.solar_flux() * self.solar_dimming();
         let ext_heat_kw = self.external_heat_kw(dt);
         let act = &Activity {
             ext_heat_kw,

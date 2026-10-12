@@ -1158,6 +1158,7 @@ mod tests {
             enabled: true,
             recipe: 0,
             health: 1.0,
+            ops: Default::default(),
         };
         s.colonies[ci].buildings.push(inst.clone());
         assert!(s.relay_here());

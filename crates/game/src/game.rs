@@ -300,6 +300,10 @@ pub struct Game {
     pub family_tab: usize,
     pub family_ped: Option<vector_sim::genealogy::Pedigree>,
     pub help_open: bool,
+    /// The screen whose help the panel shows (None: the current one).
+    pub help_for: Option<Screen>,
+    /// The context menu opened by a right click (see `context_menu`).
+    pub ctx_menu: Option<crate::context_menu::Menu>,
     /// The cockpit looks astern (at the ground of a ship landing tail first).
     pub rear_view: bool,
     pub tut_step: Option<usize>,
@@ -491,6 +495,8 @@ impl Game {
             family_tab: 0,
             family_ped: None,
             help_open: false,
+            help_for: None,
+            ctx_menu: None,
             rear_view: false,
             tut_step: None,
             tut_keys: Vec::new(),
@@ -526,6 +532,8 @@ impl Game {
         let wreck = vector_sim::start::is_wreck(&self.data, cfg);
         self.sim = sim;
         self.help_open = false;
+        self.help_for = None;
+        self.ctx_menu = None;
         self.tut_step = None;
         self.hub_origin = None;
         self.dash_origin = false;
@@ -1004,6 +1012,10 @@ impl Game {
     }
 
     pub fn key(&mut self, code: KeyCode, text: Option<&str>, pressed: bool) {
+        // The context menu is modal: it eats the key presses.
+        if pressed && self.ctx_menu.is_some() && self.ctx_key(code) {
+            return;
+        }
         let at = self.screen;
         // The market opened from a terminal: Escape goes back to the walk, not out of the dock.
         if pressed
@@ -1081,8 +1093,12 @@ impl Game {
             self.keys.remove(&code);
             return;
         }
-        if code == KeyCode::F1 && self.screen != Screen::MainMenu {
+        // "?" is the help too (typed, so it is read from the text: AZERTY and QWERTY alike).
+        let question =
+            text == Some("?") && !matches!(self.screen, Screen::MainMenu | Screen::NewGame);
+        if (code == KeyCode::F1 || question) && self.screen != Screen::MainMenu {
             self.help_open = !self.help_open;
+            self.help_for = None;
             return;
         }
         if code == KeyCode::Delete && self.tut_step.is_some() {

@@ -1,7 +1,8 @@
 //! Mouse. Every screen declares its clickable zones while it draws (`Game::hit`), the last frame's
 //! zones are what a click lands on. A click on a zone runs its action (a key press or a function
 //! with a number), a double click runs its second action, the wheel scrolls the current list,
-//! and a right click goes back.
+//! and a right click opens the context menu of the zone under it (see `context_menu`), or goes
+//! back on an empty zone.
 use crate::game::{Game, Screen};
 use std::cell::RefCell;
 use winit::keyboard::KeyCode;
@@ -40,6 +41,8 @@ pub struct Pointer {
     /// The key held by a click on a `Hold` zone, released with the button.
     pub holding: Option<KeyCode>,
     last_click: Option<(u64, (i32, i32))>,
+    /// Where the pointer rests and for how many frames (the tooltips).
+    pub hover: std::cell::Cell<((i32, i32), u32)>,
 }
 
 impl Game {
@@ -109,7 +112,7 @@ impl Game {
         }
     }
 
-    fn run_act(&mut self, act: Act) {
+    pub(crate) fn run_act(&mut self, act: Act) {
         let at = self.pointer.pos;
         match act {
             Act::Key(k) => {
@@ -132,6 +135,9 @@ impl Game {
             return;
         }
         self.pointer.pos = (x, y);
+        if self.ctx_click_outside(x, y) {
+            return;
+        }
         let hit = self
             .pointer
             .hits
@@ -448,6 +454,15 @@ impl Game {
     /// The wheel moves the selection of the current screen (`lines` > 0: up); in flight it
     /// changes the time scale.
     pub fn pointer_wheel(&mut self, lines: f64) {
+        if let Some(m) = self.ctx_menu.as_mut() {
+            let n = m.items.len().max(1);
+            m.sel = if lines > 0.0 {
+                (m.sel + n - 1) % n
+            } else {
+                (m.sel + 1) % n
+            };
+            return;
+        }
         let steps = lines.abs().ceil().max(1.0) as usize;
         for _ in 0..steps.min(5) {
             if self.ext_active() {
@@ -477,12 +492,37 @@ impl Game {
     }
 }
 
+/// The two keys of a "A/B" word of the command bar (up and down, left and right, plus and minus):
+/// the left half of the word presses the first, the right half the second.
+pub fn pair_of_word(word: &str) -> Option<(KeyCode, KeyCode)> {
+    match word {
+        "HAUT/BAS" => Some((KeyCode::ArrowUp, KeyCode::ArrowDown)),
+        "GAUCHE/DROITE" | "</>" => Some((KeyCode::ArrowLeft, KeyCode::ArrowRight)),
+        "+/-" => Some((KeyCode::Equal, KeyCode::Minus)),
+        _ => None,
+    }
+}
+
+/// The key of a lone arrow word ("HAUT EMPRUNTER", "BAS REMBOURSER").
+pub fn arrow_of_word(word: &str) -> Option<KeyCode> {
+    match word {
+        "HAUT" => Some(KeyCode::ArrowUp),
+        "BAS" => Some(KeyCode::ArrowDown),
+        "GAUCHE" => Some(KeyCode::ArrowLeft),
+        "DROITE" => Some(KeyCode::ArrowRight),
+        _ => None,
+    }
+}
+
 /// The key a command-bar word stands for, if a click on it can sensibly press it.
 pub fn key_of_word(screen: Screen, word: &str) -> Option<KeyCode> {
     let w = word.split('/').next().unwrap_or("");
     let key = match w {
         "TAB" => KeyCode::Tab,
-        "ENTREE" => KeyCode::Enter,
+        "ENTREE" | "ENT" => KeyCode::Enter,
+        "FIN" => KeyCode::End,
+        "ACCUEIL" => KeyCode::Home,
+        "INSER" => KeyCode::Insert,
         "ECHAP" => KeyCode::Escape,
         "ESP" | "ESPACE" => KeyCode::Space,
         "PGUP" => KeyCode::PageUp,
@@ -521,6 +561,9 @@ pub fn key_of_word(screen: Screen, word: &str) -> Option<KeyCode> {
                 | KeyCode::F6
                 | KeyCode::F8
                 | KeyCode::F10
+                | KeyCode::End
+                | KeyCode::Home
+                | KeyCode::Insert
         )
     {
         return None;

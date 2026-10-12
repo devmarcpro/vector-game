@@ -1,13 +1,35 @@
 //! Text-grid screens: main menu, pause, station market, inventory.
 use crate::game::{Game, Screen, MAIN_MENU, PAUSE_MENU};
 use crate::hud::{AMBER, DIM, GREEN, RED};
-use crate::mouse::{key_of_word, Act};
+use crate::mouse::{arrow_of_word, key_of_word, pair_of_word, Act};
 use winit::keyboard::KeyCode;
 
 /// Colour of a list line under the pointer.
 const HOVER: u32 = 0x00D0_FFD0;
 use vector_render::Framebuffer;
 use vector_sim::{G0, RESALE};
+
+/// The screen's own line of keys at the foot of the page: the permanent command bar says the
+/// same (and its words are buttons), so it only shows when the bar is turned off.
+pub fn foot(fb: &mut Framebuffer, g: &Game, col: usize, row: usize, text: &str) {
+    if g.settings.hints {
+        return;
+    }
+    foot_buttons(fb, g, col, row, text);
+}
+
+/// A line of "KEY:what it does" commands (separated by two spaces): each is a button.
+fn foot_buttons(fb: &mut Framebuffer, g: &Game, col: usize, row: usize, text: &str) {
+    let mut c = col;
+    for seg in text.split("  ").filter(|x| !x.is_empty()) {
+        let n = seg.chars().count();
+        let word = seg.split([':', ' ']).next().unwrap_or("");
+        let hover = key_of_word(g.screen, word)
+            .is_some_and(|k| g.hit_cells(c, row, n, 1, Act::Key(k), None));
+        fb.text(c, row, seg, if hover { AMBER } else { DIM });
+        c += n + 2;
+    }
+}
 
 fn menu(fb: &mut Framebuffer, g: &Game, top: usize, items: &[&str], sel: usize) {
     let col = fb.cols() / 2 - 12;
@@ -157,10 +179,18 @@ fn draw_ticker(fb: &mut Framebuffer, g: &Game) {
 }
 
 pub fn draw_overlay(fb: &mut Framebuffer, g: &Game) {
+    draw_overlay_inner(fb, g);
+    // The context menu and the tooltips come last: they own the zones on top.
+    crate::context_menu::draw(fb, g);
+    crate::context_menu::draw_tooltip(fb, g);
+}
+
+fn draw_overlay_inner(fb: &mut Framebuffer, g: &Game) {
     crate::flight_menu::draw(fb, g);
     // Before the command bar: the bar stays the last zone drawn.
     crate::hub::draw_menu_button(fb, g);
     crate::dash_view::draw_alert_badge(fb, g);
+    crate::context_menu::draw_help_button(fb, g);
     if g.settings.ticker && !matches!(g.screen, Screen::MainMenu | Screen::NewGame) {
         draw_ticker(fb, g);
     }
@@ -190,13 +220,29 @@ pub fn draw_overlay(fb: &mut Framebuffer, g: &Game) {
         }
         rows.push(cur);
         for (k, r) in rows.iter().enumerate() {
-            if flight {
-                fb.text(40, 5 + k, r, AMBER);
+            let (c, row) = if flight {
+                (40, 5 + k)
             } else if g.settings.hints {
                 // The last row belongs to the command bar and the rows above to messages.
-                fb.text(1, k, r, AMBER);
+                (1, k)
             } else {
-                fb.text(1, fb.rows().saturating_sub(rows.len() - k), r, AMBER);
+                (1, fb.rows().saturating_sub(rows.len() - k))
+            };
+            fb.text(c, row, r, AMBER);
+            // "[SUPPR ignorer]" is a button (it can wrap onto the next row: the word "[SUPPR" opens it).
+            if let Some(pos) = r.find("[SUPPR") {
+                let n = r.chars().count() - r[..pos].chars().count();
+                let hover = g.hit_cells(
+                    c + r[..pos].chars().count(),
+                    row,
+                    n,
+                    1,
+                    Act::Key(KeyCode::Delete),
+                    None,
+                );
+                if hover {
+                    fb.text(c + r[..pos].chars().count(), row, &r[pos..], 0x00D0_FFD0);
+                }
             }
         }
     }
@@ -222,8 +268,18 @@ pub fn draw_overlay(fb: &mut Framebuffer, g: &Game) {
             let end = rest.find("  ").unwrap_or(rest.len());
             let (seg, tail) = rest.split_at(end);
             let word = seg.split_whitespace().next().unwrap_or("");
-            let hover = key_of_word(g.screen, word)
-                .is_some_and(|k| g.hit_cells(col, row, seg.chars().count(), 1, Act::Key(k), None));
+            let hover = if let Some((a, b)) = pair_of_word(word) {
+                // "HAUT/BAS": the left half presses the first key, the right half the second.
+                let n = word.chars().count();
+                let half = n / 2;
+                let h1 = g.hit_cells(col, row, half, 1, Act::Key(a), None);
+                let h2 = g.hit_cells(col + half, row, n - half, 1, Act::Key(b), None);
+                h1 || h2
+            } else if let Some(k) = arrow_of_word(word).or_else(|| key_of_word(g.screen, word)) {
+                g.hit_cells(col, row, seg.chars().count(), 1, Act::Key(k), None)
+            } else {
+                false
+            };
             fb.text(col, row, seg, if hover { AMBER } else { 0x0040_A058 });
             let skipped = tail.len() - tail.trim_start().len();
             col += seg.chars().count() + skipped;
@@ -231,21 +287,40 @@ pub fn draw_overlay(fb: &mut Framebuffer, g: &Game) {
         }
     }
     if g.help_open && g.screen != Screen::MainMenu {
-        let lesson: &[&str] = if g.screen == Screen::Flight && g.sim.surface_state().is_some() {
+        let shown = g.help_for.unwrap_or(g.screen);
+        let lesson: &[&str] = if shown == Screen::Flight && g.sim.surface_state().is_some() {
             crate::tutorial::landing_help()
         } else {
             &[]
         };
-        let lines: Vec<String> = lesson
+        let wrap_at = fb.cols().saturating_sub(12).min(110);
+        let mut lines: Vec<String> = lesson
             .iter()
-            .chain(crate::tutorial::help_lines(g.screen).iter())
+            .chain(crate::tutorial::help_lines(shown).iter())
             .map(|l| g.settings.localize(l))
+            .flat_map(|l| crate::hub::wrap(&l, wrap_at))
             .collect();
-        let w = lines.iter().map(|l| l.len()).max().unwrap_or(10).max(14) + 2;
+        lines.extend(crate::hub::wrap(
+            "SOURIS : CLIC DROIT SUR UN ELEMENT = SES ACTIONS ; SURVOL = INFOBULLE ; MOLETTE = LISTE",
+            wrap_at,
+        ));
+        let w = lines
+            .iter()
+            .map(|l| l.chars().count())
+            .max()
+            .unwrap_or(10)
+            .max(30)
+            + 2;
         let x0 = fb.cols().saturating_sub(w + 2);
         let y0 = 4;
         let (px, py) = ((x0 * 8) as f32 - 4.0, (y0 * 10) as f32 - 4.0);
         let (pw, ph) = ((w * 8) as f32 + 8.0, ((lines.len() + 3) * 10) as f32 + 8.0);
+        // A click anywhere on the panel closes it (the zones below it are not reachable).
+        g.hit(
+            (px as i32, py as i32, (px + pw) as i32, (py + ph) as i32),
+            Act::Key(KeyCode::F1),
+            None,
+        );
         for y in 0..ph as i32 {
             for x in 0..pw as i32 {
                 fb.px_set((px as i32) + x, (py as i32) + y, 0x0008_1018);
@@ -255,7 +330,23 @@ pub fn draw_overlay(fb: &mut Framebuffer, g: &Game) {
         fb.line(px, py + ph, px + pw, py + ph, AMBER);
         fb.line(px, py, px, py + ph, AMBER);
         fb.line(px + pw, py, px + pw, py + ph, AMBER);
-        fb.text(x0 + 1, y0, "AIDE  [F1 fermer]", AMBER);
+        let title = if shown == g.screen {
+            "AIDE  [F1 OU CLIC : FERMER]".to_string()
+        } else {
+            format!(
+                "AIDE  [F1 OU CLIC : FERMER]  {}",
+                crate::hub::screen_label(shown)
+            )
+        };
+        let over = g.hit_cells(
+            x0 + 1,
+            y0,
+            title.chars().count(),
+            1,
+            Act::Key(KeyCode::F1),
+            None,
+        );
+        fb.text(x0 + 1, y0, &title, if over { 0x00D0_FFD0 } else { AMBER });
         for (i, l) in lines.iter().enumerate() {
             fb.text(x0 + 1, y0 + 2 + i, l, GREEN);
         }
@@ -300,11 +391,12 @@ fn draw_rules(fb: &mut Framebuffer, g: &Game) {
             RED,
         );
     }
-    fb.text(
+    foot(
+        fb,
+        g,
         4,
         fb.rows() - 3,
         "HAUT/BAS CHOISIR  GAUCHE/DROITE MODIFIER  R DEFAUT  ECHAP RETOUR",
-        DIM,
     );
 }
 
@@ -344,11 +436,12 @@ fn draw_options(fb: &mut Framebuffer, g: &Game) {
         fb.text(40, row, val, c);
         fb.text(41 + val.len(), row, ">", AMBER);
     }
-    fb.text(
+    foot(
+        fb,
+        g,
         4,
         fb.rows() - 3,
         "HAUT/BAS CHOISIR  GAUCHE/DROITE MODIFIER  ECHAP RETOUR",
-        DIM,
     );
 }
 
@@ -378,8 +471,10 @@ fn draw_codex(fb: &mut Framebuffer, g: &Game) {
         fb.text(x, tab_row, c, col);
         x += c.len() + 2;
     }
+    // The list starts under the last row of tabs (they wrap on as many rows as they need).
+    let top = (tab_row + 2).max(5);
     let names = codex::names(&g.data, g.codex_cat);
-    let rows = fb.rows().saturating_sub(10);
+    let rows = fb.rows().saturating_sub(top + 5);
     let sel = g.codex_sel.min(names.len().saturating_sub(1));
     let start = sel
         .saturating_sub(rows / 2)
@@ -387,7 +482,7 @@ fn draw_codex(fb: &mut Framebuffer, g: &Game) {
     for (k, n) in names.iter().enumerate().skip(start).take(rows) {
         let hover = g.hit_cells(
             2,
-            5 + k - start,
+            top + k - start,
             34,
             1,
             Act::Call(Game::click_codex_sel, k),
@@ -403,13 +498,13 @@ fn draw_codex(fb: &mut Framebuffer, g: &Game) {
         let mark = if k == sel { ">" } else { " " };
         let mut s = format!("{mark} {n}");
         s.truncate(34);
-        fb.text(2, 5 + k - start, &s, c);
+        fb.text(2, top + k - start, &s, c);
     }
     // The text keeps to the left of the turning wireframe of the entry.
     let shape = crate::wire_shape::shape_for(&g.data, g.codex_cat, sel);
     let w = fb.cols().saturating_sub(40).max(20);
     let w = if shape.is_some() { w.min(82) } else { w };
-    let mut row = 5;
+    let mut row = top;
     let max_row = fb.rows().saturating_sub(4);
     for (i, l) in codex::entry(&g.data, g.codex_cat, sel).iter().enumerate() {
         let mut cur = String::new();
@@ -507,11 +602,12 @@ fn draw_codex(fb: &mut Framebuffer, g: &Game) {
             fb.text(26, fb.rows() - 5 + i, msg, if i == 0 { AMBER } else { DIM });
         }
     }
-    fb.text(
+    foot(
+        fb,
+        g,
         2,
         fb.rows() - 3,
         "GAUCHE/DROITE CATEGORIE  HAUT/BAS ENTREE  RET.ARR. REVENIR  ECHAP RETOUR",
-        DIM,
     );
 }
 
@@ -681,17 +777,19 @@ fn draw_station(fb: &mut Framebuffer, g: &Game) {
         );
     }
     let b = fb.rows() - 4;
-    fb.text(
+    foot(
+        fb,
+        g,
         1,
         b,
         "ENTREE:VENDRE TOUT  S:VENDRE 100KG  B:ACHETER 100KG  C:CONTRATS  E:BANQUE",
-        DIM,
     );
-    fb.text(
+    foot_buttons(
+        fb,
+        g,
         1,
         b + 1,
-        "D:COURTAGE L:ELEVAGE A:CASINO G/J:NOIR F:CARBURANT R:REPARER H:VAISSEAU Y:CHANTIER K:EQUIPAGE U:DECOLLER",
-        DIM,
+        "D:COURTAGE  L:ELEVAGE  A:CASINO  G/J:NOIR  F:CARBURANT  R:REPARER  H:VAISSEAU  Y:CHANTIER  K:EQUIPAGE  U:DECOLLER",
     );
     for (i, msg) in g.messages.iter().rev().take(2).enumerate() {
         fb.text(1, b + 2 + i, msg, if i == 0 { AMBER } else { DIM });
@@ -740,11 +838,12 @@ fn draw_inventory(fb: &mut Framebuffer, g: &Game) {
         );
     }
     draw_hold(fb, g, &items);
-    fb.text(
+    foot(
+        fb,
+        g,
         1,
         fb.rows() - 3,
         "HAUT/BAS:CHOISIR  J:JETER LA RESSOURCE  I/ECHAP:RETOUR",
-        DIM,
     );
     if c.is_full() {
         fb.text(1, fb.rows() - 5, "SOUTE PLEINE", RED);
@@ -918,7 +1017,7 @@ fn draw_ship(fb: &mut Framebuffer, g: &Game) {
     } else {
         "HAUT/BAS:EMPLACEMENT   (AMARREZ-VOUS A UNE STATION POUR MODIFIER)   H/ECHAP:RETOUR"
     };
-    fb.text(1, b, help, DIM);
+    foot(fb, g, 1, b, help);
     for (i, msg) in g.messages.iter().rev().take(2).enumerate() {
         fb.text(1, b + 1 + i, msg, if i == 0 { AMBER } else { DIM });
     }
@@ -983,12 +1082,7 @@ fn draw_shipyard(fb: &mut Framebuffer, g: &Game) {
         );
     }
     let b = fb.rows() - 4;
-    fb.text(
-        1,
-        b,
-        "ENTREE:ACHETER (MODULES -> STOCK, SOUTE VIDE REQUISE)  C:CONCEVOIR SON VAISSEAU  ECHAP:RETOUR",
-        DIM,
-    );
+    foot(fb, g, 1, b, "ENTREE:ACHETER (MODULES -> STOCK, SOUTE VIDE REQUISE)  C:CONCEVOIR SON VAISSEAU  ECHAP:RETOUR");
     for (i, msg) in g.messages.iter().rev().take(2).enumerate() {
         fb.text(1, b + 1 + i, msg, if i == 0 { AMBER } else { DIM });
     }
@@ -1269,7 +1363,7 @@ fn draw_crew(fb: &mut Framebuffer, g: &Game) {
         );
     }
     let b = fb.rows() - 4;
-    fb.text(1, b, "HAUT/BAS:CHOISIR  GAUCHE/DROITE:POSTE  T:QUART  M:MEDECINE  X:DEBARQUER (A QUAI)  J:JOURNAL  N:RECRUTER  K/ECHAP:RETOUR", DIM);
+    foot(fb, g, 1, b, "HAUT/BAS:CHOISIR  GAUCHE/DROITE:POSTE  T:QUART  M:MEDECINE  X:DEBARQUER (A QUAI)  J:JOURNAL  N:RECRUTER  K/ECHAP:RETOUR");
     for (i, msg) in g.messages.iter().rev().take(2).enumerate() {
         fb.text(1, b + 1 + i, msg, if i == 0 { AMBER } else { DIM });
     }
@@ -1324,11 +1418,12 @@ fn draw_recruit(fb: &mut Framebuffer, g: &Game) {
         DIM,
     );
     let b = fb.rows() - 4;
-    fb.text(
+    foot(
+        fb,
+        g,
         1,
         b,
         "HAUT/BAS:CHOISIR  ENTREE:EMBAUCHER  K:EQUIPAGE  ECHAP:RETOUR",
-        DIM,
     );
     for (i, msg) in g.messages.iter().rev().take(2).enumerate() {
         fb.text(1, b + 1 + i, msg, if i == 0 { AMBER } else { DIM });
@@ -1346,17 +1441,16 @@ fn draw_pending(fb: &mut Framebuffer, g: &Game) -> usize {
     fb.text(
         1,
         top,
-        &format!("SURPRISE ({waiting} EN ATTENTE) : REPONDRE PAR LES TOUCHES 1 A 3"),
+        &format!("SURPRISE ({waiting} EN ATTENTE) : CLIQUEZ UNE REPONSE (OU TOUCHES 1 A 3)"),
         AMBER,
     );
     fb.text(1, top + 1, &text.to_uppercase(), GREEN);
     for (k, l) in labels.iter().enumerate() {
-        fb.text(
-            3,
-            top + 2 + k,
-            &format!("{} : {}", k + 1, l.to_uppercase()),
-            AMBER,
-        );
+        let line = format!("{} : {}", k + 1, l.to_uppercase());
+        // A click answers, like the key.
+        let key = [KeyCode::Digit1, KeyCode::Digit2, KeyCode::Digit3][k.min(2)];
+        let hover = g.hit_cells(3, top + 2 + k, line.chars().count(), 1, Act::Key(key), None);
+        fb.text(3, top + 2 + k, &line, if hover { HOVER } else { AMBER });
     }
     5
 }
@@ -1383,11 +1477,12 @@ fn draw_journal(fb: &mut Framebuffer, g: &Game) {
     if log.is_empty() {
         fb.text(1, 3, "(RIEN A SIGNALER)", DIM);
     }
-    fb.text(
+    foot(
+        fb,
+        g,
         1,
         fb.rows() - 3,
         "HAUT/BAS:DEFILER  1-3:REPONDRE A UNE SURPRISE  K:EQUIPAGE  J/ECHAP:RETOUR",
-        DIM,
     );
 }
 
@@ -1423,11 +1518,12 @@ fn draw_news(fb: &mut Framebuffer, g: &Game) {
     if list.is_empty() {
         fb.text(1, 4, "(AUCUNE NOUVELLE POUR L'INSTANT)", DIM);
     }
-    fb.text(
+    foot(
+        fb,
+        g,
         1,
         fb.rows() - 4,
         "HAUT/BAS:DEFILER  1-3:REPONDRE A UNE SURPRISE  TAB:JOURNAL  J/ECHAP:RETOUR",
-        DIM,
     );
 }
 
@@ -1735,11 +1831,12 @@ fn draw_galaxy(fb: &mut Framebuffer, g: &Game) {
         DIM,
     );
     let b = fb.rows() - 4;
-    fb.text(
+    foot(
+        fb,
+        g,
         1,
         b,
         "HAUT/BAS:ETOILE  +/-:ZOOM  ENTREE:SAUTER (HORS DE TOUT CHAMP DE GRAVITE)  L/ECHAP:FERMER",
-        DIM,
     );
     for (i, msg) in g.messages.iter().rev().take(2).enumerate() {
         fb.text(1, b + 1 + i, msg, if i == 0 { AMBER } else { DIM });
@@ -1841,11 +1938,12 @@ fn draw_contracts(fb: &mut Framebuffer, g: &Game) {
         );
     }
     let b = fb.rows() - 4;
-    fb.text(
+    foot(
+        fb,
+        g,
         1,
         b,
         "HAUT/BAS:CHOISIR  ENTREE:ACCEPTER / LIVRER  X:ABANDONNER (-1 REP)  ECHAP:RETOUR",
-        DIM,
     );
     for (i, msg) in g.messages.iter().rev().take(2).enumerate() {
         fb.text(1, b + 1 + i, msg, if i == 0 { AMBER } else { DIM });
@@ -1918,11 +2016,12 @@ fn draw_bank(fb: &mut Framebuffer, g: &Game) {
     }
     draw_economy_panel(fb, g, top + 17);
     let b = fb.rows() - 4;
-    fb.text(
+    foot(
+        fb,
+        g,
         1,
         b,
         "HAUT:EMPRUNTER 1000  BAS:REMBOURSER 1000  ENTREE:TOUT REMBOURSER  ECHAP:RETOUR",
-        DIM,
     );
     for (i, msg) in g.messages.iter().rev().take(2).enumerate() {
         fb.text(1, b + 1 + i, msg, if i == 0 { AMBER } else { DIM });
@@ -2129,11 +2228,12 @@ fn draw_empire(fb: &mut Framebuffer, g: &Game) {
         );
     }
     let b = fb.rows() - 4;
-    fb.text(
+    foot(
+        fb,
+        g,
         1,
         b,
         "HAUT/BAS:CHOISIR  ENTREE:DETAIL  F3:FLOTTE  F2/ECHAP:RETOUR",
-        DIM,
     );
     msgs(fb, g, b + 1);
 }
@@ -2433,7 +2533,7 @@ fn draw_colony(fb: &mut Framebuffer, g: &Game) {
         fb.text(1, ly + 1 + i, &format!("{} {}", stamp(*t), l), DIM);
     }
     let b = fb.rows() - 4;
-    fb.text(1, b, "TAB:ZONE  HAUT/BAS  ESPACE:ON/OFF  R:RECETTE  X:DEMOLIR  D/W:DEPOSER/RETIRER (STOCKS)  GAUCHE/DROITE:POLITIQUE  ENTREE:CONSTRUIRE  T:CAISSE  U:DECOLLER", DIM);
+    foot(fb, g, 1, b, "TAB:ZONE  HAUT/BAS  ESPACE:ON/OFF  R:RECETTE  X:DEMOLIR  D/W:DEPOSER/RETIRER (STOCKS)  GAUCHE/DROITE:POLITIQUE  ENTREE:CONSTRUIRE  T:CAISSE  U:DECOLLER");
     msgs(fb, g, b + 1);
 }
 
@@ -2563,7 +2663,7 @@ fn draw_fleet(fb: &mut Framebuffer, g: &Game) {
         crate::war_view::draw_squad(fb, g, ry + 3 + s.routes.len().max(1));
     }
     let b = fb.rows() - 4;
-    fb.text(1, b, "TAB:LISTE  N:NOUVELLE ROUTE  A:AFFECTER  U:RETIRER  X:SUPPRIMER/VENDRE  B:ACHETER (A QUAI)  O:ORDRE  R:RAVITAILLER  V:REPARER  F2:EMPIRE  ECHAP:RETOUR", DIM);
+    foot(fb, g, 1, b, "TAB:LISTE  N:NOUVELLE ROUTE  A:AFFECTER  U:RETIRER  X:SUPPRIMER/VENDRE  B:ACHETER (A QUAI)  O:ORDRE  R:RAVITAILLER  V:REPARER  F2:EMPIRE  ECHAP:RETOUR");
     msgs(fb, g, b + 1);
 }
 

@@ -87,8 +87,7 @@ pub fn place_of(s: Screen) -> Place {
     }
 }
 
-/// Every screen of the game (the menu's test walks it).
-#[cfg(test)]
+/// Every screen of the game (the menu's test walks it; the help of a screen is found by its place).
 pub const ALL_SCREENS: [Screen; 38] = [
     Screen::Dashboard,
     Screen::Designer,
@@ -129,6 +128,24 @@ pub const ALL_SCREENS: [Screen; 38] = [
     Screen::Expedition,
     Screen::NavAuto,
 ];
+
+/// The place of a screen in `ALL_SCREENS` (a number a zone can carry).
+pub fn screen_id(s: Screen) -> usize {
+    ALL_SCREENS.iter().position(|&x| x == s).unwrap_or(0)
+}
+
+pub fn screen_from_id(i: usize) -> Option<Screen> {
+    ALL_SCREENS.get(i).copied()
+}
+
+/// How the menu names a screen (its Debug name when no line opens it).
+pub fn screen_label(s: Screen) -> String {
+    SPACES
+        .iter()
+        .flat_map(|sp| sp.entries.iter())
+        .find(|e| e.target == Some(s))
+        .map_or_else(|| format!("{s:?}").to_uppercase(), |e| e.label.to_string())
+}
 
 const fn entry(
     label: &'static str,
@@ -883,14 +900,17 @@ pub fn draw(fb: &mut Framebuffer, g: &Game) {
     fb.text(2, 3, "VOUS ETES :", DIM);
     fb.text(14, 3, &o.place, AMBER);
     fb.text(2, 4, &o.status, GREEN);
+    // What makes sense right now: clickable. Then the reminders of the keys.
     let mut row = 6;
-    fb.text(2, row, "VOUS POUVEZ :", DIM);
+    let banner_row = row;
+    row += crate::context_menu::suggestions(g).len() + 2;
+    fb.text(2, row, "RAPPELS :", DIM);
     for line in &o.todo {
         for (k, l) in wrap(line, cols - 24).iter().enumerate() {
             if k == 0 {
-                fb.text(16, row, "-", DIM);
+                fb.text(12, row, "-", DIM);
             }
-            fb.text(18, row, l, GREEN);
+            fb.text(14, row, l, DIM);
             row += 1;
         }
     }
@@ -958,6 +978,7 @@ pub fn draw(fb: &mut Framebuffer, g: &Game) {
         }
     }
     // Last, so that the zones of the spaces and of their entries keep their order.
+    crate::context_menu::draw_banner(fb, g, 2, banner_row, cols - 24);
     button(
         fb,
         g,

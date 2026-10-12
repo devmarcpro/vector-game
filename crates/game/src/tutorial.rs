@@ -18,7 +18,7 @@ fn any_pressed(g: &Game, screen: Screen, codes: &[KeyCode]) -> bool {
 
 pub const STEPS: [Step; 17] = [
     Step {
-        text: "Bienvenue, IA de bord. Pilotez le vaisseau : W/S tangage, A/D lacet, Q/E roulis.",
+        text: "Bienvenue, IA de bord. Tout se fait aussi a la souris : CLIC DROIT sur un element = ses actions, F10 = menu, ? = aide. Pilotez : W/S tangage, A/D lacet, Q/E roulis.",
         done: |g| any_pressed(g, Screen::Flight, &g.settings.move_keys()),
     },
     Step {
@@ -261,7 +261,7 @@ pub fn help_lines(screen: Screen) -> &'static [&'static str] {
             ", : lancer un leurre thermique (detourne les missiles)   . : radar actif ON/OFF (voit loin, mais on vous voit de tres loin)",
             "/ : aborder a pied la cible neutralisee (combat dans ses coursives ; garnison tuee puis < = vaisseau capture)",
             "F8 : surface de la planete ou lune ciblee (releve niveau 2) ; Tab y change de couche (BIOSPHERE : V espece, Entree fiche de la variante)",
-            "Souris : clic = cibler un objet, double clic = y aller ; molette = temps ; clic droit = retour",
+            "Souris : clic = cibler un objet, double clic = y aller ; molette = temps ; CLIC DROIT sur un objet = ses actions (cibler, aller, amarrer, atterrir, scanner, orbite, codex) ; dans le vide = menu du cockpit ; menu F11 = toutes les commandes",
         ],
         Screen::Station => &[
             "Haut/Bas : ressource   Entree : tout vendre",
@@ -359,6 +359,7 @@ pub fn help_lines(screen: Screen) -> &'static [&'static str] {
         ],
         Screen::Rogue => &[
             "Fin : explorer a pied un lieu a portee (station, epave, ruine, grotte, portail...)",
+            "Souris : CLIC DROIT sur une case = marcher jusque-la, attaquer ou parler, ramasser, creuser, batir, escalier, borne, drone, rappel, fiche",
             "Fleches ou pave numerique : deplacer ; foncer sur un monstre l'attaque ; clic : marcher jusque-la",
             "Entree sur < sort (butin a bord) ou sur > descend ; sur un site (ruine, grotte, epave) elle y descend",
             "V : lance un drone (robotique) qui ramasse a proximite ; R : rappelle l'equipe depuis la surface",

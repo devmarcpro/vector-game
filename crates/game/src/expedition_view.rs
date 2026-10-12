@@ -103,11 +103,12 @@ pub fn draw_prep(fb: &mut Framebuffer, g: &Game) {
     fb.text(3, row + 3, "> PARTIR", if go { HOVER } else { AMBER });
     let back = g.hit_cells(3, row + 5, 8, 1, Act::Key(KeyCode::Escape), None);
     fb.text(3, row + 5, "RETOUR", if back { HOVER } else { DIM });
-    fb.text(
+    crate::ui::foot(
+        fb,
+        g,
         1,
         fb.rows() - 3,
         "HAUT/BAS CHOISIR  ESPACE COCHER  ENTREE PARTIR  ECHAP RETOUR",
-        DIM,
     );
 }
 

@@ -10,10 +10,10 @@ use winit::keyboard::KeyCode;
 const HOVER: u32 = 0x00D0_FFD0;
 
 /// (label, key shown, action)
-type Entry = (&'static str, &'static str, Act);
+type Entry = (&'static str, String, Act);
 
-fn menus() -> [Entry; 15] {
-    [
+fn menus() -> Vec<Entry> {
+    let raw: [(&str, &str, Act); 15] = [
         ("CARTE SYSTEME", "M", Act::Key(KeyCode::KeyM)),
         ("GALAXIE", "L", Act::Key(KeyCode::KeyL)),
         ("VAISSEAU", "H", Act::Key(KeyCode::KeyH)),
@@ -29,36 +29,103 @@ fn menus() -> [Entry; 15] {
         ("APPELER (RADIO)", "ENTR", Act::Key(KeyCode::Enter)),
         ("PORTAIL / TEMPS", "ACCUEIL", Act::Key(KeyCode::Home)),
         ("EXPLORER A PIED", "FIN", Act::Key(KeyCode::End)),
-    ]
+    ];
+    raw.into_iter()
+        .map(|(a, b, c)| (a, b.to_string(), c))
+        .collect()
 }
 
-fn controls() -> [Entry; 20] {
-    [
-        ("ASSISTANCE", "F", Act::Key(KeyCode::KeyF)),
-        ("AMARRER", "D", Act::Key(KeyCode::KeyD)),
-        ("PILOTE AUTO", "G", Act::Key(KeyCode::KeyG)),
-        ("CIBLE SUIVANTE", "TAB", Act::Key(KeyCode::Tab)),
+fn controls(g: &Game) -> Vec<Entry> {
+    let mv = g.settings.move_keys();
+    let nm = crate::context_menu::key_name;
+    let raw: Vec<(&str, String, Act)> = vec![
+        ("ASSISTANCE", "F".into(), Act::Key(KeyCode::KeyF)),
+        ("AMARRER", "D".into(), Act::Key(KeyCode::KeyD)),
+        ("PILOTE AUTO", "G".into(), Act::Key(KeyCode::KeyG)),
+        ("CIBLE SUIVANTE", "TAB".into(), Act::Key(KeyCode::Tab)),
         (
             "CIBLE PLANETE",
-            "MAJ+TAB",
+            "MAJ+TAB".into(),
             Act::Call(Game::menu_target_planet, 0),
         ),
-        ("PAUSE", "P", Act::Key(KeyCode::KeyP)),
-        ("TEMPS +", "PGUP", Act::Key(KeyCode::PageUp)),
-        ("TEMPS -", "PGDN", Act::Key(KeyCode::PageDown)),
-        ("POUSSEE (MAINT.)", "ESP", Act::Hold(KeyCode::Space)),
-        ("RECUL (MAINT.)", "X", Act::Hold(KeyCode::KeyX)),
-        ("FREIN (MAINT.)", "C", Act::Hold(KeyCode::KeyC)),
-        ("BOOST (MAINT.)", "MAJ", Act::Hold(KeyCode::ShiftLeft)),
-        ("LASER (MAINT.)", "V", Act::Hold(KeyCode::KeyV)),
-        ("TIR (MAINT.)", "CTRL", Act::Hold(KeyCode::ControlLeft)),
-        ("SAUVER", "F5", Act::Key(KeyCode::F5)),
-        ("ORBITE CIRCULAIRE", "INSER", Act::Key(KeyCode::Insert)),
-        ("VUE EXTERNE", "SUPPR", Act::Key(KeyCode::Delete)),
-        ("TRAIN D'ATTERRISSAGE", "PAV3", Act::Key(KeyCode::Numpad3)),
-        ("PILOTE SOL / STATION", "PAV4", Act::Key(KeyCode::Numpad4)),
-        ("SITE PLAT", "PAV7", Act::Key(KeyCode::Numpad7)),
-    ]
+        ("PAUSE", "P".into(), Act::Key(KeyCode::KeyP)),
+        ("TEMPS +", "PGUP".into(), Act::Key(KeyCode::PageUp)),
+        ("TEMPS -", "PGDN".into(), Act::Key(KeyCode::PageDown)),
+        ("POUSSEE (MAINT.)", "ESP".into(), Act::Hold(KeyCode::Space)),
+        ("RECUL (MAINT.)", "X".into(), Act::Hold(KeyCode::KeyX)),
+        ("FREIN (MAINT.)", "C".into(), Act::Hold(KeyCode::KeyC)),
+        (
+            "BOOST (MAINT.)",
+            "MAJ".into(),
+            Act::Hold(KeyCode::ShiftLeft),
+        ),
+        ("LASER (MAINT.)", "V".into(), Act::Hold(KeyCode::KeyV)),
+        (
+            "TIR (MAINT.)",
+            "CTRL".into(),
+            Act::Hold(KeyCode::ControlLeft),
+        ),
+        ("SAUVER", "F5".into(), Act::Key(KeyCode::F5)),
+        (
+            "ORBITE CIRCULAIRE",
+            "INSER".into(),
+            Act::Key(KeyCode::Insert),
+        ),
+        ("VUE EXTERNE", "SUPPR".into(), Act::Key(KeyCode::Delete)),
+        (
+            "TRAIN D'ATTERRISSAGE",
+            "PAV3".into(),
+            Act::Key(KeyCode::Numpad3),
+        ),
+        (
+            "PILOTE SOL / STATION",
+            "PAV4".into(),
+            Act::Key(KeyCode::Numpad4),
+        ),
+        ("SITE PLAT", "PAV7".into(), Act::Key(KeyCode::Numpad7)),
+        ("TANGAGE HAUT (MAINT.)", nm(mv[0]), Act::Hold(mv[0])),
+        ("TANGAGE BAS (MAINT.)", nm(mv[1]), Act::Hold(mv[1])),
+        ("LACET GAUCHE (MAINT.)", nm(mv[3]), Act::Hold(mv[3])),
+        ("LACET DROITE (MAINT.)", nm(mv[2]), Act::Hold(mv[2])),
+        ("ROULIS GAUCHE (MAINT.)", nm(mv[4]), Act::Hold(mv[4])),
+        ("ROULIS DROIT (MAINT.)", nm(mv[5]), Act::Hold(mv[5])),
+        (
+            "RCS HAUT (MAINT.)",
+            "HAUT".into(),
+            Act::Hold(KeyCode::ArrowUp),
+        ),
+        (
+            "RCS BAS (MAINT.)",
+            "BAS".into(),
+            Act::Hold(KeyCode::ArrowDown),
+        ),
+        (
+            "RCS GAUCHE (MAINT.)",
+            "GAUCHE".into(),
+            Act::Hold(KeyCode::ArrowLeft),
+        ),
+        (
+            "RCS DROITE (MAINT.)",
+            "DROITE".into(),
+            Act::Hold(KeyCode::ArrowRight),
+        ),
+        ("MISSILES (MAINT.)", "B".into(), Act::Hold(KeyCode::KeyB)),
+        ("LEURRE THERMIQUE", ",".into(), Act::Key(KeyCode::Comma)),
+        ("RADAR ACTIF", ".".into(), Act::Key(KeyCode::Period)),
+        ("ABORDER A PIED", "/".into(), Act::Key(KeyCode::Slash)),
+        ("COLONISER LA CIBLE", "O".into(), Act::Key(KeyCode::KeyO)),
+        ("EPAVE : RECUPERER", "N".into(), Act::Key(KeyCode::KeyN)),
+        ("EPAVE : PILLER", "U".into(), Act::Key(KeyCode::KeyU)),
+        ("VISEE SOURIS", "F7".into(), Act::Key(KeyCode::F7)),
+        (
+            "NAVIGATION AUTO",
+            "PAV*".into(),
+            Act::Key(KeyCode::NumpadMultiply),
+        ),
+        ("ZOOM CARTE +", "+".into(), Act::Key(KeyCode::Equal)),
+        ("ZOOM CARTE -", "-".into(), Act::Key(KeyCode::Minus)),
+    ];
+    raw
 }
 
 /// Whether the menu is on screen right now.
@@ -74,7 +141,7 @@ pub fn draw(fb: &mut Framebuffer, g: &Game) {
         return;
     }
     let cols = fb.cols();
-    let w = 24usize;
+    let w = 30usize;
     let x = cols.saturating_sub(w + 1);
     let title = if g.flight_menu_open {
         "[-] PILOTAGE (F11)"
@@ -87,17 +154,18 @@ pub fn draw(fb: &mut Framebuffer, g: &Game) {
         return;
     }
     let mut row = 5;
-    for (heading, entries) in [
-        ("MENUS", menus().to_vec()),
-        ("COMMANDES", controls().to_vec()),
-    ] {
+    for (heading, entries) in [("MENUS", menus()), ("COMMANDES", controls(g))] {
         fb.text(x, row, heading, DIM);
         row += 1;
         for (label, key, act) in entries {
+            // A small window shows what fits (the rest is in the context menu and the keys).
+            if row + 3 >= fb.rows() {
+                break;
+            }
             let hover = g.hit_cells(x, row, w, 1, act, None);
             let c = if hover { AMBER } else { GREEN };
             fb.text(x, row, label, c);
-            fb.text(x + w - key.len(), row, key, DIM);
+            fb.text(x + w - key.chars().count(), row, &key, DIM);
             row += 1;
         }
         row += 1;

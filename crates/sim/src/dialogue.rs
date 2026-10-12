@@ -96,13 +96,6 @@ impl Sim {
             .map_or("neutre", |(t, _)| *t)
     }
 
-    /// Tone of voice of whoever is spoken to: the strongest of authority (formal), openness
-    /// (warm) and xenophobia (wary) in their mores, or neutral.
-    pub fn npc_tone(&self, subject: usize) -> &'static str {
-        self.speaker(subject)
-            .map_or("neutre", |sp| self.tone_of(&sp))
-    }
-
     /// First node of the conversation with this subject.
     pub fn dialogue_start(&self, subject: usize) -> Option<String> {
         let sp = self.speaker(subject)?;
@@ -184,6 +177,7 @@ impl Sim {
         for e in &o.effects {
             let eff = parse_effect(e).map_err(|_| "effet invalide")?;
             if let Some(text) = self.apply_dialogue_effect(subject, &eff)? {
+                self.dialogue_trace(&sp, &eff, &text);
                 result = text;
             }
         }
@@ -255,6 +249,28 @@ impl Sim {
             Effect::Mores => civ_body.map(|b| self.describe_mores(b)),
             Effect::CivGift => civ_body.map(|b| self.civ_gift(b)),
         })
+    }
+
+    /// What an important exchange leaves in the news of the place: a bribe taken or refused, a
+    /// bluff that worked or failed, a tribute paid, a gift from a people. Told here and now.
+    fn dialogue_trace(&mut self, sp: &Speaker, eff: &Effect, text: &str) {
+        let (tag, story) = match eff {
+            Effect::Bribe => (
+                6,
+                format!(
+                    "{} ({}) : un controle s'est joue sous le manteau avec votre vaisseau. {text}",
+                    sp.name, sp.faction
+                ),
+            ),
+            Effect::Bluff => (
+                6,
+                format!("{} ({}) face a votre bluff : {text}", sp.name, sp.faction),
+            ),
+            Effect::Peace => (6, format!("{} : {text}", sp.faction)),
+            Effect::CivGift => (0, format!("{} : {text}", sp.name)),
+            _ => return,
+        };
+        self.news_push(self.time, tag, 0.0, story);
     }
 
     /// What the AI learns of the mores of a world's people: the axes on which they are extreme.
@@ -412,8 +428,13 @@ impl Sim {
                     .map_or("sans maître".to_string(), |f| {
                         format!("territoire de {}", self.data.factions[f].name)
                     });
+                // The place has the name its history gave it (the march of its great figure).
+                let cell = crate::politics::cell_of(e.pos);
+                let holder = crate::politics::faction_of(&self.data, &self.galaxy, cell);
+                let march =
+                    crate::history::chronicle(&self.data, self.galaxy.seed, cell, holder).name;
                 format!(
-                    "L'étoile {} brille à {:.1} années-lumière, {}.",
+                    "L'étoile {} brille à {:.1} années-lumière, {} ({march}).",
                     e.header.name,
                     e.distance_to(self.here_pos),
                     owner
@@ -512,18 +533,15 @@ mod tests {
     fn tone_follows_the_mores_of_the_faction() {
         let mut s = sim();
         let k = npc_of(&s, NpcRole::Trader);
-        set_faction(&mut s, k, "hegemonie");
-        assert_eq!(
-            s.npc_tone(k),
-            "formel",
-            "an authoritarian faction is formal"
-        );
-        set_faction(&mut s, k, "concorde");
-        assert_eq!(s.npc_tone(k), "cordial", "an open faction is warm");
-        s.npcs[k].faction = None;
-        assert_eq!(s.npc_tone(k), "neutre");
-        // The same node reads differently.
         let start = s.dialogue_start(k).expect("start");
+        let tone = |s: &Sim| s.dialogue_view(k, &start, "").expect("view").tone;
+        set_faction(&mut s, k, "hegemonie");
+        assert_eq!(tone(&s), "formel", "an authoritarian faction is formal");
+        set_faction(&mut s, k, "concorde");
+        assert_eq!(tone(&s), "cordial", "an open faction is warm");
+        s.npcs[k].faction = None;
+        assert_eq!(tone(&s), "neutre");
+        // The same node reads differently.
         let neutral = s.dialogue_view(k, &start, "").expect("view").text;
         set_faction(&mut s, k, "hegemonie");
         let formal = s.dialogue_view(k, &start, "").expect("view").text;

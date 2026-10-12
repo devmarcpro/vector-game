@@ -145,7 +145,7 @@ pub fn topic_screen(t: Topic) -> (Screen, bool) {
     match t {
         Hull | Modules | Heat | Power | Radiation | Structure | Antimatter => (Screen::Ship, false),
         Fuel => (Screen::Inventory, false),
-        Collision => (Screen::Flight, false),
+        Collision | Weather => (Screen::Flight, false),
         Health | Disease | Wounds | Needs | Pay | Cryo => (Screen::Crew, false),
         Debt => (Screen::Bank, false),
         Insurance => (Screen::Trading, false),

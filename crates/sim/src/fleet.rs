@@ -947,12 +947,8 @@ impl Sim {
 }
 
 impl Sim {
-    /// Add a ship to the fleet without paying (tests and scripted scenes).
-    pub fn buy_fleet_ship_free_pub(&mut self, hull: usize) {
-        self.buy_fleet_ship_free(hull);
-    }
-
     /// Test helper: add a freighter without paying.
+    #[cfg(test)]
     pub(crate) fn buy_fleet_ship_free(&mut self, hull: usize) {
         let id = self.next_fleet;
         self.next_fleet += 1;

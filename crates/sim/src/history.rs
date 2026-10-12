@@ -206,6 +206,59 @@ pub fn age_line(data: &GameData, a: &Age) -> String {
     s
 }
 
+/// Years between two commemorations of the same event.
+pub const ANNIVERSARY_YEARS: f64 = 100.0;
+
+/// The commemorations of the sector that fall in the calendar years (`y0`, `y1`]: every century
+/// after the great turning points of its chronicle (the apogees, the falls, the reconquests),
+/// on a year the sector and the age fix. Each is (calendar year, text with a `{place}` to fill):
+/// the history that the archives tell, told again by the news when its day comes.
+pub fn anniversaries(
+    data: &GameData,
+    seed: u64,
+    cell: Cell,
+    holder_now: Option<usize>,
+    y0: f64,
+    y1: f64,
+) -> Vec<(f64, String)> {
+    let mut out = Vec::new();
+    if y1 <= y0 || y1 <= f64::from(EPOCH_YEAR) {
+        return out;
+    }
+    let ch = chronicle(data, seed, cell, holder_now);
+    for (i, a) in ch.ages.iter().enumerate() {
+        if !matches!(a.kind, APOGEE | EFFONDREMENT | RECONQUETE) {
+            continue;
+        }
+        let u = |salt: i64| unit(hash_coord(seed ^ 0xA77, ckey(cell), i as i64, salt));
+        let event = f64::from(a.start) + (u(1) * f64::from(AGE_YEARS)).floor() + u(2);
+        let mut k = ((y0 - event) / ANNIVERSARY_YEARS).floor() as i64 + 1;
+        loop {
+            let year = event + ANNIVERSARY_YEARS * k as f64;
+            if year > y1 {
+                break;
+            }
+            if year > y0 && year > f64::from(EPOCH_YEAR) {
+                let people = a
+                    .holder
+                    .map_or("un peuple oublie", |f| data.factions[f].name.as_str());
+                out.push((
+                    year,
+                    format!(
+                        "Commemoration pres de {{place}} ({}) : {k} siecle(s) depuis {} ; {people} honore {} {}.",
+                        ch.name,
+                        data.history.ages[a.kind].name.to_lowercase(),
+                        a.role,
+                        a.figure
+                    ),
+                ));
+            }
+            k += 1;
+        }
+    }
+    out
+}
+
 /// The lines of the archives of a sector: the recent years from `politics` (newest first), then
 /// the ages, newest first.
 pub fn lines(data: &GameData, galaxy: &Galaxy, seed: u64, cell: Cell, t: f64) -> Vec<String> {

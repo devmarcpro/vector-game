@@ -53,10 +53,6 @@ impl StarStage {
             "PLANETE ERRANTE",
         ][self as usize]
     }
-    /// Remnants no longer burn anything: they only cool or spin down.
-    pub fn is_compact(self) -> bool {
-        matches!(self, Self::WhiteDwarf | Self::NeutronStar | Self::BlackHole)
-    }
 }
 
 fn unit(seed: u64, a: i64, b: i64) -> f64 {
@@ -649,7 +645,10 @@ mod tests {
         let g = generate_system(21);
         assert!(
             (g.bodies[0].star_luminosity() / g.luminosity - 1.0).abs() < 0.05
-                || g.stage.is_compact()
+                || matches!(
+                    g.stage,
+                    StarStage::WhiteDwarf | StarStage::NeutronStar | StarStage::BlackHole
+                )
         );
     }
 

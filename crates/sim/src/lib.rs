@@ -41,6 +41,7 @@ pub mod intrusion;
 pub mod landing;
 pub mod lanes;
 pub mod law;
+pub mod links;
 pub mod livestock;
 pub mod macroeco;
 pub mod market;
@@ -79,6 +80,8 @@ pub mod yard;
 
 #[cfg(test)]
 mod emergence_tests;
+#[cfg(test)]
+mod links_tests;
 
 use autopilot::Autopilot;
 use cargo::Cargo;
@@ -457,6 +460,8 @@ pub struct Sim {
     /// Surface maps of colonised worlds and city sites (derived data, never saved).
     pub(crate) world_cache: std::collections::HashMap<(u64, usize), Option<Arc<planet::PlanetMap>>>,
     pub(crate) city_cache: std::collections::HashMap<u32, (usize, usize)>,
+    /// The weather over the ground under the ship, by (day, body, region): see `links`. Not saved.
+    pub(crate) site_weather_cache: Option<((i64, usize, usize, usize), links::SiteWeather)>,
     /// Food web of each colony's territory, by colony id: the only ecology that is saved.
     pub ecologies: BTreeMap<u32, ecology::Ecosystem>,
     pub fleet_paid_day: i64,
@@ -620,6 +625,7 @@ impl Sim {
             last_cosmic_day: i64::MIN,
             world_cache: std::collections::HashMap::new(),
             city_cache: std::collections::HashMap::new(),
+            site_weather_cache: None,
             ecologies: BTreeMap::new(),
             fleet_paid_day: 0,
             projectiles: Vec::new(),
@@ -1354,6 +1360,7 @@ impl Sim {
                 slope: normal.dot(radial).clamp(-1.0, 1.0).acos(),
                 rough,
                 gear: self.gear_down,
+                grip: self.ground_grip(i),
             };
             let hull = self.ship.stats.hull_max;
             match landing::classify(&touch) {
@@ -1478,7 +1485,7 @@ impl Sim {
         let world = stale.then(|| {
             let mut w = bourse::world_factors(&data, self.galaxy.seed, self.here_pos, time);
             for (r, f) in w.iter_mut().enumerate() {
-                *f *= self.shock_factor(self.here_pos, time, r);
+                *f *= self.shock_factor(self.here_pos, time, r) * self.dimension_price_factor(r);
             }
             w
         });

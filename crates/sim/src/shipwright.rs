@@ -221,17 +221,6 @@ impl Blueprint {
         Some(self.fits.remove(i).module)
     }
 
-    /// Copy of the plan reflected through the plane y = 0 (cells and fits).
-    pub fn mirror_y(&mut self) {
-        for c in &mut self.cells {
-            c.y = -c.y;
-        }
-        for f in &mut self.fits {
-            f.y = -f.y;
-        }
-        self.sort();
-    }
-
     /// The plan as text (RON), to save to a file or to share.
     pub fn to_text(&self) -> String {
         vector_data::ship::to_text(self)

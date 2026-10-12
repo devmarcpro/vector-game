@@ -1168,7 +1168,7 @@ fn draw_report(fb: &mut Framebuffer, g: &Game, bp: &Blueprint, r: &Report) {
     );
     // Verdict.
     let mut row = top + 9;
-    if r.errors.is_empty() {
+    if r.buildable() {
         fb.text(col_a, row, "PLAN CONSTRUCTIBLE", GREEN);
     } else {
         fb.text(col_a, row, "PLAN INCONSTRUCTIBLE", RED);

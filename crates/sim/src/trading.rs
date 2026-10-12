@@ -256,6 +256,14 @@ impl Sim {
         list
     }
 
+    /// How many neighbouring systems the board can study: a dozen at an even budget, more or
+    /// fewer as the simulation budget of the mind (forecast models) allows.
+    pub fn arbitrage_breadth(&self) -> usize {
+        (12.0 * self.mind_factor(crate::mind::T_SIMULATION))
+            .round()
+            .clamp(6.0, 24.0) as usize
+    }
+
     /// The best price gaps between here and the systems within `radius` ly: buy here, sell there.
     pub fn arbitrage(&self, radius: f64, top: usize) -> Vec<Arb> {
         let mut stars = self.galaxy.nearby(self.here_pos, radius);
@@ -264,7 +272,7 @@ impl Sim {
             a.distance_to(self.here_pos)
                 .total_cmp(&b.distance_to(self.here_pos))
         });
-        stars.truncate(12);
+        stars.truncate(self.arbitrage_breadth());
         let mut out = Vec::new();
         for s in stars {
             for r in 0..self.data.resources.len() {

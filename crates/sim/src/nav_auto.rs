@@ -169,19 +169,6 @@ impl Order {
             _ => Vec::new(),
         }
     }
-
-    /// Whether the order is a macro that replaces itself by other orders.
-    pub fn is_macro(&self) -> bool {
-        matches!(
-            self,
-            Order::Orbit { .. }
-                | Order::Transfer { .. }
-                | Order::Depart { .. }
-                | Order::Patrol { .. }
-                | Order::ReturnStation
-                | Order::Route { .. }
-        )
-    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -408,12 +395,6 @@ impl Sim {
         self.nav.orders.swap(i, j);
     }
 
-    pub fn nav_set_guard(&mut self, i: usize, guard: Option<Cond>) {
-        if let Some(e) = self.nav.orders.get_mut(i) {
-            e.guard = guard;
-        }
-    }
-
     /// Forget what is done (and what failed or was skipped).
     pub fn nav_clear_done(&mut self) {
         self.nav.orders.retain(|e| e.status == Status::Pending);
@@ -465,16 +446,6 @@ impl Sim {
             self.nav.say(&mut ev, "NAVIGATION AUTO : PLAN EN PAUSE");
             self.events.extend(ev);
         }
-    }
-
-    /// Stop the plan for a reason; the queue is kept.
-    pub fn nav_halt(&mut self, why: impl Into<String>) {
-        let why = why.into();
-        self.nav_abort_active();
-        let mut ev = Vec::new();
-        self.nav.say(&mut ev, format!("NAVIGATION AUTO : {why}"));
-        self.events.extend(ev);
-        self.nav.run = Run::Halted(why);
     }
 
     /// Give up the order in hand: whatever it flew (autopilot, pilot) is let go.

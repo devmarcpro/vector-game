@@ -977,7 +977,7 @@ fn draw_ship(fb: &mut Framebuffer, g: &Game) {
         fb.text(
             1,
             y0 - 1,
-            "CHOISIR UN MODULE (ENTREE = INSTALLER / ACHETER, ECHAP = ANNULER)",
+            "CHOISIR UN MODULE (ENTREE = INSTALLER / ACHETER, V = REVENDRE UN EXEMPLAIRE EN STOCK, ECHAP = ANNULER)",
             AMBER,
         );
         let rows = fb.rows().saturating_sub(y0 + 4);

@@ -87,6 +87,11 @@ pub struct Catastrophe {
 /// Cells per weather region (weather is the same across a region on a given day).
 const REGION: usize = 8;
 
+/// The weather region (column, row) of a cell.
+pub(crate) fn region_of(x: usize, y: usize) -> (usize, usize) {
+    (x / REGION, y / REGION)
+}
+
 pub(crate) use vector_core::unit;
 
 /// The surface map of a solid planet or moon of system (None for anything else).
@@ -194,11 +199,6 @@ impl Sim {
     /// damped where the air is humid (maritime climate). See `vector_world::climate`.
     pub fn temp_now(&self, map: &PlanetMap, x: usize, y: usize) -> f64 {
         climate::seasonal_temp(&map.surface, x, y, self.season_phase(map.body))
-    }
-
-    /// Declination of the Sun above this world now, rad (+ is north).
-    pub fn sun_declination(&self, map: &PlanetMap) -> f64 {
-        climate::declination(f64::from(map.surface.tilt), self.season_phase(map.body))
     }
 
     /// Is the water of this cell frozen now? Seas freeze a little colder than lakes and rivers;
@@ -670,9 +670,9 @@ mod tests {
         let (mut s, i) = sim_with(PlanetKind::Terran);
         let m = s.planet_map(i).expect("map");
         at_phase(&mut s, i, 0.25);
-        let up = s.sun_declination(&m);
+        let up = climate::declination(f64::from(m.surface.tilt), s.season_phase(i));
         at_phase(&mut s, i, 0.75);
-        let down = s.sun_declination(&m);
+        let down = climate::declination(f64::from(m.surface.tilt), s.season_phase(i));
         assert!((up - f64::from(m.surface.tilt)).abs() < 1e-3);
         assert!((up + down).abs() < 1e-3);
     }

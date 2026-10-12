@@ -91,6 +91,47 @@ pub fn merge_deposits(ground: &mut Vec<(usize, f64)>, extra: &[(usize, f64)]) {
     }
 }
 
+/// A deposit this close to the landing cell (in map cells) is under the pick of the squad.
+pub const VEIN_REACH_CELLS: f64 = 4.0;
+/// Ore (kg) a hit of the pick turns up in a vein of richness 1, per unit of yield share.
+pub const VEIN_KG: f64 = 8.0;
+
+/// The ore bodies under the pick of a squad landed on `cell` of `map`, as (resource, kg, chance
+/// per hit) of the same yields as `site_geology` gives a colony. `scan` is what the scanner
+/// reads of the ground (the analysis budget of the mind, 1 = even): it sharpens the chance.
+pub fn veins_at(
+    data: &GameData,
+    map: &PlanetMap,
+    cell: (usize, usize),
+    scan: f64,
+) -> Vec<(usize, f64, f64)> {
+    let mut out: Vec<(usize, f64, f64)> = Vec::new();
+    for d in map.surface.geo.deposits_near(cell, VEIN_REACH_CELLS) {
+        let dist = vector_world::geology::cell_dist(cell, (d.x, d.y));
+        let Some(def) = data.geo_def(d.kind.id()) else {
+            continue;
+        };
+        let fall = 1.0 - dist / (VEIN_REACH_CELLS + 1.0);
+        for (rid, share) in &def.yields {
+            let Some(r) = data.resource_index(rid) else {
+                continue;
+            };
+            let richness = f64::from(d.richness);
+            let kg = VEIN_KG * (0.5 + share) * richness;
+            let chance = (0.9 * richness * fall * (3.0 * share).min(1.0) * scan.clamp(0.5, 1.5))
+                .clamp(0.0, 0.9);
+            match out.iter_mut().find(|v| v.0 == r) {
+                Some(v) => {
+                    v.1 += kg;
+                    v.2 = (v.2 + chance).min(0.95);
+                }
+                None => out.push((r, kg, chance)),
+            }
+        }
+    }
+    out
+}
+
 /// What a geothermal plant yields on a site with these tags, relative to its rated power.
 pub fn geothermal_factor(tags: &[String]) -> f64 {
     let has = |t: &str| tags.iter().any(|x| x == t);

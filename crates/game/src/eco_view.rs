@@ -729,7 +729,7 @@ pub fn draw_lignes(fb: &mut Framebuffer, g: &Game) {
             vector_sim::lanes::port_fee(&g.data, fa) * 100.0,
             vector_sim::lanes::port_fee(&g.data, fb_) * 100.0,
             vector_sim::lanes::tariff(&g.data, fb_) * 100.0,
-            vector_sim::lanes::BROKER_FEE * 100.0
+            s.broker_fee() * 100.0
         ),
         DIM,
     );

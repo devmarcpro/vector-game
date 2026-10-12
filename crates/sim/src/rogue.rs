@@ -2283,7 +2283,7 @@ impl Sim {
     /// Damage (points) of a charge of `kg` of the explosive reaction `reaction` of the
     /// chemistry: the heat it releases (Hess' law, per kg of reagents) times a fixed share.
     pub fn blast_damage(&self, reaction: &str, kg: f64) -> Option<f64> {
-        let r = self.data.reactions.iter().find(|r| r.id == reaction)?;
+        let r = &self.data.reactions[self.data.reaction_index(reaction)?];
         let mj_per_kg = -crate::chemistry::energy_density(&self.data, r);
         (mj_per_kg > 0.0).then_some(mj_per_kg * kg * BLAST_DMG_PER_MJ)
     }
@@ -2776,6 +2776,14 @@ impl Sim {
     /// rich in metals, active insides in volcanic minerals, cold surfaces in ice and volatiles, and
     /// deeper floors of a mine are richer.
     pub fn dig_mods(&self, r: &Rogue) -> DigMods {
+        self.dig_context(r).0
+    }
+
+    /// The same, with the ore bodies of the ground under the landing cell (`geo::veins_at`):
+    /// what a pick can turn up besides the common rock. Surface only (a mine has its own ore),
+    /// and the better the AI's analysis budget, the likelier the scanner reads a vein right.
+    pub fn dig_context(&self, r: &Rogue) -> (DigMods, Vec<(usize, f64, f64)>) {
+        let mut veins = Vec::new();
         let mut root = r;
         while let Some(p) = root.parent.as_deref() {
             root = p;
@@ -2792,6 +2800,10 @@ impl Sim {
                     | vector_world::physics::Activity::Fluid => 1.0,
                     vector_world::physics::Activity::Volcanic => 2.5,
                 };
+                if let Some(cell) = root.land.filter(|_| r.on_surface()) {
+                    let scan = self.mind_factor(crate::mind::T_ANALYSE);
+                    veins = crate::geo::veins_at(&self.data, &map, cell, scan);
+                }
             }
             if r.on_surface() {
                 let t = root.env.map_or(288.0, |e| e.1);
@@ -2805,7 +2817,7 @@ impl Sim {
             }
         }
         m.depth = 1.0 + 0.25 * r.cur as f64;
-        m
+        (m, veins)
     }
 
     /// The lead's tool: the extra share a pick or a scanner gives to a harvest.
@@ -2849,7 +2861,7 @@ impl Sim {
         }
         let under = data.material_index(&m.under).ok_or("rien a creuser ici")?;
         let i = r.idx(tx, ty);
-        let mods = self.dig_mods(r);
+        let (mods, veins) = self.dig_context(r);
         let mut rng = Rng::new(hash_coord(
             r.seed,
             i64::from(tx),
@@ -2859,7 +2871,16 @@ impl Sim {
         let bonus = 1.0 + tool;
         let turns = 1 + (m.hardness * 6.0 / (1.0 + 2.0 * tool)).round() as u32;
         let mut found: Vec<String> = Vec::new();
-        for (res, kg, rarity) in &m.yields {
+        // Hard ground over an ore body also gives that ore (see `geo::veins_at`).
+        let vein_yields: Vec<(String, f64, f64)> = if m.hardness >= 0.3 {
+            veins
+                .iter()
+                .map(|&(ri, kg, rarity)| (data.resources[ri].id.clone(), kg, rarity))
+                .collect()
+        } else {
+            Vec::new()
+        };
+        for (res, kg, rarity) in m.yields.iter().chain(vein_yields.iter()) {
             let Some(ri) = data.resource_index(res) else {
                 continue;
             };
@@ -5210,6 +5231,151 @@ mod tests {
         assert!(s.rogue_dig(0, 1).is_ok(), "the ground can be dug too");
         assert!(s.rogue_dig(0, 1).is_err(), "bedrock is the end");
         assert!(s.rogue_dig(0, 0).is_err());
+    }
+
+    /// Sweep the field of a landing clean: bare regolith around the squad, nobody else.
+    fn sweep(s: &mut Sim) {
+        let reg = mat_id(s, "regolithe");
+        let mut r = s.rogue.take().unwrap();
+        let (w, h) = (r.w, r.h);
+        let f = &mut r.floors[0];
+        f.monsters.clear();
+        f.items.clear();
+        f.sites.clear();
+        for i in 0..w * h {
+            if f.tiles[i] != T_UP {
+                f.tiles[i] = T_FLOOR;
+                f.mats[i] = reg;
+            }
+        }
+        r.env = Some((1.0, 288.0));
+        s.rogue = Some(r);
+    }
+
+    /// A living world with an ore body on dry land (the squad survives a walk there): (seed, body,
+    /// the cell of the deposit).
+    fn ore_site() -> (u64, usize, (usize, usize)) {
+        for seed in 1..200u64 {
+            let mut s = new_sim(seed, data());
+            for body in 0..s.bodies.len() {
+                let Some(map) = s.planet_map(body) else {
+                    continue;
+                };
+                if s.air_hazard_of(body).is_some_and(|a| !a.breathable()) {
+                    continue;
+                }
+                for d in &map.surface.geo.deposits {
+                    if map.surface.is_sea(d.x, d.y) || map.surface.is_lake(d.x, d.y) {
+                        continue;
+                    }
+                    s.ship.pos = s.bodies[body].pos
+                        - vector_core::Vec3::new(0.0, 0.0, s.bodies[body].radius * 3.0);
+                    s.ship.vel = s.bodies[body].vel;
+                    s.update_ref();
+                    if s.rogue_land(body, d.x, d.y, vec![0], false).is_ok() {
+                        let r = s.rogue.take().unwrap();
+                        let plants = r.floor().items.iter().filter(|i| i.plant).count();
+                        if plants > 5 && r.floor().monsters.len() > 3 {
+                            return (seed, body, (d.x, d.y));
+                        }
+                    }
+                }
+            }
+        }
+        panic!("no landable ore body in the first seeds");
+    }
+
+    #[test]
+    fn the_ore_bodies_under_the_landing_cell_give_their_ore_to_the_pick() {
+        use vector_world::surface::{H, W};
+        let (seed, body, dep) = ore_site();
+        // One landing on the deposit, one far from every deposit of the world (same ground).
+        let probe = new_sim(seed, data());
+        let map = probe.planet_map(body).unwrap();
+        let def = probe
+            .data
+            .geo_def(
+                map.surface
+                    .geo
+                    .deposits
+                    .iter()
+                    .find(|d| (d.x, d.y) == dep)
+                    .unwrap()
+                    .kind
+                    .id(),
+            )
+            .unwrap()
+            .clone();
+        let far = (0..H)
+            .flat_map(|y| (0..W).step_by(7).map(move |x| (x, y)))
+            .find(|&c| {
+                !map.surface.is_sea(c.0, c.1)
+                    && map
+                        .surface
+                        .geo
+                        .deposits_near(c, crate::geo::VEIN_REACH_CELLS + 1.0)
+                        .is_empty()
+            })
+            .expect("a barren cell");
+        let dig_at = |cell: (usize, usize)| -> f64 {
+            let mut t = new_sim(seed, data());
+            t.ship.pos =
+                t.bodies[body].pos - vector_core::Vec3::new(0.0, 0.0, t.bodies[body].radius * 3.0);
+            t.ship.vel = t.bodies[body].vel;
+            t.update_ref();
+            t.rogue_land(body, cell.0, cell.1, vec![0], false)
+                .expect("land");
+            t.crew.members[0].gear = vec![None; 3];
+            sweep(&mut t);
+            let (x, y) = {
+                let r = t.rogue.as_ref().unwrap();
+                (r.x, r.y)
+            };
+            for dy in -1..=1 {
+                for dx in -1..=1 {
+                    if (dx, dy) != (0, 0) {
+                        put(&mut t, x + dx, y + dy, T_WALL, "roche");
+                    }
+                }
+            }
+            // The cell of the landing is what counts: the same field of rock, the same dice.
+            t.rogue.as_mut().unwrap().seed = 12345;
+            for (dx, dy) in [
+                (1, 0),
+                (-1, 0),
+                (0, 1),
+                (0, -1),
+                (1, 1),
+                (-1, -1),
+                (1, -1),
+                (-1, 1),
+            ] {
+                t.rogue_dig(dx, dy).expect("rock can be dug");
+            }
+            let r = t.rogue.as_ref().unwrap();
+            // The ore that the deposit adds: its yields apart from the common rock's.
+            def.yields
+                .iter()
+                .filter(|(id, _)| id != "iron" && id != "silica")
+                .filter_map(|(id, _)| t.data.resource_index(id))
+                .map(|ri| r.loot.iter().find(|l| l.0 == ri).map_or(0.0, |l| l.1))
+                .sum()
+        };
+        let none = dig_at(far);
+        let over = dig_at(dep);
+        assert!(
+            over > none + 0.5,
+            "ore of the vein: {over} kg vs {none} kg far away"
+        );
+        // The scanner (the analysis budget of the mind) sharpens the find.
+        let veins_blind = crate::geo::veins_at(&probe.data, &map, dep, 0.5);
+        let veins_keen = crate::geo::veins_at(&probe.data, &map, dep, 1.5);
+        assert!(!veins_blind.is_empty());
+        assert!(
+            veins_keen.iter().map(|v| v.2).sum::<f64>()
+                > veins_blind.iter().map(|v| v.2).sum::<f64>()
+        );
+        assert!(crate::geo::veins_at(&probe.data, &map, far, 1.0).is_empty());
     }
 
     #[test]

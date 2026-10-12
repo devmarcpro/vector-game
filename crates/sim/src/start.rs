@@ -54,12 +54,6 @@ impl StartConfig {
     }
 }
 
-/// The people one can pick from, the same for every scenario of a seed: the first ones are
-/// each good at one of the skills the posts use, the rest are drawn freely.
-pub fn crew_pool(data: &GameData, seed: u64) -> Vec<Person> {
-    crew_pool_for(data, seed, 0)
-}
-
 /// The pool of a seed after `salt` global re-rolls (0 = the plain pool).
 pub fn crew_pool_for(data: &GameData, seed: u64, salt: u32) -> Vec<Person> {
     let seed = if salt == 0 {
@@ -124,16 +118,6 @@ pub fn default_crew(data: &GameData, sc: &Scenario, pool: &[Person]) -> Vec<Crew
         }
     }
     picks
-}
-
-/// Whether a crew composition respects the points, the size and the pool.
-pub fn crew_valid(
-    data: &GameData,
-    sc: &Scenario,
-    pool: &[Person],
-    picks: &[CrewPick],
-) -> Result<(), &'static str> {
-    crew_valid_with(data, sc.crew_points, pool, picks)
 }
 
 /// The same with a budget of `points` (the scenario's or the one the player chose).
@@ -733,7 +717,7 @@ mod tests {
         assert_ne!(base.ship.design.hull, small.ship.design.hull);
         assert!(small.ship.stats.cargo_kg < base.ship.stats.cargo_kg);
         // A custom crew: three people instead of the default two.
-        let pool = crew_pool(&d, 3);
+        let pool = crew_pool_for(&d, 3, 0);
         let sc = &d.scenarios[d.scenario_index("marchand").expect("sc")];
         let cheap: Vec<usize> = (0..pool.len())
             .filter(|&k| pick_cost(&pool[k]) == 1)
@@ -751,7 +735,7 @@ mod tests {
         c.crew = Some(picks.clone());
         let three = new_sim_with(&c, Arc::clone(&d)).expect("three");
         assert_eq!(three.crew.alive().count(), 3);
-        assert!(crew_valid(&d, sc, &pool, &picks).is_ok());
+        assert!(crew_valid_with(&d, sc.crew_points, &pool, &picks).is_ok());
         // The seed changes the galaxy.
         let s2 = new_sim_with(&cfg(&d, "marchand", 4), Arc::clone(&d)).expect("seed 4");
         assert_ne!(base.here_pos, s2.here_pos);
@@ -761,7 +745,7 @@ mod tests {
     fn the_crew_budget_is_enforced() {
         let d = data();
         let sc = &d.scenarios[d.scenario_index("naufrage").expect("sc")];
-        let pool = crew_pool(&d, 9);
+        let pool = crew_pool_for(&d, 9, 0);
         let dear: Vec<usize> = (0..pool.len())
             .filter(|&k| pick_cost(&pool[k]) >= 2)
             .collect();
@@ -782,21 +766,25 @@ mod tests {
             "two experts cost more than the castaway's budget"
         );
         assert_eq!(
-            crew_valid(&d, sc, &pool, &two),
+            crew_valid_with(&d, sc.crew_points, &pool, &two),
             Err("budget de points depasse")
         );
-        assert!(crew_valid(&d, sc, &pool, &[]).is_err());
+        assert!(crew_valid_with(&d, sc.crew_points, &pool, &[]).is_err());
         let twice = [two[0], two[0]];
-        assert!(crew_valid(&d, sc, &pool, &twice).is_err());
+        assert!(crew_valid_with(&d, sc.crew_points, &pool, &twice).is_err());
         let mut c = cfg(&d, "naufrage", 9);
         c.crew = Some(two);
         assert!(new_sim_with(&c, Arc::clone(&d)).is_err());
         // Every default crew respects its own scenario's points and posts.
         for sc in &d.scenarios {
-            let pool = crew_pool(&d, 21);
+            let pool = crew_pool_for(&d, 21, 0);
             let def = default_crew(&d, sc, &pool);
             assert_eq!(def.len(), sc.crew.len(), "{}", sc.id);
-            assert!(crew_valid(&d, sc, &pool, &def).is_ok(), "{}", sc.id);
+            assert!(
+                crew_valid_with(&d, sc.crew_points, &pool, &def).is_ok(),
+                "{}",
+                sc.id
+            );
         }
     }
 

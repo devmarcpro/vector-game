@@ -36,13 +36,16 @@ impl Sim {
         self.aero_heat_kw = 0.0;
         for i in 0..self.bodies.len() {
             let Some(air) = self.air_of(i) else { continue };
-            let b = &self.bodies[i];
-            let alt = (self.ship.pos - b.pos).length() - b.radius;
+            let alt = (self.ship.pos - self.bodies[i].pos).length() - self.bodies[i].radius;
             if alt >= air.top() || alt < 0.0 {
                 continue;
             }
+            // The wind of the day over this ground moves the air itself (see `links`).
+            let wind = self.wind_over_ship(i);
+            let b = &self.bodies[i];
             // The air turns with the world: speed is measured against it, not against the centre.
-            let rel = self.ship.vel - b.vel - self.surface_velocity(i, self.ship.pos - b.pos);
+            let rel =
+                self.ship.vel - b.vel - self.surface_velocity(i, self.ship.pos - b.pos) - wind;
             let v = rel.length();
             if v < 1.0 {
                 continue;

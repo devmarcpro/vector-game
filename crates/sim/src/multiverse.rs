@@ -113,6 +113,22 @@ impl Sim {
         self.dimension_def().map_or(1.0, |d| d.hazard_scale)
     }
 
+    /// What the dimension the ship is in does to the price of resource `res`: raw matter is
+    /// cheaper where the ground is richer (`ore_scale`), exotic matter where the anomaly fields
+    /// are stronger (`hazard_scale`: they make it). 1 in the home dimension.
+    pub fn dimension_price_factor(&self, res: usize) -> f64 {
+        let Some(d) = self.dimension_def() else {
+            return 1.0;
+        };
+        match self.data.resources[res].category.as_str() {
+            "metal" | "mineral" | "precious" | "volatile" | "nuclear" => {
+                d.ore_scale.max(0.1).powf(-0.5)
+            }
+            "exotic" => d.hazard_scale.max(0.1).powf(-0.5),
+            _ => 1.0,
+        }
+    }
+
     pub fn research_scale(&self) -> f64 {
         self.dimension_def().map_or(1.0, |d| d.research_scale)
     }

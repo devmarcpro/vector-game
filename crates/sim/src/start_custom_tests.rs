@@ -300,7 +300,7 @@ fn start_places_put_the_ship_somewhere_else() {
 
 fn first_pick(d: &GameData, seed: u64) -> usize {
     let sc = &d.scenarios[0];
-    let pool = start::crew_pool(d, seed);
+    let pool = start::crew_pool_for(d, seed, 0);
     start::default_crew(d, sc, &pool)[0].candidate
 }
 
@@ -312,7 +312,7 @@ fn crew_edits_change_the_person_hired() {
     let base = sim_of(&d, &StartConfig::new(seed));
     let skill = d.skill_index("science").expect("skill");
     let mut c = StartConfig::new(seed);
-    let before = start::crew_pool(&d, seed)[k].skills[skill];
+    let before = start::crew_pool_for(&d, seed, 0)[k].skills[skill];
     {
         let e = c.custom.crew.edit_mut(k);
         e.name = Some("Ada Test".into());
@@ -346,7 +346,7 @@ fn crew_budgets_refuse_too_many_points_and_reward_flaws() {
     let d = data();
     let seed = 12;
     let k = first_pick(&d, seed);
-    let pool = start::crew_pool(&d, seed);
+    let pool = start::crew_pool_for(&d, seed, 0);
     let sk = d.skill_index("pilotage").expect("skill");
     let mut e = CrewEdit {
         candidate: k,
@@ -429,9 +429,9 @@ fn backgrounds_move_skills_credits_and_standing() {
         background: rich,
         ..Default::default()
     };
-    assert!(crew_edit_valid(&d, &start::crew_pool(&d, seed)[k], &e).is_ok());
+    assert!(crew_edit_valid(&d, &start::crew_pool_for(&d, seed, 0)[k], &e).is_ok());
     e.background = 99;
-    assert!(crew_edit_valid(&d, &start::crew_pool(&d, seed)[k], &e).is_err());
+    assert!(crew_edit_valid(&d, &start::crew_pool_for(&d, seed, 0)[k], &e).is_err());
 }
 
 #[test]
@@ -466,7 +466,7 @@ fn friends_and_rivals_change_the_standing() {
 fn crew_size_points_and_rerolls_follow_the_configuration() {
     let d = data();
     let seed = 21;
-    let pool = start::crew_pool(&d, seed);
+    let pool = start::crew_pool_for(&d, seed, 0);
     // The re-roll changes who is on offer, not how many.
     let other = start::crew_pool_for(&d, seed, 1);
     assert_eq!(pool.len(), other.len());
@@ -794,7 +794,7 @@ fn implants_cost_points_and_are_installed() {
     let d = data();
     let seed = 12;
     let k = first_pick(&d, seed);
-    let pool = start::crew_pool(&d, seed);
+    let pool = start::crew_pool_for(&d, seed, 0);
     let e = CrewEdit {
         candidate: k,
         implants: vec![0],
@@ -856,7 +856,7 @@ fn sleeping_config(d: &Arc<GameData>) -> StartConfig {
         .expect("an internal module");
     ship.modules[slot].clear();
     c.custom.ship = ship;
-    let pool = start::crew_pool(d, 12);
+    let pool = start::crew_pool_for(d, 12, 0);
     let picks = start::default_crew(d, &d.scenarios[c.scenario], &pool);
     c.crew = Some(picks.clone());
     c.custom.cryo.members = vec![picks[0].candidate];
@@ -921,7 +921,7 @@ fn cryosleep_at_the_start_refuses_what_cannot_be_done() {
     // Too poor to fit pods.
     c.custom.ship = ShipCustom::default();
     c.scenario = d.scenario_index("naufrage").expect("scenario");
-    let pool = start::crew_pool(&d, 12);
+    let pool = start::crew_pool_for(&d, 12, 0);
     let picks = start::default_crew(&d, &d.scenarios[c.scenario], &pool);
     c.custom.cryo.members = vec![picks[0].candidate];
     c.crew = Some(picks);

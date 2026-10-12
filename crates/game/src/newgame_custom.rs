@@ -2194,7 +2194,7 @@ pub fn draw_ship_panel(fb: &mut Framebuffer, g: &Game, x: usize) {
                             AMBER,
                         );
                     }
-                    if r.errors.is_empty() {
+                    if r.buildable() {
                         let solids = crate::ship_preview::solids_of(d, bp);
                         crate::ship_preview::draw_solids(
                             fb,

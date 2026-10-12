@@ -750,8 +750,7 @@ impl Sim {
         }
         let total = sol.dv_dep + sol.dv_cap + 8.0;
         let fuel_after = self.ship.fuel - self.fuel_for_dv(total);
-        if total > self.ship.delta_v()
-            || fuel_after < self.nav.limits.reserve * self.ship.stats.fuel_cap
+        if total > self.ship.delta_v() || fuel_after < self.nav_reserve() * self.ship.stats.fuel_cap
         {
             return Err(format!(
                 "DELTA-V INSUFFISANT : {:.0} M/S NECESSAIRES, {:.0} DISPONIBLES",
@@ -822,7 +821,12 @@ impl Sim {
         let t_burn = self.time + self.nav_align_lead() + 60.0;
         let eval = |x: &[f64]| {
             let node = ManeuverNode::new(NodeWhen::At(t_burn), Some(c0), x[0], x[1], x[2]);
-            let p = self.predict_ship_ex(horizon, &[node], Some(target), 0.012);
+            let p = self.predict_ship_ex(
+                horizon,
+                &[node],
+                Some(target),
+                0.012 * self.nav_step_angle() / STEP_ANGLE,
+            );
             self.transfer_score(&p, target, aim)
         };
         // The first step is what the miss asks of a burn now over the time left.
@@ -950,8 +954,7 @@ impl Sim {
                         "DELTA-V INSUFFISANT ({:.0} DISPONIBLES)",
                         self.ship.delta_v()
                     ));
-                } else if self.ship.fuel - fuel < self.nav.limits.reserve * self.ship.stats.fuel_cap
-                {
+                } else if self.ship.fuel - fuel < self.nav_reserve() * self.ship.stats.fuel_cap {
                     risks.push("LA RESERVE DE CARBURANT SERAIT ENTAMEE".into());
                 }
                 out.push(PlanOption {

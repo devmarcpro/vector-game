@@ -141,11 +141,16 @@ pub struct Readout {
     pub slope: f64,
     pub tilt: f64,
     pub gear: bool,
+    /// Seconds before the burn must start to stop on the ground (None when it cannot, or when
+    /// nothing is falling): 0 when it is time.
+    pub t_burn: Option<f64>,
     /// Whether touching down now would be clean.
     pub safe: bool,
     /// Distance (m) and direction (world) to the chosen site, if any.
     pub site: Option<(f64, Vec3)>,
     pub rough: f64,
+    /// The weather over the site: wind, view and grip (None without air).
+    pub weather: Option<crate::links::SiteWeather>,
 }
 
 /// How a station port is being approached.
@@ -171,6 +176,9 @@ pub struct Touch {
     pub slope: f64,
     pub rough: f64,
     pub gear: bool,
+    /// 1 on dry ground; rain, snow and ice lower it (see `links::SiteWeather`): the gear
+    /// absorbs that much less of the sliding speed.
+    pub grip: f64,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -202,6 +210,7 @@ pub fn safe_speeds(gear: bool) -> (f64, f64) {
 /// Equivalent speed of a touch beyond what the gear absorbs (m/s).
 pub fn excess_speed(t: &Touch) -> f64 {
     let (si, st) = safe_speeds(t.gear);
+    let st = st * t.grip.clamp(0.1, 1.0);
     ((t.v_in - si).max(0.0).powi(2) + 0.5 * (t.v_t - st).max(0.0).powi(2)).sqrt()
 }
 
@@ -383,6 +392,7 @@ impl Sim {
             slope,
             rough: s.rough,
             gear: self.gear_down,
+            grip: self.site_weather_now(s.body).map_or(1.0, |w| w.grip),
         };
         let site = self
             .site_position()
@@ -395,6 +405,9 @@ impl Sim {
             t_impact: (v_up < 0.0).then(|| fall_time(alt, v_up, s.g)).flatten(),
             burn_alt,
             burn_now: burn_alt.is_some_and(|h| alt <= h * 1.05) && v_up < -1.0,
+            t_burn: (v_up < -1.0)
+                .then(|| time_to_burn(alt, -v_up, s.g, a_max))
+                .flatten(),
             twr: a_max / s.g.max(1e-9),
             slope,
             tilt,
@@ -406,6 +419,7 @@ impl Sim {
                 (h.length(), h.normalized())
             }),
             rough: s.rough,
+            weather: self.site_weather_now(s.body),
         })
     }
 
@@ -966,6 +980,7 @@ mod tests {
             slope: 0.1,
             rough: 1.0,
             gear: true,
+            grip: 1.0,
         };
         assert_eq!(classify(&ok), Outcome::Landed);
         // Too fast for the gear: damage and a bounce.

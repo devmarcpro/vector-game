@@ -91,6 +91,9 @@ pub enum Cond {
     Terraform,
     /// Somebody aboard is ill.
     Sick,
+    /// An outbreak of the sector the ship is in (not only of its colonies) infects at least this
+    /// share of the people (0..1).
+    SectorOutbreak(f64),
     /// Somebody aboard, asleep or not, has an acute dose of at least this many Sv.
     Dose(f64),
     /// What the ship understands of the language spoken here (0..1), where somebody holds the

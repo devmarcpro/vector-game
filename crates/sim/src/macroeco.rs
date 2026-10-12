@@ -56,11 +56,6 @@ pub struct Sector {
     pub harvest: f64,
 }
 
-/// Price level from the quantity of money and the real output (the quantity theory of money).
-pub fn price_level(money: f64, output: f64) -> f64 {
-    money / output.max(1e-9)
-}
-
 /// Annual inflation from the daily growth of money and of output.
 pub fn inflation_of(money_growth: f64, output_growth: f64) -> f64 {
     ((money_growth - output_growth) * 365.0).clamp(-0.3, 3.0)
@@ -407,10 +402,8 @@ mod tests {
     }
 
     #[test]
-    fn doubling_the_money_supply_over_the_same_output_doubles_the_price_level() {
-        let p = price_level(1.0e9, 5.0e6);
-        assert!((price_level(2.0e9, 5.0e6) / p - 2.0).abs() < 1e-12);
-        // And inflation rises with money growth at constant output.
+    fn inflation_follows_the_growth_of_money_over_the_growth_of_output() {
+        // Inflation rises with money growth at constant output.
         assert!(inflation_of(2.0e-4, 0.0) > inflation_of(1.0e-4, 0.0));
         // Money growing as fast as output means stable prices.
         assert!(inflation_of(1.0e-4, 1.0e-4).abs() < 1e-12);

@@ -124,10 +124,10 @@ impl Sim {
     /// the act is illegal and seen, a fine is owed and the notoriety rises; returns the offence.
     pub fn offend(&mut self, faction: Option<usize>, act: &str) -> Option<Offence> {
         let f = faction.or(self.faction)?;
-        let law = self.data.law_index(act)?;
-        if !self.laws_in_force(f).contains(&law) {
+        if !self.is_illegal(f, act) {
             return None;
         }
+        let law = self.data.law_index(act)?;
         let seen = if self.docked.is_some() {
             SEEN_DOCKED
         } else {

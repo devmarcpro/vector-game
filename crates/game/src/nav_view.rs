@@ -1379,7 +1379,11 @@ fn draw_limits(fb: &mut Framebuffer, g: &Game) {
         ),
         (
             "RESERVE DE CARBURANT DU PLAN",
-            format!("{:.0} %", l.reserve * 100.0),
+            format!(
+                "{:.0} % ~{:.1}",
+                l.reserve * 100.0,
+                g.sim.nav_reserve() * 100.0
+            ),
             78,
             77,
         ),

@@ -511,6 +511,15 @@ impl WorldEvent {
     }
 }
 
+/// A kind of incident that strikes a company (see `data/incidents.ron`): `share` is the effect on
+/// its share price at full strength, `text` the headline (`{c}` company, `{p}` place).
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct IncidentKind {
+    pub id: String,
+    pub share: f64,
+    pub text: String,
+}
+
 /// One axis of customs and morals: values run from -1 (`low` pole) to +1 (`high` pole).
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct EthosAxis {
@@ -1145,6 +1154,7 @@ pub struct GameData {
     pub species: Vec<Species>,
     pub chemistries: Vec<Chemistry>,
     pub world_events: Vec<WorldEvent>,
+    pub incidents: Vec<IncidentKind>,
     pub ethos: Ethos,
     pub genes: Vec<Gene>,
     pub organs: Vec<Organ>,
@@ -1356,6 +1366,7 @@ impl GameData {
             },
             chemistries: read(&dir.join("xenobio.ron"))?,
             world_events: read(&dir.join("world_events.ron"))?,
+            incidents: read(&dir.join("incidents.ron"))?,
             ethos: read(&dir.join("ethos.ron"))?,
             genes: read(&dir.join("genes.ron"))?,
             organs: read(&dir.join("organs.ron"))?,
@@ -2019,6 +2030,7 @@ impl GameData {
         self.validate_species()?;
         self.validate_chemistries()?;
         self.validate_world_events()?;
+        self.validate_incidents()?;
         self.validate_surprises()?;
         self.validate_ethos()?;
         self.validate_genes()?;
@@ -2636,6 +2648,7 @@ impl GameData {
         Ok(())
     }
 
+    /// Index of a piece of equipment in `gear` by id (saves and the crew store indices).
     pub fn gear_index(&self, id: &str) -> Option<usize> {
         self.gear.iter().position(|g| g.id == id)
     }
@@ -2798,6 +2811,7 @@ impl GameData {
         Ok(())
     }
 
+    /// Index of an implant in `cybernetics` by id.
     pub fn cyber_index(&self, id: &str) -> Option<usize> {
         self.cybernetics.iter().position(|c| c.id == id)
     }
@@ -3093,6 +3107,29 @@ impl GameData {
                     return bad(format!("surprise {id}: choix sans libelle ou resultat"));
                 }
             }
+        }
+        Ok(())
+    }
+
+    /// Incident kinds: unique ids, both a blow and a boom, sane effects, headlines that name the
+    /// company and the place.
+    fn validate_incidents(&self) -> Result<(), DataError> {
+        let bad = |s: String| Err(DataError::Invalid(s));
+        let mut seen = std::collections::HashSet::new();
+        for k in &self.incidents {
+            if !seen.insert(k.id.as_str()) {
+                return bad(format!("incident {} en double", k.id));
+            }
+            if !(0.02..=0.5).contains(&k.share.abs()) {
+                return bad(format!("incident {}: effet {} hors de 2..50 %", k.id, k.share));
+            }
+            if !k.text.contains("{c}") || !k.text.contains("{p}") {
+                return bad(format!("incident {}: le texte doit citer {{c}} et {{p}}", k.id));
+            }
+        }
+        if !self.incidents.iter().any(|k| k.share < 0.0) || !self.incidents.iter().any(|k| k.share > 0.0)
+        {
+            return bad("incidents: il faut au moins un revers et un succes".into());
         }
         Ok(())
     }
@@ -3771,6 +3808,25 @@ mod tests {
         let mut d = ok;
         d.anomalies_def.retain(|a| a.id != "portal");
         assert!(d.validate().is_err(), "portal needs a definition");
+    }
+
+    #[test]
+    fn incident_templates_live_in_data_and_are_validated() {
+        // Audit B17: the headlines and effects of the incidents are `data/incidents.ron`.
+        let ok = GameData::load(&dir()).expect("data loads");
+        assert!(ok.incidents.len() >= 6);
+        let mut d = ok.clone();
+        d.incidents[0].text = "Sans lieu ni entreprise.".into();
+        assert!(d.validate().is_err(), "a headline names company and place");
+        let mut d = ok.clone();
+        d.incidents[1].id = d.incidents[0].id.clone();
+        assert!(d.validate().is_err(), "duplicate id");
+        let mut d = ok.clone();
+        d.incidents[0].share = 3.0;
+        assert!(d.validate().is_err(), "effect out of range");
+        let mut d = ok;
+        d.incidents.retain(|k| k.share < 0.0);
+        assert!(d.validate().is_err(), "needs a boom as well as a blow");
     }
 
     #[test]

@@ -105,7 +105,8 @@ impl Sim {
                 .galaxy
                 .star(col.star)
                 .map_or(0.0, |e| e.distance_to(self.here_pos));
-            let delay = (d - SECTOR_LY / 2.0).max(0.0) / COURIER_LY_DAY * DAY;
+            let delay =
+                self.courier_delay_days(d, (d - SECTOR_LY / 2.0).max(0.0) / COURIER_LY_DAY) * DAY;
             for (t, line) in &col.log {
                 if *t > h0 - delay && *t <= h1 - delay {
                     own.push((*t + delay, d, format!("{} : {line}", col.name)));
@@ -122,7 +123,8 @@ impl Sim {
         for c in cells_around(cell_of(me), HEARING_CELLS) {
             let d = dist(cell_center(c), me);
             // News of the ship's own sector is immediate; the rest travels.
-            let delay = (d - SECTOR_LY / 2.0).max(0.0) / COURIER_LY_DAY * DAY;
+            let delay =
+                self.courier_delay_days(d, (d - SECTOR_LY / 2.0).max(0.0) / COURIER_LY_DAY) * DAY;
             let (e0, e1) = (h0 - delay, h1 - delay);
             let name = |f: Option<usize>| {
                 f.map_or("un monde libre".to_string(), |f| {

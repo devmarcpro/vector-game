@@ -119,7 +119,11 @@ impl Sim {
         self.ship.stats.jump_range
     }
 
+    /// Fuel of a jump; a warp bubble burns antimatter instead (see `exotic_field`).
     pub fn jump_fuel_cost(&self, dist_ly: f64) -> f64 {
+        if self.warp_drive_installed() {
+            return 0.0;
+        }
         FUEL_PER_LY_PER_KG * self.ship.mass() * dist_ly
     }
 
@@ -206,6 +210,9 @@ impl Sim {
             return Err("trop pres d'un corps massif");
         }
         let cost = self.jump_fuel_cost(d);
+        if self.warp_cost_kg(d) > self.antimatter_stored() {
+            return Err("antimatiere insuffisante pour la bulle");
+        }
         if cost > self.ship.fuel {
             return Err("carburant insuffisant pour ce saut");
         }
@@ -243,6 +250,11 @@ impl Sim {
 
     /// Called every flight step while a jump is charging.
     pub(crate) fn charge_tick(&mut self, dt: f64) {
+        let warp_kg = self
+            .jump
+            .as_ref()
+            .map_or(0.0, |j| self.warp_cost_kg(j.dist_ly));
+        let short = warp_kg > self.antimatter_stored();
         let Some(j) = self.jump.as_mut() else { return };
         if j.in_transit {
             return;
@@ -259,13 +271,18 @@ impl Sim {
         if j.charge_left > 0.0 {
             return;
         }
-        if j.fuel_cost > self.ship.fuel {
+        if j.fuel_cost > self.ship.fuel || short {
             self.jump = None;
             self.events
                 .push(Event::JumpAborted("carburant insuffisant"));
             return;
         }
         self.ship.fuel -= j.fuel_cost;
+        if warp_kg > 0.0 {
+            if let Some(r) = self.data.resource_index("antimatter") {
+                self.ship.cargo.remove(&self.data, r, warp_kg);
+            }
+        }
         // Risk of a mishap grows with distance and drive wear.
         let wear = self
             .ship
@@ -308,6 +325,7 @@ impl Sim {
     /// Leave the current system (saving its changes) and enter the jump target.
     pub(crate) fn arrive(&mut self) {
         let Some(j) = self.jump.take() else { return };
+        let warp = self.warp_drive_installed();
         let old = SystemDelta {
             mined: std::mem::take(&mut self.mined),
             markets: std::mem::take(&mut self.markets),
@@ -347,6 +365,9 @@ impl Sim {
                 .damage_modules(&self.data, &self.ship.design, 150.0, pick);
             self.ship.refresh_stats(&self.data);
             self.events.push(Event::JumpMishap);
+        }
+        if warp {
+            self.warp_wake(j.dist_ly);
         }
         self.events.push(Event::JumpArrived { dist_ly: j.dist_ly });
     }

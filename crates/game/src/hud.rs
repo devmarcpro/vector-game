@@ -1067,6 +1067,9 @@ fn draw_physics_panel(fb: &mut Framebuffer, v: &View, rows: usize) {
         ),
         if rate > 0.05 { RED } else { DIM },
     );
+    for (k, (line, alert)) in sim.exotic_hud().into_iter().enumerate() {
+        fb.text(1, y + 2 + k, &line, if alert { RED } else { AMBER });
+    }
     let beta = sim.rel_velocity().length() / nav::C;
     if beta > 0.001 {
         fb.text(

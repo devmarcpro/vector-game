@@ -157,7 +157,7 @@ pub fn hint_line(g: &Game) -> String {
             "FLECHES/ZQSD DEPLACER  CLIC MARCHER  ENTREE ESCALIER/SITE  X CREUSER  B/N BATIR  V DRONE  R RAPPEL  TAB CHEF"
         }
         Screen::Cosmos => {
-            "ENTREE PORTAIL  A ANCRE  R REMONTER  X LEVER  HAUT/BAS CHOIX  +/- JOURS  S STASE  ECHAP RETOUR"
+            "ENTREE PORTAIL  A ANCRE  R REMONTER  X LEVER  HAUT/BAS CHOIX  +/- JOURS  S STASE  N/K CLONER  ECHAP RETOUR"
         }
         Screen::Casino => {
             "GAUCHE/DROITE JEU  HAUT/BAS MISE  +/- NUMERO  ENTREE JOUER  ECHAP RETOUR"
@@ -290,6 +290,8 @@ pub fn help_lines(screen: Screen) -> &'static [&'static str] {
         Screen::Cosmos => &[
             "Entree : franchir le portail   A : poser une ancre temporelle   R : remonter",
             "S : stase a quai (le monde avance, pas le bord)   Accueil : ouvrir cet ecran",
+            "N : personne suivante   K : cloner (1 kg de nanites, 80000 CR) : la copie a 80 % des competences, le bord s'en trouble",
+            "Colonne de droite : echelle de Kardashev du vaisseau, antimatiere, bulle de distorsion, phenomenes exotiques proches",
         ],
         Screen::Casino => &["Entree : jouer   la maison garde toujours un avantage"],
         Screen::Empire => &["Entree : detail de la colonie   F3 : flotte"],

@@ -802,6 +802,16 @@ pub struct Gear {
     /// Radius (cells) at which a shot wakes sleeping monsters.
     #[serde(default)]
     pub noise: f64,
+    /// Firearms: rounds in a magazine (0 = a blade or a tool), the resource the rounds are
+    /// reloaded from, how much each shot shakes the aim (0..1) and the reach (cells).
+    #[serde(default)]
+    pub mag: u32,
+    #[serde(default)]
+    pub ammo: String,
+    #[serde(default)]
+    pub recoil: f64,
+    #[serde(default)]
+    pub range: i32,
 }
 
 impl Gear {
@@ -2069,6 +2079,14 @@ impl GameData {
                     "equipement {}: emplacement {} inconnu",
                     g.id, g.slot
                 ));
+            }
+            if g.mag > 0
+                && (self.resource_index(&g.ammo).is_none()
+                    || !(0.0..=1.0).contains(&g.recoil)
+                    || g.range < 1
+                    || g.slot != "weapon")
+            {
+                return bad(format!("arme a feu {}: munition, recul ou portee", g.id));
             }
             if g.attack < 0.0
                 || !(0.0..0.9).contains(&g.defense)

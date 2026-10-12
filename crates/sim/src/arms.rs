@@ -395,6 +395,8 @@ pub const DECOY_FUSE: f64 = 90.0;
 /// Radiated power an active sensor adds to the ship's signature, per kW of sensor power: a
 /// radar shouts, and anyone with a receiver hears it from far.
 pub const ACTIVE_EMISSION: f64 = 8.0;
+/// How much harder the first strike of an ambush lands.
+pub const AMBUSH_MULT: f64 = 3.0;
 
 /// Irradiance a seeker sees from `kw` at `dist` metres (inverse square law).
 pub fn irradiance(kw: f64, dist: f64) -> f64 {
@@ -753,6 +755,9 @@ pub struct Military {
     pub intel: Vec<(Cell, f64)>,
     pub boarding: Option<Boarding>,
     pub rumors: u32,
+    /// Ambushes sprung by the player, and the time of the last one.
+    pub ambushes: u32,
+    pub last_ambush: f64,
     pub last_day: i64,
     pub last_battery_day: i64,
     /// Sieges around the ship (refreshed daily, not saved).
@@ -868,6 +873,46 @@ impl Sim {
             let h = &mut self.ship.sys.health[i];
             *h = (*h - amount / plates.len() as f64 / m.hp.max(1.0)).max(0.0);
         }
+    }
+
+    // ---- ambush ---------------------------------------------------------------------------
+
+    /// Heat of the ship's own machinery, without the flash of a gun that has just fired.
+    pub fn quiet_signature_kw(&self) -> f64 {
+        self.ship
+            .design
+            .modules(&self.data)
+            .filter(|(i, m)| self.ship.sys.powered[*i] && m.power < 0.0)
+            .map(|(_, m)| -m.power * 0.5)
+            .sum::<f64>()
+            + if self.active_sensors {
+                self.sensor_power_kw() * ACTIVE_EMISSION
+            } else {
+                0.0
+            }
+    }
+
+    /// Whether a blow on NPC `k` is an ambush: the target is not on alert, was not provoked,
+    /// and sits beyond the distance at which it could feel the ship's heat. A ship that has cut
+    /// its machinery is a cold shadow; the first strike on an unwary target lands `AMBUSH_MULT`
+    /// times harder.
+    pub fn is_ambush(&self, k: usize) -> bool {
+        let Some(n) = self.npcs.get(k) else {
+            return false;
+        };
+        !matches!(n.state, crate::npc::NpcState::Combat { .. })
+            && !n.provoked
+            && !n.disabled
+            && (n.pos - self.ship.pos).length() > passive_detection_range(self.quiet_signature_kw())
+    }
+
+    pub(crate) fn note_ambush(&mut self) {
+        self.military.ambushes += 1;
+        let t = self.time;
+        if t - self.military.last_ambush > 60.0 || self.military.ambushes == 1 {
+            self.news_push(t, 1, 0.0, "Embuscade : un vaisseau froid a frappe le premier.".to_string());
+        }
+        self.military.last_ambush = t;
     }
 
     // ---- decoys and sensors ---------------------------------------------------------------
@@ -2504,5 +2549,52 @@ mod tests {
         }
         assert!(s.fleet.is_empty());
         assert!(s.news.iter().any(|n| n.text.starts_with("Mutinerie")));
+    }
+
+    #[test]
+    fn a_cold_ship_strikes_first_and_an_unwary_target_pays_triple() {
+        let mut s = sim_with(&[]);
+        let k = s.npcs.iter().position(|n| n.role == NpcRole::Trader).unwrap_or(0);
+        let far = passive_detection_range(s.quiet_signature_kw()) + 20_000.0;
+        let hit = |s: &mut Sim, aware: bool| {
+            s.npcs[k].hull_max = 1.0e6;
+            s.npcs[k].hull = 1.0e6;
+            s.npcs[k].shield = 0.0;
+            s.npcs[k].provoked = false;
+            s.npcs[k].disabled = false;
+            s.npcs[k].pos = s.ship.pos + vector_core::Vec3::new(0.0, 0.0, far);
+            s.npcs[k].state = if aware {
+                NpcState::Combat { mode: AiMode::Flee }
+            } else {
+                NpcState::Orbit { around: 0, phase: 0.0 }
+            };
+            let before = s.npcs[k].hull;
+            s.damage_npc(k, 100.0);
+            before - s.npcs[k].hull
+        };
+        // Unwary and unseen: the blow is tripled and the journal says so.
+        let base = hit(&mut s, true);
+        assert_eq!(base, 100.0);
+        let amb = hit(&mut s, false);
+        assert!((amb - 100.0 * AMBUSH_MULT).abs() < 1e-9, "{amb}");
+        assert_eq!(s.military.ambushes, 1);
+        assert!(s.news.iter().any(|n| n.text.starts_with("Embuscade")));
+        // A blazing ship is felt from afar: no ambush.
+        s.npcs[k].provoked = false;
+        let hot = s.quiet_signature_kw();
+        assert!(hot > 0.0);
+        s.npcs[k].pos = s.ship.pos + vector_core::Vec3::new(0.0, 0.0, 1000.0);
+        s.npcs[k].state = NpcState::Orbit { around: 0, phase: 0.0 };
+        assert!(!s.is_ambush(k), "too close to be unseen");
+        // Cut the machinery: the ship goes cold and the same distance becomes an ambush.
+        for p in s.ship.sys.powered.iter_mut() {
+            *p = false;
+        }
+        assert_eq!(s.quiet_signature_kw(), 0.0);
+        s.npcs[k].pos = s.ship.pos + vector_core::Vec3::new(0.0, 0.0, ACTIVE_RANGE + 1000.0);
+        assert!(s.is_ambush(k), "a cold ship is a shadow beyond five kilometres");
+        // A target already on alert is never ambushed.
+        s.npcs[k].state = NpcState::Combat { mode: AiMode::Pursue };
+        assert!(!s.is_ambush(k));
     }
 }

@@ -220,6 +220,12 @@ impl Sim {
 
     /// Hit NPC `k`; returns true if it was destroyed (and removed).
     pub fn damage_npc(&mut self, k: usize, dmg: f64) -> bool {
+        let dmg = if self.is_ambush(k) {
+            self.note_ambush();
+            dmg * arms::AMBUSH_MULT
+        } else {
+            dmg
+        };
         let Some(n) = self.npcs.get_mut(k) else {
             return false;
         };

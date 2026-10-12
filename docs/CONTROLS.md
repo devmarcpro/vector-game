@@ -10,12 +10,13 @@
 | Maj gauche (maintenir) | Boost : poussee x2.5, rotation x1.4, carburant x3 sur la poussee principale |
 | C (maintenir, carte fermee) | Frein : annule la vitesse relative a la cible (sinon au corps de reference, sinon au repere de l'etoile), partout et a toute vitesse, par RCS |
 | F7 | Visee souris ON/OFF : le mouvement relatif de la souris commande tangage et lacet (500 px/s = pleine deflexion), s'ajoute au clavier ; curseur capture en vol seulement |
+| Suppr | Vue externe / cockpit : camera a la troisieme personne qui orbite autour du vaisseau (coque et modules reels, eclaires par l'etoile ; flammes proportionnelles a la poussee, radiateurs rouges a chaud, bouclier, degats, train d'atterrissage a l'approche du sol, ombre et poussiere). En vue externe : glisser la souris = orbite, molette (ou +/-) = zoom, pave numerique 4/6/8/2 = orbite, 5 = camera suivant le vaisseau / libre, 0 = recentrer. Aussi dans le menu PILOTAGE (VUE EXTERNE) et par les mots cliquables en bas a gauche |
 | Tab | Cible suivante (la plus proche d'abord) |
 | R | Cibler le vaisseau PNJ le plus proche (cycle) |
 | T / Y | Cible : asteroide / station le(la) plus proche |
 | V (maintenir) | Laser de minage (cible asteroide a < 2 km, visee dans le cone) |
 | D | Amarrer (station < 500 m, vitesse relative < 8 m/s) |
-| I | Soute / inventaire (J = jeter la ressource) |
+| I | Soute / inventaire (J = jeter la ressource, F = verser le carburant de la soute dans le reservoir) |
 | K | Equipage (Gauche/Droite poste, T quart, X débarquer à quai, J journal) |
 | J | Journal de bord (Tab : nouvelles du monde, puis ARCHIVES : histoire du secteur et artefacts ; D dater, C collectionneur, M musée, R restituer, T fouille prudente) |
 | L | Carte galactique (Haut/Bas étoile, +/- zoom, Entrée = saut FTL) ; Retour arrière annule une charge de saut |
@@ -39,6 +40,9 @@
 | F1 | Aide contextuelle de l'ecran courant (re-appuyer pour fermer) |
 | F6 | Codex (Gauche/Droite categorie, Haut/Bas entree ; categorie REACTIONS = laboratoire : L ou Entree lance un lot de 100 kg de reactifs tires de la soute) |
 | F10 | Ignorer le tutoriel |
+| F6 | Codex (Gauche/Droite categorie, Haut/Bas entree) |
+| F10 | Menu principal : les huit espaces qui regroupent tous les ecrans (voir « Le menu principal ») ; re-appuyer ferme |
+| Suppr | Ignorer le tutoriel |
 
 Options de ligne de commande : `--snapshot fichier.png [scene]` (rendu headless), `--bench`, `--script fichier.txt` (jeu scripte sans fenetre, voir `crates/game/src/script.rs`).
 
@@ -52,10 +56,40 @@ Station : T = bourse (Haut/Bas ressource, PgUp/PgDn x10, Tab ou Gauche/Droite p�
 Station : C = contrats (Entrée accepter/livrer, X abandonner), E = banque (Haut emprunter 1000, Bas rembourser 1000, Entrée tout rembourser, H hypothéquer le vaisseau / lever l'hypothèque, C acheter 1000 CR de monnaie locale, V la revendre, B blanchir l'argent sale ; le tableau ECONOMIE LOCALE et les rapports mensuels sont sur le même écran).
 
 Ecran colonie : Tab zone (bâtiments / stocks / politiques / construction), Haut/Bas, Espace on/off, R recette, X démolir, D déposer / W retirer (stocks, amarré), Gauche/Droite politique, Entrée construire, T récupérer la caisse, U décoller. F = schéma des chaînes de production, H = suivi sanitaire (épidémies de la colonie, secteur, équipage, journal) ; les mêmes boutons sont cliquables en haut à droite.
+Ecran colonie : Tab zone (bâtiments / stocks / politiques / construction), Haut/Bas, Espace on/off, R recette, X démolir, D déposer / W retirer (stocks, amarré), Gauche/Droite politique, Entrée construire, T récupérer la caisse, U décoller, F schéma des chaînes, H suivi sanitaire, P écran des projets.
+
+Écran des projets (P dans l'écran colonie ; P ou Échap pour revenir) : terraformation et mégastructures. Tab change de zone (travaux / catalogue / usines atmosphériques), Haut/Bas choisit, Entrée commande le projet du catalogue (ou choisit le procédé des usines), [ et ] changent le nombre d'unités commandées (1, 10, 100... 100 000), Gauche/Droite change l'espèce semée, Espace met un ouvrage en marche ou à l'arrêt, X abandonne les unités non finies. À la souris : clic sur une ligne, double-clic sur le catalogue pour commander, clic sur [COMMANDER] ou sur un procédé. L'écran montre l'échelle de Kardashev de la civilisation, ce qui retient chaque chantier (matériaux, énergie, main-d'œuvre) et l'état du climat du monde (température, bilan, pression, composition, mers, glaces, vie native, souches, habitabilité).
 Ecran flotte : Tab liste, N nouvelle route (Gauche/Droite valeur, Tab champ, Entrée), A affecter, U retirer, X supprimer/vendre, B acheter (à quai).
 
 ## Menus
-Menu principal : Nouvelle partie / Continuer / Regles de partie / Options / Codex-Aide / Quitter. Menu pause : Reprendre / Sauvegarder / Charger / Regles / Options / Codex-Aide / Menu principal / Quitter.
+Menu de demarrage : Partie rapide (voyageur standard, graine tapee ou par defaut) / Nouvelle partie (le flux en sept etapes ci-dessous) / Continuer / Regles de partie / Options / Codex-Aide / Quitter. Menu pause : Reprendre / Sauvegarder / Charger / Regles / Options / Codex-Aide / Menu principal / Quitter.
+
+## Nouvelle partie (sept etapes)
+Menu de demarrage > Nouvelle partie. Entree passe a l'etape suivante, Echap revient a la precedente (la premiere revient au menu de demarrage), un clic sur le nom d'une etape (en haut) y va directement, clic droit = Echap, les boutons « < PRECEDENT » et « SUIVANT > » sont du texte cliquable.
+1. **Explications** : ce qu'est le jeu (bac a sable sans objectif impose, vous etes l'IA du vaisseau, l'equipage vit sa vie) et les touches a connaitre.
+2. **Scenario** (Haut/Bas) : Voyageur, Marchand, Explorateur, Hors-la-loi, Colon, Naufrage. Chacun fixe vraiment les credits, la soute, le vaisseau, l'equipage a depenser, les technologies connues, les relations avec les factions (et une prime pour le hors-la-loi). Naufrage : on commence a pied sur un monde nu, vaisseau hors d'etat de voler (voir « Naufrage »).
+3. **Vaisseau** (Haut/Bas) : les coques proposees par le scenario, modules montes, apercu fil de fer qui tourne, poussee, energie, reservoir, soute, logements, saut FTL, scanners.
+4. **Equipage** : douze candidats tires de la graine ; Haut/Bas choisit, Espace (ou clic) prend ou laisse, Gauche/Droite change le poste de la personne prise ; budget de points du scenario (1 point par personne, 2 pour un specialiste, 3 pour un expert), au moins une personne.
+5. **Galaxie** : taper une graine (nombre ou mot), Tab en tire une au hasard, Suppr revient a celle par defaut ; l'ecran donne le systeme de depart (classe de l'etoile, planetes, lunes, asteroides, stations, territoire).
+6. **Options** (Haut/Bas, Gauche/Droite) : langue (FRANCAIS), clavier (AZERTY par defaut / QWERTY), tutoriel guide, difficulte (DOUX / STANDARD / RUDE = degats, agressivite des IA, evenements, carburant) et, sur la derniere ligne, les regles avancees. La difficulte indicative du depart (1 a 5) suit le scenario et les regles.
+7. **Recapitulatif** : Entree lance la partie.
+
+## Le menu principal (F10, huit espaces)
+F10 ou un clic sur « MENU (F10) » (en haut a droite de tous les ecrans) ouvre le menu ; il gele le vol. En haut, l'**orientation** : ou vous etes (en vol pres de..., amarre a..., pose sur..., a pied : lieu) et ce que vous pouvez faire maintenant (consignes selon l'etat : quai, vol, vaisseau au sol, a pied). Dessous, huit espaces (1 a 8, Haut/Bas, clic) :
+- 1 PILOTAGE : cockpit / decoller, radio (Entree), portail et temps (Accueil), pause et sauvegarde.
+- 2 NAVIGATION : carte du systeme (M), galaxie et saut FTL (L), surface d'un monde (F8).
+- 3 VAISSEAU : modules et energie (H), soute (I), chantier naval (Y a quai).
+- 4 EQUIPAGE : equipage (K), arbre familial, recrutement (N a quai).
+- 5 COMMERCE / STATION : marche, bourse (T), courtage (D), contrats (C), banque (E), elevage (L), casino (A) ; a quai seulement.
+- 6 EXPLORATION A PIED : explorer a pied (Fin), expedition sur un monde (F8 puis E).
+- 7 COLONIES : empire (F2), colonie, flotte (F3), factions (X), fonder une colonie (O).
+- 8 CODEX / JOURNAL : journal (J), codex (F6), technologies (F4), prototypes d'interface (F12).
+Un espace ouvre l'ecran existant par la meme fonction que sa touche : aucun ecran n'est duplique. Une ligne grisee dit pourquoi elle est indisponible (amarrage requis, decollage requis, a pied).
+**Echap remonte d'un niveau, partout** : un ecran ouvert depuis le menu revient a la page de son espace ; la page revient a la liste des espaces ; la liste ferme le menu, qui rend l'ecran d'ou il a ete ouvert (cockpit, quai ou marche a pied). Le clic droit fait de meme.
+A pied (equipe sur le terrain), seuls les ecrans d'information s'ouvrent (vaisseau, soute, equipage, journal, codex, technologies) et Echap revient a la marche.
+
+## Naufrage (scenario)
+Le vaisseau est un epave : moteur a 0 %, reservoirs vides, aucun credit, un ingenieur seul, a pied sur un monde choisi pour son air. Les epaves, campements, ruines et grottes de la surface (touche Fin / carte de surface) donnent des pieces detachees et du carburant ; le butin va en soute au retour (Entree sur < ou R) ; l'ingenieur de quart repare avec les pieces detachees (ses reparations ordinaires, le module le plus abime d'abord) ; **I puis F** verse le carburant de la soute dans le reservoir ; le menu (F10) dit moteur, energie, pieces et carburant. Le vaisseau peut decoller (Espace) quand la poussee depasse son poids sur ce monde. Rien n'est impose : on peut aussi rester vivre sur place.
 Regles : Haut/Bas, Gauche/Droite modifier, R valeurs par defaut ; depuis la pause elles s'appliquent immediatement.
 Options : lignes de balayage, halo, palette (couleur, vert, ambre, blanc, bleu), volume, tutoriel, barre des commandes ; sauvegardees dans saves/settings.cfg.
 
@@ -97,6 +131,8 @@ Par défaut AZERTY : tangage Z/S, lacet Q/D, roulis A/E. Options > Clavier bascu
 
 - **Globe de surface** : glisser avec le bouton gauche pour le faire tourner.
 - **Carte de surface (F8)** : Tab change de couche (biomes, altitude, température, humidité, météo, vie, nuages). Sur la couche biomes, `~` marque un lac ou un fleuve et `=` l'eau prise par la glace (selon la saison) ; le panneau de droite dit la mer, le lac ou le fleuve sous le curseur, son débit et s'il est gelé.
+- **Couche GEOLOGIE** (écran de surface F8, Tab jusqu'à la dernière couche ou clic sur son onglet) : plaques teintées, frontières convergentes (^), divergentes (=) et transformantes (/), volcans actifs (A) et éteints (a), gisements (M veine, H sulfures, K kimberlite, E évaporites, P pétrole, G pegmatite, I glace) ; le panneau de droite donne plaque, roche, frontière, chaleur du sol et gisements à moins de 6 cases du curseur. Fonder une colonie à moins de 12 cases d'un gisement en met le minerai dans son sol.
+- **Carte galactique (L)** : les cercles colorés sont les nébuleuses, amas et régions de formation d'étoiles à portée (rayon réel), le panneau donne le stade de l'étoile choisie, les effets du milieu où l'on est et la distance au trou noir central. Codex (F6) : catégories GEOLOGIE et ASTRONOMIE.
 
 - **Menu de pilotage** (cockpit, à droite) : cliquer un mot ouvre l'écran ou exécute la commande ; les mots « (MAINT.) » agissent tant que le bouton de la souris reste enfoncé. F11 plie ou déplie le menu (Options > Menu de pilotage pour le retirer).
 
@@ -114,10 +150,17 @@ Par défaut AZERTY : tangage Z/S, lacet Q/D, roulis A/E. Options > Clavier bascu
 
 - Station : L elevage (B acheter, P reproduire avec le meilleur partenaire, H abattre, Gauche/Droite espece), A casino (Gauche/Droite jeu, Haut/Bas mise, +/- numero, Entree jouer).
 
-- Station : D courtage (Gauche/Droite onglet : rumeurs, arbitrage, cartels, appels d'offres, assurance ; Haut/Bas choix ; +/- mise ; Entree agir).
+- Station : D courtage (Gauche/Droite ou clic sur le nom de l'onglet : rumeurs, arbitrage, cartels, appels d'offres, assurance, titres, ventes, lignes, economie ; Haut/Bas choix, PageHaut/PageBas par 10 ; +/- mise ; Entree agit : assurer la soute, acheter 1000 CR d'obligations, miser sur le premier lot, financer le premier convoi ; chaque texte vert d'un onglet est un bouton cliquable).
+  - Assurance : [ASSURER LA SOUTE], [ASSURER SOUTE ET COQUE] (prime selon le risque reel et le dossier), [DECLARER LA SOUTE PERDUE] (controle : fraude = police annulee et amende).
+  - Titres : [ACHETER 1000/5000 CR] d'obligations, [VENDRE] ; fonds actions et matieres [ACHETER 1000 CR] / [VENDRE] ; options d'achat et de vente sur le bien choisi (fleches).
+  - Ventes : [MISER] sur un lot d'enchere (+/- pour la mise), [EXPERTISE] et [ACHETER] aux puces, [VENDRE TOUT AUX PUCES], [CAMPAGNE DE PUBLICITE 2000 CR] pour le bien choisi.
+  - Lignes : fleches pour choisir une ligne du systeme, [FINANCER 1000 CR] sur un convoi encore a quai.
+  - Economie : clic sur une juridiction pour son tableau et ses courbes (24 mois).
+- Contrats (C) : les croisieres et pelerinages ont plusieurs escales ; Entree a chaque escale (dans l'ordre), puis a l'arrivee.
 
 - Accueil (vol ou quai) : portails, dimensions et temps (Entree portail, A ancre, R remonter, X lever, +/- jours, S stase).
 
+- Ecran Portail/Temps (Accueil), colonne HAUTE SCIENCE-FICTION : N personne suivante, K cloner (1 kg de nanites + 80000 CR). Le HUD de vol affiche en plus l'antimatiere (piege), la bulle Alcubierre et les phenomenes exotiques proches.
 - Ecran Portail/Temps (Accueil) : 1/2/3 echo, B briser une boucle, O avant-poste, Gauche/Droite + J relais.
 
 - Fin (vol ou quai) : explorer a pied (fleches / pave numerique, Entree escalier, Espace attendre, Tab chef, clic = marcher).
@@ -132,3 +175,10 @@ Par défaut AZERTY : tangage Z/S, lacet Q/D, roulis A/E. Options > Clavier bascu
 Ecran Factions (X) : Tab ouvre le registre des relations (Haut/Bas choisir, PgUp/PgDn sauter, Tab retour a l'anneau, X/Echap quitter). Journal (J) : quand une surprise attend un choix, elle s'affiche en bas ; touches 1 a 3 pour repondre.
 
 - **Couche BIOSPHERE** (écran de surface F8, Tab jusqu'à la dernière couche) : la carte montre la densité de l'espèce choisie ; V / Maj+V changent d'espèce, un clic sur une espèce de la liste « ICI » l'affiche, Entrée ouvre et ferme la fiche de sa variante locale (générée depuis les données et l'état du monde), F ouvre le codex.
+
+- **S** (sur l'ecran des factions, X) : page SOCIETE de la faction choisie (Gauche/Droite) : loi locale et situation juridique, langue (mots, ere, ce que l'equipage et l'IA comprennent, effet sur les prix), culture du lieu (annee locale, saison, cuisine, fete), equipage et competence linguistique, ecole (PgUp/PgDn choisir l'etude, **E** inscrire l'equipier choisi avec Haut/Bas), arts (**A** art suivant, **C** composer, **V** vendre la derniere oeuvre a la galerie, **D** la donner au musee), sports (**J** sport suivant, **P** parier 100 CR sur le favori, a quai). Tous ces choix sont aussi des boutons cliquables ; S ou X/Echap pour revenir.
+## Concevoir son vaisseau (chantier naval, touche C)
+Barre d'onglets en haut du chantier : COQUES, CONCEPTION, EQUIPEMENT, PLANS ET COMMANDES (clic) ; Tab passe a l'onglet suivant, Echap revient au chantier.
+- CONCEPTION : clic sur une piece de la liste (ou PgUp/PgDn), clic sur la grille pour la poser (outils POSER, RETIRER, CHOISIR ; fleches = curseur, Entree pose, X retire) ; couche (etage) Debut/Fin ou boutons - et + ; M ou bouton SYMETRIE pour poser aussi le miroir (babord/tribord) ; N nomme le plan. Glisser la souris sur l'apercu le fait tourner. Les pieces cerclees de rouge ne sont pas reliees au noyau.
+- EQUIPEMENT : clic sur une case de la grille, puis sur un emplacement, puis sur un module (double clic ou Entree installe, X retire) ; Espace change de zone (grille, emplacements, modules), fleches pour naviguer.
+- PLANS ET COMMANDES : colonnes MES PLANS (clic choisit, double clic modifie ; boutons NOUVEAU, COPIER, SUPPRIMER, NOM, MODIFIER, EXPORTER ; fichiers de `saves/plans` a importer d'un clic), PLANS EN VENTE (double clic ou Entree achete), CONSTRUIRE (boutons - + equipes, COMMANDER LA CONSTRUCTION ; O au clavier ; PgUp/PgDn equipes) et MA FLOTTE (EMBARQUER, DEMONTER, REFONDRE AVEC LE PLAN CHOISI ; au clavier Entree, D, R). Gauche/Droite change de colonne, F nouveau plan, C copier, X supprimer, E exporter, I importer.

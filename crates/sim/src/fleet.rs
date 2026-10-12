@@ -554,7 +554,6 @@ impl Sim {
     }
 }
 
-
 // ---- the player's squadron: orders, escorts, prizes -------------------------------------------
 
 /// What an owned ship does. `Trade` is the freighter's own routine (`routes`); the rest make
@@ -673,7 +672,8 @@ impl Sim {
     /// Share of the hits aimed at the player that the escorts take.
     pub fn escort_screen(&self) -> f64 {
         let n = |o| self.squadron(o).filter(|s| s.condition > 0.0).count() as f64;
-        (n(FleetOrder::Defend) * DEFEND_SHARE + n(FleetOrder::Follow) * FOLLOW_SHARE).min(SCREEN_CAP)
+        (n(FleetOrder::Defend) * DEFEND_SHARE + n(FleetOrder::Follow) * FOLLOW_SHARE)
+            .min(SCREEN_CAP)
     }
 
     /// Escorts take `amount` of damage points, shared between the screening ships; a ship
@@ -701,7 +701,12 @@ impl Sim {
         for i in lost.into_iter().rev() {
             let s = self.fleet.remove(i);
             let t = self.time;
-            self.news_push(t, 1, 0.0, format!("{} est perdu en couvrant votre vaisseau.", s.name));
+            self.news_push(
+                t,
+                1,
+                0.0,
+                format!("{} est perdu en couvrant votre vaisseau.", s.name),
+            );
         }
     }
 
@@ -762,7 +767,10 @@ impl Sim {
 
     /// Refill the ammunition of the squadron from the hold (ammunition slugs).
     pub fn resupply_escorts(&mut self) -> Result<f64, &'static str> {
-        let slugs = self.data.resource_index("ammo_slugs").ok_or("pas de munitions")?;
+        let slugs = self
+            .data
+            .resource_index("ammo_slugs")
+            .ok_or("pas de munitions")?;
         let need: f64 = self
             .fleet
             .iter()
@@ -779,7 +787,11 @@ impl Sim {
         let frac = (have / need).min(1.0);
         let data = std::sync::Arc::clone(&self.data);
         self.ship.cargo.remove(&data, slugs, need * frac);
-        for s in self.fleet.iter_mut().filter(|s| s.order != FleetOrder::Trade) {
+        for s in self
+            .fleet
+            .iter_mut()
+            .filter(|s| s.order != FleetOrder::Trade)
+        {
             s.ammo = (s.ammo + (1.0 - s.ammo) * frac).min(1.0);
         }
         Ok(need * frac)
@@ -823,7 +835,12 @@ impl Sim {
         if pool.is_empty() {
             pool = (0..data.hulls.len()).collect();
         }
-        let h = hash_coord(self.system.seed, i64::from(b.npc_id), 0xB0A8D, i64::from(b.level));
+        let h = hash_coord(
+            self.system.seed,
+            i64::from(b.npc_id),
+            0xB0A8D,
+            i64::from(b.level),
+        );
         let hull = pool[(h % pool.len() as u64) as usize];
         let hd = &data.hulls[hull];
         let id = self.next_fleet;
@@ -914,7 +931,15 @@ impl Sim {
         for i in mutinies.into_iter().rev() {
             let s = self.fleet.remove(i);
             let t = self.time;
-            self.news_push(t, 6, 0.0, format!("Mutinerie : l'equipage de {} s'est enfui avec le vaisseau.", s.name));
+            self.news_push(
+                t,
+                6,
+                0.0,
+                format!(
+                    "Mutinerie : l'equipage de {} s'est enfui avec le vaisseau.",
+                    s.name
+                ),
+            );
         }
     }
 }

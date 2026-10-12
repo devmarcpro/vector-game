@@ -6,7 +6,7 @@ use vector_data::GameData;
 use vector_world::generate_system;
 
 pub const MAGIC: [u8; 4] = *b"VECT";
-pub const VERSION: u32 = 37;
+pub const VERSION: u32 = 38;
 
 #[derive(Debug)]
 pub enum SaveError {
@@ -43,6 +43,12 @@ pub struct SaveGame {
     pub docked: Option<usize>,
     pub target: Option<usize>,
     pub module_stock: Vec<u32>,
+    pub blueprints: Vec<crate::shipwright::Blueprint>,
+    pub next_blueprint: u32,
+    pub custom_ships: Vec<crate::yard::CustomShip>,
+    pub yard_orders: Vec<crate::yard::YardOrder>,
+    pub next_order: u32,
+    pub bought_plans: Vec<String>,
     pub crew: crate::crew::Crew,
     pub galaxy_seed: u64,
     pub here: vector_world::galaxy::StarRef,
@@ -89,6 +95,7 @@ pub struct SaveGame {
     pub rogue: Option<crate::rogue::Rogue>,
     pub rogue_visits: Vec<(u64, u32)>,
     pub births_day: i64,
+    pub society: crate::society::SocietyState,
     pub news: Vec<crate::news::NewsItem>,
     pub news_scanned_to: f64,
     pub last_livestock_day: i64,
@@ -108,6 +115,12 @@ impl Sim {
             docked: self.docked,
             target: self.target,
             module_stock: self.module_stock.clone(),
+            blueprints: self.blueprints.clone(),
+            next_blueprint: self.next_blueprint,
+            custom_ships: self.custom_ships.clone(),
+            yard_orders: self.yard_orders.clone(),
+            next_order: self.next_order,
+            bought_plans: self.bought_plans.clone(),
             crew: self.crew.clone(),
             galaxy_seed: self.galaxy.seed,
             here: self.here,
@@ -151,6 +164,7 @@ impl Sim {
             rogue: self.rogue.clone(),
             rogue_visits: self.rogue_visits.clone(),
             births_day: self.births_day,
+            society: self.society.clone(),
             news: self.news.clone(),
             news_scanned_to: self.news_scanned_to,
             last_livestock_day: self.last_livestock_day,
@@ -198,6 +212,13 @@ impl Sim {
                 "incompatible avec les donnees actuelles".into(),
             ));
         }
+        sim.blueprints = save.blueprints;
+        sim.next_blueprint = save.next_blueprint;
+        sim.custom_ships = save.custom_ships;
+        sim.restore_custom();
+        sim.yard_orders = save.yard_orders;
+        sim.next_order = save.next_order;
+        sim.bought_plans = save.bought_plans;
         sim.galaxy = vector_world::galaxy::Galaxy::new(save.galaxy_seed);
         sim.here = save.here;
         sim.here_pos = save.here_pos;
@@ -241,6 +262,7 @@ impl Sim {
         sim.rogue = save.rogue;
         sim.rogue_visits = save.rogue_visits;
         sim.births_day = save.births_day;
+        sim.society = save.society;
         sim.news = save.news;
         sim.news_scanned_to = save.news_scanned_to;
         sim.last_livestock_day = save.last_livestock_day;

@@ -2,7 +2,9 @@
 //! Units: SI (m, s, kg, N). See docs/SIM_MODEL.md.
 pub mod archive;
 pub mod arms;
+pub mod astro;
 pub mod atmosphere;
+pub mod auction;
 pub mod autopilot;
 pub mod biosphere;
 pub mod births;
@@ -24,17 +26,21 @@ pub mod ecology;
 pub mod economy;
 pub mod epidemic;
 pub mod exotic;
+pub mod exotic_field;
 pub mod fleet;
 pub mod futures;
 pub mod gear;
 pub mod genealogy;
+pub mod geo;
 pub mod history;
 pub mod incidents;
 pub mod intrusion;
+pub mod lanes;
 pub mod law;
 pub mod livestock;
 pub mod macroeco;
 pub mod market;
+pub mod megastructure;
 pub mod mind;
 pub mod multiverse;
 pub mod navigation;
@@ -51,11 +57,17 @@ mod rules_effects;
 pub mod save;
 pub mod scene;
 pub mod science;
+pub mod securities;
+pub mod shipwright;
+pub mod society;
+pub mod start;
 pub mod surgery;
 pub mod surprises;
+pub mod terraform;
 pub mod trading;
 pub mod treat;
 pub mod voyage;
+pub mod yard;
 
 use autopilot::Autopilot;
 use cargo::Cargo;
@@ -285,6 +297,10 @@ pub enum Event {
     MeteorImpact {
         damage: f64,
     },
+    /// A ship ordered at a yard has been delivered to the fleet.
+    ShipBuilt {
+        name: String,
+    },
 }
 
 pub struct Sim {
@@ -331,6 +347,7 @@ pub struct Sim {
     pub rogue: Option<rogue::Rogue>,
     pub rogue_visits: Vec<(u64, u32)>,
     pub births_day: i64,
+    pub society: society::SocietyState,
     /// The news heard so far, and the last day the sectors around were listened to.
     pub news: Vec<news::NewsItem>,
     pub news_scanned_to: f64,
@@ -347,6 +364,15 @@ pub struct Sim {
     pub laser_on: bool,
     /// Spare modules owned by the player, by module index.
     pub module_stock: Vec<u32>,
+    /// Ship plans of the player (see `shipwright`), the ships built from them (their hulls are
+    /// appended to `data.hulls` from index `base_hulls`), the yard's orders and the plans bought.
+    pub blueprints: Vec<shipwright::Blueprint>,
+    pub next_blueprint: u32,
+    pub custom_ships: Vec<yard::CustomShip>,
+    pub base_hulls: usize,
+    pub yard_orders: Vec<yard::YardOrder>,
+    pub next_order: u32,
+    pub bought_plans: Vec<String>,
     pub effective: Effective,
     pub crew: Crew,
     pub galaxy: Galaxy,
@@ -379,6 +405,13 @@ pub struct Sim {
     pub(crate) last_news_day: i64,
     /// Day number of the last epidemic travel check (not saved).
     pub(crate) epi_day: i64,
+    /// Effects of the interstellar medium at the system where the ship is (not saved).
+    pub(crate) cosmic_cache: Option<(
+        vector_world::galaxy::StarRef,
+        vector_world::cosmos::CosmicEffects,
+    )>,
+    /// Day number of the last listen for gravitational waves (not saved).
+    pub(crate) last_cosmic_day: i64,
     /// Surface maps of colonised worlds and city sites (derived data, never saved).
     pub(crate) world_cache: std::collections::HashMap<(u64, usize), Option<Arc<planet::PlanetMap>>>,
     pub(crate) city_cache: std::collections::HashMap<u32, (usize, usize)>,
@@ -422,6 +455,8 @@ pub struct Sim {
     /// Load on the frame this step in g, and heat the air puts into the hull (kW); not saved.
     pub g_load: f64,
     pub aero_heat_kw: f64,
+    /// Share of the main engine's full thrust used this step (render only, not saved).
+    pub main_throttle: f64,
     pub rules: rules::Rules,
 }
 
@@ -454,6 +489,13 @@ impl Sim {
         let mut s = Sim {
             system,
             module_stock: vec![0; data.modules.len()],
+            blueprints: Vec::new(),
+            next_blueprint: 1,
+            custom_ships: Vec::new(),
+            base_hulls: data.hulls.len(),
+            yard_orders: Vec::new(),
+            next_order: 1,
+            bought_plans: Vec::new(),
             data,
             ship,
             bodies,
@@ -480,6 +522,7 @@ impl Sim {
             rogue: None,
             rogue_visits: Vec::new(),
             births_day: i64::MIN,
+            society: Default::default(),
             news: Vec::new(),
             news_scanned_to: f64::NEG_INFINITY,
             last_livestock_day: i64::MIN,
@@ -519,6 +562,8 @@ impl Sim {
             steps: 0,
             last_news_day: i64::MIN,
             epi_day: i64::MIN,
+            cosmic_cache: None,
+            last_cosmic_day: i64::MIN,
             world_cache: std::collections::HashMap::new(),
             city_cache: std::collections::HashMap::new(),
             ecologies: BTreeMap::new(),
@@ -549,6 +594,7 @@ impl Sim {
             env_gravity: Vec3::ZERO,
             g_load: 0.0,
             aero_heat_kw: 0.0,
+            main_throttle: 0.0,
             rules: rules::Rules::default(),
         };
         s.researched = s.data.techs.iter().map(|t| t.start).collect();
@@ -694,8 +740,17 @@ impl Sim {
 
     /// Stellar flux at the ship relative to 1 AU (for solar panels).
     pub fn solar_flux(&self) -> f64 {
-        let d_au = self.ship.pos.length() / vector_world::orbit::AU;
-        self.system.luminosity / (d_au * d_au).max(1e-6) * self.sunlight_at(self.ship.pos)
+        use vector_world::orbit::AU;
+        let d_au = self.ship.pos.length() / AU;
+        // The star (its light waxes and wanes if it is a variable) and the suns of its companions.
+        let mut flux = self.system.luminosity_at(self.time) / (d_au * d_au).max(1e-6);
+        for (i, b) in self.system.bodies.iter().enumerate().skip(1) {
+            if matches!(b.kind, BodyKind::Star(_)) {
+                let d = (self.bodies[i].pos - self.ship.pos).length() / AU;
+                flux += b.star_luminosity() / (d * d).max(1e-6);
+            }
+        }
+        flux * self.sunlight_at(self.ship.pos)
     }
 
     /// Largest step that keeps integration accurate near attractors and surfaces.
@@ -771,6 +826,7 @@ impl Sim {
         self.multiverse_tick();
         self.mind_tick();
         self.births_tick();
+        self.society_tick();
         self.news_tick();
         let flux = self.solar_flux();
         let ext_heat_kw = self.external_heat_kw(dt);
@@ -804,8 +860,10 @@ impl Sim {
         self.epidemic_tick();
         self.update_fleet();
         self.military_tick();
+        self.update_yard();
         self.tick_research(dt);
         self.tick_antimatter(dt);
+        self.tick_exotic_fields(dt);
     }
 
     /// Advance the crew layer to the current time and apply what the engineers repaired.
@@ -884,6 +942,9 @@ impl Sim {
             self.accounts_tick();
             self.market_news_tick();
             self.futures_tick();
+            self.securities_tick();
+            self.lanes_tick();
+            self.dealings_tick();
             self.dividend_tick();
             self.intrusion_tick();
             self.refresh_bodies();
@@ -1077,6 +1138,11 @@ impl Sim {
         s.vel = s.vel + (s.rot.mul_vec(acc_b) + grav) * dt;
         s.pos = s.pos + s.vel * dt;
         self.g_load = acc_b.length() / G0;
+        self.main_throttle = if self.effective.thrust > 0.0 && acc_b.z > 0.0 {
+            (main_force / self.effective.thrust).clamp(0.0, 2.5)
+        } else {
+            0.0
+        };
         // The crew feels the thrust (a slow average: a burst of a second is not a sustained load).
         let felt = acc_b.length() / crate::body::G0;
         let env = &mut self.crew.env;
@@ -1320,6 +1386,7 @@ impl Sim {
         if self.bodies[i].kind == BodyKind::Station {
             self.customs_check();
             self.law_patrol();
+            self.quarantine_check();
         }
         Ok(i)
     }

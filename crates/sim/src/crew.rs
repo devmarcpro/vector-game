@@ -111,7 +111,7 @@ impl Person {
             .map_or(0, |(_, v)| *v)
     }
 
-    fn add_relation(&mut self, other: u32, delta: i16) {
+    pub(crate) fn add_relation(&mut self, other: u32, delta: i16) {
         match self.relations.iter_mut().find(|(i, _)| *i == other) {
             Some((_, v)) => *v = (*v + delta).clamp(-100, 100),
             None => self.relations.push((other, delta.clamp(-100, 100))),

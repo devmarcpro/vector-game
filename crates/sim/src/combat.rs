@@ -1,8 +1,8 @@
 //! Ship combat: beams, kinetic projectiles with real ballistics, guided missiles, mines, shields,
 //! armour, point defence, hostile AI, wrecks, salvage and boarding.
+use crate::arms::{self, HitKind};
 use crate::crew::DAY;
 use crate::npc::{AiMode, NpcRole, NpcState};
-use crate::arms::{self, HitKind};
 use crate::{Event, ShipInput, Sim, SHIP_RADIUS};
 use serde::{Deserialize, Serialize};
 use vector_core::{hash_coord, Rng, Vec3};

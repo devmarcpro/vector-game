@@ -1,5 +1,6 @@
-//! The brokerage screen (D at a station): rumours, arbitrage, cartels, tenders and insurance,
-//! five tabs chosen with the arrows or by clicking their names.
+//! The brokerage screen (D at a station): rumours, arbitrage, cartels, tenders, insurance,
+//! securities, sales, regular lines and the economic board (the last five live in `eco_view`),
+//! nine tabs chosen with the arrows or by clicking their names.
 use crate::game::{Game, Screen};
 use crate::hud::{AMBER, DIM, GREEN};
 use crate::mouse::Act;
@@ -9,13 +10,16 @@ use winit::keyboard::KeyCode;
 
 const WHITE: u32 = 0x00FF_FFFF;
 const UP: u32 = 0x0040_E070;
-const DOWN: u32 = 0x00FF_5050;
-pub const TABS: [&str; 5] = [
+pub const TABS: [&str; 9] = [
     "RUMEURS",
     "ARBITRAGE",
     "CARTELS",
     "APPELS D'OFFRES",
     "ASSURANCE",
+    "TITRES",
+    "VENTES",
+    "LIGNES",
+    "ECONOMIE",
 ];
 
 #[derive(Default)]
@@ -24,6 +28,8 @@ pub struct TradeUi {
     pub sel: usize,
     /// Bid as a percentage of the ceiling (steps of 5, default 60).
     pub bid: usize,
+    /// Caches of the economy tabs.
+    pub eco: crate::eco_view::EcoUi,
 }
 
 impl Game {
@@ -40,6 +46,7 @@ impl Game {
         match self.trade_ui.tab {
             2 => self.data.cartels.len(),
             3 => self.sim.offered_tenders().len(),
+            5..=8 => self.eco_rows(),
             _ => 0,
         }
     }
@@ -47,8 +54,16 @@ impl Game {
     pub fn trade_key(&mut self, code: KeyCode) {
         let rows = self.trade_rows();
         match code {
-            KeyCode::ArrowLeft => self.click_trade_tab((self.trade_ui.tab + 4) % 5),
-            KeyCode::ArrowRight | KeyCode::Tab => self.click_trade_tab((self.trade_ui.tab + 1) % 5),
+            KeyCode::ArrowLeft => {
+                self.click_trade_tab((self.trade_ui.tab + TABS.len() - 1) % TABS.len())
+            }
+            KeyCode::ArrowRight | KeyCode::Tab => {
+                self.click_trade_tab((self.trade_ui.tab + 1) % TABS.len())
+            }
+            KeyCode::PageUp if rows > 0 => self.trade_ui.sel = self.trade_ui.sel.saturating_sub(10),
+            KeyCode::PageDown if rows > 0 => {
+                self.trade_ui.sel = (self.trade_ui.sel + 10).min(rows - 1)
+            }
             KeyCode::ArrowUp if rows > 0 => {
                 self.trade_ui.sel = (self.trade_ui.sel + rows - 1) % rows;
             }
@@ -95,10 +110,10 @@ impl Game {
                     None => Err("aucune offre choisie"),
                 }
             }
-            4 => self
-                .sim
-                .buy_insurance()
-                .map(|p| format!("CARGAISON ASSUREE POUR {p:.0} CR")),
+            4..=8 => {
+                self.eco_enter();
+                return;
+            }
             _ => return,
         };
         match r {
@@ -135,7 +150,11 @@ pub fn draw(fb: &mut Framebuffer, g: &Game) {
         1 => draw_arbitrage(fb, g),
         2 => draw_cartels(fb, g),
         3 => draw_tenders(fb, g),
-        _ => draw_insurance(fb, g),
+        4 => crate::eco_view::draw_insurance(fb, g),
+        5 => crate::eco_view::draw_titres(fb, g),
+        6 => crate::eco_view::draw_ventes(fb, g),
+        7 => crate::eco_view::draw_lignes(fb, g),
+        _ => crate::eco_view::draw_economie(fb, g),
     }
     for (i, m) in g.messages.iter().rev().take(1).enumerate() {
         fb.text(1, 36 + i, m, AMBER);
@@ -300,34 +319,4 @@ fn draw_tenders(fb: &mut Framebuffer, g: &Game) {
         DIM,
     );
     fb.text(1, 30, "[ENTREE] MISER", GREEN);
-}
-
-fn draw_insurance(fb: &mut Framebuffer, g: &Game) {
-    let s = &g.sim;
-    use vector_sim::trading::{COVER, INSURANCE_DAYS, PREMIUM};
-    fb.text(
-        1,
-        5,
-        &format!(
-            "PRIME {:.0} % DE LA VALEUR DE LA SOUTE POUR {INSURANCE_DAYS:.0} JOURS ; REMBOURSE {:.0} % SI LE VAISSEAU EST DETRUIT.",
-            PREMIUM * 100.0,
-            COVER * 100.0
-        ),
-        DIM,
-    );
-    if s.insured() {
-        fb.text(
-            1,
-            8,
-            &format!(
-                "POLICE ACTIVE : {:.1} JOURS RESTANTS, VALEUR COUVERTE {:.0} CR",
-                (s.trade.insured_until - s.time) / DAY,
-                s.trade.covered
-            ),
-            UP,
-        );
-    } else {
-        fb.text(1, 8, "AUCUNE POLICE EN COURS.", DOWN);
-    }
-    fb.text(1, 10, "[ENTREE] ASSURER LA SOUTE ACTUELLE", GREEN);
 }

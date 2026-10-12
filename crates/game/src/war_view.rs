@@ -34,15 +34,13 @@ impl Game {
 
     /// Everything the buttons and keys of the war page do.
     pub fn click_war(&mut self, code: usize) {
-        let agent_id = self
-            .sim
-            .military
-            .agents
-            .get(self.war_agent)
-            .map(|a| a.id);
+        let agent_id = self.sim.military.agents.get(self.war_agent).map(|a| a.id);
         let cell = self.war_cells.get(self.war_target).copied();
         let res: Result<String, &'static str> = match code {
-            W_RECRUIT => self.sim.recruit_agent().map(|_| "AGENT RECRUTE".to_string()),
+            W_RECRUIT => self
+                .sim
+                .recruit_agent()
+                .map(|_| "AGENT RECRUTE".to_string()),
             W_AGENT => {
                 let n = self.sim.military.agents.len().max(1);
                 self.war_agent = (self.war_agent + 1) % n;
@@ -138,9 +136,22 @@ impl Game {
     }
 }
 
-fn button(fb: &mut Framebuffer, g: &Game, col: usize, row: usize, _w: usize, label: &str, code: usize) {
+fn button(
+    fb: &mut Framebuffer,
+    g: &Game,
+    col: usize,
+    row: usize,
+    _w: usize,
+    label: &str,
+    code: usize,
+) {
     let w = label.chars().count() + 2;
-    let rc = (col as i32 * 8, row as i32 * 10, (col + w) as i32 * 8, row as i32 * 10 + 11);
+    let rc = (
+        col as i32 * 8,
+        row as i32 * 10,
+        (col + w) as i32 * 8,
+        row as i32 * 10 + 11,
+    );
     crate::proto_view::button(fb, g, rc, label, Act::Call(Game::click_war, code));
 }
 
@@ -171,7 +182,11 @@ pub fn draw_war(fb: &mut Framebuffer, g: &Game) {
                 ""
             }
         ),
-        if s.here_besieged().is_some() { RED } else { GREEN },
+        if s.here_besieged().is_some() {
+            RED
+        } else {
+            GREEN
+        },
     );
     // Fronts of the sector: what the player knows (own sector always, the foe only if spied).
     let fx = &s.military.effects;
@@ -192,7 +207,11 @@ pub fn draw_war(fb: &mut Framebuffer, g: &Game) {
             &format!(
                 "FRONT CONTRE {}   {}",
                 s.cell_label(f.foe).chars().take(40).collect::<String>(),
-                if f.own_wins() { "NOUS TENONS" } else { "NOUS PLIONS" }
+                if f.own_wins() {
+                    "NOUS TENONS"
+                } else {
+                    "NOUS PLIONS"
+                }
             ),
             if f.own_wins() { GREEN } else { RED },
         );
@@ -205,7 +224,10 @@ pub fn draw_war(fb: &mut Framebuffer, g: &Game) {
         fb.text(
             3,
             9 + k * 3,
-            &format!("EUX {foe}   GUERRE EN COURS DEPUIS {} PERIODE(S)", f.age + 1),
+            &format!(
+                "EUX {foe}   GUERRE EN COURS DEPUIS {} PERIODE(S)",
+                f.age + 1
+            ),
             if known { GREEN } else { DIM },
         );
     }
@@ -220,11 +242,11 @@ pub fn draw_war(fb: &mut Framebuffer, g: &Game) {
             &format!(
                 "{} ASSIEGE PAR {}",
                 s.cell_label(sg.cell).chars().take(40).collect::<String>(),
-                sg.besieger.map_or("UNE FLOTTE SANS DRAPEAU".to_string(), |f| g
-                    .data
-                    .factions[f]
-                    .name
-                    .to_uppercase()),
+                sg.besieger
+                    .map_or("UNE FLOTTE SANS DRAPEAU".to_string(), |f| g.data.factions
+                        [f]
+                        .name
+                        .to_uppercase()),
             ),
             RED,
         );
@@ -233,7 +255,12 @@ pub fn draw_war(fb: &mut Framebuffer, g: &Game) {
     let x = 100;
     let f = g.fac_sel.min(g.data.factions.len().saturating_sub(1));
     let fac = &g.data.factions[f];
-    fb.text(x, 4, &format!("PEUPLE : {}   (GAUCHE/DROITE)", fac.name.to_uppercase()), fac.color);
+    fb.text(
+        x,
+        4,
+        &format!("PEUPLE : {}   (GAUCHE/DROITE)", fac.name.to_uppercase()),
+        fac.color,
+    );
     let status = if s.ceasefire_with(f) {
         ("CESSEZ-LE-FEU EN VIGUEUR", GREEN)
     } else if s.at_war_with(f) {
@@ -260,7 +287,10 @@ pub fn draw_war(fb: &mut Framebuffer, g: &Game) {
             x,
             7,
             44,
-            &format!("DEMANDER LA PAIX : {:.0} CR (P)", s.reparations_due(f).max(2000.0)),
+            &format!(
+                "DEMANDER LA PAIX : {:.0} CR (P)",
+                s.reparations_due(f).max(2000.0)
+            ),
             W_PEACE,
         );
     }
@@ -271,7 +301,12 @@ pub fn draw_war(fb: &mut Framebuffer, g: &Game) {
     fb.text(x, 13, "CONTRATS DE MERCENAIRES (A QUAI)", AMBER);
     let offers = s.merc_offers();
     if offers.is_empty() || s.docked_station().is_err() {
-        fb.text(x, 14, "AUCUN : IL FAUT UN SECTEUR EN GUERRE ET UN QUAI", DIM);
+        fb.text(
+            x,
+            14,
+            "AUCUN : IL FAUT UN SECTEUR EN GUERRE ET UN QUAI",
+            DIM,
+        );
     }
     if s.docked_station().is_ok() {
         for (k, o) in offers.iter().take(2).enumerate() {
@@ -304,7 +339,15 @@ pub fn draw_war(fb: &mut Framebuffer, g: &Game) {
     // Spies.
     let y0 = 25;
     fb.text(1, y0, "AGENTS SECRETS", AMBER);
-    button(fb, g, 20, y0, 34, &format!("RECRUTER {:.0} CR (R)", arms::AGENT_COST), W_RECRUIT);
+    button(
+        fb,
+        g,
+        20,
+        y0,
+        34,
+        &format!("RECRUTER {:.0} CR (R)", arms::AGENT_COST),
+        W_RECRUIT,
+    );
     if s.military.agents.is_empty() {
         fb.text(3, y0 + 1, "AUCUN AGENT : RECRUTEZ-EN UN A QUAI", DIM);
     }
@@ -354,9 +397,25 @@ pub fn draw_war(fb: &mut Framebuffer, g: &Game) {
         ),
         W_CELL,
     );
-    button(fb, g, 1, ty + 1, 22, &format!("INFILTRER (I) {:.0}", arms::INFILTRATE_COST), W_INFILTRATE);
+    button(
+        fb,
+        g,
+        1,
+        ty + 1,
+        22,
+        &format!("INFILTRER (I) {:.0}", arms::INFILTRATE_COST),
+        W_INFILTRATE,
+    );
     button(fb, g, 25, ty + 1, 22, "RAPPELER (W)", W_WITHDRAW);
-    button(fb, g, 49, ty + 1, 34, "DRONE DE RECONNAISSANCE (D)", W_DRONE);
+    button(
+        fb,
+        g,
+        49,
+        ty + 1,
+        34,
+        "DRONE DE RECONNAISSANCE (D)",
+        W_DRONE,
+    );
     button(fb, g, 1, ty + 2, 20, "AGENT SUIVANT (A)", W_AGENT);
     for (k, op) in SPY_OPS.iter().enumerate() {
         button(
@@ -407,7 +466,10 @@ impl Game {
                 .sim
                 .repair_squadron()
                 .map(|c| format!("ESCADRE REPAREE : {c:.0} CR")),
-            3 => self.sim.prize_enlist(id).map(|()| "EQUIPAGE ENROLE".to_string()),
+            3 => self
+                .sim
+                .prize_enlist(id)
+                .map(|()| "EQUIPAGE ENROLE".to_string()),
             4 => self
                 .sim
                 .prize_release(id)
@@ -458,7 +520,11 @@ pub fn draw_squad(fb: &mut Framebuffer, g: &Game, y: usize) {
         y + 1,
         &format!(
             "{}: ORDRE {}  CONDITION {:.0} %  MUNITIONS {:.0} %{}",
-            ship.name.to_uppercase().chars().take(24).collect::<String>(),
+            ship.name
+                .to_uppercase()
+                .chars()
+                .take(24)
+                .collect::<String>(),
             ship.order.label(),
             ship.condition * 100.0,
             ship.ammo * 100.0,
@@ -486,8 +552,21 @@ pub fn draw_squad(fb: &mut Framebuffer, g: &Game, y: usize) {
     }
 }
 
-fn squad_button(fb: &mut Framebuffer, g: &Game, col: usize, row: usize, _w: usize, label: &str, code: usize) {
+fn squad_button(
+    fb: &mut Framebuffer,
+    g: &Game,
+    col: usize,
+    row: usize,
+    _w: usize,
+    label: &str,
+    code: usize,
+) {
     let w = label.chars().count() + 2;
-    let rc = (col as i32 * 8, row as i32 * 10, (col + w) as i32 * 8, row as i32 * 10 + 11);
+    let rc = (
+        col as i32 * 8,
+        row as i32 * 10,
+        (col + w) as i32 * 8,
+        row as i32 * 10 + 11,
+    );
     crate::proto_view::button(fb, g, rc, label, Act::Call(Game::squad_click, code));
 }

@@ -104,7 +104,9 @@ impl Sim {
                 .profile(t);
                 1.0 + (s.mult - 1.0) * p
             })
-            .product()
+            .product::<f64>()
+            * self.ad_factor(pos, t, res)
+            * crate::lanes::good_factor(&self.data, &self.galaxy, pos, t, res)
     }
 
     fn surprise_ctx(&self) -> Ctx {
@@ -364,6 +366,9 @@ impl Sim {
             faction: self.faction,
             pax: 0,
             pax_kind: 0,
+            legs: Vec::new(),
+            guide: false,
+            origin: [0; 3],
         };
         if !self.surprises.offers.iter().any(|o| o.id == c.id) {
             self.surprises.offers.push(c);
@@ -605,6 +610,9 @@ pub(crate) mod tests {
                     faction: None,
                     pax: 0,
                     pax_kind: 0,
+                    legs: Vec::new(),
+                    guide: false,
+                    origin: [0; 3],
                 };
                 for k in 0..*n {
                     let mut o = offer.clone();

@@ -10,7 +10,8 @@ use vector_world::BodyKind;
 use winit::keyboard::KeyCode;
 
 pub const DEFAULT_SEED: u64 = 0x5EC7;
-pub const MAIN_MENU: [&str; 6] = [
+pub const MAIN_MENU: [&str; 7] = [
+    "PARTIE RAPIDE",
     "NOUVELLE PARTIE",
     "CONTINUER",
     "REGLES DE PARTIE",
@@ -44,6 +45,7 @@ pub enum Screen {
     Pause,
     Ship,
     Shipyard,
+    Designer,
     Crew,
     Recruit,
     Journal,
@@ -70,6 +72,10 @@ pub enum Screen {
     Proto,
     Dialogue,
     Expedition,
+    /// The new-game flow (scenario, ship, crew, galaxy, options).
+    NewGame,
+    /// The one menu: the eight spaces that gather the screens.
+    Hub,
 }
 
 /// Route being composed in the fleet screen.
@@ -109,6 +115,8 @@ pub struct Game {
     pub picker: bool,
     pub pick_sel: usize,
     pub yard_sel: usize,
+    /// The ship designer tab of the shipyard (see `designer_view`).
+    pub dz: crate::designer_view::DesignerUi,
     pub crew_sel: usize,
     pub recruit_sel: usize,
     pub journal_scroll: usize,
@@ -120,6 +128,8 @@ pub struct Game {
     pub mind_sel: usize,
     pub log_seen: usize,
     pub gal_cache: Vec<StarEntry>,
+    /// Nebulae, clusters and remnants within reach of the galactic map (see `vector_world::cosmos`).
+    pub gal_features: Vec<vector_world::cosmos::Feature>,
     pub gal_sel: usize,
     pub gal_zoom: f64,
     pub offers: Vec<vector_sim::economy::Contract>,
@@ -132,9 +142,25 @@ pub struct Game {
     pub col_flow: bool,
     /// Colony screen: health tracking (epidemics) instead of the lists.
     pub col_health: bool,
+    /// Colony screen: projects (terraforming, megastructures) instead of the lists.
+    pub col_proj: bool,
+    /// Projects screen: zone with the keys (0 works, 1 catalogue, 2 plants), selections, units
+    /// step, seeded species (index among producers).
+    pub proj_focus: u8,
+    pub proj_sel: usize,
+    pub cat_sel: usize,
+    pub proj_units: usize,
+    pub proj_species: usize,
+    pub proc_sel: usize,
     pub fac_sel: usize,
     /// Factions screen: the registry of relations (every entity) instead of the ring.
     pub rel_page: bool,
+    /// Factions screen: the society page (S).
+    pub soc_page: bool,
+    pub soc_who: usize,
+    pub soc_study: usize,
+    pub soc_art: usize,
+    pub soc_sport: usize,
     pub rel_sel: usize,
     /// Factions screen: the war page (fronts, sieges, peace, mercenaries, spies).
     pub war_page: bool,
@@ -155,6 +181,12 @@ pub struct Game {
     pub organ_sel: usize,
     /// The piloting menu column is unfolded.
     pub flight_menu_open: bool,
+    /// Third-person view of the ship (SUPPR): orbit angles, distance in ship lengths, chase or free.
+    pub ext_view: bool,
+    pub ext_yaw: f64,
+    pub ext_pitch: f64,
+    pub ext_zoom: f64,
+    pub ext_chase: bool,
     /// Expedition: who goes (per crew index), the rover, the selected row, and the walk itself.
     pub exp_party: Vec<bool>,
     pub exp_vehicle: bool,
@@ -254,6 +286,11 @@ pub struct Game {
     pub tut_step: Option<usize>,
     pub tut_keys: Vec<(Screen, KeyCode)>,
     pub save_path: PathBuf,
+    /// New-game flow and main menu (see `newgame` and `hub`).
+    pub ng: crate::newgame::NewGameUi,
+    pub hub: crate::hub::HubUi,
+    /// The space whose screen is open (Escape goes back to its page).
+    pub hub_origin: Option<usize>,
 }
 
 /// Ranges of the exchange charts, days.
@@ -299,6 +336,7 @@ impl Game {
             picker: false,
             pick_sel: 0,
             yard_sel: 0,
+            dz: crate::designer_view::DesignerUi::default(),
             crew_sel: 0,
             recruit_sel: 0,
             journal_scroll: 0,
@@ -308,6 +346,7 @@ impl Game {
             mind_sel: 0,
             log_seen: 0,
             gal_cache: Vec::new(),
+            gal_features: Vec::new(),
             gal_sel: 0,
             gal_zoom: 14.0,
             offers: Vec::new(),
@@ -317,8 +356,20 @@ impl Game {
             col_focus: 0,
             col_flow: false,
             col_health: false,
+            col_proj: false,
+            proj_focus: 1,
+            proj_sel: 0,
+            cat_sel: 0,
+            proj_units: 0,
+            proj_species: 0,
+            proc_sel: 0,
             fac_sel: 0,
             rel_page: false,
+            soc_page: false,
+            soc_who: 0,
+            soc_study: 0,
+            soc_art: 0,
+            soc_sport: 0,
             rel_sel: 0,
             war_page: false,
             war_agent: 0,
@@ -333,6 +384,11 @@ impl Game {
             gear_sel: 0,
             organ_sel: 0,
             flight_menu_open: true,
+            ext_view: false,
+            ext_yaw: crate::ext_view::ZOOM_YAW,
+            ext_pitch: 0.3,
+            ext_zoom: 1.9,
+            ext_chase: true,
             exp_party: Vec::new(),
             exp_vehicle: false,
             exp_sel: 0,
@@ -408,27 +464,67 @@ impl Game {
             tut_step: None,
             tut_keys: Vec::new(),
             save_path: PathBuf::from("saves").join("slot1.sav"),
+            ng: Default::default(),
+            hub: Default::default(),
+            hub_origin: None,
         };
         g.fit_map();
         g
     }
 
-    /// Start a fresh game from a seed and go to the cockpit.
+    /// Start a fresh game from a seed (the classic scenario) and go to the cockpit.
     pub fn new_game(&mut self, seed: u64) {
-        self.sim = scene::new_sim(seed, Arc::clone(&self.data));
-        self.sim.set_rules(self.pending_rules.clone());
+        let mut cfg = vector_sim::start::StartConfig::new(seed);
+        cfg.rules = self.pending_rules.clone();
+        self.start_game(&cfg);
+    }
+
+    /// Start the game a configuration describes: the scenario's ship, hold, crew and standing.
+    /// A wreck begins on foot on the ground; any other start begins in the cockpit.
+    pub fn start_game(&mut self, cfg: &vector_sim::start::StartConfig) -> bool {
+        let sim = match vector_sim::start::new_sim_with(cfg, Arc::clone(&self.data)) {
+            Ok(s) => s,
+            Err(e) => {
+                self.say(format!("ECHEC : {}", e.to_uppercase()));
+                return false;
+            }
+        };
+        let seed = cfg.seed;
+        let wreck = self.data.scenarios[cfg.scenario].wreck;
+        self.sim = sim;
         self.help_open = false;
         self.tut_step = None;
-        if self.settings.tutorial {
+        self.hub_origin = None;
+        self.rogue_visit = false;
+        self.rogue_from_surface = false;
+        // The guided tutorial teaches the cockpit: a castaway has no cockpit yet.
+        if self.settings.tutorial && !wreck {
             self.start_tutorial();
         }
         self.stars = scene::star_field(seed, 900);
         self.timescale = 1.0;
         self.keys.clear();
         self.messages = vec![format!("NOUVELLE PARTIE - GRAINE {seed}")];
-        self.screen = Screen::Flight;
+        if wreck && self.sim.rogue.is_some() {
+            self.messages.push(
+                "NAUFRAGE : CHERCHEZ DES PIECES DETACHEES ET DU CARBURANT (EPAVES, CAMPEMENTS, RUINES)".into(),
+            );
+            self.messages.push(
+                "L'INGENIEUR REPARE SEUL ; F10 : MENU, VOUS DIT OU EN EST LE VAISSEAU".into(),
+            );
+            // The walk shows its own log: the same words open it.
+            if let Some(r) = self.sim.rogue.as_mut() {
+                r.log
+                    .push("NAUFRAGE : LE VAISSEAU EST HORS D'ETAT DE VOLER.".into());
+                r.log.push("CHERCHEZ PIECES DETACHEES ET CARBURANT (EPAVES, CAMPEMENTS, RUINES) ; F10 : MENU.".into());
+            }
+            self.screen = Screen::Rogue;
+        } else {
+            self.screen = Screen::Flight;
+        }
         self.fit_map();
         self.log_seen = self.sim.crew.log.len();
+        true
     }
 
     pub fn fit_map(&mut self) {
@@ -476,8 +572,10 @@ impl Game {
     /// The map of a solid world of the system, for its globe in the cockpit (built once).
     pub fn flight_map(&self, body: usize) -> Option<std::rc::Rc<vector_sim::planet::PlanetMap>> {
         let mut cache = self.flight_maps.borrow_mut();
-        if cache.0 != self.sim.system.seed {
-            cache.0 = self.sim.system.seed;
+        // A terraformed world changes: the stamp makes the maps be built again.
+        let key = self.sim.system.seed ^ self.sim.terra_stamp().wrapping_mul(0x9E37_79B9_7F4A_7C15);
+        if cache.0 != key {
+            cache.0 = key;
             cache.1.clear();
         }
         if let Some(m) = cache.1.get(&body) {
@@ -517,7 +615,10 @@ impl Game {
         !self.paused
             && (self.screen == Screen::Flight
                 || (self.sim.docked.is_some()
-                    && !matches!(self.screen, Screen::MainMenu | Screen::Pause)))
+                    && !matches!(
+                        self.screen,
+                        Screen::MainMenu | Screen::Pause | Screen::NewGame | Screen::Hub
+                    )))
     }
 
     /// Advance the simulation by `seconds` of real time at the current time scale.
@@ -700,6 +801,9 @@ impl Game {
                 Event::MeteorImpact { damage } => {
                     self.say(format!("IMPACT DE METEOROIDE : -{damage:.0}"))
                 }
+                Event::ShipBuilt { name } => {
+                    self.say(format!("LE CHANTIER LIVRE : {}", name.to_uppercase()))
+                }
                 Event::PirateAlert => self.say("ALERTE: PIRATES A PROXIMITE !"),
                 Event::Overheat => self.say("ALERTE: SURCHAUFFE !"),
                 Event::ModuleLost { slot } => {
@@ -851,6 +955,22 @@ impl Game {
             return;
         }
         self.key_inner(code, text, pressed);
+        // Escape from a screen the menu opened goes back to that space's page.
+        if let Some(space) = self.hub_origin {
+            let root = matches!(self.screen, Screen::Flight | Screen::Station);
+            if self.screen == Screen::Hub {
+                self.hub_origin = None;
+            } else if root {
+                if pressed
+                    && code == KeyCode::Escape
+                    && !matches!(at, Screen::Flight | Screen::Station | Screen::Hub)
+                {
+                    self.hub_return(space);
+                } else {
+                    self.hub_origin = None;
+                }
+            }
+        }
         if self.rogue_visit {
             if self.sim.rogue.is_none() {
                 self.rogue_visit = false;
@@ -861,13 +981,16 @@ impl Game {
                 self.screen = Screen::Rogue;
             }
         }
-        if pressed && self.screen != Screen::MainMenu {
+        if pressed && !matches!(self.screen, Screen::MainMenu | Screen::NewGame) {
             self.tutorial_tick(Some((at, code)));
         }
     }
 
     fn key_inner(&mut self, code: KeyCode, text: Option<&str>, pressed: bool) {
-        if pressed && code == KeyCode::Backquote && self.screen != Screen::MainMenu {
+        if pressed
+            && code == KeyCode::Backquote
+            && !matches!(self.screen, Screen::MainMenu | Screen::NewGame)
+        {
             self.console.open = !self.console.open;
             return;
         }
@@ -885,19 +1008,33 @@ impl Game {
             self.help_open = !self.help_open;
             return;
         }
-        if code == KeyCode::F10 && self.tut_step.is_some() {
+        if code == KeyCode::Delete && self.tut_step.is_some() {
             self.tut_step = None;
             self.say("TUTORIEL IGNORE (REACTIVABLE DANS OPTIONS)");
+            return;
+        }
+        // The menu is one key away from every screen of the game.
+        if code == KeyCode::F10
+            && !matches!(
+                self.screen,
+                Screen::MainMenu | Screen::NewGame | Screen::Destroyed
+            )
+        {
+            self.help_open = false;
+            self.open_hub();
             return;
         }
         self.keys.insert(code);
         match self.screen {
             Screen::MainMenu => self.main_menu_key(code, text),
+            Screen::NewGame => self.newgame_key(code, text),
+            Screen::Hub => self.hub_key(code),
             Screen::Pause => self.pause_key(code),
             Screen::Station => self.station_key(code),
             Screen::Inventory => self.inventory_key(code),
             Screen::Ship => self.ship_key(code),
             Screen::Shipyard => self.shipyard_key(code),
+            Screen::Designer => self.designer_key(code, text),
             Screen::Crew => self.crew_key(code),
             Screen::Recruit => self.recruit_key(code),
             Screen::Journal => self.journal_key(code),
@@ -979,12 +1116,13 @@ impl Game {
                     let seed = parse_seed(&self.seed_text);
                     self.new_game(seed);
                 }
-                1 => {
+                1 => self.open_new_game(),
+                2 => {
                     self.load_game();
                 }
-                2 => self.open_rules(Screen::MainMenu),
-                3 => self.open_options(Screen::MainMenu),
-                4 => self.open_codex(Screen::MainMenu),
+                3 => self.open_rules(Screen::MainMenu),
+                4 => self.open_options(Screen::MainMenu),
+                5 => self.open_codex(Screen::MainMenu),
                 _ => self.quit = true,
             }
             return;
@@ -1036,7 +1174,7 @@ impl Game {
         }
     }
 
-    fn open_rules(&mut self, back: Screen) {
+    pub fn open_rules(&mut self, back: Screen) {
         self.rules_sel = 0;
         self.back_to = back;
         if back == Screen::Pause {
@@ -1065,7 +1203,7 @@ impl Game {
         }
     }
 
-    fn open_options(&mut self, back: Screen) {
+    pub fn open_options(&mut self, back: Screen) {
         self.opt_sel = 0;
         self.back_to = back;
         self.screen = Screen::Options;
@@ -1457,7 +1595,7 @@ impl Game {
         }
     }
 
-    fn station_key(&mut self, code: KeyCode) {
+    pub fn station_key(&mut self, code: KeyCode) {
         let n = self.data.resources.len();
         let res = self.sel_res.min(n - 1);
         let msg: Result<String, &str> = match code {
@@ -1751,7 +1889,7 @@ impl Game {
         self.med_wound = k;
     }
 
-    fn crew_key(&mut self, code: KeyCode) {
+    pub fn crew_key(&mut self, code: KeyCode) {
         if self.med_mode {
             self.med_key(code);
             return;
@@ -1878,7 +2016,33 @@ impl Game {
             }
             return;
         }
+        if code == KeyCode::KeyS {
+            self.soc_page = !self.soc_page;
+            return;
+        }
         let n = self.data.factions.len().max(1);
+        if self.soc_page {
+            let crew = self.sim.crew.count().max(1);
+            let studies = self.data.society.studies.len();
+            match code {
+                KeyCode::ArrowRight => self.fac_sel = (self.fac_sel + 1) % n,
+                KeyCode::ArrowLeft => self.fac_sel = (self.fac_sel + n - 1) % n,
+                KeyCode::ArrowDown => self.soc_who = (self.soc_who + 1) % crew,
+                KeyCode::ArrowUp => self.soc_who = (self.soc_who + crew - 1) % crew,
+                KeyCode::PageDown => self.soc_study = (self.soc_study + 1) % studies,
+                KeyCode::PageUp => self.soc_study = (self.soc_study + studies - 1) % studies,
+                KeyCode::KeyE => self.click_society(crate::society_view::ENROLL),
+                KeyCode::KeyC => self.click_society(crate::society_view::COMPOSE),
+                KeyCode::KeyV => self.click_society(crate::society_view::SELL),
+                KeyCode::KeyD => self.click_society(crate::society_view::DONATE),
+                KeyCode::KeyP => self.click_society(crate::society_view::BET),
+                KeyCode::KeyA => self.click_society(crate::society_view::NEXT_ART),
+                KeyCode::KeyJ => self.click_society(crate::society_view::NEXT_SPORT),
+                KeyCode::Escape | KeyCode::KeyX => self.screen = Screen::Flight,
+                _ => {}
+            }
+            return;
+        }
         match code {
             KeyCode::ArrowRight | KeyCode::ArrowDown => self.fac_sel = (self.fac_sel + 1) % n,
             KeyCode::ArrowLeft | KeyCode::ArrowUp => self.fac_sel = (self.fac_sel + n - 1) % n,
@@ -1934,12 +2098,12 @@ impl Game {
         }
     }
 
-    fn open_empire(&mut self) {
+    pub fn open_empire(&mut self) {
         self.emp_sel = 0;
         self.screen = Screen::Empire;
     }
 
-    fn open_fleet(&mut self) {
+    pub fn open_fleet(&mut self) {
         self.endpoints = self.sim.known_endpoints();
         self.fleet_focus = 0;
         self.editor = None;
@@ -1948,7 +2112,7 @@ impl Game {
     }
 
     /// Found a colony on the targeted body with the kit in the hold.
-    fn found_colony_at_target(&mut self) {
+    pub fn found_colony_at_target(&mut self) {
         let Some(t) = self.sim.target else {
             self.say("CIBLEZ D ABORD UN CORPS A COLONISER");
             return;
@@ -1959,7 +2123,7 @@ impl Game {
         }
     }
 
-    fn empire_key(&mut self, code: KeyCode) {
+    pub fn empire_key(&mut self, code: KeyCode) {
         let n = self.sim.colonies.len();
         match code {
             KeyCode::ArrowUp if n > 0 => self.emp_sel = (self.emp_sel + n - 1) % n,
@@ -1982,7 +2146,7 @@ impl Game {
     }
 
     /// The screen to return to while docked.
-    fn dock_screen(&self) -> Screen {
+    pub fn dock_screen(&self) -> Screen {
         if self.sim.docked_colony().is_some() {
             Screen::Colony
         } else {
@@ -1994,6 +2158,10 @@ impl Game {
         let ci = self.col_idx;
         if ci >= self.sim.colonies.len() {
             self.screen = Screen::Empire;
+            return;
+        }
+        if self.col_proj {
+            self.project_key(code);
             return;
         }
         let here = self.sim.docked_colony() == Some(ci);
@@ -2009,6 +2177,7 @@ impl Game {
                 self.col_health = !self.col_health;
                 self.col_flow = false;
             }
+            KeyCode::KeyP => self.col_proj = true,
             KeyCode::Tab => self.col_focus = (self.col_focus + 1) % 4,
             KeyCode::ArrowUp => match self.col_focus {
                 0 if nb > 0 => self.b_sel = (self.b_sel + nb - 1) % nb,
@@ -2228,7 +2397,7 @@ impl Game {
     }
 
     /// Tech indices in display order: by field, then by cost.
-    fn open_tech(&mut self) {
+    pub fn open_tech(&mut self) {
         // Start on what is being researched, else on the first technology within reach.
         self.tech_sel = self
             .sim
@@ -2416,6 +2585,7 @@ impl Game {
             .into_iter()
             .filter(|e| e.id != here && self.sim.is_seen(e.pos))
             .collect();
+        self.gal_features = self.sim.galaxy.features_near(self.sim.here_pos, 90.0);
         self.gal_sel = 0;
         self.screen = Screen::Galaxy;
     }
@@ -2449,7 +2619,7 @@ impl Game {
         }
     }
 
-    fn open_ship(&mut self) {
+    pub fn open_ship(&mut self) {
         self.screen = Screen::Ship;
         self.picker = false;
         self.ship_sel = 0;
@@ -2457,7 +2627,7 @@ impl Game {
 
     /// Modules that can go into slot `slot` of the current hull, grouped by category then size.
     pub fn compatible_modules(&self, slot: usize) -> Vec<usize> {
-        let (ty, size) = self.data.hulls[self.sim.ship.design.hull].slots[slot];
+        let (ty, size) = self.sim.data.hulls[self.sim.ship.design.hull].slots[slot];
         let mut v: Vec<usize> = (0..self.data.modules.len())
             .filter(|&i| self.data.modules[i].slot == ty && self.data.modules[i].size <= size)
             .collect();
@@ -2518,8 +2688,9 @@ impl Game {
     }
 
     fn shipyard_key(&mut self, code: KeyCode) {
-        let n = self.data.hulls.len();
+        let n = self.sim.base_hulls;
         match code {
+            KeyCode::KeyC => self.dz_open(),
             KeyCode::ArrowUp => self.yard_sel = (self.yard_sel + n - 1) % n,
             KeyCode::ArrowDown => self.yard_sel = (self.yard_sel + 1) % n,
             KeyCode::Enter => match self.sim.buy_hull(self.yard_sel) {
@@ -2554,13 +2725,22 @@ impl Game {
                 let kg = self.sim.jettison(self.sel_res);
                 self.say(format!("JETE {kg:.0} KG"));
             }
+            // The fuel carried in the hold goes into the propellant tank.
+            KeyCode::KeyF => match self.sim.refuel_from_hold() {
+                Ok(kg) => self.say(format!("RESERVOIR : +{kg:.0} KG DE CARBURANT")),
+                Err(e) => self.say(e.to_uppercase()),
+            },
             KeyCode::Escape | KeyCode::KeyI => self.screen = Screen::Flight,
             _ => {}
         }
     }
 
     fn flight_key(&mut self, code: KeyCode) {
+        if self.ext_key(code) {
+            return;
+        }
         match code {
+            KeyCode::Delete => self.toggle_ext_view(),
             KeyCode::Home => self.screen = Screen::Cosmos,
             KeyCode::Insert => match self.sim.orbit_here() {
                 Ok(m) => self.say(m),
@@ -2812,6 +2992,7 @@ mod tests {
             Screen::Pause,
             Screen::Ship,
             Screen::Shipyard,
+            Screen::Designer,
             Screen::Crew,
             Screen::Recruit,
             Screen::Journal,
@@ -3210,6 +3391,29 @@ mod tests {
         assert_eq!(g.fac_sel, 0, "the selection wraps around");
         g.key(KeyCode::Escape, None, true);
         assert_eq!(g.screen, Screen::Flight);
+    }
+
+    #[test]
+    fn s_opens_the_society_page_and_its_buttons_act() {
+        let mut g = Game::new(data(), 1);
+        g.key(KeyCode::Enter, None, true);
+        g.key(KeyCode::KeyX, None, true);
+        assert!(!g.soc_page);
+        g.key(KeyCode::KeyS, None, true);
+        assert!(g.soc_page, "S shows the society page");
+        frame(&g);
+        // Not docked: the school, the gallery and the bets refuse.
+        g.sim.docked = None;
+        g.key(KeyCode::KeyP, None, true);
+        assert!(g.sim.society.rounds == 0);
+        // Composing works anywhere on the ship.
+        g.key(KeyCode::KeyC, None, true);
+        assert_eq!(g.sim.society.works.len(), 1);
+        frame(&g);
+        g.key(KeyCode::KeyA, None, true);
+        assert_eq!(g.soc_art, 1);
+        g.key(KeyCode::KeyS, None, true);
+        assert!(!g.soc_page);
     }
 
     #[test]
@@ -3936,7 +4140,7 @@ mod tests {
         g.screen = Screen::Station;
         g.key(KeyCode::KeyD, None, true);
         assert_eq!(g.screen, Screen::Trading);
-        for tab in 0..5 {
+        for tab in 0..crate::trade_view::TABS.len() {
             assert_eq!(g.trade_ui.tab, tab);
             frame(&g);
             g.key(KeyCode::ArrowRight, None, true);
@@ -3961,6 +4165,69 @@ mod tests {
             .iter()
             .any(|c| c.dest_name == g.sim.bodies[g.sim.docked.unwrap()].name));
         frame(&g);
+        g.key(KeyCode::Escape, None, true);
+        assert_eq!(g.screen, Screen::Station);
+    }
+
+    #[test]
+    fn the_economy_tabs_buy_insure_bid_and_draw() {
+        let mut g = Game::new(data(), 1);
+        g.key(KeyCode::Enter, None, true);
+        let (st, _) = g.sim.nearest_station().expect("station");
+        g.sim.spawn_near(st, g.sim.bodies[st].radius + 200.0);
+        g.sim.try_dock().expect("dock");
+        g.sim.credits = 1.0e6;
+        g.sim.time = 200.0 * 86_400.0;
+        g.screen = Screen::Station;
+        g.key(KeyCode::KeyD, None, true);
+        let gold = g.data.resource_index("gold").unwrap();
+        g.sim.ship.cargo.cap_mass = 1.0e7;
+        g.sim.ship.cargo.cap_vol = 1.0e7;
+        let data = std::sync::Arc::clone(&g.data);
+        g.sim.ship.cargo.add(&data, gold, 100.0);
+        // Insurance tab (4): the Enter key and the buttons insure the hold, then the hull.
+        g.trade_ui.tab = 4;
+        let c = g.sim.credits;
+        g.key(KeyCode::Enter, None, true);
+        assert!(g.sim.insured() && g.sim.credits < c, "policy bought");
+        g.click_eco(501);
+        assert!(g.sim.trade.hull_covered > 0.0);
+        frame(&g);
+        // Titles (5): bonds and a fund; the net worth stays about the same minus fees.
+        g.trade_ui.tab = 5;
+        let nw = g.sim.net_worth();
+        g.click_eco(100);
+        g.click_eco(120);
+        assert_eq!(g.sim.trade.folio.bonds.len(), 1);
+        assert!(g.sim.fund_units(0) > 0.0);
+        assert!(
+            g.sim.net_worth() > nw - 0.02 * 2000.0 - 1.0,
+            "only fees are lost"
+        );
+        g.trade_ui.sel = gold;
+        g.click_eco(130);
+        assert_eq!(g.sim.trade.folio.options.len(), 1);
+        frame(&g);
+        // Sales (6): a bid is held, an ad is run.
+        g.trade_ui.tab = 6;
+        g.click_eco(200);
+        assert_eq!(g.sim.trade.dealings.bids.len(), 1);
+        g.click_eco(240);
+        assert_eq!(g.sim.trade.dealings.ads.len(), 1);
+        frame(&g);
+        // Lines (7) and the economic board (8) draw, and a jurisdiction can be picked.
+        g.trade_ui.tab = 7;
+        frame(&g);
+        g.trade_ui.tab = 8;
+        frame(&g);
+        g.click_eco(401);
+        assert_eq!(g.trade_ui.sel, 1);
+        frame(&g);
+        // The arrows move through the goods on the goods tabs.
+        g.trade_ui.tab = 5;
+        g.trade_ui.sel = 0;
+        g.key(KeyCode::ArrowDown, None, true);
+        assert_eq!(g.trade_ui.sel, 1);
         g.key(KeyCode::Escape, None, true);
         assert_eq!(g.screen, Screen::Station);
     }
@@ -4022,6 +4289,9 @@ mod tests {
         let offer = vector_sim::economy::Contract {
             pax: 0,
             pax_kind: 0,
+            legs: Vec::new(),
+            guide: false,
+            origin: [0; 3],
             id: 1,
             dest_star: g.sim.here,
             dest_seed: 0,
@@ -4047,7 +4317,8 @@ mod tests {
     #[test]
     fn menus_reach_rules_options_and_codex() {
         let mut g = Game::new(data(), 1);
-        // Main menu: REGLES (index 2) -> raise damage x -> back -> new game uses it.
+        // Main menu: REGLES (index 3) -> raise damage x -> back -> new game uses it.
+        g.key(KeyCode::ArrowDown, None, true);
         g.key(KeyCode::ArrowDown, None, true);
         g.key(KeyCode::ArrowDown, None, true);
         g.key(KeyCode::Enter, None, true);
@@ -4091,7 +4362,7 @@ mod tests {
         g.key(KeyCode::Space, None, true);
         g.key(KeyCode::KeyF, None, true);
         assert_eq!(g.tut_step, Some(3));
-        g.key(KeyCode::F10, None, true);
+        g.key(KeyCode::Delete, None, true);
         assert_eq!(g.tut_step, None);
     }
 
@@ -4109,6 +4380,7 @@ mod tests {
             Screen::Inventory,
             Screen::Ship,
             Screen::Shipyard,
+            Screen::Designer,
             Screen::Crew,
             Screen::Recruit,
             Screen::Journal,
@@ -4285,7 +4557,10 @@ mod tests {
         let mut g = Game::new(data(), 1);
         g.key(KeyCode::Enter, None, true);
         g.key(KeyCode::Digit1, None, true);
-        assert!(g.messages.last().is_some_and(|m| m.contains("LANCE-LEURRES")));
+        assert!(g
+            .messages
+            .last()
+            .is_some_and(|m| m.contains("LANCE-LEURRES")));
         g.key(KeyCode::Digit2, None, true);
         assert!(g.messages.last().is_some_and(|m| m.contains("RADAR")));
         g.key(KeyCode::Digit3, None, true);
@@ -4314,5 +4589,361 @@ mod tests {
         assert_eq!(g.sim.fleet[0].prisoners, 0);
         g.key(KeyCode::Digit1, None, true);
         assert!(g.messages.last().is_some_and(|m| m.contains("PRISONNIERS")));
+    }
+
+    fn press(g: &mut Game, k: KeyCode) {
+        g.key(k, None, true);
+        g.key(k, None, false);
+    }
+
+    /// Walk the new-game flow from the main menu to the last step.
+    fn to_recap(g: &mut Game) {
+        g.menu_sel = 1;
+        press(g, KeyCode::Enter);
+        assert_eq!(g.screen, Screen::NewGame);
+        for _ in 0..6 {
+            press(g, KeyCode::Enter);
+        }
+        assert_eq!(g.ng.step, 6, "the recap is the seventh step");
+    }
+
+    #[test]
+    fn the_new_game_flow_walks_back_and_forth_and_leaves_to_the_main_menu() {
+        let mut g = Game::new(data(), 1);
+        g.menu_sel = 1;
+        press(&mut g, KeyCode::Enter);
+        assert_eq!((g.screen, g.ng.step), (Screen::NewGame, 0));
+        press(&mut g, KeyCode::Enter);
+        press(&mut g, KeyCode::Enter);
+        assert_eq!(g.ng.step, 2);
+        press(&mut g, KeyCode::Escape);
+        assert_eq!(g.ng.step, 1, "Escape goes up one step");
+        press(&mut g, KeyCode::Escape);
+        press(&mut g, KeyCode::Escape);
+        assert_eq!(
+            g.screen,
+            Screen::MainMenu,
+            "the first step goes back to the menu"
+        );
+        // F10 does nothing in the menus of the game itself.
+        press(&mut g, KeyCode::F10);
+        assert_eq!(g.screen, Screen::MainMenu);
+    }
+
+    #[test]
+    fn every_scenario_chosen_in_the_flow_starts_a_playable_game() {
+        for i in 0..data().scenarios.len() {
+            let mut g = Game::new(data(), 1);
+            g.save_path = std::env::temp_dir().join("vector_test_flow.sav");
+            to_recap(&mut g);
+            g.click_ng_scenario(i);
+            g.ng_goto(6);
+            press(&mut g, KeyCode::Enter);
+            let (id, wreck, credits) = {
+                let sc = &g.data.scenarios[i];
+                (sc.id.clone(), sc.wreck, sc.credits)
+            };
+            let expected = if wreck { Screen::Rogue } else { Screen::Flight };
+            assert_eq!(g.screen, expected, "{id}");
+            assert!((g.sim.credits - credits).abs() < 1e-9, "{id} credits");
+            assert_eq!(g.sim.rogue.is_some(), wreck, "{id}");
+            // It draws and runs.
+            frame(&g);
+            g.advance(1.0);
+            // The menu works at once, wherever the game begins.
+            press(&mut g, KeyCode::F10);
+            assert_eq!(g.screen, Screen::Hub, "{id}");
+            frame(&g);
+            press(&mut g, KeyCode::Escape);
+            assert_eq!(g.screen, expected, "{id}");
+        }
+    }
+
+    #[test]
+    fn the_flow_choices_reach_the_world_ship_crew_seed_and_rules() {
+        let mut g = Game::new(data(), 1);
+        to_recap(&mut g);
+        let trader = g.data.scenario_index("marchand").expect("sc");
+        g.click_ng_scenario(trader);
+        g.click_ng_ship(1);
+        g.ng.seed_text = "ANDROMEDE".into();
+        g.ng_goto(4);
+        press(&mut g, KeyCode::Backspace);
+        assert_eq!(g.ng.seed_text, "ANDROMED");
+        g.key(KeyCode::KeyX, Some("X"), true);
+        assert_eq!(g.ng.seed_text, "ANDROMEDX", "typed text goes to the seed");
+        g.ng.opt_sel = 3;
+        g.ng_goto(5);
+        press(&mut g, KeyCode::ArrowRight);
+        assert_eq!(
+            vector_sim::start::difficulty_of(&g.pending_rules),
+            Some(2),
+            "the difficulty line sets the rules"
+        );
+        g.ng_goto(6);
+        press(&mut g, KeyCode::Enter);
+        assert_eq!(g.screen, Screen::Flight);
+        let hauler = g.data.hull_index("hauler").expect("hull");
+        assert_eq!(g.sim.ship.design.hull, hauler, "the chosen ship");
+        assert_eq!(g.sim.rules.damage, 1.5, "the chosen difficulty");
+        let direct = scene::new_sim(parse_seed("ANDROMEDX"), Arc::clone(&g.data));
+        assert_eq!(g.sim.here_pos, direct.here_pos, "the typed seed");
+        assert!(g.sim.credits >= 3000.0);
+    }
+
+    #[test]
+    fn the_crew_step_keeps_to_the_points_and_the_roles_change() {
+        let mut g = Game::new(data(), 1);
+        to_recap(&mut g);
+        let castaway = g.data.scenario_index("naufrage").expect("sc");
+        g.click_ng_scenario(castaway);
+        g.ng_goto(3);
+        let budget = g.data.scenarios[castaway].crew_points;
+        // Try to take everybody: the budget stops it.
+        for k in 0..g.ng.pool.len() {
+            g.ng.cursor = k;
+            press(&mut g, KeyCode::Space);
+            assert!(g.ng_points_used() <= budget, "never over {budget} points");
+        }
+        let n = g.ng.picks.len();
+        assert!(
+            n >= 1 && n < g.ng.pool.len(),
+            "the budget refused some: {n}"
+        );
+        // The last person cannot be taken off.
+        let all: Vec<usize> = g.ng.picks.iter().map(|p| p.candidate).collect();
+        for k in &all[1..] {
+            g.ng.cursor = *k;
+            press(&mut g, KeyCode::Space);
+        }
+        g.ng.cursor = all[0];
+        press(&mut g, KeyCode::Space);
+        assert_eq!(g.ng.picks.len(), 1, "somebody stays aboard");
+        // Left/Right change the post of the person under the cursor.
+        let role = g.ng.picks[0].role;
+        press(&mut g, KeyCode::ArrowRight);
+        assert_ne!(g.ng.picks[0].role, role);
+        // The chosen crew is the crew of the game.
+        g.ng_goto(6);
+        press(&mut g, KeyCode::Enter);
+        assert_eq!(g.sim.crew.alive().count(), 1);
+        assert_eq!(g.sim.crew.members[0].role, g.ng.picks[0].role);
+    }
+
+    #[test]
+    fn the_castaway_flow_plays_on_foot_then_in_the_cockpit() {
+        let mut g = Game::new(data(), 1);
+        to_recap(&mut g);
+        g.click_ng_scenario(g.data.scenario_index("naufrage").expect("sc"));
+        g.ng_goto(6);
+        press(&mut g, KeyCode::Enter);
+        assert_eq!(g.screen, Screen::Rogue);
+        assert!(
+            g.tut_step.is_none(),
+            "the cockpit tutorial does not apply on foot"
+        );
+        assert!(!g.sim.readiness().can_fly());
+        // The menu tells the situation.
+        let o = crate::hub::orientation(&g);
+        assert!(o.place.starts_with("A PIED"), "{}", o.place);
+        assert!(
+            o.todo.iter().any(|l| l.contains("NE PEUT PAS VOLER")),
+            "{:?}",
+            o.todo
+        );
+        // Cockpit screens are refused on foot, information screens work and come back to the walk.
+        press(&mut g, KeyCode::F10);
+        g.hub_activate(crate::hub::COMMERCE, 0);
+        assert_eq!(g.screen, Screen::Hub, "no market on foot");
+        g.hub_activate(crate::hub::VAISSEAU, 0);
+        assert_eq!(g.screen, Screen::Ship);
+        press(&mut g, KeyCode::Escape);
+        assert_eq!(
+            (g.screen, g.hub.sel, g.hub.page),
+            (Screen::Hub, crate::hub::VAISSEAU, true)
+        );
+        press(&mut g, KeyCode::Escape);
+        press(&mut g, KeyCode::Escape);
+        assert_eq!(g.screen, Screen::Rogue, "the menu closes onto the walk");
+        // Fuel and spare parts found on foot: the tank fills from the hold (key F of the hold).
+        let d = Arc::clone(&g.data);
+        for (id, kg) in [("fuel", 300.0), ("spare_parts", 200.0)] {
+            let r = d.resource_index(id).expect("res");
+            g.sim.ship.cargo.add(&d, r, kg);
+        }
+        g.screen = Screen::Inventory;
+        press(&mut g, KeyCode::KeyF);
+        assert!(g.sim.ship.fuel > 100.0, "{}", g.sim.ship.fuel);
+        assert!(crate::hub::orientation(&g)
+            .todo
+            .iter()
+            .any(|l| l.contains("MOTEUR 0 %")));
+    }
+
+    #[test]
+    fn the_menu_opens_on_every_screen_and_escape_climbs_one_level_at_a_time() {
+        let mut g = Game::new(data(), 1);
+        g.key(KeyCode::Enter, None, true);
+        // From the cockpit.
+        press(&mut g, KeyCode::F10);
+        assert_eq!(g.screen, Screen::Hub);
+        assert!(!g.running(), "the menu freezes the flight");
+        press(&mut g, KeyCode::F10);
+        assert_eq!(g.screen, Screen::Flight, "F10 again closes it");
+        // A space, an entry, its screen, and the way back up.
+        press(&mut g, KeyCode::F10);
+        press(&mut g, KeyCode::Digit4);
+        assert!(g.hub.page && g.hub.sel == crate::hub::EQUIPAGE);
+        press(&mut g, KeyCode::Enter);
+        assert_eq!(g.screen, Screen::Crew, "EQUIPAGE opens the crew screen");
+        press(&mut g, KeyCode::Escape);
+        assert_eq!(
+            (g.screen, g.hub.sel, g.hub.page),
+            (Screen::Hub, crate::hub::EQUIPAGE, true)
+        );
+        press(&mut g, KeyCode::Escape);
+        assert!(
+            !g.hub.page && g.screen == Screen::Hub,
+            "then the list of spaces"
+        );
+        press(&mut g, KeyCode::Escape);
+        assert_eq!(g.screen, Screen::Flight, "then where the menu was opened");
+        // Two levels deep: crew -> family tree -> back to the crew -> back to the page.
+        g.hub_activate(crate::hub::EQUIPAGE, 1);
+        assert_eq!(g.screen, Screen::Family);
+        press(&mut g, KeyCode::Escape);
+        assert_eq!(g.screen, Screen::Crew);
+        press(&mut g, KeyCode::Escape);
+        assert_eq!(g.screen, Screen::Hub);
+        press(&mut g, KeyCode::Escape);
+        press(&mut g, KeyCode::Escape);
+        // The same on a screen that is not the cockpit.
+        g.key(KeyCode::KeyJ, None, true);
+        assert_eq!(g.screen, Screen::Journal);
+        press(&mut g, KeyCode::F10);
+        assert_eq!(
+            g.hub.sel,
+            crate::hub::CODEX,
+            "the space of the screen is selected"
+        );
+        press(&mut g, KeyCode::Escape);
+        assert_eq!(
+            g.screen,
+            Screen::Journal,
+            "the menu closes onto the screen it came from"
+        );
+    }
+
+    #[test]
+    fn menu_lines_that_need_a_dock_or_a_flight_say_why_and_work_when_they_can() {
+        let mut g = Game::new(data(), 1);
+        g.key(KeyCode::Enter, None, true);
+        // Flying: no market.
+        g.hub_activate(crate::hub::COMMERCE, 1);
+        assert_eq!(g.screen, Screen::Flight, "nothing opened");
+        assert!(
+            g.messages.last().is_some_and(|m| m.contains("AMARREZ")),
+            "{:?}",
+            g.messages.last()
+        );
+        let (st, _) = g.sim.nearest_station().expect("station");
+        g.sim.spawn_near(st, g.sim.bodies[st].radius + 200.0);
+        g.key(KeyCode::KeyD, None, true);
+        assert_eq!(g.screen, Screen::Station);
+        // Docked: the exchange opens, and Escape comes back to the page of the space.
+        press(&mut g, KeyCode::F10);
+        assert_eq!(g.hub.sel, crate::hub::COMMERCE);
+        g.hub_activate(crate::hub::COMMERCE, 1);
+        assert_eq!(g.screen, Screen::Bourse);
+        press(&mut g, KeyCode::Escape);
+        assert_eq!((g.screen, g.hub.page), (Screen::Hub, true));
+        // Docked: the map of the flight is refused, the cockpit line undocks.
+        g.hub_activate(crate::hub::NAVIGATION, 0);
+        assert_eq!(g.screen, Screen::Hub);
+        assert!(g.messages.last().is_some_and(|m| m.contains("DECOLLEZ")));
+        g.hub_activate(crate::hub::PILOTAGE, 0);
+        assert_eq!(g.screen, Screen::Flight);
+        assert!(g.sim.docked.is_none(), "the cockpit line took off");
+    }
+
+    #[test]
+    fn the_menu_and_the_flow_are_clickable_text() {
+        let mut g = Game::new(data(), 1);
+        g.key(KeyCode::Enter, None, true);
+        // The MENU button at the top right of the cockpit.
+        frame(&g);
+        let col = 1280 / 8 - "MENU (F10)".len() - 1;
+        g.pointer_click((col * 8 + 10) as i32, 3, 1000);
+        assert_eq!(g.screen, Screen::Hub);
+        // A space, then an entry.
+        frame(&g);
+        let zones: Vec<(i32, i32)> = g
+            .pointer
+            .hits
+            .borrow()
+            .iter()
+            .map(|h| ((h.rect.0 + h.rect.2) / 2, (h.rect.1 + h.rect.3) / 2))
+            .collect();
+        assert!(zones.len() >= 8 + 3, "{} zones", zones.len());
+        // The third space line: VAISSEAU.
+        let top = zones.iter().skip(1).take(8).copied().nth(2).expect("zone");
+        g.pointer_click(top.0, top.1, 2000);
+        assert!(g.hub.page && g.hub.sel == crate::hub::VAISSEAU);
+        frame(&g);
+        let entry = g
+            .pointer
+            .hits
+            .borrow()
+            .iter()
+            .filter(|h| h.rect.0 == 46 * 8 - 2)
+            .map(|h| ((h.rect.0 + h.rect.2) / 2, h.rect.1 + 4))
+            .next()
+            .expect("an entry");
+        g.pointer_click(entry.0, entry.1, 3000);
+        assert_eq!(
+            g.screen,
+            Screen::Ship,
+            "a click on MODULES opens the ship screen"
+        );
+        g.pointer_back();
+        assert_eq!(g.screen, Screen::Hub, "a right click climbs one level");
+        // The flow: its steps and its buttons are clickable.
+        let mut g = Game::new(data(), 1);
+        g.menu_sel = 1;
+        press(&mut g, KeyCode::Enter);
+        frame(&g);
+        // The label of the third step is a button.
+        let x3 = 2 + "1 EXPLICATIONS".len() + 3 + "2 SCENARIO".len() + 3;
+        g.pointer_click((x3 * 8 + 4) as i32, 3 * 10 + 3, 1000);
+        assert_eq!(g.ng.step, 2, "a click on a step goes there");
+        frame(&g);
+        // A right click goes back one step.
+        g.pointer_back();
+        assert_eq!(g.ng.step, 1);
+    }
+
+    #[test]
+    fn every_screen_has_a_command_bar_a_help_and_a_place_in_the_menu() {
+        let mut g = Game::new(data(), 1);
+        g.key(KeyCode::Enter, None, true);
+        for s in crate::hub::ALL_SCREENS {
+            g.screen = s;
+            let line = crate::tutorial::hint_line(&g);
+            assert!(
+                !line.is_empty() && line.len() <= 126,
+                "{s:?}: {} chars",
+                line.len()
+            );
+            assert!(!crate::tutorial::help_lines(s).is_empty(), "{s:?}");
+            let _ = crate::hub::place_of(s);
+        }
+        g.open_new_game();
+        for step in 0..7 {
+            g.ng.step = step;
+            let line = crate::tutorial::hint_line(&g);
+            assert!(line.len() <= 126, "step {step}: {} chars", line.len());
+            let mut fb = vector_render::Framebuffer::new(1280, 720);
+            crate::draw_frame(&mut fb, &g);
+        }
     }
 }

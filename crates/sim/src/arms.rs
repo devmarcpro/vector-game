@@ -295,7 +295,6 @@ pub fn spy_mission(seed: u64, agent_skill: f64, counter_intel: f64, key: i64) ->
     }
 }
 
-
 // ---- hit zones: shields, reactive and ablative armour, hull, modules, crew -----------------
 
 /// Energy (J) at which a hit punches through the bulkheads with 63 % of its force: a 300-point
@@ -514,7 +513,10 @@ impl Doctrine {
 
 /// The doctrine of a faction: from how aggressive its mores are.
 pub fn faction_doctrine(data: &GameData, faction: Option<usize>) -> Doctrine {
-    match faction.and_then(|f| data.factions.get(f)).map(|f| f.aggression) {
+    match faction
+        .and_then(|f| data.factions.get(f))
+        .map(|f| f.aggression)
+    {
         Some(a) if a >= 0.55 => Doctrine::Aggressive,
         Some(a) if a < 0.3 => Doctrine::Defensive,
         Some(_) => Doctrine::Harassment,
@@ -580,7 +582,6 @@ impl Sim {
         self.news_push(t, tag, dist_ly, text);
     }
 }
-
 
 // ---- espionage, hired fleets, treaties, war crimes, sieges: the persistent state ------------
 
@@ -670,10 +671,16 @@ impl SpyOp {
     /// What the operation does, with its price and the cover it burns.
     pub fn text(self) -> String {
         let what = match self {
-            SpyOp::Sabotage => "affaiblit la flotte du secteur pour la periode de guerre (jusqu'a -30 %)",
+            SpyOp::Sabotage => {
+                "affaiblit la flotte du secteur pour la periode de guerre (jusqu'a -30 %)"
+            }
             SpyOp::StealPlans => "copie les plans des arsenaux : de 150 a 500 points de recherche",
-            SpyOp::Wiretap => "ecoute les etats-majors : revele forces et doctrines des fronts pendant 30 jours",
-            SpyOp::Rumor => "repand une fausse nouvelle de defaite, entendue comme n'importe quelle autre",
+            SpyOp::Wiretap => {
+                "ecoute les etats-majors : revele forces et doctrines des fronts pendant 30 jours"
+            }
+            SpyOp::Rumor => {
+                "repand une fausse nouvelle de defaite, entendue comme n'importe quelle autre"
+            }
         };
         format!(
             "Un agent infiltre {what}. Cout {:.0} CR ; use {:.0} % de sa couverture ; echec ou capture selon son talent et la contre-espionnage du secteur.",
@@ -940,7 +947,12 @@ impl Sim {
         self.military.ambushes += 1;
         let t = self.time;
         if t - self.military.last_ambush > 60.0 || self.military.ambushes == 1 {
-            self.news_push(t, 1, 0.0, "Embuscade : un vaisseau froid a frappe le premier.".to_string());
+            self.news_push(
+                t,
+                1,
+                0.0,
+                "Embuscade : un vaisseau froid a frappe le premier.".to_string(),
+            );
         }
         self.military.last_ambush = t;
     }
@@ -973,7 +985,12 @@ impl Sim {
         if let Some(cd) = self.weapon_cd.get_mut(slot) {
             *cd = 1.0 / m.rate.max(0.01);
         }
-        let h = hash_coord(self.system.seed, (self.time * 100.0) as i64, slot as i64, 0xDEC0);
+        let h = hash_coord(
+            self.system.seed,
+            (self.time * 100.0) as i64,
+            slot as i64,
+            0xDEC0,
+        );
         let side = self.ship.rot.col(0) * if h & 1 == 0 { 1.0 } else { -1.0 };
         self.decoys.push(Decoy {
             pos: self.ship.pos + side * (SHIP_RADIUS_M + 20.0),
@@ -1114,8 +1131,12 @@ impl Sim {
     }
 
     fn spy_key(&self, a: &Agent, salt: i64) -> i64 {
-        hash_coord(self.galaxy.seed, i64::from(a.id), i64::from(a.ops) + salt, self.day_index())
-            as i64
+        hash_coord(
+            self.galaxy.seed,
+            i64::from(a.id),
+            i64::from(a.ops) + salt,
+            self.day_index(),
+        ) as i64
     }
 
     /// Slip agent `id` into sector `cell`.
@@ -1189,12 +1210,7 @@ impl Sim {
         let ci = counter_intel(&self.data, &self.galaxy, self.galaxy.seed, a.cell);
         let key = self.spy_key(&a, 17);
         // A thin cover raises the odds of being seen.
-        let res = spy_mission(
-            self.galaxy.seed,
-            a.skill * (0.4 + 0.6 * a.cover),
-            ci,
-            key,
-        );
+        let res = spy_mission(self.galaxy.seed, a.skill * (0.4 + 0.6 * a.cover), ci, key);
         let people = politics::faction_of(&self.data, &self.galaxy, a.cell);
         let label = self.cell_label(a.cell);
         let now = self.time;
@@ -1211,7 +1227,10 @@ impl Sim {
                     now,
                     6,
                     0.0,
-                    format!("Un agent etranger a ete pris sur le fait a {label} : {}.", op.label().to_lowercase()),
+                    format!(
+                        "Un agent etranger a ete pris sur le fait a {label} : {}.",
+                        op.label().to_lowercase()
+                    ),
                 );
                 return Ok(format!("{} : AGENT CAPTURE", op.label()));
             }
@@ -1230,16 +1249,26 @@ impl Sim {
                 });
                 self.military.sieges.clear();
                 self.military.siege_key = None;
-                format!("SABOTAGE REUSSI : LA FLOTTE DE {label} PERD {:.0} %", (1.0 - mult) * 100.0)
+                format!(
+                    "SABOTAGE REUSSI : LA FLOTTE DE {label} PERD {:.0} %",
+                    (1.0 - mult) * 100.0
+                )
             }
             SpyOp::StealPlans => {
                 let pts = 150.0 + 350.0 * a.skill;
                 self.research_pool += pts;
-                self.news_push(now, 5, 0.0, format!("Des plans d'armement ont disparu des arsenaux de {label}."));
+                self.news_push(
+                    now,
+                    5,
+                    0.0,
+                    format!("Des plans d'armement ont disparu des arsenaux de {label}."),
+                );
                 format!("PLANS VOLES : +{pts:.0} POINTS DE RECHERCHE")
             }
             SpyOp::Wiretap => {
-                self.military.intel.push((a.cell, now + INTEL_DAYS * crate::crew::DAY));
+                self.military
+                    .intel
+                    .push((a.cell, now + INTEL_DAYS * crate::crew::DAY));
                 let n = self.report_fronts(a.cell);
                 format!("ECOUTES : {n} FRONT(S) DANS LES COMMUNICATIONS DE {label}")
             }
@@ -1255,7 +1284,11 @@ impl Sim {
                         + (c[2] - self.here_pos[2]).powi(2))
                     .sqrt()
                 };
-                self.plant_rumor(1, ly, format!("On murmure que {who} aurait subi de lourdes pertes."));
+                self.plant_rumor(
+                    1,
+                    ly,
+                    format!("On murmure que {who} aurait subi de lourdes pertes."),
+                );
                 "RUMEUR LANCEE : LA FAUSSE NOUVELLE COURT".to_string()
             }
         };
@@ -1268,8 +1301,15 @@ impl Sim {
         let mut v: Vec<Cell> = politics::cells_around(here, SPY_REACH)
             .into_iter()
             .filter(|c| {
-                !fronts_with(&self.data, &self.galaxy, self.galaxy.seed, *c, self.time, &self.military.effects)
-                    .is_empty()
+                !fronts_with(
+                    &self.data,
+                    &self.galaxy,
+                    self.galaxy.seed,
+                    *c,
+                    self.time,
+                    &self.military.effects,
+                )
+                .is_empty()
             })
             .collect();
         v.sort_by_key(|c| (c[0] - here[0]).abs() + (c[1] - here[1]).abs() + (c[2] - here[2]).abs());
@@ -1306,7 +1346,10 @@ impl Sim {
         if !politics::cells_around(self.current_cell(), 1).contains(&cell) {
             return Err("hors de portee du drone");
         }
-        let robotics = self.data.resource_index("robotics").ok_or("pas de robotique")?;
+        let robotics = self
+            .data
+            .resource_index("robotics")
+            .ok_or("pas de robotique")?;
         if self.ship.cargo.kg[robotics] < 1.0 {
             return Err("il faut une unite de robotique en soute");
         }
@@ -1326,7 +1369,14 @@ impl Sim {
         let m = (t / WAR_PERIOD).floor() as i64;
         let mut out = Vec::new();
         for c in politics::cells_around(here, 2) {
-            for f in fronts_with(&self.data, &self.galaxy, self.galaxy.seed, c, t, &self.military.effects) {
+            for f in fronts_with(
+                &self.data,
+                &self.galaxy,
+                self.galaxy.seed,
+                c,
+                t,
+                &self.military.effects,
+            ) {
                 if !f.own_wins() {
                     out.push(Siege {
                         cell: c,
@@ -1346,7 +1396,12 @@ impl Sim {
                     format!("la flotte de {}", self.data.factions[f].name)
                 });
                 let label = self.cell_label(s.cell);
-                self.news_push(t, 1, 0.0, format!("Blocus de {label} : {by} coupe les routes ; les prix montent."));
+                self.news_push(
+                    t,
+                    1,
+                    0.0,
+                    format!("Blocus de {label} : {by} coupe les routes ; les prix montent."),
+                );
             }
         }
         self.military.sieges = out;
@@ -1366,24 +1421,35 @@ impl Sim {
         let here = self.current_cell();
         let t = self.time;
         let unit_rating = ship_rating(&self.data);
-        fronts_with(&self.data, &self.galaxy, self.galaxy.seed, here, t, &self.military.effects)
-            .into_iter()
-            .map(|f| MercOffer {
-                employer: here,
-                foe: f.foe,
-                faction: politics::faction_of(&self.data, &self.galaxy, here),
-                pay_day: MERC_PAY_PER_HULL * (f.foe_strength / unit_rating).max(1.0),
-                days: MERC_DAYS,
-                own_strength: f.own_strength,
-                foe_strength: f.foe_strength,
-            })
-            .collect()
+        fronts_with(
+            &self.data,
+            &self.galaxy,
+            self.galaxy.seed,
+            here,
+            t,
+            &self.military.effects,
+        )
+        .into_iter()
+        .map(|f| MercOffer {
+            employer: here,
+            foe: f.foe,
+            faction: politics::faction_of(&self.data, &self.galaxy, here),
+            pay_day: MERC_PAY_PER_HULL * (f.foe_strength / unit_rating).max(1.0),
+            days: MERC_DAYS,
+            own_strength: f.own_strength,
+            foe_strength: f.foe_strength,
+        })
+        .collect()
     }
 
     /// Hire the ships (ids of `fleet`) out for the offer `k`.
     pub fn hire_out(&mut self, k: usize, ships: &[u32]) -> Result<u32, &'static str> {
         self.docked_station()?;
-        let offer = self.merc_offers().into_iter().nth(k).ok_or("aucune offre")?;
+        let offer = self
+            .merc_offers()
+            .into_iter()
+            .nth(k)
+            .ok_or("aucune offre")?;
         if ships.is_empty() {
             return Err("aucun vaisseau designe");
         }
@@ -1411,13 +1477,16 @@ impl Sim {
         let unit_rating = ship_rating(&self.data);
         let ends = t + offer.days * crate::crew::DAY;
         // The hired hulls count in every war period the contract touches.
-        for m in [(t / WAR_PERIOD).floor() as i64, ((ends - 1.0) / WAR_PERIOD).floor() as i64] {
-            if !self
-                .military
-                .effects
-                .iter()
-                .any(|e| e.cell == offer.employer && e.period == m && e.add == add * unit_rating && e.mult == 1.0)
-            {
+        for m in [
+            (t / WAR_PERIOD).floor() as i64,
+            ((ends - 1.0) / WAR_PERIOD).floor() as i64,
+        ] {
+            if !self.military.effects.iter().any(|e| {
+                e.cell == offer.employer
+                    && e.period == m
+                    && e.add == add * unit_rating
+                    && e.mult == 1.0
+            }) {
                 self.military.effects.push(FrontEffect {
                     cell: offer.employer,
                     period: m,
@@ -1450,9 +1519,16 @@ impl Sim {
         for i in due.into_iter().rev() {
             let c = self.military.mercs.remove(i);
             let fx = self.military.effects.clone();
-            let front = fronts_with(&self.data, &self.galaxy, self.galaxy.seed, c.employer, c.ends - 1.0, &fx)
-                .into_iter()
-                .find(|f| f.foe == c.foe);
+            let front = fronts_with(
+                &self.data,
+                &self.galaxy,
+                self.galaxy.seed,
+                c.employer,
+                c.ends - 1.0,
+                &fx,
+            )
+            .into_iter()
+            .find(|f| f.foe == c.foe);
             // No front left means the war ended on its own: the hulls come home whole.
             let (won, left) = front.map_or((true, 1.0), |f| (f.own_wins(), f.battle.a_left));
             let days = (c.ends - c.starts) / crate::crew::DAY;
@@ -1460,7 +1536,12 @@ impl Sim {
             self.credits += pay;
             let mut lost = 0;
             for id in &c.ships {
-                let roll = unit(hash_coord(self.galaxy.seed ^ 0x3E7C, i64::from(c.id), i64::from(*id), 3));
+                let roll = unit(hash_coord(
+                    self.galaxy.seed ^ 0x3E7C,
+                    i64::from(c.id),
+                    i64::from(*id),
+                    3,
+                ));
                 let death = if won { (1.0 - left) * 0.8 } else { 0.65 };
                 if let Some(p) = self.fleet.iter().position(|s| s.id == *id) {
                     if roll < death {
@@ -1540,7 +1621,12 @@ impl Sim {
         });
         let t = self.time;
         let name = self.data.factions[faction].name.clone();
-        self.news_push(t, 1, 0.0, format!("Cessez-le-feu signe avec {name} : {price:.0} CR de reparations."));
+        self.news_push(
+            t,
+            1,
+            0.0,
+            format!("Cessez-le-feu signe avec {name} : {price:.0} CR de reparations."),
+        );
         Ok(price)
     }
 
@@ -1553,7 +1639,12 @@ impl Sim {
         self.change_reputation(Some(faction), -40.0);
         let t = self.time;
         let name = self.data.factions[faction].name.clone();
-        self.news_push(t, 1, 0.0, format!("Le cessez-le-feu avec {name} est rompu : vous avez tire les premiers."));
+        self.news_push(
+            t,
+            1,
+            0.0,
+            format!("Le cessez-le-feu avec {name} est rompu : vous avez tire les premiers."),
+        );
     }
 
     /// A ship of the people destroyed by the player (what peace will cost).
@@ -1607,7 +1698,13 @@ impl Sim {
         if d > BATTERY_RANGE {
             return;
         }
-        let bat = orbital_battery(&self.data, &self.galaxy, self.galaxy.seed, self.current_cell(), self.time);
+        let bat = orbital_battery(
+            &self.data,
+            &self.galaxy,
+            self.galaxy.seed,
+            self.current_cell(),
+            self.time,
+        );
         // The beam spreads with distance like any other.
         let dps = f64::from(bat.guns) * beam_dps(bat.dps, 1064.0, 1.0, d, 0.0);
         self.enemy_beams.push((station, self.ship.pos));
@@ -1616,7 +1713,12 @@ impl Sim {
         if self.military.last_battery_day != day + 1 {
             self.military.last_battery_day = day + 1;
             let t = self.time;
-            self.news_push(t, 1, 0.0, "Les batteries orbitales ouvrent le feu sur votre vaisseau.".to_string());
+            self.news_push(
+                t,
+                1,
+                0.0,
+                "Les batteries orbitales ouvrent le feu sur votre vaisseau.".to_string(),
+            );
         }
     }
 
@@ -1959,7 +2061,10 @@ mod tests {
         let mut r = sim_with(&["armor_react_mk1"]);
         assert!(r.armour_profile().reactive > 0.0 && r.armour_profile().ablative == 0.0);
         r.damage_player(300.0);
-        assert!(r.last_zones.cancelled > 0.0, "reactive plates fire on slugs");
+        assert!(
+            r.last_zones.cancelled > 0.0,
+            "reactive plates fire on slugs"
+        );
         assert!(r.last_zones.crew > 0.0, "a slug reaches the cabins");
         let mut s = sim_with(&["armor_abl_mk1"]);
         let a = s.armour_profile();
@@ -2053,7 +2158,11 @@ mod tests {
         assert!(sim_with(&[]).toggle_active_sensors().is_err());
 
         // Contact classes: a hostile beyond the passive range is lost, seen with the radar.
-        let k = s.npcs.iter().position(|n| n.role == NpcRole::Pirate).unwrap();
+        let k = s
+            .npcs
+            .iter()
+            .position(|n| n.role == NpcRole::Pirate)
+            .unwrap();
         s.npcs[k].level = 1;
         let passive = passive_detection_range(npc_thermal_kw(NpcRole::Pirate, 1));
         s.toggle_active_sensors().unwrap();
@@ -2071,7 +2180,11 @@ mod tests {
     #[test]
     fn hostile_crews_loose_missiles_that_the_ship_can_fool() {
         let mut s = sim_with(&[]);
-        let k = s.npcs.iter().position(|n| n.role == NpcRole::Pirate).unwrap();
+        let k = s
+            .npcs
+            .iter()
+            .position(|n| n.role == NpcRole::Pirate)
+            .unwrap();
         {
             let n = &mut s.npcs[k];
             n.level = 3;
@@ -2088,25 +2201,25 @@ mod tests {
         let mut launched = false;
         for _ in 0..600 {
             s.step(&ShipInput::default());
-            launched |= s
-                .projectiles
-                .iter()
-                .any(|p| matches!(p.owner, Owner::Npc(_)) && matches!(p.kind, ProjKind::Missile { .. }));
+            launched |= s.projectiles.iter().any(|p| {
+                matches!(p.owner, Owner::Npc(_)) && matches!(p.kind, ProjKind::Missile { .. })
+            });
         }
         assert!(launched, "a level-3 hostile must fire missiles");
     }
 
     #[test]
     fn doctrines_shape_the_strength_of_a_fleet_and_the_will_to_fight() {
-        assert!(Doctrine::Aggressive.strength_mult(false) > Doctrine::Aggressive.strength_mult(true));
+        assert!(
+            Doctrine::Aggressive.strength_mult(false) > Doctrine::Aggressive.strength_mult(true)
+        );
         assert!(Doctrine::Defensive.strength_mult(true) > Doctrine::Defensive.strength_mult(false));
         assert_eq!(Doctrine::Harassment.supply_age(8), 4);
         assert_eq!(Doctrine::Aggressive.supply_age(8), 8);
         assert!(Doctrine::Harassment.flee_below() > Doctrine::Defensive.flee_below());
         assert!(Doctrine::Defensive.flee_below() > Doctrine::Aggressive.flee_below());
-        let seen: std::collections::BTreeSet<_> = (0..60)
-            .map(|id| pirate_doctrine(7, id).label())
-            .collect();
+        let seen: std::collections::BTreeSet<_> =
+            (0..60).map(|id| pirate_doctrine(7, id).label()).collect();
         assert_eq!(seen.len(), 3, "pirates come in all three doctrines");
         let d = data();
         let kinds: std::collections::BTreeSet<_> = (0..d.factions.len())
@@ -2137,7 +2250,10 @@ mod tests {
             mult: 0.4,
             add: 0.0,
         }];
-        let f2 = fronts_with(&d, &g, 7, c, t, &weak).into_iter().find(|x| x.foe == f.foe).unwrap();
+        let f2 = fronts_with(&d, &g, 7, c, t, &weak)
+            .into_iter()
+            .find(|x| x.foe == f.foe)
+            .unwrap();
         assert!((f2.own_strength - 0.4 * f.own_strength).abs() < 1e-6);
         // The other side reads the same sabotage: it sees the foe weakened, and the same victor.
         let back = fronts_with(&d, &g, 7, f.foe, t, &weak)
@@ -2147,7 +2263,10 @@ mod tests {
         assert!((back.foe_strength - f2.own_strength).abs() < 1e-6);
         assert_ne!(f2.own_wins(), back.own_wins());
         // Doctrines are those of the peoples, and swap sides.
-        assert_eq!(f.own_doctrine, faction_doctrine(&d, politics::faction_of(&d, &g, c)));
+        assert_eq!(
+            f.own_doctrine,
+            faction_doctrine(&d, politics::faction_of(&d, &g, c))
+        );
         assert_eq!(back.foe_doctrine, f.own_doctrine);
         // Enough hired hulls turn a lost front into a won one.
         let big = [FrontEffect {
@@ -2156,7 +2275,10 @@ mod tests {
             mult: 1.0,
             add: 1000.0 * ship_rating(&d),
         }];
-        let f3 = fronts_with(&d, &g, 7, c, t, &big).into_iter().find(|x| x.foe == f.foe).unwrap();
+        let f3 = fronts_with(&d, &g, 7, c, t, &big)
+            .into_iter()
+            .find(|x| x.foe == f.foe)
+            .unwrap();
         assert!(f3.own_wins());
         // Effects of another period do nothing.
         let other = [FrontEffect {
@@ -2201,7 +2323,10 @@ mod tests {
         let (c, _t) = war_sector(&mut s);
         let id = s.recruit_agent().expect("hire");
         assert_eq!(s.military.agents[0].state, AgentState::Idle);
-        assert!(s.spy_op(id, SpyOp::Wiretap).is_err(), "not on the field yet");
+        assert!(
+            s.spy_op(id, SpyOp::Wiretap).is_err(),
+            "not on the field yet"
+        );
         assert!(
             s.infiltrate(id, [40, 40, 40]).is_err(),
             "out of reach of the networks"
@@ -2236,8 +2361,15 @@ mod tests {
         // Sabotage weakens the fleet of the sector, as seen by `fronts_with`.
         succeed(&mut s, c, SpyOp::Sabotage);
         let plain = fronts(&s.data, &s.galaxy, s.galaxy.seed, c, s.time)[0].own_strength;
-        let hit = fronts_with(&s.data, &s.galaxy, s.galaxy.seed, c, s.time, &s.military.effects)[0]
-            .own_strength;
+        let hit = fronts_with(
+            &s.data,
+            &s.galaxy,
+            s.galaxy.seed,
+            c,
+            s.time,
+            &s.military.effects,
+        )[0]
+        .own_strength;
         assert!(hit < plain);
         // The rumour is heard like any news.
         succeed(&mut s, c, SpyOp::Rumor);
@@ -2300,11 +2432,16 @@ mod tests {
         let offers = s.merc_offers();
         assert!(!offers.is_empty() && offers[0].pay_day > 0.0);
         assert!(s.hire_out(0, &[]).is_err());
-        let before = fronts_with(&s.data, &s.galaxy, s.galaxy.seed, c, t, &s.military.effects)[0].own_strength;
+        let before = fronts_with(&s.data, &s.galaxy, s.galaxy.seed, c, t, &s.military.effects)[0]
+            .own_strength;
         s.hire_out(0, &ids).expect("hire out");
-        let after = fronts_with(&s.data, &s.galaxy, s.galaxy.seed, c, t, &s.military.effects)[0].own_strength;
+        let after = fronts_with(&s.data, &s.galaxy, s.galaxy.seed, c, t, &s.military.effects)[0]
+            .own_strength;
         assert!(after > before, "hired hulls add to the line");
-        assert!(s.fleet.iter().all(|f| f.order == crate::fleet::FleetOrder::Mercenary));
+        assert!(s
+            .fleet
+            .iter()
+            .all(|f| f.order == crate::fleet::FleetOrder::Mercenary));
         assert!(s.hire_out(0, &ids).is_err(), "already under contract");
         assert!(s.set_order(0, crate::fleet::FleetOrder::Defend).is_err());
         let credits = s.credits;
@@ -2313,7 +2450,10 @@ mod tests {
         assert!(s.military.mercs.is_empty());
         assert!(s.credits > credits, "the contract is paid");
         assert!(s.news.iter().any(|n| n.text.starts_with("Vos mercenaires")));
-        assert!(s.fleet.iter().all(|f| f.order == crate::fleet::FleetOrder::Trade));
+        assert!(s
+            .fleet
+            .iter()
+            .all(|f| f.order == crate::fleet::FleetOrder::Trade));
     }
 
     #[test]
@@ -2360,7 +2500,11 @@ mod tests {
         let mut s = sim_with(&[]);
         let k = s.npcs.iter().position(|n| n.role == NpcRole::Trader);
         let k = k.unwrap_or_else(|| {
-            let n = s.npcs.iter().position(|n| n.role != NpcRole::Pirate).expect("a civil ship");
+            let n = s
+                .npcs
+                .iter()
+                .position(|n| n.role != NpcRole::Pirate)
+                .expect("a civil ship");
             n
         });
         s.npcs[k].faction = Some(1);
@@ -2372,7 +2516,11 @@ mod tests {
         assert!(s.military.destroyed_value(1) >= hull * 40.0 - 1.0);
         assert!(s.news.iter().any(|n| n.text.starts_with("Crime de guerre")));
         // A pirate is fair game.
-        let p = s.npcs.iter().position(|n| n.role == NpcRole::Pirate).unwrap();
+        let p = s
+            .npcs
+            .iter()
+            .position(|n| n.role == NpcRole::Pirate)
+            .unwrap();
         s.npcs[p].disabled = true;
         s.damage_npc(p, 1.0e9);
         assert_eq!(s.military.crimes.len(), 1);
@@ -2392,7 +2540,10 @@ mod tests {
         assert!(s.is_wanted());
         s.battery_tick(1.0);
         assert!(s.ship.hull < h0, "the guns open up");
-        assert!(s.news.iter().any(|n| n.text.contains("batteries orbitales")));
+        assert!(s
+            .news
+            .iter()
+            .any(|n| n.text.contains("batteries orbitales")));
         // Out of range: nothing.
         s.ship.pos = sp + vector_core::Vec3::new(400_000.0, 0.0, 0.0);
         let h1 = s.ship.hull;
@@ -2428,7 +2579,10 @@ mod tests {
         }
         assert!(ok, "a besieged sector exists");
         s.refresh_sieges();
-        let siege = s.here_besieged().expect("the ship's sector is besieged").clone();
+        let siege = s
+            .here_besieged()
+            .expect("the ship's sector is besieged")
+            .clone();
         assert_eq!(siege.cell, s.current_cell());
         assert!(s.military.sieges.iter().all(|x| x.foe != x.cell));
         assert!(s.news.iter().any(|n| n.text.starts_with("Blocus de")));
@@ -2497,7 +2651,11 @@ mod tests {
         dock(&mut s);
         s.set_order(0, FleetOrder::Attack).unwrap();
         s.docked = None;
-        let k = s.npcs.iter().position(|n| n.role == NpcRole::Pirate).unwrap();
+        let k = s
+            .npcs
+            .iter()
+            .position(|n| n.role == NpcRole::Pirate)
+            .unwrap();
         s.npcs[k].pos = s.ship.pos + vector_core::Vec3::new(0.0, 0.0, 5000.0);
         s.npcs[k].hostile = true;
         s.npcs[k].hull = 1.0e5;
@@ -2529,7 +2687,11 @@ mod tests {
     #[test]
     fn a_boarding_on_foot_takes_the_ship_and_its_crew_must_be_judged() {
         let mut s = sim_with(&[]);
-        let k = s.npcs.iter().position(|n| n.role == NpcRole::Pirate).unwrap();
+        let k = s
+            .npcs
+            .iter()
+            .position(|n| n.role == NpcRole::Pirate)
+            .unwrap();
         let id = s.npcs[k].id;
         assert!(s.board_on_foot().is_err(), "no target");
         s.target_npc = Some(k);
@@ -2599,7 +2761,11 @@ mod tests {
     #[test]
     fn a_cold_ship_strikes_first_and_an_unwary_target_pays_triple() {
         let mut s = sim_with(&[]);
-        let k = s.npcs.iter().position(|n| n.role == NpcRole::Trader).unwrap_or(0);
+        let k = s
+            .npcs
+            .iter()
+            .position(|n| n.role == NpcRole::Trader)
+            .unwrap_or(0);
         let far = passive_detection_range(s.quiet_signature_kw()) + 20_000.0;
         let hit = |s: &mut Sim, aware: bool| {
             s.npcs[k].hull_max = 1.0e6;
@@ -2611,7 +2777,10 @@ mod tests {
             s.npcs[k].state = if aware {
                 NpcState::Combat { mode: AiMode::Flee }
             } else {
-                NpcState::Orbit { around: 0, phase: 0.0 }
+                NpcState::Orbit {
+                    around: 0,
+                    phase: 0.0,
+                }
             };
             let before = s.npcs[k].hull;
             s.damage_npc(k, 100.0);
@@ -2629,7 +2798,10 @@ mod tests {
         let hot = s.quiet_signature_kw();
         assert!(hot > 0.0);
         s.npcs[k].pos = s.ship.pos + vector_core::Vec3::new(0.0, 0.0, 1000.0);
-        s.npcs[k].state = NpcState::Orbit { around: 0, phase: 0.0 };
+        s.npcs[k].state = NpcState::Orbit {
+            around: 0,
+            phase: 0.0,
+        };
         assert!(!s.is_ambush(k), "too close to be unseen");
         // Cut the machinery: the ship goes cold and the same distance becomes an ambush.
         for p in s.ship.sys.powered.iter_mut() {
@@ -2637,9 +2809,14 @@ mod tests {
         }
         assert_eq!(s.quiet_signature_kw(), 0.0);
         s.npcs[k].pos = s.ship.pos + vector_core::Vec3::new(0.0, 0.0, ACTIVE_RANGE + 1000.0);
-        assert!(s.is_ambush(k), "a cold ship is a shadow beyond five kilometres");
+        assert!(
+            s.is_ambush(k),
+            "a cold ship is a shadow beyond five kilometres"
+        );
         // A target already on alert is never ambushed.
-        s.npcs[k].state = NpcState::Combat { mode: AiMode::Pursue };
+        s.npcs[k].state = NpcState::Combat {
+            mode: AiMode::Pursue,
+        };
         assert!(!s.is_ambush(k));
     }
 }

@@ -24,6 +24,7 @@ pub mod incidents;
 pub mod intrusion;
 pub mod livestock;
 pub mod market;
+pub mod megastructure;
 pub mod multiverse;
 pub mod news;
 pub mod npc;
@@ -38,6 +39,7 @@ pub mod save;
 pub mod scene;
 pub mod science;
 pub mod surgery;
+pub mod terraform;
 pub mod trading;
 pub mod voyage;
 

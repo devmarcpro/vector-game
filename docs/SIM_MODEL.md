@@ -168,3 +168,23 @@ Tout est derive (rien n'est stocke, meme graine = memes nombres) et une seule fo
 - Interieur : fraction du noyau selon la densite, flux de chaleur ~ R / age (+ chauffage de maree selon
   l'excentricite), activite (inerte, couvercle fige, plaques, volcanique, fluide), champ magnetique
   (dynamo : noyau fluide + rotation + taille).
+## Terraformation (`terraform.rs`)
+
+- Masse d'atmosphere M = P 4 pi R^2 / g ; pression partielle p_i = m_i g / (4 pi R^2) ; hauteur d'echelle inchangee (`atmosphere.rs`) avec la composition courante.
+- Bilan d'energie : T_e = (S (1 - A) / 4 sigma)^(1/4), S = insolation (1 + 0,85 A_miroirs / pi R^2), A = albedo du monde nu (calibre pour que le modele redonne la temperature de base, nuages compris) + 0,30 (couverture de glace(T) - couverture de glace(T de base)) - 0,2 (1 - exp(-suie / (4 pi R^2 1e-6 kg/m^2))) x couverture - 0,05 couvert vegetal, avec couverture de glace(T) = 1 / (1 + exp((T - 262) / 10)) (un dixieme a 288 K, tout le globe sous 230 K : bistabilite, glaciation totale) ; surface T_s = T_e (1 + 0,75 tau)^(1/4), tau = somme k_i p_i^0,6 (CO2 9, CH4 60, NH3 40, SO2 20, PFC 3000, H2O 6) + 10 p_H2O^1,5 (continuum de la vapeur d'eau : l'air humide d'un monde chaud devient opaque, d'ou l'emballement) ; la part de la vapeur est plafonnee a l'etat de base pour que son gain de retroaction y soit au plus 0,8 (un monde ne doit pas etre instable sans qu'on le touche). La temperature cible est la base + T_s(maintenant) - T_s(base). Seuil d'emballement d'un monde tempere sans autre gaz a effet de serre : de l'ordre de +13 % de lumiere (estimation a la main ; les tests verifient +2 % stable et +34 % emballe).
+- Inertie : T <- T + (cible - T)(1 - exp(-dt / tau_T)), tau_T = C / (4 sigma T^3 / (1 + 0,75 tau)), C = 4,2e6 x 100 m x part d'ocean + 8e6 x sol + 1000 x masse d'air par m^2 (Terre : 1,5 an).
+- Eau : part de glace = 1 / (1 + exp((T - T_demi) / 12)) (T_demi fixee par la base), flux limite par la chaleur latente (2 W/m^2/K sur 20 % de la surface / 3,34e5 J/kg) ; vapeur a la saturation psat(T) = exp(-L/Rv (1/T - 1/373)) x humidite 0,6 (0,3 + 0,7 sqrt(part de mer)), constante de temps 5 jours ; part de mer = sqrt(profondeur d'ocean / 5200 m). Photolyse au-dessus de 330 K : l'hydrogene (1/9) part, l'oxygene (8/9) est avale par la croute (100 kg/m^2) puis reste dans l'air.
+- CO2 des calottes : quantite d'air d'equilibre = base x psat_CO2(T - 60) / psat_CO2(T_base - 60) ; relaxation 50 ans.
+- Jeans : taux = 0,1 (1 + l) exp(-l)/an, l = v_lib^2 / (2 k T / m) pour H2 et He. NH3 -> 14/17 N2 + 3/17 H2 (demi-vie 30 ans). CH4 + 2 O2 -> CO2 + 2 H2O (10 ans). PFC : 10 000 ans.
+- Souches : couvert c' = c + g/3000 c (1 - c) dt (g = croissance de `species.ron` par jour), facteur CO2 min(1, pCO2 / 0,00015 bar) ; carbone fixe = c x PPN x aire x 0,45 ; 50 % enfoui (CO2 consomme 44/12, O2 libere 32/12 du carbone). PPN = 2 kg de matiere seche / m^2 / an x (0,05 + fertilite) sur la surface propice (biomes de l'habitat de l'espece selon le climat de chaque bande).
+- Usines : masse traitee = P x 0,6 dt / E, E = 8,9 MJ/kg (craquage CO2 : O2 32/44, carbone 12/44), 16 MJ/kg (electrolyse : O2 8/9, H2 1/9), 2 MJ/kg (capture), 30 MJ/kg (PFC pris au sol).
+- Comete : la masse entre dans les stocks ; chaleur d'impact 0,5 m (v_lib^2 + (15 km/s)^2) / (C x aire).
+- Habitabilite dehors : produit de rampes sur pO2 (0,08-0,14-0,30-0,50), pCO2 (< 0,005 bar), toxiques (< 1 mbar), pression totale (0,2-0,5-2,5-5 bar), temperature (258-278-302-322 K).
+
+## Megastructures (`megastructure.rs`)
+
+- Ascenseur : r_geo = (GM (T / 2 pi)^2)^(1/3) ; Phi(r) = -GM/r - w^2 r^2 / 2 ; section a la base / section en haut = exp(2 (Phi(r_geo) - Phi(R)) / (sigma / rho)) (coefficient de securite 2) ; refuse si > 1e5, si le monde est verrouille, ou si r_geo sort de la moitie de la sphere de Hill. Terre et nanotubes (4e7 J/kg) : x11 ; polymeres : impossible.
+- Essaim : P = L_etoile x min(1, N A / (4 pi r^2)) x 0,3, r = max(0,05 UA, moitie de l'orbite du monde) ; une unite = 1 km2 de collecteurs (A = 1e6 m2), de l'ordre de 4,5 MW a 0,3 UA.
+- Kardashev (Sagan) : K = (log10 P - 6) / 10 ; la Terre (2e13 W) donne 0,73.
+- Raids : probabilite/jour = 0,002 x exposition (1 + 0,5 ln(1 + unites) par ouvrage) x (1 + 2 agitation) x (3 en guerre) / (1 + defense) ; tirage = hash(graine, colonie, jour).
+- Energie abondante : productivite x (1 + 0,1 log10 (offre / demande)), plafonnee a +33 %.

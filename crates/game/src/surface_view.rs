@@ -196,11 +196,12 @@ pub fn draw(fb: &mut Framebuffer, g: &Game) {
             50,
             1,
             &format!(
-                "CIVILISATION : {} ({}) - TECHNOLOGIE {}/4 - {:.0} HABITANTS  [ENTREE EN VOL : PARLER]",
+                "CIVILISATION : {} ({}) - TECHNOLOGIE {}/4 - {:.0} HABITANTS - KARDASHEV {:.2}  [ENTREE EN VOL : PARLER]",
                 c.name.to_uppercase(),
                 g.data.civilisations[c.kind].name.to_uppercase(),
                 c.tech,
-                c.population
+                c.population,
+                c.kardashev()
             ),
             GREEN,
         );

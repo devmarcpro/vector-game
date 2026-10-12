@@ -1690,6 +1690,21 @@ fn draw_empire(fb: &mut Framebuffer, g: &Game) {
         ),
         GREEN,
     );
+    fb.text(
+        1,
+        4,
+        &format!(
+            "ECHELLE DE KARDASHEV {:.3}   PUISSANCE {:.2e} W   OUVRAGES {}",
+            s.empire_kardashev(),
+            s.empire_power_w(),
+            s.colonies
+                .iter()
+                .flat_map(|c| c.projects.iter())
+                .map(|p| p.units)
+                .sum::<u32>()
+        ),
+        GREEN,
+    );
     let top = 6;
     fb.text(1, top, "NOM                    SYSTEME / CORPS                 POP    MORAL     CAISSE    ENERGIE  ETAT", DIM);
     for (i, c) in s.colonies.iter().enumerate() {
@@ -1812,6 +1827,10 @@ fn draw_colony(fb: &mut Framebuffer, g: &Game) {
     );
     if g.col_flow {
         crate::flow_view::draw(fb, g);
+        return;
+    }
+    if g.col_proj {
+        crate::project_view::draw(fb, g);
         return;
     }
     if let Some(e) = &c.epidemic {

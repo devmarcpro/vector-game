@@ -23,6 +23,22 @@ pub struct Civ {
     pub population: f64,
 }
 
+/// Power a person commands at each technology level of the natives (W): a fire and a plough, a
+/// mill and a forge, a power grid, a fusion age.
+pub const POWER_PER_CAPITA: [f64; 5] = [0.0, 300.0, 1200.0, 3000.0, 12_000.0];
+
+impl Civ {
+    /// Power this civilisation commands, W.
+    pub fn power_w(&self) -> f64 {
+        self.population * POWER_PER_CAPITA[usize::from(self.tech).min(POWER_PER_CAPITA.len() - 1)]
+    }
+
+    /// Its place on the Kardashev scale (see `megastructure::kardashev`).
+    pub fn kardashev(&self) -> f64 {
+        crate::megastructure::kardashev(self.power_w())
+    }
+}
+
 impl Sim {
     fn civ_key(&self, body: usize) -> u64 {
         hash_coord(self.system.seed, body as i64, 0, 71)
@@ -30,7 +46,7 @@ impl Sim {
 
     /// The civilisation of `body`, if any (solid worlds only).
     pub fn civilisation(&self, body: usize) -> Option<Civ> {
-        let map = self.planet_map(body)?;
+        let map = self.planet_map_base(body)?;
         let data = &self.data;
         // Habitable land: the mean of `habit` over a sample of the surface.
         let (mut sum, mut n) = (0.0, 0.0);

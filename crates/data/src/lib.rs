@@ -1,5 +1,6 @@
 //! Data schemas and loading/validation of `data/*.ron`. Content lives in data, not code.
 pub mod dialogue;
+pub mod projects;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
@@ -799,6 +800,7 @@ pub struct GameData {
     pub rogue_themes: Vec<RogueTheme>,
     pub materials: Vec<Material>,
     pub companies: Vec<Company>,
+    pub projects: Vec<projects::ProjectDef>,
 }
 
 fn read<T: for<'a> Deserialize<'a>>(path: &Path) -> Result<T, DataError> {
@@ -845,6 +847,7 @@ impl GameData {
             rogue_themes: read(&dir.join("rogue_themes.ron"))?,
             materials: read(&dir.join("materials.ron"))?,
             companies: read(&dir.join("companies.ron"))?,
+            projects: read(&dir.join("projects.ron"))?,
         };
         // Generated extension files (tools/gen_scale.py) extend the hand-written tables.
         let mut extra_resources: Vec<Resource> = read(&dir.join("resources_organs.ron"))?;
@@ -1208,6 +1211,7 @@ impl GameData {
                     "module" => self.module_index(id).is_some(),
                     "hull" => self.hull_index(id).is_some(),
                     "building" => self.building_index(id).is_some(),
+                    "project" => self.project_index(id).is_some(),
                     _ => false,
                 };
                 if !ok {
@@ -1275,6 +1279,7 @@ impl GameData {
         self.validate_dimensions()?;
         self.validate_materials()?;
         self.validate_rogue()?;
+        self.validate_projects()?;
         self.validate_companies()
     }
 

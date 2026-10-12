@@ -51,7 +51,9 @@ Station : N = recruter (Entrée embauche au poste de sa meilleure compétence), 
 Station : T = bourse (Haut/Bas ressource, PgUp/PgDn x10, Tab ou Gauche/Droite période 30/90/180 jours, T ou Échap retour).
 Station : C = contrats (Entrée accepter/livrer, X abandonner), E = banque (Haut emprunter 1000, Bas rembourser 1000, Entrée tout rembourser).
 
-Ecran colonie : Tab zone (bâtiments / stocks / politiques / construction), Haut/Bas, Espace on/off, R recette, X démolir, D déposer / W retirer (stocks, amarré), Gauche/Droite politique, Entrée construire, T récupérer la caisse, U décoller.
+Ecran colonie : Tab zone (bâtiments / stocks / politiques / construction), Haut/Bas, Espace on/off, R recette, X démolir, D déposer / W retirer (stocks, amarré), Gauche/Droite politique, Entrée construire, T récupérer la caisse, U décoller, F schéma des chaînes, P écran des projets.
+
+Écran des projets (P dans l'écran colonie ; P ou Échap pour revenir) : terraformation et mégastructures. Tab change de zone (travaux / catalogue / usines atmosphériques), Haut/Bas choisit, Entrée commande le projet du catalogue (ou choisit le procédé des usines), [ et ] changent le nombre d'unités commandées (1, 10, 100... 100 000), Gauche/Droite change l'espèce semée, Espace met un ouvrage en marche ou à l'arrêt, X abandonne les unités non finies. À la souris : clic sur une ligne, double-clic sur le catalogue pour commander, clic sur [COMMANDER] ou sur un procédé. L'écran montre l'échelle de Kardashev de la civilisation, ce qui retient chaque chantier (matériaux, énergie, main-d'œuvre) et l'état du climat du monde (température, bilan, pression, composition, mers, glaces, vie native, souches, habitabilité).
 Ecran flotte : Tab liste, N nouvelle route (Gauche/Droite valeur, Tab champ, Entrée), A affecter, U retirer, X supprimer/vendre, B acheter (à quai).
 
 ## Menus

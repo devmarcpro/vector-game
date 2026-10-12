@@ -98,7 +98,19 @@ pub fn build_map(
     system: &vector_world::System,
     body: usize,
 ) -> Option<PlanetMap> {
+    build_map_with(data, system, body, None)
+}
+
+/// The surface map of a body as its seed makes it; `pressure` overrides the air pressure the
+/// biomes are classified with (the baseline of a world whose air was terraformed).
+pub fn build_map_with(
+    data: &vector_data::GameData,
+    system: &vector_world::System,
+    body: usize,
+    pressure: Option<f64>,
+) -> Option<PlanetMap> {
     let b = system.bodies.get(body)?;
+    let air = pressure.unwrap_or(b.pressure);
     let kind = match b.kind {
         BodyKind::Planet(k) | BodyKind::Moon(k) => k,
         _ => return None,
@@ -111,7 +123,7 @@ pub fn build_map(
             f64::from(surface.temp[i]),
             f64::from(surface.hum[i]),
             f64::from(surface.elev[i]),
-            b.pressure,
+            air,
         )?;
         *cell = idx as u8;
     }
@@ -121,14 +133,37 @@ pub fn build_map(
         seed,
         surface,
         biome,
-        pressure: b.pressure,
+        pressure: air,
     })
 }
 
 impl Sim {
     /// The surface map of a solid planet or moon of the current system (None for anything else).
+    ///
+    /// On a world being terraformed the seed's map is shifted by the state of its climate
+    /// (temperature, sea level, humidity, biomes): see `terraform::Terra::apply_to_map`.
     pub fn planet_map(&self, body: usize) -> Option<PlanetMap> {
-        build_map(&self.data, &self.system, body)
+        let terra = self.terra_here(body);
+        let air =
+            terra.map(|t| t.snap.gas0.iter().sum::<f64>() * t.snap.gravity / t.snap.area() / 1.0e5);
+        let mut map = build_map_with(&self.data, &self.system, body, air)?;
+        if let Some(t) = terra {
+            t.apply_to_map(&self.data, &mut map);
+        }
+        Some(map)
+    }
+
+    /// The map of the seed alone, before any terraforming (natives and the ecology of the
+    /// territory go by what the world was).
+    pub fn planet_map_base(&self, body: usize) -> Option<PlanetMap> {
+        let air = self
+            .colonies
+            .iter()
+            .find(|c| c.star == self.here && c.body == body)
+            .and_then(|c| c.terra.as_ref())
+            .filter(|t| t.snap.rocky)
+            .map(|t| t.snap.gas0.iter().sum::<f64>() * t.snap.gravity / t.snap.area() / 1.0e5);
+        build_map_with(&self.data, &self.system, body, air)
     }
 
     /// Length of the year of a body (a moon shares its planet's), s.

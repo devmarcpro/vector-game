@@ -420,6 +420,7 @@ enum Policy {
     Random,
     Trader,
     Explorer,
+    Builder,
     Chaos,
 }
 
@@ -431,6 +432,7 @@ impl Policy {
             Policy::Random => "random",
             Policy::Trader => "trader",
             Policy::Explorer => "explorer",
+            Policy::Builder => "builder",
             Policy::Chaos => "chaos",
         }
     }
@@ -528,6 +530,41 @@ fn play(
             }
         }
     };
+    if policy == Policy::Builder {
+        // A colonist's cheat: money and kits in the hold, then found colonies near each world.
+        s.credits += 1.0e7;
+        let mut rules = s.rules.clone();
+        rules.invulnerable = true;
+        s.set_rules(rules);
+        let d = Arc::clone(data);
+        for (id, kg) in [
+            ("construction_materials", 9_000.0),
+            ("colonists", 1_200.0),
+            ("food", 900.0),
+            ("water", 1_800.0),
+        ] {
+            if let Some(r) = d.resource_index(id) {
+                s.ship.cargo.add(&d, r, kg);
+            }
+        }
+        s.undock();
+        let mut founded = 0;
+        for i in 1..s.bodies.len() {
+            if founded >= 2 {
+                break;
+            }
+            s.spawn_near(i, s.bodies[i].radius + 5_000.0);
+            let r = catch_unwind(AssertUnwindSafe(|| s.found_colony(i, None)));
+            match r {
+                Ok(Ok(_)) => founded += 1,
+                Ok(Err(_)) => {}
+                Err(_) => {
+                    let msg = LAST_PANIC.lock().map(|g| g.clone()).unwrap_or_default();
+                    note(&mut out, "panique(action)", format!("found_colony: {msg}"), 0);
+                }
+            }
+        }
+    }
     let mut last_action = "";
     let mut crew_dead = false;
     let mut prev_ghosts: Vec<u32> = Vec::new();
@@ -537,7 +574,7 @@ fn play(
             break; // step budget: free flight near worlds is expensive, the day count is reported
         }
         let td = Instant::now();
-        if policy == Policy::Pacifist || (day == 0 && policy != Policy::Idle) {
+        if policy == Policy::Pacifist || (day == 0 && !matches!(policy, Policy::Idle | Policy::Builder)) {
             // Dock as fast as a player would: poll every 5 minutes until docked (at most 6 h).
             for poll in 0..72 {
                 if std::env::var("QA_CREW").is_ok() {
@@ -553,12 +590,16 @@ fn play(
                 s.advance(300.0, &ShipInput::default());
             }
         }
+        if policy == Policy::Builder && s.credits < 1.0e6 {
+            s.credits += 5.0e6;
+        }
         // Actions of the day.
         let n_actions = match policy {
             Policy::Idle | Policy::Pacifist => 0,
             Policy::Random => 2,
             Policy::Trader => 3,
             Policy::Explorer => 2,
+            Policy::Builder => 3,
             Policy::Chaos => 6,
         };
         for _ in 0..n_actions {
@@ -567,6 +608,14 @@ fn play(
                     const T: [&str; 9] = [
                         "dock", "sell", "buy", "refuel", "repair", "contract", "autopilot",
                         "loan", "undock",
+                    ];
+                    let n = T[rng.below(T.len())];
+                    table.iter().find(|(a, _)| *a == n).copied().unwrap()
+                }
+                Policy::Builder => {
+                    const T: [&str; 9] = [
+                        "colony", "terraform", "fleet", "yard", "securities", "society", "shares",
+                        "loan", "colony",
                     ];
                     let n = T[rng.below(T.len())];
                     table.iter().find(|(a, _)| *a == n).copied().unwrap()
@@ -867,6 +916,7 @@ fn main() {
     let policies = [
         Policy::Idle,
         Policy::Pacifist,
+        Policy::Builder,
         Policy::Random,
         Policy::Trader,
         Policy::Explorer,

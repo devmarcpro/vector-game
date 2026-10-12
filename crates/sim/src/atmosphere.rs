@@ -5,6 +5,7 @@
 //! the air does follows: it brakes a falling ship, it scatters the light of the day (low in a thick
 //! atmosphere you no longer see the stars or the other worlds), it hazes the distance.
 use crate::Sim;
+use vector_core::Vec3;
 use vector_world::BodyKind;
 
 /// Universal gas constant, J / (mol K).
@@ -107,9 +108,14 @@ impl Sim {
 
     /// The world whose air the ship is in (within the top of the air), and the height in it.
     pub fn in_air(&self) -> Option<(usize, Air, f64)> {
+        self.in_air_at(self.ship.pos)
+    }
+
+    /// The same for any point of space.
+    pub fn in_air_at(&self, p: Vec3) -> Option<(usize, Air, f64)> {
         (0..self.bodies.len()).find_map(|i| {
             let air = self.air_of(i)?;
-            let alt = (self.ship.pos - self.bodies[i].pos).length() - self.bodies[i].radius;
+            let alt = (p - self.bodies[i].pos).length() - self.bodies[i].radius;
             (alt < air.top()).then_some((i, air, alt))
         })
     }

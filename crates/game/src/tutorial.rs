@@ -80,8 +80,8 @@ pub const STEPS: [Step; 17] = [
         done: |g| pressed(g, Screen::Flight, KeyCode::KeyL) || g.screen == Screen::Galaxy,
     },
     Step {
-        text: "F4 : technologies, F6 : codex, F2 : empire. F1 donne l'aide du contexte. Bon vol !",
-        done: |g| any_pressed(g, Screen::Flight, &[KeyCode::F4, KeyCode::F6, KeyCode::F2]) || matches!(g.screen, Screen::Tech | Screen::Codex | Screen::Empire),
+        text: "F10 ouvre le menu : huit espaces qui regroupent tous les ecrans. F1 donne l'aide du contexte. Bon vol !",
+        done: |g| pressed(g, Screen::Flight, KeyCode::F10) || matches!(g.screen, Screen::Hub | Screen::Tech | Screen::Codex | Screen::Empire),
     },
     Step {
         text: "F8 ouvre la surface d'un monde releve (G : globe) ; E y lance une expedition a pied ; Entree en vol sur une planete ciblee parle a son peuple.",
@@ -95,7 +95,19 @@ pub fn hint_line(g: &Game) -> String {
         return "ENTREE EXECUTER  ~ FERMER LA CONSOLE  (HELP POUR LA LISTE)".into();
     }
     let s = match g.screen {
-        Screen::MainMenu => "HAUT/BAS CHOISIR  ENTREE VALIDER  TAPER UNE GRAINE AVANT NOUVELLE PARTIE",
+        Screen::MainMenu => "HAUT/BAS CHOISIR  ENTREE VALIDER  TAPER UNE GRAINE POUR LA PARTIE RAPIDE",
+        Screen::NewGame => match g.ng.step {
+            0 => "ENTREE SUIVANT  ECHAP MENU PRINCIPAL  F1 AIDE",
+            1 | 2 => "HAUT/BAS CHOISIR  ENTREE SUIVANT  ECHAP PRECEDENT  F1 AIDE",
+            3 => "HAUT/BAS PERSONNE  ESPACE PRENDRE/LAISSER  GAUCHE/DROITE POSTE  ENTREE SUIVANT  ECHAP PRECEDENT",
+            4 => "TAPER UNE GRAINE  TAB ALEATOIRE  SUPPR PAR DEFAUT  ENTREE SUIVANT  ECHAP PRECEDENT",
+            5 => "HAUT/BAS CHOISIR  GAUCHE/DROITE CHANGER  ENTREE SUIVANT  ECHAP PRECEDENT",
+            _ => "ENTREE LANCER LA PARTIE  ECHAP PRECEDENT  F1 AIDE",
+        },
+        Screen::Hub if g.hub.page => {
+            "HAUT/BAS CHOISIR  ENTREE OUVRIR  GAUCHE/ECHAP RETOUR AUX ESPACES  1-8 ESPACE  F10 FERMER"
+        }
+        Screen::Hub => "HAUT/BAS ESPACE  ENTREE OUVRIR  1-8 ESPACE  ECHAP FERMER  F10 FERMER  F1 AIDE",
         Screen::Flight if g.map => {
             "M FERMER LA CARTE  +/- ZOOM  C CENTRE ETOILE/VAISSEAU  TAB CIBLE  G AUTO  PGUP/PGDN TEMPS  F1 AIDE"
         }
@@ -107,12 +119,12 @@ pub fn hint_line(g: &Game) -> String {
             "PILOTE AUTO ACTIF  G ANNULER  PGUP/PGDN TEMPS  TAB CIBLE  M CARTE  P PAUSE  F1 AIDE"
         }
         Screen::Flight => {
-            "WASD/QE ROT  ESP/X POUSSEE  MAJ BOOST  C FREIN  F ASSIST  TAB CIBLE  G AUTO  D AMARRER  V LASER  CTRL TIR  M CARTE  F1 AIDE"
+            "WASD/QE ROT  ESP/X POUSSEE  MAJ BOOST  C FREIN  F ASSIST  TAB CIBLE  G AUTO  D AMARRER  V LASER  F10 MENU  M CARTE  F1 AIDE"
         }
         Screen::Station => {
             "ENTREE VENDRE  F PLEIN  R REPARER  FIN VISITER LA STATION (TOUS LES SERVICES)  H NAVIRE  T BOURSE  U DECOLLER"
         }
-        Screen::Inventory => "HAUT/BAS CHOISIR  J JETER  I/ECHAP RETOUR",
+        Screen::Inventory => "HAUT/BAS CHOISIR  J JETER  F CARBURANT DE LA SOUTE AU RESERVOIR  I/ECHAP RETOUR",
         Screen::Pause => "HAUT/BAS CHOISIR  ENTREE VALIDER  ECHAP REPRENDRE",
         Screen::Ship if g.picker => {
             "HAUT/BAS MODULE  ENTREE INSTALLER OU REMPLACER (ACHAT AUTO)  ECHAP ANNULER"
@@ -121,7 +133,10 @@ pub fn hint_line(g: &Game) -> String {
             "HAUT/BAS EMPLACEMENT  ENTREE INSTALLER/REMPLACER  X RETIRER  Y CHANTIER NAVAL  H/ECHAP RETOUR"
         }
         Screen::Ship => "HAUT/BAS EMPLACEMENT  H/ECHAP RETOUR",
-        Screen::Shipyard => "HAUT/BAS COQUE  ENTREE ACHETER (REPRISE 50%)  ECHAP RETOUR",
+        Screen::Shipyard => {
+            "HAUT/BAS COQUE  ENTREE ACHETER (REPRISE 50%)  C CONCEVOIR SON VAISSEAU  ECHAP RETOUR"
+        }
+        Screen::Designer => crate::designer_view::hint(g),
         Screen::Crew if g.gear_mode => {
             "FLECHES CHOISIR UN EQUIPEMENT  ENTREE EQUIPER (IL FAUT L'OBJET EN SOUTE)  U RETIRER  E/ECHAP RETOUR A LA LISTE"
         }
@@ -139,7 +154,7 @@ pub fn hint_line(g: &Game) -> String {
         Screen::Expedition => "HAUT/BAS CHOISIR  ESPACE COCHER  ENTREE PARTIR  ECHAP RETOUR",
         Screen::Dialogue => "1-6 OU CLIC REPONDRE  HAUT/BAS + ENTREE  ECHAP COUPER LA COMMUNICATION",
         Screen::Proto => "CLIC SUR LES ELEMENTS  GAUCHE/DROITE OU 1-2 PROTOTYPE  F12/ECHAP RETOUR",
-        Screen::Factions => "GAUCHE/DROITE FACTION  P AMENDES  B POT-DE-VIN  L AVOCAT  TAB RELATIONS  X/ECHAP RETOUR",
+        Screen::Factions => "GAUCHE/DROITE FACTION  P AMENDES  B POT-DE-VIN  L AVOCAT  TAB RELATIONS  S SOCIETE  X/ECHAP RETOUR",
         Screen::Galaxy => {
             "HAUT/BAS ETOILE  +/- ZOOM  ENTREE SAUT FTL  L/ECHAP RETOUR  (RETOUR ARRIERE ANNULE UNE CHARGE)"
         }
@@ -151,20 +166,23 @@ pub fn hint_line(g: &Game) -> String {
             "HAUT/BAS ANIMAL  GAUCHE/DROITE ESPECE  B ACHETER  P REPRODUIRE  H ABATTRE  ECHAP RETOUR"
         }
         Screen::Trading => {
-            "GAUCHE/DROITE ONGLET  HAUT/BAS CHOIX  +/- MISE  ENTREE AGIR  ECHAP RETOUR"
+            "GAUCHE/DROITE ONGLET  HAUT/BAS CHOIX  +/- MISE  ENTREE AGIR  TOUT TEXTE VERT SE CLIQUE  ECHAP RETOUR"
         }
         Screen::Rogue => {
             "FLECHES/ZQSD DEPLACER  CLIC MARCHER  ENTREE ESCALIER/SITE  X CREUSER  B/N BATIR  V DRONE  R RAPPEL  TAB CHEF"
         }
         Screen::Cosmos => {
-            "ENTREE PORTAIL  A ANCRE  R REMONTER  X LEVER  HAUT/BAS CHOIX  +/- JOURS  S STASE  ECHAP RETOUR"
+            "ENTREE PORTAIL  A ANCRE  R REMONTER  X LEVER  HAUT/BAS CHOIX  +/- JOURS  S STASE  N/K CLONER  ECHAP RETOUR"
         }
         Screen::Casino => {
             "GAUCHE/DROITE JEU  HAUT/BAS MISE  +/- NUMERO  ENTREE JOUER  ECHAP RETOUR"
         }
         Screen::Empire => "HAUT/BAS COLONIE  ENTREE DETAIL  F3 FLOTTE  ECHAP RETOUR",
+        Screen::Colony if g.col_proj => {
+            "TAB ZONE  HAUT/BAS CHOIX  ENTREE COMMANDER  [ ] UNITES  </> ESPECE  ESP ON/OFF  X ANNULER  P/ECHAP RETOUR"
+        }
         Screen::Colony => {
-            "TAB ZONE  R RECETTE  X DEMOL  ENT BATIR  T CAISSE  U DECOLLER  F CHAINES  H SANTE  I IND  G AGRI  V VILLE  L CONVOIS"
+            "TAB ZONE  R RECETTE  X DEMOL  ENT BATIR  U DECOLLER  F CHAINES  H SANTE  P PROJET  I IND  G AGRI  V VILLE  L CONVOIS"
         }
         Screen::Fleet => {
             "TAB LISTE  N ROUTE  A AFFECTER  U RETIRER  X SUPPRIMER  B ACHETER  M CARTE  ECHAP RETOUR"
@@ -197,13 +215,16 @@ pub fn help_lines(screen: Screen) -> &'static [&'static str] {
             "Fleches : RCS lateral et vertical",
             "F : assistance de vol   Maj : boost   C : frein sur la cible",
             "F7 : visee souris (tangage et lacet)",
+            "Suppr : vue externe (camera autour du vaisseau : glisser = orbite, molette = zoom, 5 = suivi/libre, 0 = recentrer ; Suppr = cockpit)",
             "F11 : plier ou deplier le menu de pilotage (clic : menus et commandes)",
             "Tab T Y R : cibles (proche, asteroide, station, PNJ)",
             "V : laser de minage   Ctrl : tir   B : missiles",
             "G : pilote auto   D : amarrer   M : carte systeme",
+            "Anneaux = blocs de glace minables ; queue de comete = plasma qui abime l'electronique ; pulsar, trou noir : rayonnement et lentille (cible = detail)",
             "PgUp/PgDn : temps   P : pause   Echap : menu",
             "H vaisseau  K equipage  I soute  J journal  X factions",
             "L galaxie  F2 empire  F3 flotte  F4 techno  F6 codex  Entree : appeler le vaisseau cible",
+            "F10 : le menu (huit espaces, tous les ecrans)   Suppr : ignorer le tutoriel",
             "O : fonder une colonie   Z tribut   N epave   U abordage",
             "F8 : surface de la planete ou lune ciblee (releve niveau 2) ; Tab y change de couche (BIOSPHERE : V espece, Entree fiche de la variante)",
             "Souris : clic = cibler un objet, double clic = y aller ; molette = temps ; clic droit = retour",
@@ -216,7 +237,10 @@ pub fn help_lines(screen: Screen) -> &'static [&'static str] {
             "K : equipage   C : contrats   E : banque   T : bourse (courbes de prix)",
             "F2 : empire   F3 : flotte   U : decoller",
         ],
-        Screen::Inventory => &["Haut/Bas : ressource   J : jeter   Echap : retour"],
+        Screen::Inventory => &[
+            "Haut/Bas : ressource   J : jeter   Echap : retour",
+            "F : verser le carburant de la soute (butin, cargaison) dans le reservoir",
+        ],
         Screen::Ship => &[
             "Haut/Bas : emplacement   Entree : installer",
             "X : retirer le module   Y : chantier naval",
@@ -225,6 +249,14 @@ pub fn help_lines(screen: Screen) -> &'static [&'static str] {
         Screen::Shipyard => &[
             "Haut/Bas : coque   Entree : acheter / transferer",
             "Les coques verrouillees demandent une technologie.",
+            "C : concevoir son propre vaisseau (onglets CONCEPTION, EQUIPEMENT, PLANS ET COMMANDES)",
+        ],
+        Screen::Designer => &[
+            "CONCEPTION : choisissez une piece a gauche, cliquez la grille pour la poser (couche = etage, Debut/Fin) ; symetrie M ; les pieces rouges ne sont pas reliees au noyau.",
+            "Les raccords comptent : un cone d'etrave ne se fixe que derriere, une aile que sur les cotes, un train que sous une piece.",
+            "EQUIPEMENT : cliquez une case, un emplacement, puis un module (Entree installe, X retire). Les moteurs hors de l'axe font tourner le vaisseau.",
+            "PLANS ET COMMANDES : acheter, copier, exporter ou importer un plan ; commander la construction (equipes, delai, materiaux en soute) ; embarquer, demonter ou refondre.",
+            "Glisser sur l'apercu : tourner le vaisseau. Tab : onglet suivant. N : nommer le plan. Echap : retour.",
         ],
         Screen::Crew => &[
             "Gauche/Droite : poste   T : quart   X : debarquer",
@@ -256,13 +288,16 @@ pub fn help_lines(screen: Screen) -> &'static [&'static str] {
             "Lois en vigueur chez eux seulement ; ma situation juridique (casier, amendes)",
             "P payer les amendes   B pot-de-vin (peut echouer)   L avocat (moitie)",
             "Tab : registre des relations (factions, peuples, cartels, contacts, entreprises)",
+            "S : page SOCIETE (langue, culture du lieu, ecole, arts, paris) ; Haut/Bas equipier, PgUp/PgDn etude, E C V D P A J",
             "Ce que vous faites a l'un se repercute, attenue, sur ses allies et ses rivaux",
             "X ou Echap : retour",
         ],
         Screen::Galaxy => &[
             "Haut/Bas : etoile   +/- : zoom   Entree : saut FTL",
             "Retour arriere : annuler une charge de saut",
-            "La lettre est la classe stellaire (O B A F G K M D).",
+            "La lettre est la classe stellaire (O B A F G K M, D naine blanche, N neutrons, X trou noir, R monde errant).",
+            "Les cercles sont des nebuleuses, amas et restes de supernova (rayonnement, capteurs brouilles, labos plus efficaces).",
+            "Ondes gravitationnelles : un labo qui tourne les analyse et gagne de la recherche (voir le journal).",
         ],
         Screen::Contracts => &["Entree : accepter / livrer   X : abandonner"],
         Screen::Bank => &[
@@ -276,8 +311,14 @@ pub fn help_lines(screen: Screen) -> &'static [&'static str] {
             "H : abattre (rendement selon les genes)   les animaux mangent des rations",
         ],
         Screen::Trading => &[
-            "Gauche/Droite : onglet (rumeurs, arbitrage, cartels, appels d'offres, assurance)",
-            "Entree : agir   +/- : mise de l'offre",
+            "Gauche/Droite : onglet (rumeurs, arbitrage, cartels, appels d'offres, assurance, titres, ventes, lignes, economie)",
+            "Entree : agir   +/- : mise de l'offre ou de l'enchere   Haut/Bas : choix (un bien pour les options et les ventes)",
+            "Assurance : prime = valeur x risque reel (pirates, guerre, blocus, epidemie, catastrophe) x dossier ; declarer une perte est controle (fraude = amende)",
+            "Titres : obligations d'Etat (monnaie locale, defaut en cas de krach), fonds actions et matieres, options d'achat et de vente ; le patrimoine les compte, futurs compris",
+            "Ventes : encheres hebdomadaires (second prix), marche aux puces (contrefacons : expertise), campagnes de publicite qui font monter la demande locale",
+            "Lignes : convois reguliers de cargos entre plaques tournantes, marchandises reellement en transit ; financer un convoi partage sa marge et ses pertes",
+            "Economie : tableau d'une juridiction (PIB tire de la production, inflation, change, taux, dette, douanes, tourisme) et ses courbes sur 24 mois",
+            "Contrats de passagers : croisieres et pelerinages a plusieurs escales (deliver a chaque escale, hotels selon la beaute et la securite) ; migrants et refugies changent les populations",
         ],
         Screen::Rogue => &[
             "Fin : explorer a pied un lieu a portee (station, epave, ruine, grotte, portail...)",
@@ -290,6 +331,8 @@ pub fn help_lines(screen: Screen) -> &'static [&'static str] {
         Screen::Cosmos => &[
             "Entree : franchir le portail   A : poser une ancre temporelle   R : remonter",
             "S : stase a quai (le monde avance, pas le bord)   Accueil : ouvrir cet ecran",
+            "N : personne suivante   K : cloner (1 kg de nanites, 80000 CR) : la copie a 80 % des competences, le bord s'en trouble",
+            "Colonne de droite : echelle de Kardashev du vaisseau, antimatiere, bulle de distorsion, phenomenes exotiques proches",
         ],
         Screen::Casino => &["Entree : jouer   la maison garde toujours un avantage"],
         Screen::Empire => &["Entree : detail de la colonie   F3 : flotte"],
@@ -298,6 +341,8 @@ pub fn help_lines(screen: Screen) -> &'static [&'static str] {
             "R recette   X demolir   Entree construire",
             "D deposer / W retirer (amarre)   T caisse   U decoller",
             "F : schema des chaines de production   H : suivi sanitaire (epidemies)",
+            "P : projets (terraformation, megastructures, usines atmospheriques)",
+            "Projets : Tab zone  Entree commander  [ ] unites  </> espece  X annuler",
             "I industrie (usure, qualite, goulots)   G agriculture (sol, saisons, nutrition)",
             "V ville (densite, dechets, pollution, crime)   L convois entre colonies",
         ],
@@ -345,12 +390,29 @@ pub fn help_lines(screen: Screen) -> &'static [&'static str] {
         ],
         Screen::Surface => &[
             "Fleches : deplacer le curseur (Maj : x4)",
-            "Tab : couche (biomes, altitude, temperature, humidite, meteo, vie, nuages) ; lacs, fleuves et glaces des saisons sur la couche biomes",
+            "Tab : couche (biomes, altitude, temperature, humidite, meteo, vie, nuages, biosphere, geologie : plaques, failles, volcans, gisements) ; lacs, fleuves et glaces des saisons sur la couche biomes",
             "G : globe fil de fer avec courbes de niveau (Gauche/Droite : tourner)",
             "F : codex   F8 ou Echap : retour au vol",
         ],
         Screen::Pause => &["Haut/Bas : choisir   Entree : valider   Echap : reprendre"],
-        Screen::MainMenu => &["Haut/Bas : choisir   Entree : valider   Taper : graine"],
+        Screen::MainMenu => &[
+            "Haut/Bas : choisir   Entree : valider   Taper : graine de la partie rapide",
+            "Nouvelle partie : scenario, vaisseau, equipage, galaxie, options",
+        ],
+        Screen::NewGame => &[
+            "Sept etapes : explications, scenario, vaisseau, equipage, galaxie, options, recapitulatif",
+            "Entree : etape suivante   Echap : precedente (la premiere revient au menu)",
+            "Chaque etape est cliquable en haut ; chaque choix change l'etat de depart",
+            "Equipage : Espace prend ou laisse, Gauche/Droite change le poste, budget de points",
+            "Galaxie : taper une graine, Tab en tire une au hasard, Suppr revient a celle par defaut",
+        ],
+        Screen::Hub => &[
+            "Huit espaces regroupent tous les ecrans du jeu (F10 ouvre ou ferme ce menu)",
+            "Haut/Bas ou 1-8 : espace   Entree : ouvrir   Gauche ou Echap : remonter d'un niveau",
+            "En haut : ou vous etes et ce que vous pouvez faire maintenant",
+            "Une ligne grisee dit pourquoi elle est indisponible (amarrage, a pied...)",
+            "Echap dans un ecran ouvert d'ici revient a la page de son espace",
+        ],
         Screen::Destroyed => &["Entree : continuer (selon les regles de mort permanente)"],
     }
 }

@@ -2063,7 +2063,7 @@ mod tests {
         let t = data.tech_index("precision_tooling").expect("tech");
         for (i, tech) in data.techs.iter().enumerate() {
             s.researched[i] = tech.id != "precision_tooling"
-                && tech.id != "orbital_engineering"
+                && tech.id != "orbital_lift_engineering"
                 && tech.id != "agronomy"
                 && tech.id != "industrial_robotics";
         }
@@ -2078,7 +2078,7 @@ mod tests {
         assert!(s.findings.contains("resource:tungsten"));
         assert!(s.tech_available(t) && s.start_research(t).is_ok());
         // An anomaly and a resource both needed.
-        let o = data.tech_index("orbital_engineering").expect("tech");
+        let o = data.tech_index("orbital_lift_engineering").expect("tech");
         assert!(s.missing_findings(o).len() == 2);
         s.findings.insert("anomaly:gravity_well".into());
         assert_eq!(

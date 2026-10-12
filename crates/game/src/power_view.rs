@@ -21,7 +21,7 @@ fn thick(fb: &mut Framebuffer, a: (f32, f32), b: (f32, f32), share: f64, c: u32)
 
 pub fn draw(fb: &mut Framebuffer, g: &Game, x0: i32, y0: i32) {
     let ship = &g.sim.ship;
-    let hull = &g.data.hulls[ship.design.hull];
+    let hull = &g.sim.data.hulls[ship.design.hull];
     let mut sources: Vec<(String, f64)> = Vec::new();
     let mut loads: Vec<(String, f64, bool)> = Vec::new();
     for i in 0..hull.slots.len() {

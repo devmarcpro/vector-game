@@ -29,3 +29,17 @@ Mesures prises sur la machine de développement (Windows 11, build `--release`),
 
 ## Session 2 (nouvelle machine)
 Build release, 265 tests, clippy `-D warnings`, `data_check`, `balance_check` (0 avertissement), `sim_bench` 1/10/100 ans (stable, sans colonie) et les 10 scripts de `scripts/` (first_flight, dock_and_trade, full_loop, ftl_jump, leave_system, combat, colony, save_reload, surface, bourse) passent. Non vérifié : le ressenti du pilotage et de la souris, les couleurs en jeu réel, l'équilibrage des nouveautés (organes, implants, épidémies, civilisations, contrats à terme, équipement) par des joueurs ; `sim_bench` n'a pas tourné 100 ans avec des colonies. Aucune session jouée par un humain avant le retour du joueur (pilote automatique et sortie de système corrigés à sa suite).
+
+## Départs et menu principal (2026-10-12)
+| Critère | Etat | Preuve |
+|---|---|---|
+| Nouvelle partie en étapes claires (explications, scénario, vaisseau, équipage, galaxie, options, récapitulatif) | atteint | `the_new_game_flow_walks_back_and_forth_and_leaves_to_the_main_menu`, `the_flow_choices_reach_the_world_ship_crew_seed_and_rules` ; scènes `--snapshot x.png newgame0..6` |
+| Chaque scénario produit une Sim valide et jouable | atteint | `every_scenario_builds_a_valid_sim_with_what_it_promises` (sim), `every_scenario_chosen_in_the_flow_starts_a_playable_game` (jeu : lance, dessine, avance, ouvre le menu) |
+| Chaque vaisseau proposé est viable (moteur, énergie, réservoir, soute, logements, support de vie) | atteint | `every_ship_option_fits_its_hull_and_can_live_and_fly` |
+| Le choix change l'état de départ (crédits, soute, modules, équipage, technologies, réputation, prime) | atteint | `a_scenario_is_not_the_default_one_it_changes_the_start`, `the_start_depends_on_the_choices_hull_crew_and_seed` |
+| Budget de points de l'équipage | atteint | `the_crew_budget_is_enforced`, `the_crew_step_keeps_to_the_points_and_the_roles_change` |
+| Naufrage : pas de vaisseau en état de vol, à pied, atteint l'espace avec ce qu'on trouve | atteint (mécanique testée ; équilibrage non joué) | `the_castaway_starts_on_the_ground_without_a_ship_that_flies`, `the_castaway_can_reach_space_by_mending_and_refuelling_with_what_he_finds`, `without_parts_the_wreck_stays_broken_and_an_empty_hold_gives_no_fuel` |
+| Menu unique F10, huit espaces, sans doublon ; Echap remonte d'un niveau | atteint | `every_screen_has_a_place_and_every_space_screen_has_an_entry`, `the_menu_opens_on_every_screen_and_escape_climbs_one_level_at_a_time`, `menu_lines_that_need_a_dock_or_a_flight_say_why_and_work_when_they_can` |
+| Tout cliquable (texte seulement) | atteint | `the_menu_and_the_flow_are_clickable_text` |
+| Barre de commandes et aide F1 sur les nouveaux écrans | atteint | `every_screen_has_a_command_bar_a_help_and_a_place_in_the_menu` |
+Non vérifié : le ressenti du Naufrage (combien de temps pour trouver les pièces et le carburant) par un joueur humain ; la lisibilité réelle des nouveaux écrans à d'autres résolutions que 1280x720.

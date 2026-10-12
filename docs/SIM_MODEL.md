@@ -234,6 +234,7 @@ Un seul tick de colonie (6 h) ; les travaux s'y inserent dans cet ordre : convoi
 - Thermique : chaleur entrante = reacteurs + conso + flux solaire (1,361 kW/m2 x flux x section x (1 - albedo 0,3)) + entree atmospherique (0,5 rho v^3 A x 3 %, rho gaz parfait) moins la part ablatee par le blindage (armure/(armure+3), 10 MJ par point de coque) ; emission en T^4 (radiateurs). Section = sphere de masse volumique 200 kg/m3.
 - Rayonnement (Gy/h, avant blindage) : cosmique 2e-5 ; etoile 5e-5 x (probabilite d'eruption de la classe / 0,012) / d_UA^2 ; ceinture 0,05 sqrt(champ) exp(-((L-2,5)/1,2)^2) avec le champ magnetique de physics.rs. Blindage : exp(-armure/6) (>= 2 %), amarre x0,05, bouclier x0,12. `Systems.dose_gy` cumule la dose recue ; la medecine peut lire `dose_rate_aboard()`.
 - Structure : charge = max(g de poussee, maree 2 mu L / r^3) ; au-dela de 40 g la coque se dechire. Relativite : gamma de Lorentz affiche au-dessus de 0,1 % de c (les sauts FTL restent hors relativite : temps de voyage de voyage.rs inchange). Lumiere : retard d/c. Detection IR : portee = sqrt(P / 4 pi sensibilite).
+- Exotique, suite (`exotic_field.rs`) : bulle = antimatiere m c2 w2 (1 + w2/4) x 1e-9 / (2 c2), w = 1 + d/10; liaison quantique instantanee a <= 60 al; singularite : g = 1e16/r2 dans 50 000 km, degats 40 (2e6/r)2 /s; corde : +2 paradoxes/jour dans 20 000 km; stase : freinage 0,5/s dans 3 000 km; nanites 2 degats/s dans 500 km; strangelet : population de la colonie du systeme x e^(-t/60 j) tant que l'anomalie n'est pas etudiee; Kardashev K = (log10 P - 6)/10.
 - Exotique (`exotic.rs`) : annihilation E = 2 m c2 (c = 299 792 458 m/s), degats de coque = E / 2e11 J; fuite d'un piege eteint 0,2 %/s du stock; cout warp E = m c2 v2 (1 + v2/4); dose du sillage 0,002 v2 Gy; vestiges des anciens dans 20 % des systemes (x2 recherche), phenomene dans ~34 % des anomalies, gains x(1 + 0,1 paradoxe), entites : comprehension = traduction (efficacite scientifique) contre etrangete; 5 indices = reponse de Fermi.
 ## Chimie (`sim/chemistry.rs`, `data/chemistry.ron`, `data/reactions.ron`)
 - Hess : dH(reaction) = somme n_i Hf(produits) - somme n_i Hf(reactifs), en kJ/mol de reaction. Chaleur degagee
@@ -289,3 +290,86 @@ Etat : sang (1 = normal), oxygene du cerveau, temperature centrale (C), douleur,
 - Guerison : vitesse = (1 + 0,6 medecin/10 + 0,3 infirmerie) x (1 - 0,5 faim/soif) x (1 - 0,3 fatigue) x age x (1 + 0,8 regenerant) ; sans pansement (si la blessure en demande) x 0,4 ; infectee x 0,2. Une blessure grave non soignee laisse un handicap de 0,4 x sa gravite maximale, qui diminue avec la rehabilitation (medecin, infirmerie).
 - Medicaments : niveau divise par deux a chaque demi-vie (foie malade : plus lent), effet = niveau x (1 - tolerance) ; sevrage (douleur, stress) quand le niveau tombe sous 0,15 avec dependance ; pression de surdose = somme des niveaux ponderee par les interactions, divisee par (0,5 + 0,5 foie), surdose au-dela de 1,6.
 - Vieillissement : usure des organes 2e-5 x (age - 55)^1,5 par jour ; mort naturelle (Gompertz) 0,0002 x exp(0,1 (age - 20)) par an, decalee de 10 ans par point de `health_base`. Reanimation : chance 0,15 + 0,06 competence + 0,2 infirmerie, decroit avec le temps depuis l'arret ; cryostase : temperature 4 C, plus de besoins ni de vieillissement, mort par decongelation sans infirmerie alimentee.
+## Geologie et tectonique (`world/geology.rs`)
+
+- Plaques : points aleatoires de la sphere, deformes par un bruit avant le calcul de la plus proche (les
+  frontieres ne sont pas des droites). Vitesse du sol en un point p : pole x p. Soit n la direction de la
+  plaque A vers la plaque B au point p, `v_rel = v_A - v_B` : fermeture = v_rel . n (> 0 : convergence),
+  cisaillement = v_rel . (p x n) ; frontiere transformante si |cisaillement| > 1,2 |fermeture|.
+- Proximite d'une frontiere : s = exp(-(ecart/w)^2) avec ecart = angle(2e plaque) - angle(1re) et
+  w = 0,16 rad (0,12 sur un monde volcanique) ; amplitude = min(1, |fermeture|/0,6) x s.
+- Relief : decalage de croute (continentale +0,30, oceanique -0,35) lisse a la frontiere, convergence
+  continent-continent +1,0 m, continent-ocean +1,0 cote continent et -0,9 cote ocean (fosse), ocean-ocean
+  fosse -0,9 / arc +0,5, divergence ocean +0,35 (dorsale) ou continent -0,5 (rift), poids selon l'activite
+  (plaques 1, volcanique 0,7, couvercle fige 0,5 hors points chauds, mort 0).
+- Points chauds : une chaine de 6 bosses gaussiennes (hauteur x0,7 a chaque pas) decalees le long de la
+  derive de la plaque (rotation autour de son pole), la premiere est active ; un monde a une seule plaque
+  n'a qu'une grosse bosse (Olympus Mons).
+- Erosion : age_rel = min(age/4,5 Gyr, 2) ; hydraulique h = humidite x age_rel (une part 0,12 h de la
+  pente est enlevee de la case et 80 % deposee en aval, en sediment), eolienne (1 - humidite) x air x
+  age_rel (lissage 0,08), glaciaire au-dela de 0,9 rad de latitude (lissage 0,12) ; 2 + 6 age_rel tours.
+- Chaleur du sol (geothermie) = base (volcanique 0,7, plaques 0,35, couvercle 0,12, autre 0,02) + 0,5
+  proximite de frontiere convergente/divergente + 0,8 proximite (5 cases) d'un volcan actif ; une
+  centrale geothermique produit x2 (>= 0,8), x1,2 (>= 0,4), x0,4 (< 0,2), x1 pour une ancienne colonie.
+- Gisements : score par case selon la geologie (voir `classify`), meilleurs sites espaces d'au moins 5 a
+  12 cases ; richesse 0,2-1. Une colonie fondee a moins de 12 cases d'un gisement ajoute au sol
+  `0,04 x part x richesse x (1 - 0,5 distance/12)` d'abondance relative pour chaque ressource qu'il rend.
+
+## Astronomie (`world/stellar.rs`, `cosmos.rs`)
+
+- Stades : sequence principale, geante rouge (R 10-70 R_sol, T 3500-4500 K), supergeante (R 100-500,
+  T 3300-4200 K), naine blanche (R 0,0125), etoile a neutrons (12 km, 1,2-2,2 M_sol), trou noir (horizon
+  2 G M / c^2 = 2,95 km par M_sol, 5-30 M_sol), monde errant (0,1 R_sol, 0,0005-0,012 M_sol).
+- Variabilite : L(t) = L (1 + a sin(2 pi t / P + phase)) ; geante : P 150-450 j, a 25-60 % ; supergeante
+  P 5-60 j, a 10-30 %.
+- Rayonnement stellaire (Gy/h) : pulsar 0,3 (UA/r)^2 (magnetar x20), trou noir a disque 0,15 (UA/r)^2, plafonne a r = 0,01 UA.
+- Lentille : foyer r_f = 1e10 G M / c^2 (b = 1e5 horizons) ; gain des capteurs 1 + 2 exp(-((r - r_f)/0,3 r_f)^2).
+- Anneaux : de 1,25 R a min(2,44 R (rho_planete/920)^(1/3), 0,9 a_premiere_lune) ; 10 blocs de glace/silicates.
+- Comete : e 0,85-0,97, perihelie >= 0,25 UA sqrt(L) ; queue dirigee de l'etoile vers l'exterieur, de longueur
+  6e9 m (reach/4r)^2 (plafond 4e10 m), nulle au-dela de 4 UA sqrt(L) ; plasma : 4 degats/s sur l'axe, 3e5 m de large.
+- Compagnons : au moins 8 fois la derniere planete et 30 UA ; masse 0,1 a 1 fois celle de l'etoile principale.
+- Milieu : un objet au plus par cellule de 40 al, probabilite 0,012 (0,3 + densite d'etoiles) ; rayon, dose,
+  opacite, interet par type (`FeatureKind`) ; dose au carre de la profondeur, capteurs 1 - opacite sqrt(profondeur).
+- Noyau galactique : 4,3e6 M_sol, dose 5 Gy/h a 1000 al, carre inverse, nulle au-dela de 3000 al.
+- Ondes gravitationnelles : un evenement par jour avec la probabilite 0,2, dans un disque exponentiel (echelle
+  9000 al) autour du noyau ; deformation h = 1e-21 (M_chirp/28)^(5/3) x 1,34e9 al / d ; entendu au-dessus de 1e-16 ;
+  points de recherche 15 sqrt(h/seuil) (max 150, x1,5 pour une kilonova).
+
+- Societe (`society.rs`) : comprehension d'une langue = max(equipage, IA) ; equipage = max sur les vivants de max(competence directe - 0,2 x eres ecoulees depuis la derniere pratique, 0,5 x meilleure competence dans la meme famille) (langue maternelle = 1) ; IA = 0,2 + 0,4 x taux du budget de traduction, plafond 0,9 ; prix x (0,97 + 0,03 x comprehension) ; faveur aupres d'un peuple natif x (0,5 + 0,5 x comprehension). Pratique : +0,004 par jour a quai dans la langue locale (plafond 0,7). Annee locale = periode orbitale de la planete autour de son etoile (2 pi racine(a^3 / mu)) ; une fete tient de `at` a `at + jours / annee`. Valeur d'une oeuvre = base x (0,2 + 3 q^2) x (1 + 0,1 renom) x (1 + 0,4 gout) x (0,9..1,1 hebdomadaire) ; qualite q = 0,8 metier + 0,2 hasard ; chaque oeuvre ajoute 0,02 au metier. Cotes : poids (0,5 + u)^3 par coureur, p = poids / somme, gain = (1 - marge) / p. Etudes : un jour de cours par jour (x1,5 avec un mentor : competence >= 6, fluence >= 0,8 ou metier >= 0,6), frais x (1 - 0,3 ouverture).
+## Économie, volet 2
+**PIB.** `gdp = (services + production + extra) x cycle x (1 - krach) x (1 - 12 % guerre) x (1 - 8 % x troubles)` ; `services = (1500 + 300 x étoiles) x (0,7 + 0,6 h)` ; `production = Σ_i mondes_i x valeur_i` avec `mondes = 1,6 x étoiles x (0,6 + 0,8 h)` partagés par poids (0,4 + h) entre les industries, `valeur_i = 140 x (1 + 0,5 ln(1 + valeur moyenne des biens))`, fermes x récolte, tout x (1 - 0,5 x min(1, malades / 0,2)). `récolte = (1 + 0,12 sin(2π (an + φ))) x {0,6 sécheresse 10 %, 1,2 année faste 8 %, 1}` ; prix de la nourriture et des composés organiques x récolte^-0,8. `extra` = colonies du joueur du secteur (pop x (0,5 + moral) x 2 + 10 x bâtiments) + 0,8 x migrants nets (borné à ±3000).
+**Risque et prime.** `monthly_loss_odds = 0,004 + 0,05 pirates + 0,04 guerre + 0,03 blocus + 0,015 catastrophe + 0,01 zone` ; `prime = (soute + coque) x chance x 1,8 x (1 + 0,3 sinistres de l'an + 0,6 fraudes)`, 20 CR au moins ; indemnité 70 %. Contrôle d'une déclaration de perte : `clamp(0,25 + 0,2 sinistres + 0,2 fraudes - 1,5 chance, 0,05, 0,95)`.
+**Titres.** Obligation : `valeur = unités x change / (1 + rendement)^(jours restants / 365)`, rendement = taux directeur + 2 % x dette + 3 % guerre + 30 % x krach ; à l'échéance paye unités x change(échéance), x 0,4 si krach > 22 % et dette > 100 % du PIB. Fonds actions : 100 x moyenne des rapports cours / cours(0) ; fonds matières : 100 x moyenne géométrique des facteurs de prix de la région d'origine ; frais 0,5 % + 0,8 % par an en parts. Option : prime/kg = 0,8 x σ_mois x prix x √(jours / 30), σ = 0,03 + 0,012 log10(1 + valeur) ; gain = max(0, ±(prix - strike)) x kg.
+**Lignes.** Départ `(décalage + k x période) jours`, vol `distance / vitesse + retards` (quarantaine 3 ou 6 j, guerre 3 j, blocus 8 j, + aléa), perte avec la chance `min(0,8, 6 x moyenne pondérée des chances mensuelles)` de 25 à 75 % de la charge au milieu du vol. Facteur de prix = `exp(-0,3 x stock / 150 000 kg)` borné à [0,6, 1,6], stock = Σ charge x exp(-âge / 12 j) (négatif au départ, positif à l'arrivée ; un convoi en retard compte pour -0,5 x charge x (1 - exp(-retard / 5 j))). Marge d'un convoi = prix arrivée / prix départ - 1 - ports - douane - courtier 2 %.
+**Passagers.** Croisière et pélerinage : 2 à 3 escales dans l'ordre, tarif `pax x (tarif x escales + par al x distance)`, étoiles d'hôtel = `round(5 x tourisme x (0,5 + 0,5 h))` avec `tourisme = beauté x sécurité x santé` ; touristes et croisiéristes paient x (0,7 + 0,15 étoiles), un guide ajoute 12 % (12 CR par passager et par étape).
+
+## Concepteur de vaisseau (`shipwright.rs`, `yard.rs`)
+Repere : x vers l'etrave, y a tribord, z vers le haut ; cellule de 6 m, centre de la cellule (x+0,5 ; y ; z+0,5) x 6 m.
+- Masse M = somme des pieces + modules ; centre de masse r_cm = somme(m_i r_i) / M, a vide et avec les reservoirs pleins (le carburant est place dans la cellule du reservoir).
+- Inerties autour du centre de masse : I_x = somme m (dy^2 + dz^2) + m a^2/6 par cellule (cube plein de cote a), etc. ; produits d'inertie negliges.
+- Un moteur de poussee F a la position r pousse selon +x : couple = r x F = (0, r_z F, -r_y F) par rapport au centre de masse plein. Manoeuvre disponible : T_rcs = (RCS des pieces + des modules) x demi-longueur (au moins une demi-cellule) ; acceleration angulaire = T_rcs / moyenne(I_y, I_z). La coque derivee garde `ang_accel x clamp(1 - |couple parasite| / T_rcs, 0,1 ; 1)` (bornes 0,2 a 5 rad/s2), `max_rate = 0,75 ang_accel` (meme etalonnage que les coques a la main).
+- Delta-v = Isp g0 ln((m_seche + carburant) / m_seche) ; avec soute pleine, m_seche inclut la capacite de soute. TWR = poussee / (M_pleine g0).
+- Chaleur : equilibre ou rayonne(T) = chaleur produite (0,6 x min(puissance, charge) + charge) ; T^4 = Tc^4 + Q/P_nom (Tref^4 - Tc^4) avec P_nom = 30 + 0,004 m_seche + radiateurs (kW) ; meme loi que `Systems::step`.
+- Appui au sol : seuls les trains de la couche la plus basse comptent ; stable si le centre de masse est dans leur enveloppe convexe a au moins 0,3 m des bords (trois trains non alignes) ; portee = somme des `support_kg` ; atterrissage si portee x g0 >= poids pleine charge ; decollage si poussee > poids.
+- Atmosphere : centre de poussee = barycentre des surfaces `aero_area` ; marge = (x_cm - x_cp) / longueur ; negative = instable (le vaisseau tourne de l'arriere).
+- Cout = somme(materiaux x valeur) + travail (jours-equipe x 400 cr) + modules ; delai = travail / (8 x equipes) (x1,3 dans une colonie, x0,7 en refonte) ; equipes supplementaires +10 % de salaires chacune.
+## Terraformation (`terraform.rs`)
+
+- Masse d'atmosphere M = P 4 pi R^2 / g ; pression partielle p_i = m_i g / (4 pi R^2) ; hauteur d'echelle inchangee (`atmosphere.rs`) avec la composition courante.
+- Bilan d'energie : T_e = (S (1 - A) / 4 sigma)^(1/4), S = insolation (1 + 0,85 A_miroirs / pi R^2), A = albedo du monde nu (calibre pour que le modele redonne la temperature de base, nuages compris) + 0,30 (couverture de glace(T) - couverture de glace(T de base)) - 0,2 (1 - exp(-suie / (4 pi R^2 1e-6 kg/m^2))) x couverture - 0,05 couvert vegetal, avec couverture de glace(T) = 1 / (1 + exp((T - 262) / 10)) (un dixieme a 288 K, tout le globe sous 230 K : bistabilite, glaciation totale) ; surface T_s = T_e (1 + 0,75 tau)^(1/4), tau = somme k_i p_i^0,6 (CO2 9, CH4 60, NH3 40, SO2 20, PFC 3000, H2O 6) + 10 p_H2O^1,5 (continuum de la vapeur d'eau : l'air humide d'un monde chaud devient opaque, d'ou l'emballement) ; la part de la vapeur est plafonnee a l'etat de base pour que son gain de retroaction y soit au plus 0,8 (un monde ne doit pas etre instable sans qu'on le touche). La temperature cible est la base + T_s(maintenant) - T_s(base). Seuil d'emballement d'un monde tempere sans autre gaz a effet de serre : de l'ordre de +13 % de lumiere (estimation a la main ; les tests verifient +2 % stable et +34 % emballe).
+- Inertie : T <- T + (cible - T)(1 - exp(-dt / tau_T)), tau_T = C / (4 sigma T^3 / (1 + 0,75 tau)), C = 4,2e6 x 100 m x part d'ocean + 8e6 x sol + 1000 x masse d'air par m^2 (Terre : 1,5 an).
+- Eau : part de glace = 1 / (1 + exp((T - T_demi) / 12)) (T_demi fixee par la base), flux limite par la chaleur latente (2 W/m^2/K sur 20 % de la surface / 3,34e5 J/kg) ; vapeur a la saturation psat(T) = exp(-L/Rv (1/T - 1/373)) x humidite 0,6 (0,3 + 0,7 sqrt(part de mer)), constante de temps 5 jours ; part de mer = sqrt(profondeur d'ocean / 5200 m). Photolyse au-dessus de 330 K : l'hydrogene (1/9) part, l'oxygene (8/9) est avale par la croute (100 kg/m^2) puis reste dans l'air.
+- CO2 des calottes : quantite d'air d'equilibre = base x psat_CO2(T - 60) / psat_CO2(T_base - 60) ; relaxation 50 ans.
+- Jeans : taux = 0,1 (1 + l) exp(-l)/an, l = v_lib^2 / (2 k T / m) pour H2 et He. NH3 -> 14/17 N2 + 3/17 H2 (demi-vie 30 ans). CH4 + 2 O2 -> CO2 + 2 H2O (10 ans). PFC : 10 000 ans.
+- Souches : couvert c' = c + g/3000 c (1 - c) dt (g = croissance de `species.ron` par jour), facteur CO2 min(1, pCO2 / 0,00015 bar) ; carbone fixe = c x PPN x aire x 0,45 ; 50 % enfoui (CO2 consomme 44/12, O2 libere 32/12 du carbone). PPN = 2 kg de matiere seche / m^2 / an x (0,05 + fertilite) sur la surface propice (biomes de l'habitat de l'espece selon le climat de chaque bande).
+- Usines : masse traitee = P x 0,6 dt / E, E = 8,9 MJ/kg (craquage CO2 : O2 32/44, carbone 12/44), 16 MJ/kg (electrolyse : O2 8/9, H2 1/9), 2 MJ/kg (capture), 30 MJ/kg (PFC pris au sol).
+- Comete : la masse entre dans les stocks ; chaleur d'impact 0,5 m (v_lib^2 + (15 km/s)^2) / (C x aire).
+- Habitabilite dehors : produit de rampes sur pO2 (0,08-0,14-0,30-0,50), pCO2 (< 0,005 bar), toxiques (< 1 mbar), pression totale (0,2-0,5-2,5-5 bar), temperature (258-278-302-322 K).
+
+## Megastructures (`megastructure.rs`)
+
+- Ascenseur : r_geo = (GM (T / 2 pi)^2)^(1/3) ; Phi(r) = -GM/r - w^2 r^2 / 2 ; section a la base / section en haut = exp(2 (Phi(r_geo) - Phi(R)) / (sigma / rho)) (coefficient de securite 2) ; refuse si > 1e5, si le monde est verrouille, ou si r_geo sort de la moitie de la sphere de Hill. Terre et nanotubes (4e7 J/kg) : x11 ; polymeres : impossible.
+- Essaim : P = L_etoile x min(1, N A / (4 pi r^2)) x 0,3, r = max(0,05 UA, moitie de l'orbite du monde) ; une unite = 1 km2 de collecteurs (A = 1e6 m2), de l'ordre de 4,5 MW a 0,3 UA.
+- Kardashev (Sagan) : K = (log10 P - 6) / 10 ; la Terre (2e13 W) donne 0,73.
+- Raids : probabilite/jour = 0,002 x exposition (1 + 0,5 ln(1 + unites) par ouvrage) x (1 + 2 agitation) x (3 en guerre) / (1 + defense) ; tirage = hash(graine, colonie, jour).
+- Energie abondante : productivite x (1 + 0,1 log10 (offre / demande)), plafonnee a +33 %.

@@ -20,5 +20,5 @@
  (id:"mass_transit", name:"Transports de masse", field:"structure", cost:700.0, requires:["road_engineering", "materials_science"], unlocks:[("building","tram_line"), ("building","metro_line"), ("capacity","mass_transit")], start:false),
  (id:"urban_planning", name:"Urbanisme", field:"structure", cost:800.0, requires:["mass_transit", "sanitation_engineering"], unlocks:[("capacity","district_planning")], start:false, needs:["study:colony"]),
  (id:"air_scrubbing", name:"Épuration de l'air", field:"structure", cost:700.0, requires:["recycling_science"], unlocks:[("building","air_scrubber"), ("capacity","air_scrubbing")], start:false, needs:["resource:lithium"]),
- (id:"orbital_engineering", name:"Ingénierie orbitale", field:"structure", cost:3200.0, requires:["mass_transit", "precision_tooling"], unlocks:[("building","orbital_elevator"), ("capacity","orbital_lift")], start:false, needs:["resource:nanomaterials", "anomaly:gravity_well"]),
+ (id:"orbital_lift_engineering", name:"Ascenseurs orbitaux", field:"structure", cost:3200.0, requires:["mass_transit", "precision_tooling", "orbital_engineering"], unlocks:[("building","orbital_elevator"), ("capacity","orbital_lift")], start:false, needs:["resource:nanomaterials", "anomaly:gravity_well"]),
 ]

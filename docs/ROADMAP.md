@@ -68,3 +68,6 @@ Exploration a la Daggerfall : une vue en perspective (lancer de rayons sur les m
 
 - Zoom continu (demande) : un seul niveau d'echelle de l'orbite a l'echelle humaine : globe -> relief -> region -> grille de 3 m -> vue a la premiere personne, avec les memes matieres et le meme terrain a chaque niveau.
 - Gameplay emergent : les matieres, la temperature, la physique des astres, la faune et l'economie doivent se parler (le sol ralentit, le froid gele l'eau, la gravite et l'atmosphere pesent sur le vol...).
+
+## Menus de début de partie et refonte de l'interface (fait, 2026-10-12)
+Fait : flux de nouvelle partie en sept étapes, six scénarios dont le Naufrage, menu principal F10 à huit espaces avec orientation. Reste : (1) les écrans eux-mêmes n'ont pas été refondus (les huit espaces les regroupent mais chaque écran garde sa disposition et ses touches) ; (2) Echap ne remonte « d'un niveau » que pour les écrans ouverts depuis le menu, les touches directes gardent leur retour historique ; (3) scénarios supplémentaires (Mercenaire, Contrebandier, Scientifique en fuite...) et relations de départ plus fines quand les registres existeront ; (4) équipage de départ : la progression de compétence et les traits imposés ne sont pas choisis (seuls les postes le sont) ; (5) traductions : toujours un seul choix de langue.

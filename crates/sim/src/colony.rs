@@ -139,6 +139,13 @@ pub struct Colony {
     /// update; not saved.
     #[serde(skip)]
     pub caps: u32,
+    /// Climate of the world being terraformed (see `terraform`); None for bodies without one.
+    pub terra: Option<crate::terraform::Terra>,
+    /// Terraforming works and megastructures (see `megastructure`).
+    pub projects: Vec<crate::megastructure::ProjectInst>,
+    /// Species just seeded, to bring into the food web of the territory (not saved).
+    #[serde(skip)]
+    pub introduced: Vec<usize>,
 }
 
 /// Which site tags a body carries.
@@ -303,6 +310,10 @@ impl Colony {
         self.buildings
             .iter()
             .any(|b| b.built() && b.health > 0.2 && data.buildings[b.def].port > 0.0)
+            || self
+                .projects
+                .iter()
+                .any(|p| p.working() && data.projects[p.def].port > 0.0)
     }
 
     pub fn policy_level(&self, data: &GameData, id: &str) -> (f64, f64, f64) {
@@ -374,8 +385,13 @@ impl Colony {
                 TICK
             } else if gap < 200.0 * DAY {
                 DAY
-            } else {
+            } else if gap < 30.0 * 365.0 * DAY {
                 5.0 * DAY
+            } else if gap < 400.0 * 365.0 * DAY {
+                // Centuries of terraforming: the world is integrated in finer sub-steps.
+                60.0 * DAY
+            } else {
+                365.0 * DAY
             };
             self.last_tick += h;
             self.tick(data, h);
@@ -431,6 +447,11 @@ impl Colony {
         let auto = self.automation_level(data);
         self.works.automation = auto;
         let jobs = raw_jobs * (1.0 - auto);
+        // Works under way take their crews, finished ones house, store and power.
+        let mx = self.mega_effects(data);
+        let housing = housing + mx.housing + self.open_air_housing();
+        let storage_cap = storage_cap + mx.storage;
+        let jobs = jobs + mx.crew;
         let workers = 0.55 * self.pop;
 
         // Power: solar scales with the star, fuel plants burn stock, others are steady.
@@ -446,7 +467,7 @@ impl Colony {
                     let k = match d.source.as_str() {
                         "solar" => self.flux * solar_transmittance(self.pressure),
                         "wind" => wind_factor(self.pressure, gust),
-                        "geothermal" => self.geo,
+                        "geothermal" => self.geo * crate::geo::geothermal_factor(&self.tags),
                         _ => 1.0,
                     };
                     supply += d.power * b.health * k;
@@ -475,6 +496,8 @@ impl Colony {
         for (i, kg) in burn_needs {
             self.storage[i] = (self.storage[i] - kg).max(0.0);
         }
+        supply += mx.power;
+        demand += mx.demand;
         // Grid: losses, then batteries buffer the surplus and cover the deficit, then the
         // remaining shortage sheds the non-vital load first.
         let n_active = self.buildings.iter().filter(active).count();
@@ -569,6 +592,13 @@ impl Colony {
             * if rioting { 0.5 } else { 1.0 }
             * if broke { 0.3 } else { 1.0 })
         .max(0.0);
+        // Cheap energy lifts everything: a tenth per tenfold of surplus power, up to a third.
+        let abundance = if demand > 0.0 && supply > demand {
+            (0.1 * (supply / demand).log10()).min(0.33)
+        } else {
+            0.0
+        };
+        let prod_mult = prod_mult * (1.0 + mx.prod + abundance);
 
         // Tools wear out; the quality of the work follows tooling, skill and machines.
         let industrial_jobs: f64 = self
@@ -966,23 +996,25 @@ impl Colony {
             .map(|b| data.buildings[b.def].upkeep)
             .sum::<f64>()
             * days;
-        self.treasury += income - upkeep;
+        self.treasury += income - upkeep + mx.income * days;
+        self.research += mx.research * days;
         self.debt_days = if self.treasury < 0.0 {
             self.debt_days + days
         } else {
             0.0
         };
 
-        // Terraforming.
-        let terra: f64 = self
+        // Terraforming: the plants crack gases with their power and the surplus of the grid,
+        // then the works advance and the world follows (see `megastructure`, `terraform`).
+        let plants = self
             .buildings
             .iter()
             .filter(active)
-            .map(|b| data.buildings[b.def].terraform)
-            .sum();
-        self.terraform = (self.terraform
-            + terra * days * power_sat * prod_mult * (1.0 - 0.5 * self.works.pollution))
-            .min(1.0);
+            .filter(|b| data.buildings[b.def].terraform > 0.0)
+            .count() as f64;
+        let surplus_w = (supply - demand).max(0.0) * 1000.0;
+        let proc_w = (plants * 2.0e7 * power_sat + surplus_w).min(plants * 1.0e9);
+        self.mega_tick(data, days, power_sat, staffing, proc_w, now);
 
         // Imports and exports of food, upkeep of the works, and the record for the charts.
         self.trade_tick(data, days, now);
@@ -1078,9 +1110,16 @@ impl Sim {
             self.ship.cargo.remove(&data, r, kg);
         }
         self.credits -= PERMIT_COST;
-        let tags = site_tags(&cb);
+        let mut tags = site_tags(&cb);
         let id = self.next_colony;
         self.next_colony += 1;
+        // What the ground is made of where the city will stand (see `geo.rs`).
+        let mut deposits = site_deposits(&data, &cb, self.system.seed);
+        let site = self.founding_site(i, id);
+        if let Some((sg, _)) = &site {
+            tags.extend(sg.tags.iter().cloned());
+            crate::geo::merge_deposits(&mut deposits, &sg.deposits);
+        }
         let d_au = (self.bodies[i].pos.length() / vector_world::orbit::AU).max(0.01);
         let founders = self
             .data
@@ -1119,7 +1158,7 @@ impl Sim {
             system_seed: self.system.seed,
             body: i,
             body_name: cb.name.clone(),
-            deposits: site_deposits(&data, &cb, self.system.seed),
+            deposits,
             tags,
             flux: self.system.luminosity / (d_au * d_au),
             pressure: cb.pressure,
@@ -1147,6 +1186,13 @@ impl Sim {
             log: Vec::new(),
             works: crate::colony_works::Works::default(),
             caps: 0,
+            terra: Some(crate::terraform::Terra::new(
+                &self.system,
+                i,
+                self.planet_map(i).as_ref(),
+            )),
+            projects: Vec::new(),
+            introduced: Vec::new(),
         };
         for def_id in ["habitat_dome", "solar_farm", "spaceport"] {
             if let Some(d) = data.building_index(def_id) {
@@ -1164,6 +1210,21 @@ impl Sim {
         }
         c.log_line(self.time, format!("Fondation de {}.", c.name));
         c.caps = self.capacity_mask();
+        if let Some((sg, _)) = &site {
+            c.log_line(
+                self.time,
+                format!(
+                    "Géologie du site : roche {}, chaleur du sol {:.0} %, {} gisement(s) à portée.",
+                    match sg.rock {
+                        vector_world::geology::Rock::Igneous => "ignée",
+                        vector_world::geology::Rock::Sedimentary => "sédimentaire",
+                        vector_world::geology::Rock::Metamorphic => "métamorphique",
+                    },
+                    sg.heat * 100.0,
+                    sg.in_reach.len()
+                ),
+            );
+        }
         c.update(&data, self.time);
         self.colonies.push(c);
         let last = self.colonies.len() - 1;
@@ -1320,6 +1381,7 @@ impl Sim {
         if self.colonies.is_empty() {
             return;
         }
+        self.sync_terra_air();
         let data = std::sync::Arc::clone(&self.data);
         let now = self.time;
         let caps = self.capacity_mask();
@@ -1347,6 +1409,8 @@ impl Sim {
         for (ci, t0, t1) in advanced {
             let before = self.colonies[ci].log.len();
             self.apply_catastrophes(ci, t0, t1);
+            self.apply_mega_threats(ci, t0, t1);
+            self.apply_introductions(ci);
             self.apply_ecology(ci, t1);
             self.apply_works_world(ci);
             let c = &self.colonies[ci];
@@ -1497,6 +1561,61 @@ pub(crate) mod tests {
             assert!(site_tags(&g).contains(&"gas_giant".to_string()));
         }
         assert!(site_tags(rocky_body).contains(&"rocky".to_string()));
+    }
+
+    #[test]
+    fn a_colony_carries_the_geology_of_its_site() {
+        let (s, ci) = founded();
+        let c = &s.colonies[ci];
+        let (sg, _) = s
+            .founding_site(c.body, c.id)
+            .expect("a solid world has a site");
+        // The ore of the deposits in reach is in the ground, on top of the usual abundances.
+        let base = site_deposits(&s.data, &s.system.bodies[c.body], s.system.seed);
+        for (r, x) in &sg.deposits {
+            let have = c.deposits.iter().find(|(i, _)| i == r).map_or(0.0, |p| p.1);
+            let usual = base.iter().find(|(i, _)| i == r).map_or(0.0, |p| p.1);
+            assert!(have >= usual + x - 1e-9, "{r}: {have} vs {usual} + {x}");
+        }
+        // The heat of the ground is a tag (and none in between), and the log tells the geology.
+        let hot_or_cold = sg.heat >= crate::geo::WARM || sg.heat < crate::geo::COLD;
+        assert_eq!(c.tags.iter().any(|t| t.starts_with("geo_")), hot_or_cold);
+        assert!(c.log.iter().any(|(_, l)| l.starts_with("Géologie du site")));
+    }
+
+    #[test]
+    fn geothermal_plants_follow_the_heat_of_the_ground() {
+        let (mut s, ci) = founded();
+        let data = Arc::clone(&s.data);
+        let plant = data.building_index("geothermal_plant").expect("plant");
+        let t = s.time + DAY;
+        let c = &mut s.colonies[ci];
+        c.buildings.push(BuildingInst {
+            def: plant,
+            progress: 1.0,
+            enabled: true,
+            recipe: 0,
+            health: 1.0,
+            ops: Default::default(),
+        });
+        let supply = |c: &mut Colony, tag: &str, t: f64| {
+            c.tags.retain(|x| !x.starts_with("geo_"));
+            if !tag.is_empty() {
+                c.tags.push(tag.to_string());
+            }
+            c.update(&data, t);
+            c.stats.power_supply
+        };
+        let none = supply(c, "", t);
+        let hot = supply(c, "geo_hot", t + DAY);
+        let cold = supply(c, "geo_cold", t + 2.0 * DAY);
+        let rated = data.buildings[plant].power;
+        assert!(
+            // The plant wears a little (0.08 % a day) between the readings.
+            (hot - cold - 1.6 * rated * c.geo).abs() < 0.001 * rated * 3.0 * c.geo.max(1.0) + 1.0,
+            "{hot} {cold} {rated}"
+        );
+        assert!(hot > none && none > cold, "{hot} {none} {cold}");
     }
 
     #[test]

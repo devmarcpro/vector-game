@@ -2,9 +2,12 @@
 pub mod chemistry;
 pub mod dialogue;
 pub mod medical;
+pub mod ship;
 pub mod surprise;
 pub use medical::{BodyPart, Drug, WoundKind};
+pub mod projects;
 use serde::{Deserialize, Serialize};
+pub use ship::{ShipPart, ShipPlanDef};
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 
@@ -537,6 +540,82 @@ impl Law {
     }
 }
 
+/// Society tables (see `data/society.ron`): languages, festivals, cuisine, arts, sports, schools.
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+pub struct SocietyData {
+    pub languages: Vec<Language>,
+    pub festivals: Vec<Festival>,
+    pub dishes: Vec<Dish>,
+    pub arts: Vec<ArtForm>,
+    pub sports: Vec<Sport>,
+    pub studies: Vec<Study>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct Language {
+    pub id: String,
+    pub name: String,
+    pub family: String,
+    pub civs: Vec<String>,
+    pub cultures: Vec<String>,
+    pub era_years: f64,
+    pub words: Vec<String>,
+    pub text: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct Festival {
+    pub id: String,
+    pub name: String,
+    pub text: String,
+    pub at: f64,
+    pub days: f64,
+    pub morale: f32,
+    pub when: Vec<(String, String, f64)>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct Dish {
+    pub id: String,
+    pub name: String,
+    pub text: String,
+    pub morale: f32,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct ArtForm {
+    pub id: String,
+    pub name: String,
+    pub medium: String,
+    pub base: f64,
+    pub taste: (String, f64),
+    pub text: String,
+    pub stems: Vec<String>,
+    pub epithets: Vec<String>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct Sport {
+    pub id: String,
+    pub name: String,
+    pub runners: usize,
+    pub margin: f64,
+    pub text: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct Study {
+    pub id: String,
+    pub name: String,
+    /// skill | langue | art
+    pub kind: String,
+    pub target: String,
+    pub days: f64,
+    pub fee: f64,
+    pub gain: f64,
+    pub text: String,
+}
+
 /// Customs and morals of the factions, and what they do to trade.
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct Ethos {
@@ -757,6 +836,33 @@ pub struct Material {
     pub text: String,
 }
 
+/// An entry of the geology of the solid worlds (see `data/geology.ron`): a kind of plate
+/// boundary, rock, ore body, volcano, erosion or landform. The numbers live in
+/// `vector_world::geology`; the data names them and says what an ore body yields.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct GeoDef {
+    pub id: String,
+    pub name: String,
+    /// limite, roche, gisement, volcan, erosion or relief.
+    pub group: String,
+    pub text: String,
+    /// What an ore body gives: (resource id, share), adding up to 1.
+    pub yields: Vec<(String, f64)>,
+}
+
+/// An entry of astronomy (see `data/cosmos.ron`): a stage of a star, an object of a system, of
+/// the interstellar medium or of the galaxy, or a family of asteroids.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct CosmosDef {
+    pub id: String,
+    pub name: String,
+    /// etoile, systeme, milieu, galaxie or asteroide.
+    pub group: String,
+    /// For asteroids: the class of `asteroids.ron` whose composition the codex shows.
+    pub link: String,
+    pub text: String,
+}
+
 /// A place explorable on foot (see `data/rogue_themes.ron`).
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct RogueTheme {
@@ -805,6 +911,9 @@ pub struct Exotic {
     /// "matter", "propulsion", "field", "entity", "precursor" or "fermi".
     pub kind: String,
     pub danger: f64,
+    /// Position on the Kardashev scale of the civilisation behind it (0 = none).
+    #[serde(default)]
+    pub kardashev: f64,
     pub research: (f64, f64),
     pub credits: (f64, f64),
     pub loot: Vec<(String, f64, f64)>,
@@ -819,6 +928,34 @@ pub struct Cartel {
     pub hq: String,
     pub goods: Vec<String>,
     pub markup: f64,
+    pub text: String,
+}
+
+/// A way to begin a game (see `data/scenarios.ron`): the ship, the money, the hold, the crew
+/// budget and the standing the player starts with. `wreck` scenarios begin on the ground with a
+/// ship that cannot fly yet.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct Scenario {
+    pub id: String,
+    pub name: String,
+    /// 1 (gentle) to 5 (harsh): indicative only.
+    pub difficulty: u8,
+    /// The ships the player may start with: (hull id, modules in fit order). The first one is
+    /// the default.
+    pub ships: Vec<(String, Vec<String>)>,
+    pub credits: f64,
+    pub cargo: Vec<(String, f64)>,
+    /// Roles of the default crew, and the points the player may spend on a crew of their own.
+    pub crew: Vec<String>,
+    pub crew_points: u32,
+    /// Technologies known at the start, on top of the base ones.
+    pub techs: Vec<String>,
+    /// Standing with a faction at the start ("home" = the faction of the starting system).
+    pub reputation: Vec<(String, f64)>,
+    /// Days the home faction hunts the player at the start (0 = not wanted).
+    pub wanted_days: f64,
+    /// The ship starts as a wreck on the ground of a world, the crew alone with the planet.
+    pub wreck: bool,
     pub text: String,
 }
 
@@ -990,6 +1127,7 @@ pub struct GameData {
     pub gear: Vec<Gear>,
     pub religions: Vec<Religion>,
     pub cartels: Vec<Cartel>,
+    pub scenarios: Vec<Scenario>,
     pub dimensions: Vec<Dimension>,
     pub exotics: Vec<Exotic>,
     pub rogue_monsters: Vec<RogueMonster>,
@@ -997,11 +1135,17 @@ pub struct GameData {
     pub materials: Vec<Material>,
     pub companies: Vec<Company>,
     pub laws: Vec<Law>,
+    pub society: SocietyData,
     pub chemistry: chemistry::Chemistry,
     pub reactions: Vec<chemistry::Reaction>,
     pub surprises: Vec<surprise::Surprise>,
     pub mind: MindData,
     pub history: HistoryData,
+    pub geology: Vec<GeoDef>,
+    pub cosmos: Vec<CosmosDef>,
+    pub ship_parts: Vec<ShipPart>,
+    pub ship_plans: Vec<ShipPlanDef>,
+    pub projects: Vec<projects::ProjectDef>,
 }
 
 /// The tasks the ship's AI splits its computing power between (fixed ids, in this order).
@@ -1196,6 +1340,7 @@ impl GameData {
             gear: read(&dir.join("gear.ron"))?,
             religions: read(&dir.join("religions.ron"))?,
             cartels: read(&dir.join("cartels.ron"))?,
+            scenarios: read(&dir.join("scenarios.ron"))?,
             dimensions: read(&dir.join("dimensions.ron"))?,
             exotics: read(&dir.join("exotic.ron"))?,
             rogue_monsters: read(&dir.join("rogue_monsters.ron"))?,
@@ -1203,11 +1348,17 @@ impl GameData {
             materials: read(&dir.join("materials.ron"))?,
             companies: read(&dir.join("companies.ron"))?,
             laws: read(&dir.join("laws.ron"))?,
+            society: read(&dir.join("society.ron"))?,
             chemistry: read(&dir.join("chemistry.ron"))?,
             reactions: read(&dir.join("reactions.ron"))?,
             surprises: read(&dir.join("surprises.ron"))?,
             mind: read(&dir.join("mind.ron"))?,
             history: read(&dir.join("history.ron"))?,
+            geology: read(&dir.join("geology.ron"))?,
+            cosmos: read(&dir.join("cosmos.ron"))?,
+            ship_parts: read(&dir.join("ship_parts.ron"))?,
+            ship_plans: read(&dir.join("ship_plans.ron"))?,
+            projects: read(&dir.join("projects.ron"))?,
         };
         // Generated extension files (tools/gen_scale.py) extend the hand-written tables.
         let mut extra_resources: Vec<Resource> = read(&dir.join("resources_organs.ron"))?;
@@ -1322,6 +1473,9 @@ impl GameData {
         self.laws.iter().position(|l| l.id == id)
     }
 
+    pub fn art_index(&self, id: &str) -> Option<usize> {
+        self.society.arts.iter().position(|a| a.id == id)
+    }
     pub fn faction_index(&self, id: &str) -> Option<usize> {
         self.factions.iter().position(|f| f.id == id)
     }
@@ -1680,6 +1834,7 @@ impl GameData {
                     "hull" => self.hull_index(id).is_some(),
                     "building" => self.building_index(id).is_some(),
                     "capacity" => CAPACITIES.contains(&id.as_str()),
+                    "project" => self.project_index(id).is_some(),
                     _ => false,
                 };
                 if !ok {
@@ -1758,17 +1913,22 @@ impl GameData {
         self.validate_dialogues()?;
         self.validate_sites()?;
         self.validate_mind_history()?;
+        self.validate_ship()?;
         self.validate_civilisations()?;
         self.validate_gear()?;
         self.validate_religions()?;
         self.validate_laws()?;
+        self.validate_society()?;
         self.validate_cartels()?;
+        self.validate_scenarios()?;
         self.validate_dimensions()?;
         self.validate_exotics()?;
         self.validate_materials()?;
+        self.validate_geology()?;
         self.validate_rogue()?;
         self.validate_chemistry()?;
         self.validate_pathogens()?;
+        self.validate_projects()?;
         self.validate_companies()
     }
 
@@ -1809,6 +1969,67 @@ impl GameData {
     /// Beliefs: unique ids, sane ranges, and every possible faith has at least one belief.
     pub fn rogue_monster_index(&self, id: &str) -> Option<usize> {
         self.rogue_monsters.iter().position(|m| m.id == id)
+    }
+
+    pub fn geo_def(&self, id: &str) -> Option<&GeoDef> {
+        self.geology.iter().find(|g| g.id == id)
+    }
+
+    pub fn cosmos_def(&self, id: &str) -> Option<&CosmosDef> {
+        self.cosmos.iter().find(|g| g.id == id)
+    }
+
+    /// Geology and astronomy: unique ids, known groups, text; ore bodies yield known resources
+    /// in shares that add up to one; asteroid entries name a class that exists.
+    fn validate_geology(&self) -> Result<(), DataError> {
+        let bad = |s: String| Err(DataError::Invalid(s));
+        let mut seen = std::collections::HashSet::new();
+        for g in &self.geology {
+            if !seen.insert(g.id.as_str()) {
+                return bad(format!("geologie {} en double", g.id));
+            }
+            if !["limite", "roche", "gisement", "volcan", "erosion", "relief"]
+                .contains(&g.group.as_str())
+                || g.text.len() < 20
+            {
+                return bad(format!("geologie {}: groupe ou texte invalide", g.id));
+            }
+            let total: f64 = g.yields.iter().map(|(_, s)| s).sum();
+            if g.group == "gisement" && (total - 1.0).abs() > 0.01 {
+                return bad(format!("gisement {}: parts = {total}", g.id));
+            }
+            if g.group != "gisement" && !g.yields.is_empty() {
+                return bad(format!(
+                    "geologie {}: seul un gisement donne des ressources",
+                    g.id
+                ));
+            }
+            for (r, s) in &g.yields {
+                if self.resource_index(r).is_none() || *s <= 0.0 {
+                    return bad(format!(
+                        "gisement {}: ressource {r} inconnue ou part nulle",
+                        g.id
+                    ));
+                }
+            }
+        }
+        let mut seen = std::collections::HashSet::new();
+        for c in &self.cosmos {
+            if !seen.insert(c.id.as_str()) {
+                return bad(format!("astronomie {} en double", c.id));
+            }
+            if !["etoile", "systeme", "milieu", "galaxie", "asteroide"].contains(&c.group.as_str())
+                || c.text.len() < 20
+            {
+                return bad(format!("astronomie {}: groupe ou texte invalide", c.id));
+            }
+            if (c.group == "asteroide") != !c.link.is_empty()
+                || (!c.link.is_empty() && self.asteroids.iter().all(|a| a.id != c.link))
+            {
+                return bad(format!("astronomie {}: classe d'asteroide invalide", c.id));
+            }
+        }
+        Ok(())
     }
 
     pub fn material_index(&self, id: &str) -> Option<usize> {
@@ -2025,6 +2246,9 @@ impl GameData {
                 return bad(format!("exotique {}: genre inconnu {}", e.id, e.kind));
             }
             let ranges = [e.research, e.credits];
+            if !(0.0..=3.5).contains(&e.kardashev) {
+                return bad(format!("exotique {}: Kardashev hors limites", e.id));
+            }
             if !(0.0..=1.0).contains(&e.danger)
                 || ranges.iter().any(|r| r.0 < 0.0 || r.1 < r.0)
                 || e.text.is_empty()
@@ -2124,6 +2348,151 @@ impl GameData {
             }
         }
         Ok(())
+    }
+
+    /// Scenarios: unique ids, known hull, modules, resources, roles, technologies and factions,
+    /// a sane budget, at least one way to begin that is not a wreck.
+    fn validate_scenarios(&self) -> Result<(), DataError> {
+        let bad = |s: String| Err(DataError::Invalid(s));
+        let mut seen = std::collections::HashSet::new();
+        for s in &self.scenarios {
+            if !seen.insert(s.id.as_str()) {
+                return bad(format!("scenario {} en double", s.id));
+            }
+            if !(1..=5).contains(&s.difficulty) {
+                return bad(format!("scenario {}: difficulte hors de 1..5", s.id));
+            }
+            if s.ships.is_empty() {
+                return bad(format!("scenario {}: aucun vaisseau", s.id));
+            }
+            for (hull, fit) in &s.ships {
+                if self.hull_index(hull).is_none() {
+                    return bad(format!("scenario {}: coque {hull} inconnue", s.id));
+                }
+                if let Some(m) = fit.iter().find(|m| self.module_index(m).is_none()) {
+                    return bad(format!("scenario {}: module {m} inconnu", s.id));
+                }
+            }
+            if s.credits < 0.0 || s.wanted_days < 0.0 {
+                return bad(format!("scenario {}: valeurs negatives", s.id));
+            }
+            if let Some((r, _)) = s
+                .cargo
+                .iter()
+                .find(|(r, kg)| self.resource_index(r).is_none() || *kg <= 0.0)
+            {
+                return bad(format!("scenario {}: soute invalide ({r})", s.id));
+            }
+            if let Some(r) = s
+                .crew
+                .iter()
+                .find(|r| !self.roles.iter().any(|ro| ro.id == **r))
+            {
+                return bad(format!("scenario {}: poste {r} inconnu", s.id));
+            }
+            if s.crew.is_empty() || (s.crew_points as usize) < s.crew.len() {
+                return bad(format!("scenario {}: equipage vide", s.id));
+            }
+            if let Some(t) = s.techs.iter().find(|t| self.tech_index(t).is_none()) {
+                return bad(format!("scenario {}: technologie {t} inconnue", s.id));
+            }
+            if let Some((f, _)) = s
+                .reputation
+                .iter()
+                .find(|(f, _)| f != "home" && self.faction_index(f).is_none())
+            {
+                return bad(format!("scenario {}: faction {f} inconnue", s.id));
+            }
+        }
+        if !self.scenarios.iter().any(|s| !s.wreck) {
+            return bad("aucun scenario de depart en vol".into());
+        }
+        if self.scenarios.len() < 6 {
+            return bad("moins de 6 scenarios".into());
+        }
+        Ok(())
+    }
+
+    /// Society: unique ids, every civilisation and culture speaks exactly one language, known
+    /// axes, skills and arts, sane numbers.
+    fn validate_society(&self) -> Result<(), DataError> {
+        let bad = |s: String| Err(DataError::Invalid(s));
+        let so = &self.society;
+        let mut ids = std::collections::HashSet::new();
+        let mut spoken: Vec<(&str, bool)> = Vec::new();
+        for l in &so.languages {
+            if !ids.insert(l.id.as_str()) {
+                return bad(format!("langue {} en double", l.id));
+            }
+            if l.words.len() != 3 || l.era_years <= 0.0 || l.family.is_empty() {
+                return bad(format!("langue {}: valeurs invalides", l.id));
+            }
+            spoken.extend(l.civs.iter().map(|c| (c.as_str(), true)));
+            spoken.extend(l.cultures.iter().map(|c| (c.as_str(), false)));
+        }
+        for c in &self.civilisations {
+            if spoken.iter().filter(|(k, civ)| *civ && *k == c.id).count() != 1 {
+                return bad(format!("peuple {}: il faut exactement une langue", c.id));
+            }
+        }
+        for c in &self.cultures {
+            if spoken.iter().filter(|(k, civ)| !*civ && *k == c.id).count() != 1 {
+                return bad(format!("culture {}: il faut exactement une langue", c.id));
+            }
+        }
+        for (k, civ) in &spoken {
+            let known = if *civ {
+                self.civilisations.iter().any(|c| c.id == *k)
+            } else {
+                self.cultures.iter().any(|c| c.id == *k)
+            };
+            if !known {
+                return bad(format!("langue: {k} inconnu"));
+            }
+        }
+        let cond_ok = |w: &[(String, String, f64)]| {
+            w.iter().all(|(a, op, v)| {
+                self.ethos.axis(a).is_some() && ["<", ">"].contains(&op.as_str()) && v.abs() <= 1.0
+            })
+        };
+        for f in &so.festivals {
+            if !(0.0..1.0).contains(&f.at) || f.days <= 0.0 || !cond_ok(&f.when) {
+                return bad(format!("fete {}: valeurs invalides", f.id));
+            }
+        }
+        if so.dishes.is_empty() || so.sports.is_empty() {
+            return bad("societe: plats ou sports manquants".into());
+        }
+        for a in &so.arts {
+            if a.base <= 0.0
+                || self.ethos.axis(&a.taste.0).is_none()
+                || a.stems.is_empty()
+                || a.epithets.is_empty()
+            {
+                return bad(format!("art {}: valeurs invalides", a.id));
+            }
+        }
+        for s in &so.sports {
+            if s.runners < 2 || !(0.0..0.5).contains(&s.margin) {
+                return bad(format!("sport {}: valeurs invalides", s.id));
+            }
+        }
+        for s in &so.studies {
+            let target_ok = match s.kind.as_str() {
+                "skill" => self.skill_index(&s.target).is_some(),
+                "art" => so.arts.iter().any(|a| a.id == s.target),
+                "langue" => s.target.is_empty(),
+                _ => false,
+            };
+            if !target_ok || s.days <= 0.0 || s.fee < 0.0 || s.gain <= 0.0 {
+                return bad(format!("etude {}: valeurs invalides", s.id));
+            }
+        }
+        Ok(())
+    }
+
+    pub fn scenario_index(&self, id: &str) -> Option<usize> {
+        self.scenarios.iter().position(|s| s.id == id)
     }
 
     fn validate_religions(&self) -> Result<(), DataError> {
@@ -3130,6 +3499,46 @@ mod tests {
     }
 
     #[test]
+    fn geology_and_astronomy_are_validated() {
+        let ok = GameData::load(&dir()).expect("data loads");
+        assert!(ok.geology.len() >= 20 && ok.cosmos.len() >= 25);
+        let mut d = ok.clone();
+        d.geology.push(d.geology[0].clone());
+        assert!(d.validate().is_err(), "duplicate id");
+        let mut d = ok.clone();
+        let k = d
+            .geology
+            .iter()
+            .position(|g| g.group == "gisement")
+            .expect("deposit");
+        d.geology[k].yields[0].1 += 0.3;
+        assert!(
+            d.validate().is_err(),
+            "a deposit yields in shares that add up to one"
+        );
+        let mut d = ok.clone();
+        d.geology[k].yields[0].0 = "unobtainium".into();
+        assert!(d.validate().is_err(), "unknown resource");
+        let mut d = ok.clone();
+        d.geology[0].yields.push(("iron".into(), 1.0));
+        assert!(d.validate().is_err(), "only an ore body yields");
+        let mut d = ok.clone();
+        d.geology[0].group = "magie".into();
+        assert!(d.validate().is_err(), "unknown group");
+        let mut d = ok.clone();
+        let a = d
+            .cosmos
+            .iter()
+            .position(|c| c.group == "asteroide")
+            .expect("asteroid");
+        d.cosmos[a].link = "Z".into();
+        assert!(d.validate().is_err(), "unknown asteroid class");
+        let mut d = ok;
+        d.cosmos[0].link = "C".into();
+        assert!(d.validate().is_err(), "only an asteroid entry has a class");
+    }
+
+    #[test]
     fn companies_are_validated() {
         let ok = GameData::load(&dir()).expect("data loads");
         assert!(ok.companies.len() >= 6);
@@ -3209,6 +3618,33 @@ mod tests {
         let mut d = ok;
         d.anomalies_def.retain(|a| a.id != "portal");
         assert!(d.validate().is_err(), "portal needs a definition");
+    }
+
+    #[test]
+    fn scenarios_are_validated() {
+        let ok = GameData::load(&dir()).expect("data loads");
+        assert!(ok.scenarios.len() >= 6);
+        assert!(ok.scenario_index("naufrage").is_some());
+        let mut d = ok.clone();
+        d.scenarios[0].ships[0].0 = "nulle_part".into();
+        assert!(d.validate().is_err(), "unknown hull");
+        let mut d = ok.clone();
+        d.scenarios[0].ships[0].1.push("unobtainium".into());
+        assert!(d.validate().is_err(), "unknown module");
+        let mut d = ok.clone();
+        d.scenarios[1].reputation.push(("nulle_part".into(), 5.0));
+        assert!(d.validate().is_err(), "unknown faction");
+        let mut d = ok.clone();
+        d.scenarios[0].crew.push("bouffon".into());
+        assert!(d.validate().is_err(), "unknown role");
+        let mut d = ok.clone();
+        d.scenarios[0].ships.clear();
+        assert!(d.validate().is_err(), "a scenario needs a ship");
+        let mut d = ok;
+        for s in &mut d.scenarios {
+            s.wreck = true;
+        }
+        assert!(d.validate().is_err(), "at least one start in flight");
     }
 
     #[test]

@@ -32,6 +32,8 @@ fn menu(fb: &mut Framebuffer, g: &Game, top: usize, items: &[&str], sel: usize) 
 pub fn draw(fb: &mut Framebuffer, g: &Game) {
     match g.screen {
         Screen::MainMenu => draw_main(fb, g),
+        Screen::NewGame => crate::newgame::draw(fb, g),
+        Screen::Hub => crate::hub::draw(fb, g),
         Screen::Pause => {
             fb.text(fb.cols() / 2 - 4, 6, "== PAUSE ==", AMBER);
             menu(fb, g, 9, &PAUSE_MENU, g.menu_sel);
@@ -46,6 +48,7 @@ pub fn draw(fb: &mut Framebuffer, g: &Game) {
         Screen::Inventory => draw_inventory(fb, g),
         Screen::Ship => draw_ship(fb, g),
         Screen::Shipyard => draw_shipyard(fb, g),
+        Screen::Designer => crate::designer_view::draw(fb, g),
         Screen::Crew => draw_crew(fb, g),
         Screen::Recruit => draw_recruit(fb, g),
         Screen::Journal => draw_journal(fb, g),
@@ -153,12 +156,14 @@ fn draw_ticker(fb: &mut Framebuffer, g: &Game) {
 
 pub fn draw_overlay(fb: &mut Framebuffer, g: &Game) {
     crate::flight_menu::draw(fb, g);
-    if g.settings.ticker && g.screen != Screen::MainMenu {
+    // Before the command bar: the bar stays the last zone drawn.
+    crate::hub::draw_menu_button(fb, g);
+    if g.settings.ticker && !matches!(g.screen, Screen::MainMenu | Screen::NewGame) {
         draw_ticker(fb, g);
     }
     if let Some((i, text)) = g.tutorial_line() {
         let line = format!(
-            "TUTO {}/{}  {}  [F10 ignorer]",
+            "TUTO {}/{}  {}  [SUPPR ignorer]",
             i + 1,
             crate::tutorial::STEPS.len(),
             text
@@ -419,7 +424,25 @@ fn draw_codex(fb: &mut Framebuffer, g: &Game) {
     }
     if let Some(segs) = &shape {
         let t = crate::proto_view::anim_time();
-        crate::wire_shape::draw(fb, segs, 1140.0, 150.0, 190.0, t * 0.8, GREEN);
+        if g.codex_cat == 3 {
+            // A hull is shown solid, as the third-person view draws it.
+            if let Some(h) = codex::source_index(&g.data, 3, sel) {
+                let d = crate::ship_model::showcase_design(&g.data, h);
+                let st = crate::ship_model::State::idle(&d);
+                crate::ship_model::turntable(
+                    fb,
+                    &g.data,
+                    &d,
+                    &st,
+                    1140,
+                    150,
+                    200,
+                    f64::from(t) * 0.6,
+                );
+            }
+        } else {
+            crate::wire_shape::draw(fb, segs, 1140.0, 150.0, 190.0, t * 0.8, GREEN);
+        }
     }
     // Cross-links: entries named in this one.
     let links = codex::links(&g.data, g.codex_cat, sel);
@@ -495,6 +518,7 @@ fn draw_main(fb: &mut Framebuffer, g: &Game) {
         DIM,
     );
     menu(fb, g, 13, &MAIN_MENU, g.menu_sel);
+    // The seed of the quick start sits next to its line.
     let seed = if g.seed_text.is_empty() {
         "(DEFAUT)"
     } else {
@@ -502,23 +526,29 @@ fn draw_main(fb: &mut Framebuffer, g: &Game) {
     };
     let c = if g.menu_sel == 0 { AMBER } else { DIM };
     fb.text(
-        cols / 2 - 12,
-        20,
+        cols / 2 + 16,
+        13,
         &format!("GRAINE: {seed}{}", if g.menu_sel == 0 { "_" } else { "" }),
         c,
     );
-    fb.text(
-        cols / 2 - 22,
-        fb.rows() - 3,
-        "HAUT/BAS CHOISIR  ENTREE VALIDER  TAPER UNE GRAINE",
-        DIM,
-    );
+    // What the highlighted line does.
+    let about = [
+        "UN VOYAGEUR STANDARD : SON VAISSEAU, SON EQUIPAGE, LA GRAINE TAPEE CI-DESSUS (OU CELLE PAR DEFAUT).",
+        "CHOISIR LE DEPART : SCENARIO (NAUFRAGE, MARCHAND, EXPLORATEUR...), VAISSEAU, EQUIPAGE, GALAXIE, OPTIONS.",
+        "REPRENDRE LA PARTIE SAUVEGARDEE.",
+        "DEGATS, CARBURANT, MORT PERMANENTE, CARTE REVELEE... LES REGLES DE LA PROCHAINE PARTIE.",
+        "AFFICHAGE, SON, CLAVIER AZERTY OU QWERTY, TUTORIEL.",
+        "L'ENCYCLOPEDIE DU JEU, TIREE DES DONNEES.",
+        "",
+    ];
+    let line = about[g.menu_sel.min(about.len() - 1)];
+    fb.text(cols / 2 - line.len() / 2, 29, line, DIM);
     if let Some(m) = g.messages.last().filter(|m| m.starts_with("ECHEC")) {
         fb.text(cols / 2 - m.len() / 2, fb.rows() - 5, m, RED);
     }
 }
 
-fn header(fb: &mut Framebuffer, g: &Game, title: &str) {
+pub(crate) fn header(fb: &mut Framebuffer, g: &Game, title: &str) {
     let s = &g.sim;
     fb.text(1, 1, title, AMBER);
     fb.text(1, 2, &format!("CREDITS {:>10.0}", s.credits), GREEN);
@@ -720,7 +750,7 @@ pub fn bar(frac: f64, width: usize) -> String {
 fn draw_ship(fb: &mut Framebuffer, g: &Game) {
     let s = &g.sim;
     let ship = &s.ship;
-    let hull = &g.data.hulls[ship.design.hull];
+    let hull = &g.sim.data.hulls[ship.design.hull];
     header(fb, g, &format!("VAISSEAU {}  ({})", hull.name, hull.class));
     let top = 8;
     fb.text(
@@ -890,8 +920,9 @@ fn draw_ship(fb: &mut Framebuffer, g: &Game) {
 
 fn draw_shipyard(fb: &mut Framebuffer, g: &Game) {
     header(fb, g, "CHANTIER NAVAL");
+    crate::designer_view::tabs(fb, g, 0);
     let cur = g.sim.ship.design.hull;
-    let trade = g.data.hulls[cur].cost * RESALE;
+    let trade = g.sim.data.hulls[cur].cost * RESALE;
     let top = 8;
     fb.text(
         1,
@@ -899,7 +930,13 @@ fn draw_shipyard(fb: &mut Framebuffer, g: &Game) {
         "COQUE                    CLASSE        MASSE    EMPL.    PRIX (REPRISE DEDUITE)",
         DIM,
     );
-    for (i, h) in g.data.hulls.iter().enumerate() {
+    {
+        let d = crate::ship_model::showcase_design(&g.data, g.yard_sel.min(g.data.hulls.len() - 1));
+        let st = crate::ship_model::State::idle(&d);
+        let t = f64::from(crate::proto_view::anim_time());
+        crate::ship_model::turntable(fb, &g.data, &d, &st, 1130, 200, 260, t * 0.6);
+    }
+    for (i, h) in g.data.hulls.iter().enumerate().take(g.sim.base_hulls) {
         let sel = i == g.yard_sel;
         let hover = g.hit_cells(
             1,
@@ -940,7 +977,7 @@ fn draw_shipyard(fb: &mut Framebuffer, g: &Game) {
     fb.text(
         1,
         b,
-        "ENTREE:ACHETER (MODULES -> STOCK, SOUTE VIDE REQUISE)  ECHAP:RETOUR",
+        "ENTREE:ACHETER (MODULES -> STOCK, SOUTE VIDE REQUISE)  C:CONCEVOIR SON VAISSEAU  ECHAP:RETOUR",
         DIM,
     );
     for (i, msg) in g.messages.iter().rev().take(2).enumerate() {
@@ -1391,7 +1428,28 @@ fn class_color(c: vector_world::StarClass) -> u32 {
         K => 0x00F0_9040,
         M => 0x00FF_5040,
         D => 0x00C8_D0E0,
+        N => 0x00A0_E0FF,
+        X => 0x0090_5030,
+        R => 0x00A0_4030,
     }
+}
+
+fn feature_color(k: vector_world::cosmos::FeatureKind) -> u32 {
+    use vector_world::cosmos::FeatureKind::*;
+    match k {
+        EmissionNebula => 0x00FF_4050,
+        ReflectionNebula => 0x0060_A0FF,
+        PlanetaryNebula => 0x0040_FFC0,
+        SupernovaRemnant => 0x00FF_A030,
+        OpenCluster => 0x00A0_C0FF,
+        GlobularCluster => 0x00FF_E080,
+        StarFormingRegion => 0x00FF_70C0,
+    }
+}
+
+fn dim_color(c: u32, k: f32) -> u32 {
+    let ch = |s: u32| (((c >> s) & 0xFF) as f32 * k) as u32;
+    (ch(16) << 16) | (ch(8) << 8) | ch(0)
 }
 
 fn draw_galaxy(fb: &mut Framebuffer, g: &Game) {
@@ -1433,6 +1491,23 @@ fn draw_galaxy(fb: &mut Framebuffer, g: &Game) {
     fb.line(cx - 6.0, cy, cx + 6.0, cy, RED);
     fb.line(cx, cy - 6.0, cx, cy + 6.0, RED);
     fb.text_at(cx as i32 + 8, cy as i32 + 6, "ICI", RED);
+    // The medium between the stars: nebulae, clusters, remnants, as circles of their true size.
+    for f in &g.gal_features {
+        let (x, y) = proj(f.pos);
+        let col = feature_color(f.kind);
+        fb.circle(x, y, f.radius as f32 * zoom, dim_color(col, 0.55));
+        fb.circle(x, y, f.radius as f32 * zoom * 0.5, dim_color(col, 0.3));
+        let name = g
+            .data
+            .cosmos_def(f.kind.id())
+            .map_or("", |d| d.name.as_str());
+        fb.text_at(
+            x as i32 - 24,
+            y as i32,
+            &name.to_uppercase(),
+            dim_color(col, 0.8),
+        );
+    }
     for (k, e) in g.gal_cache.iter().enumerate() {
         let (x, y) = proj(e.pos);
         let h = (e.pos[1] - s.here_pos[1]) as f32 * zoom * 0.5;
@@ -1508,6 +1583,7 @@ fn draw_galaxy(fb: &mut Framebuffer, g: &Game) {
             GREEN,
         );
         fb.text(x, 9, &format!("DISTANCE {d:.1} AL"), GREEN);
+        fb.text(x, 14, e.header.stage.label(), AMBER);
         let owner = s.galaxy.territory(e.pos, s.data.factions.len());
         let (oname, ocol) = owner.map_or(("NON REVENDIQUE".to_string(), DIM), |f| {
             (
@@ -1549,6 +1625,53 @@ fn draw_galaxy(fb: &mut Framebuffer, g: &Game) {
     } else {
         fb.text(x, 4, "AUCUNE ETOILE CONNUE", DIM);
     }
+    // The medium here and the nucleus of the galaxy.
+    fb.text(x, 17, "MILIEU INTERSTELLAIRE", AMBER);
+    let fx = s.cosmic_effects();
+    fb.text(
+        x,
+        18,
+        &format!("ICI : DOSE {:.2} GY/H", fx.radiation),
+        if fx.radiation > 0.5 { RED } else { GREEN },
+    );
+    fb.text(
+        x,
+        19,
+        &format!(
+            "CAPTEURS x{:.2}  LABOS +{:.0} %",
+            fx.sensor_mult,
+            fx.interest * 100.0
+        ),
+        GREEN,
+    );
+    for (k, f) in g.gal_features.iter().take(3).enumerate() {
+        let d = ((f.pos[0] - s.here_pos[0]).powi(2)
+            + (f.pos[1] - s.here_pos[1]).powi(2)
+            + (f.pos[2] - s.here_pos[2]).powi(2))
+        .sqrt();
+        let name = g
+            .data
+            .cosmos_def(f.kind.id())
+            .map_or("", |d| d.name.as_str());
+        fb.text(
+            x,
+            20 + k,
+            &format!(
+                "{} {d:.0} AL",
+                name.to_uppercase().chars().take(24).collect::<String>()
+            ),
+            feature_color(f.kind),
+        );
+    }
+    fb.text(
+        x,
+        24,
+        &format!(
+            "TROU NOIR CENTRAL {:.0} AL",
+            vector_world::galaxy::Galaxy::centre_distance(s.here_pos),
+        ),
+        DIM,
+    );
     let b = fb.rows() - 4;
     fb.text(
         1,
@@ -1583,9 +1706,14 @@ fn draw_contracts(fb: &mut Framebuffer, g: &Game) {
         );
         let name = if c.pax > 0 {
             format!(
-                "{} {}",
+                "{} {}{}",
                 c.pax,
-                vector_sim::economy::PAX_KINDS[usize::from(c.pax_kind.min(3))].0
+                vector_sim::economy::PAX_KINDS[usize::from(c.pax_kind.min(5))].0,
+                if c.legs.is_empty() {
+                    String::new()
+                } else {
+                    format!(" +{} ESCALES", c.legs.len())
+                }
             )
         } else {
             g.data.resources[c.resource].name.clone()
@@ -1849,6 +1977,21 @@ fn draw_empire(fb: &mut Framebuffer, g: &Game) {
         ),
         GREEN,
     );
+    fb.text(
+        1,
+        4,
+        &format!(
+            "ECHELLE DE KARDASHEV {:.3}   PUISSANCE {:.2e} W   OUVRAGES {}",
+            s.empire_kardashev(),
+            s.empire_power_w(),
+            s.colonies
+                .iter()
+                .flat_map(|c| c.projects.iter())
+                .map(|p| p.units)
+                .sum::<u32>()
+        ),
+        GREEN,
+    );
     let top = 6;
     fb.text(1, top, "NOM                    SYSTEME / CORPS                 POP    MORAL     CAISSE    ENERGIE  ETAT", DIM);
     for (i, c) in s.colonies.iter().enumerate() {
@@ -1998,6 +2141,10 @@ fn draw_colony(fb: &mut Framebuffer, g: &Game) {
     }
     if g.col_health {
         crate::health_view::draw(fb, g);
+        return;
+    }
+    if g.col_proj {
+        crate::project_view::draw(fb, g);
         return;
     }
     let worst = c
@@ -2331,7 +2478,7 @@ fn draw_fleet(fb: &mut Framebuffer, g: &Game) {
     if let Some(sel) = g.hull_pick {
         let y = ry + 3 + s.routes.len().max(1);
         fb.text(1, y, "ACHETER UN VAISSEAU (ENTREE, ECHAP)", AMBER);
-        for (k, h) in g.data.hulls.iter().enumerate() {
+        for (k, h) in g.data.hulls.iter().enumerate().take(g.sim.base_hulls) {
             fb.text(
                 1,
                 y + 1 + k,
@@ -2359,7 +2506,7 @@ fn s_unlocked(g: &Game, hull_id: &str) -> bool {
 /// powered, red = off or damaged, dim = empty). Click a box to select the slot.
 fn draw_ship_schematic(fb: &mut Framebuffer, g: &Game) {
     let ship = &g.sim.ship;
-    let hull = &g.data.hulls[ship.design.hull];
+    let hull = &g.sim.data.hulls[ship.design.hull];
     let (x0, y0) = (960i32, 80i32);
     let bus = x0 + 152;
     fb.text_at(x0 + 62, y0 - 12, "SCHEMA DU VAISSEAU", DIM);

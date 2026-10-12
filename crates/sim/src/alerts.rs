@@ -264,24 +264,25 @@ impl Sim {
             }
         }
         let rate = self.dose_rate_aboard();
-        if rate >= DOSE_RATE_CRITICAL || sys.dose_gy >= DOSE_TOTAL_CRITICAL {
+        let dose_total = self.dosimeter_gy();
+        if rate >= DOSE_RATE_CRITICAL || dose_total >= DOSE_TOTAL_CRITICAL {
             out.push(al(
                 Critical,
                 Topic::Radiation,
                 format!(
                     "RAYONNEMENT : {:.1} MGY/H, DOSE {:.2} GY",
                     rate * 1e3,
-                    sys.dose_gy
+                    dose_total
                 ),
             ));
-        } else if rate >= DOSE_RATE_WARNING || sys.dose_gy >= DOSE_TOTAL_WARNING {
+        } else if rate >= DOSE_RATE_WARNING || dose_total >= DOSE_TOTAL_WARNING {
             out.push(al(
                 Warning,
                 Topic::Radiation,
                 format!(
                     "RAYONNEMENT : {:.1} MGY/H, DOSE {:.2} GY",
                     rate * 1e3,
-                    sys.dose_gy
+                    dose_total
                 ),
             ));
         }
@@ -803,11 +804,11 @@ mod tests {
     #[test]
     fn accumulated_dose_thresholds() {
         let mut s = sim();
-        s.ship.sys.dose_gy = DOSE_TOTAL_WARNING - 0.01;
+        s.set_dosimeter_gy(DOSE_TOTAL_WARNING - 0.01);
         assert!(none(&s, Topic::Radiation));
-        s.ship.sys.dose_gy = DOSE_TOTAL_WARNING + 0.01;
+        s.set_dosimeter_gy(DOSE_TOTAL_WARNING + 0.01);
         assert!(has(&s, Severity::Warning, Topic::Radiation));
-        s.ship.sys.dose_gy = DOSE_TOTAL_CRITICAL + 0.01;
+        s.set_dosimeter_gy(DOSE_TOTAL_CRITICAL + 0.01);
         assert!(has(&s, Severity::Critical, Topic::Radiation));
     }
 

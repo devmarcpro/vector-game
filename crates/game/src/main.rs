@@ -676,7 +676,7 @@ fn snapshot(path: &str, scene: &str, data: Arc<GameData>) {
                 let data = Arc::clone(&g.data);
                 g.sim.ship.sys.temp_k = 700.0;
                 g.sim.ship.sys.overheating = true;
-                g.sim.ship.sys.dose_gy = 1.5;
+                g.sim.set_dosimeter_gy(1.5);
                 g.sim.ship.hull *= 0.4;
                 g.sim.ship.fuel *= 0.08;
                 g.sim.crew.unpaid = true;

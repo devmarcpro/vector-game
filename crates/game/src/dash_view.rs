@@ -704,7 +704,7 @@ fn draw_ship(fb: &mut Framebuffer, g: &Game, (x, y, w, h): Rect) {
         &format!(
             "DOSE {:.1} MGY/H (CUMULEE {:.2} GY)  CHARGE {:.1} G",
             rate * 1e3,
-            sys.dose_gy,
+            s.dosimeter_gy(),
             s.structural_load_g()
         ),
         if rate >= vector_sim::alerts::DOSE_RATE_WARNING {
@@ -1979,7 +1979,7 @@ mod game_tests {
                         // A crisis: heat, illness, radiation, an empty tank, malware.
                         g.sim.ship.sys.temp_k = 700.0;
                         g.sim.ship.sys.overheating = true;
-                        g.sim.ship.sys.dose_gy = 2.0;
+                        g.sim.set_dosimeter_gy(2.0);
                         g.sim.ship.fuel = 0.0;
                         g.sim.mind.malware = 0.7;
                         g.sim.crew.unpaid = true;

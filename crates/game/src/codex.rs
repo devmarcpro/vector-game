@@ -94,7 +94,6 @@ pub fn military_cards() -> Vec<(String, String)> {
     v
 }
 
-
 /// The abilities technologies unlock in the colony simulation (ids of `vector_data::CAPACITIES`):
 /// name and what they change.
 const CAPACITY_TEXT: [(&str, &str, &str); 16] = [

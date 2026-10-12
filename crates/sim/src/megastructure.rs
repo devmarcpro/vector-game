@@ -366,6 +366,9 @@ impl Colony {
         // The world itself.
         let mut tnotes = Vec::new();
         if let Some(t) = &mut self.terra {
+            // The works burn and clear: their emissions join the air of the world, which the
+            // climate of `Terra` then turns into warmth (slowly: see `CO2_PER_EMISSION_DAY`).
+            t.emit_co2(self.works.emitted * days * crate::terraform::CO2_PER_EMISSION_DAY);
             t.step(data, days * DAY, proc_w);
             tnotes.append(&mut t.notes);
             self.terraform = t.progress();

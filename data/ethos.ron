@@ -22,6 +22,7 @@
   (id:"vivres", name:"Vivres", matches:["food","water"], demand:[("commerce",-0.10)], ban:[]),
   (id:"atome", name:"Nucléaire", matches:["cat:nuclear"], demand:[("violence",0.10),("ouverture",0.05)], ban:[("ouverture","<",-0.6)]),
   (id:"organes", name:"Greffons", matches:["cat:organes","cat:protheses","cat:cybernetique"], demand:[("corps",0.35),("foi",-0.15)], ban:[("corps","<",-0.4)]),
+  (id:"exotique", name:"Matiere exotique", matches:["cat:exotic"], demand:[("ouverture",0.15),("tradition",-0.20)], ban:[("tradition",">",0.65),("violence","<",-0.7)]),
   (id:"savoir", name:"Données", matches:["research_data"], demand:[("tradition",-0.20),("ouverture",0.20)], ban:[("autorite",">",0.8)]),
  ],
  profiles:[

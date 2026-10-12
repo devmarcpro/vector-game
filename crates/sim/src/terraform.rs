@@ -355,6 +355,14 @@ pub struct Terra {
     pub notes: Vec<String>,
 }
 
+/// Carbon dioxide (kg) that one emission unit of a colony's works (`colony_works::emission`:
+/// one industrial building at full load) puts in the air each day: a district of heavy industry
+/// (about a megatonne a day). Slow on a thick atmosphere, visible over decades on a thin one.
+pub const CO2_PER_EMISSION_DAY: f64 = 1.0e9;
+
+/// Drift of the mean temperature (K per year) that raises an alert while the world is livable.
+pub const DRIFT_ALARM_K_YR: f64 = 1.0;
+
 const TOLD_RUNAWAY: u32 = 1;
 const TOLD_BOIL: u32 = 2;
 const TOLD_OCEAN: u32 = 4;
@@ -590,20 +598,6 @@ impl Terra {
         (0..GASES.len()).map(|i| self.pressure_of(i)).sum()
     }
 
-    /// Mean molar mass of the air, g/mol (29 when there is none).
-    pub fn mean_mass(&self) -> f64 {
-        let (mut m, mut n) = (0.0, 0.0);
-        for (i, g) in GASES.iter().enumerate() {
-            m += self.gas[i];
-            n += self.gas[i] / g.mass;
-        }
-        if n > 0.0 {
-            m / n
-        } else {
-            29.0
-        }
-    }
-
     /// Composition by number of molecules, biggest first, as (gas id, share).
     pub fn composition(&self) -> Vec<(&'static str, f32)> {
         let moles: Vec<f64> = (0..GASES.len())
@@ -770,6 +764,23 @@ impl Terra {
         self.version = self.version.wrapping_add(1);
     }
 
+    /// Human emissions: `kg` of carbon dioxide from burnt fuel, industry and cleared land. The
+    /// carbon (and the oxygen the air cannot supply) come from the ground and are booked in
+    /// `ground`, the oxygen of the air that burns with it is taken from it: the ledger stays
+    /// closed. Bounded: never more than a thousandth of the air's mass in one call.
+    pub fn emit_co2(&mut self, kg: f64) {
+        if !self.snap.rocky || kg.is_nan() || kg <= 0.0 {
+            return;
+        }
+        let air: f64 = self.gas.iter().sum();
+        let kg = kg.min(1.0e-3 * air + 1.0e6);
+        let o2 = (kg * 32.0 / 44.0).min(self.gas[O2]);
+        self.gas[O2] -= o2;
+        self.gas[CO2] += kg;
+        self.ground += kg - o2;
+        self.version = self.version.wrapping_add(1);
+    }
+
     /// Seed a strain of producer `species` with `kg` of living matter.
     pub fn seed(&mut self, data: &GameData, species: usize, kg: f64) {
         let (suit, _) = self.suitability(data, species);
@@ -887,6 +898,37 @@ impl Terra {
         } else {
             "STABLE"
         }
+    }
+
+    /// A climate emergency worth an alert: (critical, text). Runaway greenhouse or boiled seas,
+    /// a world gone to ice, or a climate that drifts fast while people could still live on it.
+    pub fn alarm(&self) -> Option<(bool, String)> {
+        if !self.snap.rocky || self.version == 0 {
+            return None;
+        }
+        if self.t > 373.0 && self.snap.ocean0 > 0.0 && self.ocean < 0.5 * self.snap.ocean0 {
+            return Some((true, "OCEANS EN EBULLITION, SERRE IRREVERSIBLE".into()));
+        }
+        if self.t > self.snap.t_base + 25.0 && self.drift > 0.5 {
+            return Some((
+                true,
+                format!("EMBALLEMENT DE SERRE : {:.1} K PAR AN", self.drift),
+            ));
+        }
+        if self.t < self.snap.t_base - 10.0 && self.ice_cover() > 0.9 {
+            return Some((true, "GLACIATION TOTALE DU MONDE".into()));
+        }
+        if self.drift.abs() >= DRIFT_ALARM_K_YR && self.habitability() > 0.1 {
+            return Some((
+                false,
+                format!(
+                    "CLIMAT QUI DERIVE : {:+.1} K PAR AN, HABITABILITE {:.0} %",
+                    self.drift,
+                    self.habitability() * 100.0
+                ),
+            ));
+        }
+        None
     }
 
     /// The share of the work to do before this world is breathable, 0..1 (the colony's

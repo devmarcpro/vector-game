@@ -239,6 +239,13 @@
    (label:"Se taire", result:"Personne ne pose de question, cette fois ; si la maladie se répand, on s'en souviendra.", effects:[Rel(Here, -0.05), Credits(500.0)]),
   ], window:6.0,
   text:"Les douaniers de {place} remarquent une toux à bord : un malade, et tout un quai qui retient son souffle."),
+ (id:"foyer_sur_le_quai", name:"Un foyer sur le quai", tag:"SANTE", weight:1.0, cooldown:45.0,
+  when:[SectorOutbreak(0.01), Docked, Claimed],
+  choices:[
+   (label:"Livrer des médicaments", result:"Le port reçoit vos soins sans un mot ; {here} n'oubliera pas ce geste.", effects:[Cargo("medicine", -60.0), Rel(Here, 0.04)]),
+   (label:"Repartir sans attendre", result:"Vous quittez le quai avant la fermeture du port : on le note, et le quai aussi.", effects:[Rel(Here, -0.02), Morale(-0.02)]),
+  ], window:6.0,
+  text:"Un mal court dans le secteur et le port de {place} se barricade : les médecins cherchent des mains et des médicaments."),
  (id:"compteurs_inquietants", name:"Des compteurs qui s'affolent", tag:"SCIENCE", weight:1.0, cooldown:60.0,
   when:[Dose(1.0), InFlight],
   effects:[Morale(-0.06)],

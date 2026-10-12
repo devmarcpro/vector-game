@@ -514,7 +514,10 @@ pub fn draw(fb: &mut Framebuffer, v: &View) {
         y += 1;
         let impact = r.t_impact.map_or("--".to_string(), |t| format!("{t:.0} S"));
         let burn = match r.burn_alt {
-            Some(h) if r.v_up < -1.0 => format!("ALLUMAGE A {h:.0} M"),
+            Some(h) if r.v_up < -1.0 => match r.t_burn {
+                Some(t) if t > 0.5 => format!("ALLUMAGE A {h:.0} M (DANS {t:.0} S)"),
+                _ => format!("ALLUMAGE A {h:.0} M"),
+            },
             None if r.v_up < -1.0 => "POUSSEE < POIDS".to_string(),
             _ => "ALLUMAGE --".to_string(),
         };
@@ -557,6 +560,21 @@ pub fn draw(fb: &mut Framebuffer, v: &View) {
             if r.safe || r.v_up > 0.0 { GREEN } else { AMBER },
         );
         y += 1;
+        if let Some(w) = r.weather {
+            fb.text(
+                1,
+                y,
+                &format!(
+                    "METEO {}   VENT {:.0} M/S   VISIBILITE {:.0} %   ADHERENCE {:.0} %",
+                    w.weather.label().to_uppercase(),
+                    w.wind,
+                    w.visibility * 100.0,
+                    w.grip * 100.0
+                ),
+                if w.rough() { RED } else { GREEN },
+            );
+            y += 1;
+        }
         if let Some((d, _)) = r.site {
             fb.text(
                 1,

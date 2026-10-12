@@ -6,7 +6,6 @@
 //! impulse of a propellant from the energy of its combustion, the weathering of the deposits of a
 //! world, and the shipboard laboratory (reactions run on the cargo, on the ship's battery).
 use crate::{Sim, G0};
-use std::collections::BTreeMap;
 use vector_data::chemistry::Reaction;
 use vector_data::GameData;
 use vector_world::{BodyKind, CelBody};
@@ -27,100 +26,6 @@ pub const CATALYST_SHARE: f64 = 0.01;
 /// breathe at ease (bar).
 pub const FIRE_MIN_O2: f64 = 0.12;
 pub const BREATH_MIN_O2: f64 = 0.1;
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum ChemError {
-    /// Not enough of this compound.
-    Lacking(String),
-    Cold,
-    LowPressure,
-    NoCatalyst(String),
-}
-
-/// An amount of substances (moles by compound index).
-#[derive(Clone, Debug, Default, PartialEq)]
-pub struct Mixture {
-    pub mol: BTreeMap<usize, f64>,
-}
-
-impl Mixture {
-    pub fn add(&mut self, compound: usize, mol: f64) {
-        *self.mol.entry(compound).or_insert(0.0) += mol;
-    }
-
-    pub fn amount(&self, compound: usize) -> f64 {
-        self.mol.get(&compound).copied().unwrap_or(0.0)
-    }
-
-    /// Total mass, g.
-    pub fn mass(&self, data: &GameData) -> f64 {
-        self.mol.iter().map(|(&c, &n)| n * data.molar_mass(c)).sum()
-    }
-
-    /// Moles of atoms of each element.
-    pub fn atoms(&self, data: &GameData) -> BTreeMap<String, f64> {
-        let mut m = BTreeMap::new();
-        for (&c, &n) in &self.mol {
-            for (s, k) in data.compound_atoms(c) {
-                *m.entry(s).or_insert(0.0) += n * f64::from(k);
-            }
-        }
-        m
-    }
-
-    /// The most the reaction can advance with what the mixture holds (moles of reaction).
-    pub fn max_extent(&self, data: &GameData, r: &Reaction) -> f64 {
-        r.reactants
-            .iter()
-            .map(|(c, n)| {
-                data.compound_index(c)
-                    .map_or(0.0, |i| self.amount(i) / f64::from(*n))
-            })
-            .fold(f64::INFINITY, f64::min)
-    }
-
-    /// Advance the reaction by `extent` moles of reaction at temperature `t` (K) and pressure
-    /// `p` (bar). Returns the heat released in kJ (negative when it absorbed heat).
-    pub fn react(
-        &mut self,
-        data: &GameData,
-        r: &Reaction,
-        extent: f64,
-        t: f64,
-        p: f64,
-    ) -> Result<f64, ChemError> {
-        if t < r.t_act {
-            return Err(ChemError::Cold);
-        }
-        if p < r.p_min {
-            return Err(ChemError::LowPressure);
-        }
-        if !r.catalyst.is_empty() {
-            let c = data.compound_index(&r.catalyst).unwrap_or(usize::MAX);
-            if self.amount(c) <= 0.0 {
-                return Err(ChemError::NoCatalyst(r.catalyst.clone()));
-            }
-        }
-        for (c, n) in &r.reactants {
-            let i = data.compound_index(c).unwrap_or(usize::MAX);
-            if self.amount(i) + 1e-12 < extent * f64::from(*n) {
-                return Err(ChemError::Lacking(c.clone()));
-            }
-        }
-        for (c, n) in &r.reactants {
-            if let Some(i) = data.compound_index(c) {
-                let e = self.mol.entry(i).or_insert(0.0);
-                *e = (*e - extent * f64::from(*n)).max(0.0);
-            }
-        }
-        for (c, n) in &r.products {
-            if let Some(i) = data.compound_index(c) {
-                self.add(i, extent * f64::from(*n));
-            }
-        }
-        Ok(-data.reaction_enthalpy(r) * extent)
-    }
-}
 
 /// Mass of the reagents of one mole of reaction, kg.
 pub fn reagent_mass_kg(data: &GameData, r: &Reaction) -> f64 {
@@ -355,14 +260,6 @@ impl Sim {
         }
     }
 
-    /// Reactions the laboratory can run: every substance has a resource to hold it and the
-    /// reactor can reach the conditions.
-    pub fn lab_reactions(&self) -> Vec<usize> {
-        (0..self.data.reactions.len())
-            .filter(|&r| self.lab_resources(r).is_some())
-            .collect()
-    }
-
     /// Resources of the reagents (lists to draw from) and of the products (the one made).
     #[allow(clippy::type_complexity)]
     fn lab_resources(&self, reaction: usize) -> Option<(Vec<Vec<usize>>, Vec<usize>)> {
@@ -532,6 +429,7 @@ impl Sim {
 mod tests {
     use super::*;
     use crate::scene::new_sim;
+    use std::collections::BTreeMap;
     use std::sync::Arc;
 
     fn data() -> GameData {
@@ -552,27 +450,27 @@ mod tests {
         let d = data();
         assert!(d.reactions.len() >= 25);
         for r in &d.reactions {
-            let mut m = Mixture::default();
-            for (c, n) in &r.reactants {
-                m.add(d.compound_index(c).unwrap(), f64::from(*n) * 3.0);
-            }
-            if !r.catalyst.is_empty() {
-                m.add(d.compound_index(&r.catalyst).unwrap(), 1.0);
-            }
-            let (a0, g0) = (m.atoms(&d), m.mass(&d));
-            let ext = m.max_extent(&d, r);
-            assert!((ext - 3.0).abs() < 1e-9, "{}", r.id);
-            m.react(&d, r, ext, r.t_act, r.p_min).expect(&r.id);
-            let a1 = m.atoms(&d);
-            for (s, n) in &a0 {
-                assert!(
-                    (n - a1.get(s).copied().unwrap_or(0.0)).abs() < 1e-9,
-                    "{} {s}",
-                    r.id
-                );
-            }
+            let atoms = |side: &[(String, u32)]| {
+                let mut m: BTreeMap<String, u32> = BTreeMap::new();
+                for (c, n) in side {
+                    for (s, k) in d.compound_atoms(d.compound_index(c).unwrap()) {
+                        *m.entry(s).or_insert(0) += n * k;
+                    }
+                }
+                m
+            };
+            assert_eq!(atoms(&r.reactants), atoms(&r.products), "{}", r.id);
             // Mass is conserved too (molar masses add the same atoms).
-            assert!((g0 - m.mass(&d)).abs() < 1e-6, "{}", r.id);
+            let mass = |side: &[(String, u32)]| -> f64 {
+                side.iter()
+                    .map(|(c, n)| d.molar_mass(d.compound_index(c).unwrap()) * f64::from(*n))
+                    .sum()
+            };
+            assert!(
+                (mass(&r.reactants) - mass(&r.products)).abs() < 1e-6,
+                "{}",
+                r.id
+            );
         }
     }
 
@@ -597,12 +495,8 @@ mod tests {
         let co = &d.reactions[react_id(&d, "hydrogen_combustion")];
         // 2 H2O -> 2 H2 + O2 absorbs 571.6 kJ, and 2 H2 + O2 -> 2 H2O gives exactly that back.
         assert!((d.reaction_enthalpy(el) - 571.6).abs() < 0.01);
-        let mut m = Mixture::default();
-        m.add(d.compound_index("water").unwrap(), 10.0);
-        let absorbed = -m.react(&d, el, 5.0, 400.0, 1.0).unwrap();
-        let released = m.react(&d, co, 5.0, 900.0, 1.0).unwrap();
+        let (absorbed, released) = (d.reaction_enthalpy(el), -d.reaction_enthalpy(co));
         assert!((absorbed - released).abs() < 1e-9, "{absorbed} {released}");
-        assert!((m.amount(d.compound_index("water").unwrap()) - 10.0).abs() < 1e-9);
         // Methane burns hotter per mole than hydrogen, and the sign rule holds for every kind.
         for r in &d.reactions {
             let dh = d.reaction_enthalpy(r);
@@ -615,24 +509,28 @@ mod tests {
     }
 
     #[test]
-    fn a_cold_or_thin_reactor_and_a_missing_catalyst_stop_the_reaction() {
-        let d = data();
-        let h = &d.reactions[react_id(&d, "haber_bosch")];
-        let mut m = Mixture::default();
-        m.add(d.compound_index("nitrogen").unwrap(), 1.0);
-        m.add(d.compound_index("hydrogen").unwrap(), 3.0);
-        assert_eq!(m.react(&d, h, 1.0, 300.0, 200.0), Err(ChemError::Cold));
-        assert_eq!(m.react(&d, h, 1.0, 750.0, 1.0), Err(ChemError::LowPressure));
-        assert!(matches!(
-            m.react(&d, h, 1.0, 750.0, 200.0),
-            Err(ChemError::NoCatalyst(_))
-        ));
-        m.add(d.compound_index("iron").unwrap(), 0.1);
-        assert!(m.react(&d, h, 1.0, 750.0, 200.0).is_ok());
-        assert!(matches!(
-            m.react(&d, h, 1.0, 750.0, 200.0),
-            Err(ChemError::Lacking(_))
-        ));
+    fn a_reaction_beyond_the_reactor_is_refused_by_the_laboratory() {
+        let mut d = data();
+        let i = react_id(&d, "haber_bosch");
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../data");
+        let mut s = new_sim(5, Arc::new(GameData::load(&dir).expect("data")));
+        s.ship.sys.battery_mj = 1.0e6;
+        stock(&mut s, "nitrogen", 28.0);
+        stock(&mut s, "hydrogen", 6.0);
+        stock(&mut s, "iron", 5.0);
+        assert!(
+            s.lab_run(i, 34.0).is_ok(),
+            "within the limits of the reactor"
+        );
+        // Too hot, or too much pressure, for the reactor: refused.
+        d.reactions[i].t_act = LAB_T_MAX + 100.0;
+        let mut hot = new_sim(5, Arc::new(d));
+        hot.ship.sys.battery_mj = 1.0e6;
+        stock(&mut hot, "nitrogen", 28.0);
+        stock(&mut hot, "hydrogen", 6.0);
+        stock(&mut hot, "iron", 5.0);
+        let e = hot.lab_run(i, 34.0).unwrap_err();
+        assert!(e.contains("ne peut pas"), "{e}");
     }
 
     #[test]
@@ -792,8 +690,6 @@ mod tests {
         assert!(rep.heat_kj > 8.0e5, "{}", rep.heat_kj);
         assert!(s.ship.sys.temp_k > t0);
         assert!(kg(&s, "co2_ice") > 40.0 && kg(&s, "methane") < 1e-6);
-        // Not every reaction can be run: the reactor is limited.
-        assert!(!s.lab_reactions().is_empty());
     }
 
     #[test]

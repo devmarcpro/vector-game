@@ -949,6 +949,10 @@ fn describe_cond(data: &GameData, c: &vector_data::surprise::Cond) -> String {
         Cond::Cryo(n) => format!("au moins {n} dormeur(s) dans les caissons cryo"),
         Cond::Terraform => "une de vos colonies proches a des travaux en cours".to_string(),
         Cond::Sick => "quelqu'un est malade a bord".to_string(),
+        Cond::SectorOutbreak(p) => format!(
+            "une epidemie du secteur touche au moins {:.1} % des gens",
+            p * 100.0
+        ),
         Cond::Dose(sv) => format!("quelqu'un a recu au moins {sv:.1} Sv"),
         Cond::Language(c, v) => format!(
             "comprehension de la langue locale {} {:.0} %",

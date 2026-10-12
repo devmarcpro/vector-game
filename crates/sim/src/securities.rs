@@ -364,12 +364,6 @@ impl Sim {
     }
 }
 
-/// The change of an exchange of `credits` for a fund: units bought less the fee, for tests and
-/// the screen.
-pub fn after_fee(credits: f64) -> f64 {
-    credits * (1.0 - FEE)
-}
-
 /// The fee of a currency exchange, re-exported next to the other fees of the folio.
 pub const FX: f64 = FX_FEE;
 
@@ -444,7 +438,7 @@ mod tests {
             / n as f64;
         assert!((q - 100.0 * mean).abs() < 1e-9);
         let units = s.buy_fund(0, 5_000.0).expect("bought");
-        assert!((units * q - after_fee(5_000.0)).abs() < 1e-6);
+        assert!((units * q - 5_000.0 * (1.0 - FEE)).abs() < 1e-6);
         s.trade.folio.last_day = (s.time / DAY) as i64;
         s.time += 365.0 * DAY;
         s.securities_tick();

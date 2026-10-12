@@ -2194,7 +2194,7 @@ pub fn draw_ship_panel(fb: &mut Framebuffer, g: &Game, x: usize) {
                             AMBER,
                         );
                     }
-                    if r.errors.is_empty() {
+                    if r.buildable() {
                         let hull = vector_sim::shipwright::hull_of(d, bp, r);
                         let design = crate::ship_model::blueprint_design(d, bp);
                         crate::ship_model::blueprint_view(

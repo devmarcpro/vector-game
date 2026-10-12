@@ -167,6 +167,19 @@ pub struct Works {
     pub litter: f64,
     pub pollution: f64,
     pub crime: f64,
+    /// Emission units of the day (see `emission`): what the works put in the air, derived each
+    /// tick and handed to the climate of the world (`Terra::emit_co2`). Not saved.
+    #[serde(skip)]
+    pub emitted: f64,
+    /// Goodwill earned or lost with the faction of the sector, not yet handed over (see
+    /// `links::colony_relations_tick`). Not saved.
+    #[serde(skip)]
+    pub rel_acc: f32,
+    /// Food that went through the port since the sim last looked: imported (+) or exported (-),
+    /// kg, for the sim to move in the stock of the market of the station nearby (see
+    /// `links::settle_station_food`). Not saved.
+    #[serde(skip)]
+    pub trade_flow: f64,
     /// Quality index of what the colony makes (0..1) and the share lost to defects.
     pub quality: f64,
     pub defect: f64,
@@ -227,6 +240,9 @@ impl Default for Works {
             litter: 0.0,
             pollution: 0.0,
             crime: 0.05,
+            emitted: 0.0,
+            rel_acc: 0.0,
+            trade_flow: 0.0,
             quality: 0.5,
             defect: 0.1,
             tool_cover: 1.0,
@@ -825,6 +841,7 @@ impl Colony {
                     };
             }
         }
+        self.works.emitted = emitted;
         let air = 0.4 + 0.6 * self.pressure.clamp(0.0, 1.0);
         let target =
             ((emitted * 0.03 + self.works.litter / 8000.0 - cleaned * 0.04) / air).clamp(0.0, 1.0);
@@ -1000,6 +1017,8 @@ impl Colony {
         };
         let daily = (self.pop * 0.6).max(1.0);
         let stock_days = self.storage[fi] / daily;
+        // The price is the one of the sector (see `apply_works_world`); what goes through the port
+        // is booked in `trade_flow`, and the sim moves it in the stock of the nearest market.
         let price = data.resources[fi].value * self.works.food_price.clamp(0.3, 6.0);
         if stock_days < 10.0 && self.treasury > 0.0 {
             let want = (10.0 - stock_days) * daily * (days / 2.0).min(1.0);
@@ -1009,6 +1028,7 @@ impl Colony {
                 .min(self.free_space())
                 .min(daily * days * 3.0);
             if kg > 1.0 {
+                self.works.trade_flow += kg;
                 self.add_food_with_mix(fi, kg, DEFAULT_MIX);
                 self.treasury -= kg * cost;
                 self.works.bought += kg * cost;
@@ -1024,6 +1044,7 @@ impl Colony {
         } else if stock_days > 90.0 {
             let kg = (self.storage[fi] - 60.0 * daily) * 0.1 * days.min(1.0);
             if kg > 1.0 {
+                self.works.trade_flow -= kg;
                 self.storage[fi] -= kg;
                 let gain = kg * price * 0.7;
                 self.treasury += gain;
@@ -1233,7 +1254,13 @@ impl crate::Sim {
         }
         let slow = day.rem_euclid(4) == i64::from(self.colonies[ci].id) % 4
             || self.colonies[ci].works.world_day == i64::MIN;
+        let elapsed = if self.colonies[ci].works.world_day == i64::MIN {
+            0.0
+        } else {
+            (day - self.colonies[ci].works.world_day).clamp(0, 400) as f64
+        };
         self.colonies[ci].works.world_day = day;
+        self.colony_relations_tick(ci, elapsed);
         let (mut rain, mut harsh) = (0.0, 0.0);
         if let Some((map, (cx, cy))) = self.colony_world(ci) {
             let (w, sev) = self.weather_at(&map, cx, cy);

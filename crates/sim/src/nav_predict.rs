@@ -323,19 +323,8 @@ impl Sim {
     }
 
     /// Predict the path from `start` for `horizon` seconds with the burns of `nodes` (applied in
-    /// order); `target` is the body whose closest approach is tracked.
-    pub fn predict(
-        &self,
-        start: PState,
-        horizon: f64,
-        nodes: &[ManeuverNode],
-        target: Option<usize>,
-    ) -> Prediction {
-        self.predict_ex(start, horizon, nodes, target, STEP_ANGLE)
-    }
-
-    /// The same with a chosen step (rad of orbit per step): the planner searches with coarse
-    /// steps and checks with the fine ones.
+    /// order); `target` is the body whose closest approach is tracked. The step is chosen (rad of
+    /// orbit per step): the planner searches with coarse steps and checks with the fine ones.
     pub fn predict_ex(
         &self,
         start: PState,
@@ -821,7 +810,23 @@ impl Sim {
         nodes: &[ManeuverNode],
         target: Option<usize>,
     ) -> Prediction {
-        self.predict_ship_ex(horizon, nodes, target, STEP_ANGLE)
+        self.predict_ship_ex(horizon, nodes, target, self.nav_step_angle())
+    }
+
+    /// Angle (rad) per step of the predicted path: the pilotage budget of the mind sets how fine
+    /// the computer integrates. A bare budget (factor 1 and above) keeps `STEP_ANGLE`; a starved
+    /// one (heat, a starved bus, malware, nothing allotted) coarsens it by up to 30 %.
+    pub fn nav_step_angle(&self) -> f64 {
+        let f = self.mind_factor(crate::mind::T_PILOTAGE);
+        STEP_ANGLE * (1.0 + 0.6 * (1.0 - f)).clamp(1.0, 1.3)
+    }
+
+    /// Share of the tank the planner keeps back: the margin set by the player, scaled by how well
+    /// the computer knows its own trajectory (a poor budget doubles the doubt, a rich one halves
+    /// it; see `mind`).
+    pub fn nav_reserve(&self) -> f64 {
+        let f = self.mind_factor(crate::mind::T_PILOTAGE);
+        self.nav.limits.reserve * (2.0 - f).clamp(0.5, 1.5)
     }
 
     pub fn predict_ship_ex(

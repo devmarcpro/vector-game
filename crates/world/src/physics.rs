@@ -5,7 +5,7 @@
 //! ground does with it (plates, volcanoes, nothing), the sphere in which it can hold a moon and
 //! the one in which a moon would be torn apart. Nothing is stored: the same seed gives the same
 //! numbers, and one function (`System::physics`) is the single source for every screen.
-use crate::orbit::{AU, G, M_EARTH, R_EARTH};
+use crate::orbit::{G, M_EARTH, R_EARTH};
 use crate::{BodyKind, CelBody, PlanetKind, System};
 use std::f64::consts::{PI, TAU};
 use vector_core::hash_coord;
@@ -97,19 +97,6 @@ pub struct Physics {
     pub tide: f64,
 }
 
-/// What the fixed star of the system is. Stars have their own few numbers.
-#[derive(Clone, Debug, PartialEq)]
-pub struct StarPhysics {
-    /// Time it spends on the main sequence, years.
-    pub lifetime: f64,
-    /// Age of the system, years.
-    pub age: f64,
-    /// Where liquid water can stay on a rock with some air (m).
-    pub habitable: (f64, f64),
-    /// Radius under which a world would be swallowed or torn (m).
-    pub roche: f64,
-}
-
 fn unit(seed: u64, k: i64) -> f64 {
     vector_core::unit(hash_coord(seed, k, 11, 3))
 }
@@ -120,18 +107,6 @@ impl System {
         let m = self.bodies[0].mass / crate::orbit::M_SUN;
         let life = 1.0e10 * m.powf(-2.5);
         (0.3e9 + unit(self.seed, 1) * 9.0e9).min(life * 0.9)
-    }
-
-    pub fn star_physics(&self) -> StarPhysics {
-        let s = &self.bodies[0];
-        let m = s.mass / crate::orbit::M_SUN;
-        let l = self.luminosity.max(1e-6);
-        StarPhysics {
-            lifetime: 1.0e10 * m.powf(-2.5),
-            age: self.age(),
-            habitable: (0.95 * l.sqrt() * AU, 1.37 * l.sqrt() * AU),
-            roche: 2.44 * s.radius * (s.mass / (4.0 / 3.0 * PI * s.radius.powi(3)) / 3000.0).cbrt(),
-        }
     }
 
     /// The planet (the body that circles the star) that carries body `i`, `i` itself if it is one.
@@ -347,6 +322,7 @@ fn moment_factor(b: &CelBody, density: f64) -> f64 {
 mod tests {
     use super::*;
     use crate::generate_system;
+    use crate::orbit::AU;
 
     fn solid_planets(s: &System) -> Vec<usize> {
         (1..s.bodies.len())
@@ -480,14 +456,5 @@ mod tests {
         );
         let h = s.physics(i, 0.0).hill.expect("hill");
         assert!(h > 3.84e8, "the Moon must be inside the Hill sphere: {h}");
-    }
-
-    #[test]
-    fn stars_have_a_lifetime_and_a_habitable_zone() {
-        let s = generate_system(7);
-        let sp = s.star_physics();
-        assert!(sp.age < sp.lifetime);
-        assert!(sp.habitable.0 < sp.habitable.1);
-        assert!((sp.habitable.0 / AU - 0.95 * s.luminosity.sqrt()).abs() < 1e-9);
     }
 }

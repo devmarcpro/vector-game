@@ -178,6 +178,22 @@ impl Sim {
             found.push(self.archive.artefacts.len() - 1);
             j += 1;
         }
+        if !found.is_empty() {
+            // A discovery is news: where, whose, since when (the provenance of the place).
+            let place = self.place_name(self.here_pos);
+            let what = match theme {
+                "ruine" => "Ruines",
+                "epave" => "Epave",
+                _ => "Station ancienne",
+            };
+            let text = format!(
+                "{what} explorees pres de {place} : {} piece(s) remontent a l'an {}. {}",
+                found.len(),
+                prov.built,
+                history::provenance_line(&self.data, &prov)
+            );
+            self.news_push(self.time, 5, 0.0, text);
+        }
         if !careful && !found.is_empty() {
             // Pillage destroys the context and the people of the place resent it.
             self.archive.pillaged += found.len() as u32;

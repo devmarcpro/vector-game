@@ -86,7 +86,11 @@ pub fn draw(fb: &mut Framebuffer, g: &Game) {
             fb.text(
                 1,
                 y + 9,
-                "LA DATATION CONTREDIT SON APPARENCE : C'EST UN FAUX.",
+                &format!(
+                    "LA DATATION CONTREDIT SON APPARENCE : C'EST UN FAUX. VALEUR REELLE {:.0} CR (IL EN AFFICHE {:.0}).",
+                    s.artefact_true_value(sel),
+                    s.artefact_price(sel)
+                ),
                 RED,
             );
         }

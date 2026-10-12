@@ -1252,9 +1252,6 @@ pub struct HistoryData {
 }
 
 impl GameData {
-    pub fn age_index(&self, id: &str) -> Option<usize> {
-        self.history.ages.iter().position(|a| a.id == id)
-    }
     pub fn artefact_index(&self, id: &str) -> Option<usize> {
         self.history.artefacts.iter().position(|a| a.id == id)
     }
@@ -1514,9 +1511,6 @@ impl GameData {
     }
     pub fn faction_index(&self, id: &str) -> Option<usize> {
         self.factions.iter().position(|f| f.id == id)
-    }
-    pub fn industry_index(&self, id: &str) -> Option<usize> {
-        self.industries.iter().position(|f| f.id == id)
     }
 
     pub fn recipe_index(&self, id: &str) -> Option<usize> {
@@ -3049,6 +3043,7 @@ impl GameData {
                     Cond::Rel(t, _, v) => target_ok(t) && (-1.0..=1.0).contains(v),
                     Cond::Unrest(v) | Cond::ColonyUnrest(v) => (0.0..=1.0).contains(v),
                     Cond::Epidemic(d) | Cond::ColonyNear(d) => *d > 0.0,
+                    Cond::SectorOutbreak(v) => *v > 0.0 && *v <= 1.0,
                     Cond::Morale(_, v) => (0.0..=1.0).contains(v),
                     _ => true,
                 };

@@ -7,7 +7,7 @@
 use crate::{Sim, G0, SHIP_RADIUS};
 use std::f64::consts::{PI, TAU};
 use vector_core::Vec3;
-use vector_world::orbit::{AU, G};
+use vector_world::orbit::AU;
 use vector_world::{BodyKind, StarClass};
 
 /// Speed of light (m/s).
@@ -40,8 +40,6 @@ pub const SHIELDED_COVER: f64 = 0.12;
 pub const SHIELD_E_FOLD: f64 = 6.0;
 /// The frame holds up to this many g (thrust, drag or tide) before it starts to tear.
 pub const STRUCTURE_LIMIT_G: f64 = 40.0;
-/// Sensitivity (W/m^2) of a standard infrared sensor.
-pub const IR_SENSOR_W_M2: f64 = 1.0e-12;
 
 // ---- pure laws ------------------------------------------------------------------------------
 
@@ -132,12 +130,6 @@ pub fn transfer_window(now: f64, needed: f64, n_ship: f64, n_target: f64) -> f64
     dphi
 }
 
-/// Specific kinetic energy a burn of `dv` along the velocity adds at speed `v` (J/kg): the
-/// Oberth effect, it is larger the faster the ship already goes (deep in a well).
-pub fn burn_energy_gain(v: f64, dv: f64) -> f64 {
-    v * dv + 0.5 * dv * dv
-}
-
 /// Tsiolkovsky: delta-v (m/s) from a wet mass `m0` to a dry mass `m1` at specific impulse `isp` (s).
 pub fn tsiolkovsky(isp: f64, m0: f64, m1: f64) -> f64 {
     isp * G0 * (m0 / m1.max(1e-9)).ln()
@@ -175,31 +167,9 @@ pub fn light_delay(d: f64) -> f64 {
     d / C
 }
 
-/// Equilibrium temperature (K) of a rotating grey body in a flux `kw_m2` with `albedo`.
-pub fn equilibrium_k(kw_m2: f64, albedo: f64) -> f64 {
-    vector_core::units::equilibrium_temperature(kw_m2 * 1000.0, albedo)
-}
-
 /// Tidal acceleration (m/s^2) across a body of `length` m at distance `r` of a mass of parameter `mu`.
 pub fn tidal_accel(mu: f64, r: f64, length: f64) -> f64 {
     2.0 * mu * length / r.max(1.0).powi(3)
-}
-
-/// Speed (m/s) a launch gains from the spin of its world at latitude `lat`, heading `azimuth`
-/// (0 = north, pi/2 = east): the east-going equator speed, `cos(lat) sin(az)` of it.
-pub fn launch_bonus(equator_speed: f64, lat: f64, azimuth: f64) -> f64 {
-    equator_speed * lat.cos() * azimuth.sin()
-}
-
-/// J2 of a spinning fluid body from its flattening `f` and `q = w^2 R^3 / GM` (Earth: 1.08e-3).
-pub fn j2_from(flattening: f64, q: f64) -> f64 {
-    (2.0 * flattening - q) / 3.0
-}
-
-/// Drift of the ascending node (rad/s) caused by J2: `-1.5 n J2 (R/p)^2 cos i`.
-pub fn nodal_precession(n: f64, j2: f64, radius: f64, a: f64, e: f64, incl: f64) -> f64 {
-    let p = a * (1.0 - e * e);
-    -1.5 * n * j2 * (radius / p).powi(2) * incl.cos()
 }
 
 /// Fraction of the Sun's disc still visible when a body of angular radius `ab` stands at angular
@@ -413,11 +383,6 @@ impl Sim {
         crate::design::Systems::radiated(rated, self.ship.sys.temp_k).max(0.0)
     }
 
-    /// Distance (m) at which a sensor of `sensitivity` W/m^2 sees the ship's heat.
-    pub fn ir_detection_range(&self, sensitivity: f64) -> f64 {
-        (self.ir_signature_kw() * 1000.0 / (4.0 * PI * sensitivity.max(1e-30))).sqrt()
-    }
-
     /// Natural radiation at `p`: cosmic rays, the particles of the star (more for an active class)
     /// and the belts of the magnetised worlds nearby. Dose rates in Gy/h, unshielded.
     pub fn natural_dose_at(&self, p: Vec3) -> NaturalDose {
@@ -518,19 +483,6 @@ impl Sim {
         }
         self.solar_heat_kw() + aero - blocked
     }
-
-    /// Orbital speed at the surface of world `i` and the speed its spin gives at the equator.
-    pub fn equator_speed(&self, i: usize) -> f64 {
-        self.system.physics(i, 0.0).equator_speed
-    }
-
-    /// J2 of world `i` (from its spin and flattening).
-    pub fn j2_of(&self, i: usize) -> f64 {
-        let p = self.system.physics(i, 0.0);
-        let b = &self.system.bodies[i];
-        let q = p.omega * p.omega * b.radius.powi(3) / (G * b.mass);
-        j2_from(p.flattening, q)
-    }
 }
 
 #[cfg(test)]
@@ -559,7 +511,7 @@ mod tests {
     use crate::scene::new_sim;
     use std::sync::Arc;
     use vector_data::GameData;
-    use vector_world::orbit::{M_EARTH, M_SUN, R_EARTH};
+    use vector_world::orbit::{G, M_EARTH, M_SUN, R_EARTH};
 
     #[test]
     fn a_station_shelters_its_crew_from_the_belts_and_the_flares() {
@@ -662,16 +614,6 @@ mod tests {
     }
 
     #[test]
-    fn a_burn_deep_in_the_well_gains_more_energy_oberth() {
-        let dv = 1000.0;
-        let low = burn_energy_gain(3_000.0, dv);
-        let deep = burn_energy_gain(11_000.0, dv);
-        assert!(deep > 3.0 * low);
-        // Same fuel, same dv: the gain equals v dv + dv^2/2 exactly.
-        assert!((deep - (11_000.0 * dv + 0.5 * dv * dv)).abs() < 1e-6);
-    }
-
-    #[test]
     fn a_flyby_turns_the_path_and_changes_the_speed_in_the_sun_frame() {
         let mu_j = 1.267e17;
         let rp = 2.0e8;
@@ -765,15 +707,10 @@ mod tests {
     }
 
     #[test]
-    fn blackbody_balance_goes_as_t_to_the_fourth() {
-        // A grey sphere at 1 AU, albedo 0.3: about 255 K (Earth without greenhouse).
-        let t = equilibrium_k(SOLAR_CONSTANT_KW, 0.3);
-        assert!((t - 255.0).abs() < 2.0, "{t}");
-        // Four times the flux is sqrt(2) times hotter; the emitted power goes as T^4 exactly.
-        let t4 = equilibrium_k(4.0 * SOLAR_CONSTANT_KW, 0.3);
-        assert!((t4 / t - 2.0f64.sqrt()).abs() < 1e-9);
+    fn blackbody_power_goes_as_t_to_the_fourth() {
+        // The emitted power goes as T^4 exactly.
         let p = |t: f64| SIGMA_KW * t.powi(4);
-        assert!((p(2.0 * t) / p(t) - 16.0).abs() < 1e-9);
+        assert!((p(510.0) / p(255.0) - 16.0).abs() < 1e-9);
         // The ship's radiators follow T^4 too (ratio of two temperatures above the cold sink).
         let a = crate::design::Systems::radiated(100.0, 400.0);
         let b = crate::design::Systems::radiated(100.0, 200.0);
@@ -911,56 +848,11 @@ mod tests {
     }
 
     #[test]
-    fn light_delay_gamma_and_ir_range_follow_their_laws() {
+    fn light_delay_and_gamma_follow_their_laws() {
         assert!((light_delay(AU) - 499.0).abs() < 1.0);
         assert!((gamma(0.0) - 1.0).abs() < 1e-12);
         assert!((gamma(0.6 * C) - 1.25).abs() < 1e-9);
         assert!(gamma(0.99 * C) > 7.0);
-        let mut s = sim();
-        s.ship.sys.temp_k = 300.0;
-        let cold = s.ir_detection_range(IR_SENSOR_W_M2);
-        s.ship.sys.temp_k = 600.0;
-        let hot = s.ir_detection_range(IR_SENSOR_W_M2);
-        assert!(
-            hot > 2.0 * cold,
-            "a hot ship is seen from farther: {cold} {hot}"
-        );
-        // Range goes as the square root of power and of 1/sensitivity.
-        let r1 = s.ir_detection_range(1e-12);
-        let r2 = s.ir_detection_range(1e-14);
-        assert!((r2 / r1 - 10.0).abs() < 1e-6);
-    }
-
-    #[test]
-    fn launching_east_gains_the_spin_and_j2_precesses_the_node() {
-        let v_eq = 465.0;
-        assert!((launch_bonus(v_eq, 0.0, PI / 2.0) - 465.0).abs() < 1e-9);
-        assert!(
-            launch_bonus(v_eq, 0.0, 3.0 * PI / 2.0) < -464.0,
-            "west pays it"
-        );
-        assert!(launch_bonus(v_eq, 1.0, PI / 2.0) < launch_bonus(v_eq, 0.0, PI / 2.0));
-        assert!(
-            launch_bonus(v_eq, 0.0, 0.0).abs() < 1e-9,
-            "north gains nothing"
-        );
-        // Earth: J2 = 1.08e-3 gives about -5 deg/day at 7000 km, 0 incl, circular -> ~ -7.2 deg/day.
-        let a: f64 = 7.0e6;
-        let n = (MU_E / a.powi(3)).sqrt();
-        let w = nodal_precession(n, 1.0826e-3, R_EARTH, a, 0.0, 0.0);
-        let deg_day = w.to_degrees() * 86_400.0;
-        assert!((deg_day + 7.5).abs() < 1.0, "{deg_day}");
-        assert!(
-            nodal_precession(n, 1.0826e-3, R_EARTH, a, 0.0, PI / 2.0).abs() < 1e-12,
-            "polar: none"
-        );
-        // Every solid world of the system has a positive J2 and an equator speed.
-        let s = sim();
-        for i in 1..s.bodies.len() {
-            if matches!(s.bodies[i].kind, BodyKind::Planet(_)) {
-                assert!(s.j2_of(i) > -1e-3 && s.equator_speed(i) >= 0.0);
-            }
-        }
     }
 
     #[test]

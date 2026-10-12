@@ -428,6 +428,13 @@ pub struct LaneLog {
 }
 
 impl Sim {
+    /// What a broker keeps of a financed convoy: the base fee, scaled by what the AI computes
+    /// for itself (the simulation budget of the mind: models and forecasts). A rich budget halves
+    /// it at best, a starved one adds half again.
+    pub fn broker_fee(&self) -> f64 {
+        BROKER_FEE * (2.0 - self.mind_factor(crate::mind::T_SIMULATION)).clamp(0.5, 1.5)
+    }
+
     /// The regular lines of the ship's system with the convoys of the last and next weeks.
     pub fn lines_here(&self) -> Vec<LineView> {
         let lines = lines_at(&self.data, &self.galaxy, self.here_pos);
@@ -466,7 +473,7 @@ impl Sim {
             - port_fee(&self.data, fa)
             - port_fee(&self.data, fb)
             - tariff(&self.data, fb)
-            - BROKER_FEE
+            - self.broker_fee()
     }
 
     /// Finance departure `k` of line `id` (still at the dock): its profit is shared in
@@ -524,8 +531,8 @@ impl Sim {
             - port_fee(&self.data, fa)
             - port_fee(&self.data, fb)
             - tariff(&self.data, fb)
-            - BROKER_FEE)
-            .max(-0.3);
+            - self.broker_fee())
+        .max(-0.3);
         (s.amount * (1.0 + margin) * (c.delivered() / c.loaded.max(1.0))).max(0.0)
     }
 

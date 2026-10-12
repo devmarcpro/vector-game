@@ -22,13 +22,59 @@ const HAIL_TIME: f64 = 40.0;
 /// Distance at which NPCs give up the chase.
 const DISENGAGE_RANGE: f64 = 500_000.0;
 
+/// The gun of an NPC ship, in the same physics as the player's (`arms`): shells of `mass` kg
+/// leave at `speed` m/s, `rate` times a second, scattered by `spread` mrad. What a shell does is
+/// its kinetic energy (`arms::damage_from_energy`), whether it lands is the dispersion over the
+/// distance (`arms::hit_chance`): one model of a shot for the player and for the others.
+#[derive(Clone, Copy, Debug)]
+pub struct Gun {
+    pub mass: f64,
+    pub speed: f64,
+    pub rate: f64,
+    pub spread: f64,
+}
+
+/// Radius (m) of the target a gun aims at: the hull of the player plus the margin of a ship that
+/// is not a point (a fire-control radius, one and a half hulls).
+pub const AIM_RADIUS: f64 = 1.5 * SHIP_RADIUS;
+
+impl Gun {
+    /// A gun that delivers `dps` damage points a second at `rate` shells a second and `speed`
+    /// m/s: the mass of the shell follows from its energy.
+    pub fn from_dps(dps: f64, rate: f64, speed: f64, spread: f64) -> Gun {
+        let per_shell = dps / rate;
+        Gun {
+            mass: 2.0 * per_shell * arms::DAMAGE_J / (speed * speed),
+            speed,
+            rate,
+            spread,
+        }
+    }
+
+    /// Damage points of one shell that lands (its kinetic energy).
+    pub fn damage(&self) -> f64 {
+        arms::damage_from_energy(arms::kinetic_energy_j(self.mass, self.speed))
+    }
+
+    /// Damage per second when every shell lands.
+    pub fn dps(&self) -> f64 {
+        self.rate * self.damage()
+    }
+
+    /// Share of the shells that land on the player's ship at `dist` metres.
+    pub fn hit_chance(&self, dist: f64) -> f64 {
+        arms::hit_chance(self.spread, dist, AIM_RADIUS)
+    }
+}
+
 /// Static combat numbers for NPC ships.
 #[derive(Clone, Copy, Debug)]
 pub struct NpcStats {
     pub hull: f64,
     pub shield: f64,
-    /// Damage per second at point-blank range (0 = unarmed).
+    /// Damage per second at point-blank range (0 = unarmed): the gun's.
     pub dps: f64,
+    pub gun: Option<Gun>,
     pub range: f64,
     pub accel: f64,
     pub vmax: f64,
@@ -37,6 +83,18 @@ pub struct NpcStats {
 
 pub fn npc_stats(role: NpcRole, level: u8) -> NpcStats {
     let l = f64::from(level.clamp(1, 5));
+    let mut s = npc_stats_base(role, l);
+    // The guns: a patrol's are tight, a pirate's are looser; a seasoned crew shoots straighter.
+    s.gun = match role {
+        NpcRole::Patrol => Some(Gun::from_dps(s.dps, 2.0, 3_000.0, 5.6 - 0.3 * l)),
+        NpcRole::Pirate => Some(Gun::from_dps(s.dps, 3.0, 2_500.0, 7.2 - 0.4 * l)),
+        _ => None,
+    };
+    s.dps = s.gun.map_or(0.0, |g| g.dps());
+    s
+}
+
+fn npc_stats_base(role: NpcRole, l: f64) -> NpcStats {
     match role {
         NpcRole::Trader => NpcStats {
             hull: 700.0 + 150.0 * l,
@@ -46,6 +104,7 @@ pub fn npc_stats(role: NpcRole, level: u8) -> NpcStats {
             accel: 25.0,
             vmax: 15_000.0,
             bounty: 0.0,
+            gun: None,
         },
         NpcRole::Miner => NpcStats {
             hull: 600.0 + 120.0 * l,
@@ -55,6 +114,7 @@ pub fn npc_stats(role: NpcRole, level: u8) -> NpcStats {
             accel: 20.0,
             vmax: 12_000.0,
             bounty: 0.0,
+            gun: None,
         },
         NpcRole::Patrol => NpcStats {
             hull: 1800.0 + 500.0 * l,
@@ -64,6 +124,7 @@ pub fn npc_stats(role: NpcRole, level: u8) -> NpcStats {
             accel: 55.0,
             vmax: 25_000.0,
             bounty: 0.0,
+            gun: None,
         },
         NpcRole::Pirate => NpcStats {
             hull: 600.0 + 250.0 * l,
@@ -73,6 +134,7 @@ pub fn npc_stats(role: NpcRole, level: u8) -> NpcStats {
             accel: 60.0,
             vmax: 22_000.0,
             bounty: 400.0 * l,
+            gun: None,
         },
     }
 }
@@ -781,10 +843,11 @@ impl Sim {
             n.pos = n.pos + n.vel * dt;
             // Fire.
             if n.hostile && mode == AiMode::Pursue && stats.dps > 0.0 && d <= stats.range {
-                let accuracy = (1.05
-                    - 0.6 * d / stats.range
-                    - 0.0004 * (n.vel - ship_vel).length().min(1500.0))
-                .clamp(0.12, 0.9);
+                // The shells that land: dispersion over the distance (`arms::hit_chance`), less
+                // what a fast-moving target dodges.
+                let aim = stats.gun.map_or(0.0, |g| g.hit_chance(d));
+                let accuracy = (aim * (1.0 - 0.0004 * (n.vel - ship_vel).length().min(1500.0)))
+                    .clamp(0.12, 0.9);
                 damage_to_player += stats.dps * dt * accuracy * ai_mult;
                 self.enemy_beams.push((n.pos, ship_pos));
                 // Seasoned crews also loose a guided missile every twelve seconds.

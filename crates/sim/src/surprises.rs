@@ -79,6 +79,8 @@ pub(crate) struct Ctx {
     cryo: u32,
     terraform: bool,
     sick: bool,
+    /// Share of the people infected by the worst outbreak of the sector the ship is in.
+    sector_outbreak: f64,
     dose: f64,
     pub(crate) lingo: Option<f64>,
 }
@@ -161,6 +163,10 @@ impl Sim {
             cryo: self.crew.alive().filter(|p| p.body.cryo).count() as u32,
             terraform,
             sick: self.crew.alive().any(|p| p.disease.is_some()),
+            sector_outbreak: crate::epidemic::prevalence_at(data, seed, pos, t)
+                .into_iter()
+                .map(|(_, i)| i)
+                .fold(0.0, f64::max),
             dose: self
                 .crew
                 .alive()
@@ -270,6 +276,7 @@ impl Sim {
             Cond::Cryo(n) => ctx.cryo >= *n,
             Cond::Terraform => ctx.terraform,
             Cond::Sick => ctx.sick,
+            Cond::SectorOutbreak(p) => ctx.sector_outbreak >= *p,
             Cond::Dose(sv) => ctx.dose >= *sv,
             Cond::Language(cmp, v) => ctx.lingo.is_some_and(|x| cmp.test(x, *v)),
         }
@@ -690,6 +697,7 @@ pub(crate) mod tests {
             Cond::Cryo(n) => ctx.cryo = *n,
             Cond::Terraform => ctx.terraform = true,
             Cond::Sick => ctx.sick = true,
+            Cond::SectorOutbreak(p) => ctx.sector_outbreak = *p + 0.01,
             Cond::Dose(sv) => ctx.dose = *sv + 0.1,
             Cond::Language(cmp, v) => {
                 ctx.lingo = Some(if *cmp == vector_data::surprise::Cmp::Gt {

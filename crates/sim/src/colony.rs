@@ -1446,6 +1446,7 @@ impl Sim {
                 }
             }
         }
+        self.settle_station_food();
         // Catastrophes of the days each colony just lived through (see `planet`).
         for (ci, t0, t1) in advanced {
             let before = self.colonies[ci].log.len();

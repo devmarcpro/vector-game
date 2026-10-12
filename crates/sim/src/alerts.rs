@@ -56,6 +56,7 @@ pub enum Topic {
     Yard,
     Cryo,
     Mind,
+    Weather,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -242,6 +243,22 @@ impl Sim {
                     format!(
                         "DEFICIT D'ENERGIE : {:.0} KW DEMANDES, {:.0} KW",
                         sys.demand_kw, sys.supply_kw
+                    ),
+                ));
+            }
+        }
+        // Weather over the ground the ship is about to touch: wind, view and grip.
+        if let Some(s) = self.surface_state() {
+            if let Some(w) = self.site_weather_now(s.body).filter(|w| w.rough()) {
+                out.push(al(
+                    Warning,
+                    Topic::Weather,
+                    format!(
+                        "METEO AU SOL : {}, VENT {:.0} M/S, VISIBILITE {:.0} %, ADHERENCE {:.0} %",
+                        w.weather.label().to_uppercase(),
+                        w.wind,
+                        w.visibility * 100.0,
+                        w.grip * 100.0
                     ),
                 ));
             }
@@ -560,6 +577,13 @@ impl Sim {
                         "{n} : RAVAGEURS, {:.0} % DE LA PRODUCTION PERDUE",
                         col.pest * 100.0
                     ),
+                ));
+            }
+            if let Some((critical, what)) = col.terra.as_ref().and_then(|t| t.alarm()) {
+                out.push(al(
+                    if critical { Critical } else { Warning },
+                    Topic::Colony,
+                    format!("{n} : {what}"),
                 ));
             }
             if col.debt_days > 0.0 {

@@ -61,11 +61,6 @@ impl Galaxy {
         crate::names::Spec::new("galaxy").name(self.seed)
     }
 
-    /// Name of a galaxy far away (the `i`-th of the catalogue seen from this one).
-    pub fn distant_galaxy_name(&self, i: u64) -> String {
-        crate::names::Spec::new("galaxy").name(hash_coord(self.seed, i as i64, 0, 0x6A1A))
-    }
-
     /// Name of the 8x8x8-sector block (80 ly) a sector belongs to: the "secteur" of the maps.
     pub fn region_name(&self, coord: SectorCoord) -> String {
         let (x, y, z) = (
@@ -260,7 +255,6 @@ mod tests {
             .filter(|&i| g.nebula_name((i * 8, 3, 0)).is_some())
             .count();
         assert!((40..130).contains(&nebulae), "{nebulae}");
-        assert_ne!(g.distant_galaxy_name(1), g.distant_galaxy_name(2));
     }
     use super::*;
 

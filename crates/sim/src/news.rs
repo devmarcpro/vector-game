@@ -76,7 +76,7 @@ impl Sim {
     }
 
     /// Name of the place of a sector: the nearest star to its middle.
-    fn place_name(&self, pos: [f64; 3]) -> String {
+    pub(crate) fn place_name(&self, pos: [f64; 3]) -> String {
         // The nearest star: look close first (the search generates every sector it touches).
         let mut stars = self.galaxy.nearby(pos, 50.0);
         if stars.is_empty() {
@@ -194,6 +194,20 @@ impl Sim {
             if let Some(story) = harvest_story {
                 let place = self.place_name(cell_center(c));
                 self.news_push(e1 + delay, 3, d, story.replace("{p}", &place));
+            }
+            // The history of the sector, told again on its anniversaries.
+            let holder = politics::faction_of(&data, &galaxy, c);
+            for (year, story) in crate::history::anniversaries(
+                &data,
+                seed,
+                c,
+                holder,
+                crate::history::year_at(e0),
+                crate::history::year_at(e1),
+            ) {
+                let place = self.place_name(cell_center(c));
+                let t = (year - f64::from(crate::history::EPOCH_YEAR)) * crate::history::YEAR;
+                self.news_push(t + delay, 0, d, story.replace("{place}", &place));
             }
             let (b0, b1) = (
                 crate::arms::is_besieged(&data, &galaxy, seed, c, e0),

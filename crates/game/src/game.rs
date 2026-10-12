@@ -2946,6 +2946,17 @@ impl Game {
                 KeyCode::ArrowUp => self.pick_sel = (self.pick_sel + len - 1) % len,
                 KeyCode::ArrowDown => self.pick_sel = (self.pick_sel + 1) % len,
                 KeyCode::Escape => self.picker = false,
+                KeyCode::KeyV => {
+                    if let Some(&mi) = list.get(self.pick_sel) {
+                        match self.sim.shop_sell_module(mi) {
+                            Ok(v) => {
+                                let name = self.data.modules[mi].name.clone();
+                                self.say(format!("REVENDU: {name} ({v:.0} CR)"));
+                            }
+                            Err(e) => self.say(e.to_uppercase()),
+                        }
+                    }
+                }
                 KeyCode::Enter => {
                     if let Some(&mi) = list.get(self.pick_sel) {
                         match self.sim.swap_module(self.ship_sel, mi) {
@@ -4879,7 +4890,8 @@ mod tests {
         let (st, _) = g.sim.nearest_station().expect("station");
         g.sim.docked = Some(st);
         let frigate = g.data.hull_index("frigate").expect("hull");
-        g.sim.buy_fleet_ship_free_pub(frigate);
+        g.sim.credits = 1.0e9;
+        g.sim.buy_fleet_ship(frigate).expect("buy");
         g.screen = Screen::Fleet;
         assert_eq!(g.sim.fleet[0].order, vector_sim::fleet::FleetOrder::Trade);
         g.key(KeyCode::KeyO, None, true);

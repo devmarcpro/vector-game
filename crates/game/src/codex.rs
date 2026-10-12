@@ -2,7 +2,7 @@
 //! weapon, faction, anomaly and condition, generated from the real data (no hand-written numbers).
 use vector_data::GameData;
 
-pub const CATEGORIES: [&str; 63] = [
+pub const CATEGORIES: [&str; 64] = [
     "RESSOURCES",
     "MODULES",
     "ARMES",
@@ -308,9 +308,9 @@ fn entries(data: &GameData, cat: usize) -> Vec<usize> {
         57 => (0..data.ship_parts.len()).collect(),
         58 => (0..data.ship_plans.len()).collect(),
         59 => (0..data.projects.len()).collect(),
-        60 => (0..data.crops.len()).collect(),
-        61 => (0..CAPACITY_TEXT.len()).collect(),
-        62 => (0..finding_keys(data).len()).collect(),
+        61 => (0..data.crops.len()).collect(),
+        62 => (0..CAPACITY_TEXT.len()).collect(),
+        63 => (0..finding_keys(data).len()).collect(),
         _ => Vec::new(),
     }
 }
@@ -376,13 +376,13 @@ pub fn names(data: &GameData, cat: usize) -> Vec<String> {
             57 => data.ship_parts[i].name.clone(),
             58 => data.ship_plans[i].name.clone(),
             59 => data.projects[i].name.clone(),
-            60 => data
+            61 => data
                 .species_index(&data.crops[i].species)
                 .map_or(data.crops[i].species.clone(), |s| {
                     data.species[s].name.clone()
                 }),
-            61 => CAPACITY_TEXT[i].1.to_string(),
-            62 => finding_label(data, &finding_keys(data)[i]).0,
+            62 => CAPACITY_TEXT[i].1.to_string(),
+            63 => finding_label(data, &finding_keys(data)[i]).0,
             18 => format!(
                 "Appeler : {}",
                 vector_data::dialogue::ROLES[i].to_lowercase()
@@ -2244,7 +2244,7 @@ pub fn entry(data: &GameData, cat: usize, k: usize) -> Vec<String> {
                 vector_sim::body::OVERDOSE
             ));
         }
-        60 => {
+        61 => {
             let c = &data.crops[i];
             let sp = &data.species[data.species_index(&c.species).unwrap_or(0)];
             out.push(format!("{}  [famille {}]", sp.name, c.family));
@@ -2269,7 +2269,7 @@ pub fn entry(data: &GameData, cat: usize, k: usize) -> Vec<String> {
             out.push("Tourner les familles menage le sol (rotation, technologie d'agronomie) ; repeter la meme famille l'epuise deux fois plus vite.".to_string());
             out.push(sp.text.clone());
         }
-        61 => {
+        62 => {
             let (id, name, text) = CAPACITY_TEXT[i];
             out.push(format!("{name}  [capacite {id}]"));
             out.push(text.to_string());
@@ -2281,7 +2281,7 @@ pub fn entry(data: &GameData, cat: usize, k: usize) -> Vec<String> {
                 .collect();
             out.push(format!("Debloquee par : {}", by.join(", ")));
         }
-        62 => {
+        63 => {
             let key = &finding_keys(data)[i];
             let (name, how) = finding_label(data, key);
             out.push(name);

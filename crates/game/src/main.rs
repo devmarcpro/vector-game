@@ -1071,6 +1071,9 @@ fn works_scene(g: &mut game::Game, ci: usize, scene: &str) {
     ] {
         stock(g, id, 6000.0);
     }
+    // A town that eats and drinks for the length of the scene.
+    stock(g, "food", 60_000.0);
+    stock(g, "water", 120_000.0);
     match scene {
         "industry" => {
             for (id, n) in [

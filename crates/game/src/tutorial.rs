@@ -133,7 +133,10 @@ pub fn hint_line(g: &Game) -> String {
             "HAUT/BAS EMPLACEMENT  ENTREE INSTALLER/REMPLACER  X RETIRER  Y CHANTIER NAVAL  H/ECHAP RETOUR"
         }
         Screen::Ship => "HAUT/BAS EMPLACEMENT  H/ECHAP RETOUR",
-        Screen::Shipyard => "HAUT/BAS COQUE  ENTREE ACHETER (REPRISE 50%)  ECHAP RETOUR",
+        Screen::Shipyard => {
+            "HAUT/BAS COQUE  ENTREE ACHETER (REPRISE 50%)  C CONCEVOIR SON VAISSEAU  ECHAP RETOUR"
+        }
+        Screen::Designer => crate::designer_view::hint(g),
         Screen::Crew if g.gear_mode => {
             "FLECHES CHOISIR UN EQUIPEMENT  ENTREE EQUIPER (IL FAUT L'OBJET EN SOUTE)  U RETIRER  E/ECHAP RETOUR A LA LISTE"
         }
@@ -243,6 +246,14 @@ pub fn help_lines(screen: Screen) -> &'static [&'static str] {
         Screen::Shipyard => &[
             "Haut/Bas : coque   Entree : acheter / transferer",
             "Les coques verrouillees demandent une technologie.",
+            "C : concevoir son propre vaisseau (onglets CONCEPTION, EQUIPEMENT, PLANS ET COMMANDES)",
+        ],
+        Screen::Designer => &[
+            "CONCEPTION : choisissez une piece a gauche, cliquez la grille pour la poser (couche = etage, Debut/Fin) ; symetrie M ; les pieces rouges ne sont pas reliees au noyau.",
+            "Les raccords comptent : un cone d'etrave ne se fixe que derriere, une aile que sur les cotes, un train que sous une piece.",
+            "EQUIPEMENT : cliquez une case, un emplacement, puis un module (Entree installe, X retire). Les moteurs hors de l'axe font tourner le vaisseau.",
+            "PLANS ET COMMANDES : acheter, copier, exporter ou importer un plan ; commander la construction (equipes, delai, materiaux en soute) ; embarquer, demonter ou refondre.",
+            "Glisser sur l'apercu : tourner le vaisseau. Tab : onglet suivant. N : nommer le plan. Echap : retour.",
         ],
         Screen::Crew => &[
             "Gauche/Droite : poste   T : quart   X : debarquer",

@@ -101,6 +101,9 @@ impl Game {
         if self.ext_active() {
             self.ext_orbit(-f64::from(dx) * 0.008, f64::from(dy) * 0.008);
         }
+        if self.screen == Screen::Designer {
+            self.dz_drag(dx, dy);
+        }
         if self.screen == Screen::Surface && self.surf_globe {
             self.surf_spin += f64::from(dx) * 0.01;
         }

@@ -56,14 +56,16 @@ mod rules_effects;
 pub mod save;
 pub mod scene;
 pub mod science;
-pub mod start;
-pub mod society;
 pub mod securities;
+pub mod shipwright;
+pub mod society;
+pub mod start;
 pub mod surgery;
 pub mod surprises;
 pub mod trading;
 pub mod treat;
 pub mod voyage;
+pub mod yard;
 
 use autopilot::Autopilot;
 use cargo::Cargo;
@@ -293,6 +295,10 @@ pub enum Event {
     MeteorImpact {
         damage: f64,
     },
+    /// A ship ordered at a yard has been delivered to the fleet.
+    ShipBuilt {
+        name: String,
+    },
 }
 
 pub struct Sim {
@@ -356,6 +362,15 @@ pub struct Sim {
     pub laser_on: bool,
     /// Spare modules owned by the player, by module index.
     pub module_stock: Vec<u32>,
+    /// Ship plans of the player (see `shipwright`), the ships built from them (their hulls are
+    /// appended to `data.hulls` from index `base_hulls`), the yard's orders and the plans bought.
+    pub blueprints: Vec<shipwright::Blueprint>,
+    pub next_blueprint: u32,
+    pub custom_ships: Vec<yard::CustomShip>,
+    pub base_hulls: usize,
+    pub yard_orders: Vec<yard::YardOrder>,
+    pub next_order: u32,
+    pub bought_plans: Vec<String>,
     pub effective: Effective,
     pub crew: Crew,
     pub galaxy: Galaxy,
@@ -464,6 +479,13 @@ impl Sim {
         let mut s = Sim {
             system,
             module_stock: vec![0; data.modules.len()],
+            blueprints: Vec::new(),
+            next_blueprint: 1,
+            custom_ships: Vec::new(),
+            base_hulls: data.hulls.len(),
+            yard_orders: Vec::new(),
+            next_order: 1,
+            bought_plans: Vec::new(),
             data,
             ship,
             bodies,
@@ -823,6 +845,7 @@ impl Sim {
         self.update_colonies();
         self.epidemic_tick();
         self.update_fleet();
+        self.update_yard();
         self.tick_research(dt);
         self.tick_antimatter(dt);
         self.tick_exotic_fields(dt);

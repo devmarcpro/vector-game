@@ -71,13 +71,14 @@ pub fn place_of(s: Screen) -> Place {
         Rogue | Expedition => Place::Space(EXPLORATION),
         Empire | Colony | Fleet | Factions => Place::Space(COLONIES),
         Journal | Codex | Tech | Proto => Place::Space(CODEX),
-        MainMenu | NewGame | Hub | Pause | Options | Rules | Destroyed => Place::System,
+        MainMenu | NewGame | Hub | Pause | Options | Rules | Destroyed | Designer => Place::System,
     }
 }
 
 /// Every screen of the game (the menu's test walks it).
 #[cfg(test)]
-pub const ALL_SCREENS: [Screen; 35] = [
+pub const ALL_SCREENS: [Screen; 36] = [
+    Screen::Designer,
     Screen::MainMenu,
     Screen::NewGame,
     Screen::Hub,

@@ -2,9 +2,11 @@
 pub mod chemistry;
 pub mod dialogue;
 pub mod medical;
+pub mod ship;
 pub mod surprise;
 pub use medical::{BodyPart, Drug, WoundKind};
 use serde::{Deserialize, Serialize};
+pub use ship::{ShipPart, ShipPlanDef};
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 
@@ -1073,6 +1075,8 @@ pub struct GameData {
     pub history: HistoryData,
     pub geology: Vec<GeoDef>,
     pub cosmos: Vec<CosmosDef>,
+    pub ship_parts: Vec<ShipPart>,
+    pub ship_plans: Vec<ShipPlanDef>,
 }
 
 /// The tasks the ship's AI splits its computing power between (fixed ids, in this order).
@@ -1276,6 +1280,8 @@ impl GameData {
             history: read(&dir.join("history.ron"))?,
             geology: read(&dir.join("geology.ron"))?,
             cosmos: read(&dir.join("cosmos.ron"))?,
+            ship_parts: read(&dir.join("ship_parts.ron"))?,
+            ship_plans: read(&dir.join("ship_plans.ron"))?,
         };
         // Generated extension files (tools/gen_scale.py) extend the hand-written tables.
         let mut extra_resources: Vec<Resource> = read(&dir.join("resources_organs.ron"))?;
@@ -1786,6 +1792,7 @@ impl GameData {
         self.validate_dialogues()?;
         self.validate_sites()?;
         self.validate_mind_history()?;
+        self.validate_ship()?;
         self.validate_civilisations()?;
         self.validate_gear()?;
         self.validate_religions()?;

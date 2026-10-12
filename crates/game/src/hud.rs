@@ -139,6 +139,9 @@ pub fn kind_color(k: BodyKind) -> u32 {
         BodyKind::Star(S::K) => 0x00FF_A040,
         BodyKind::Star(S::M) => 0x00FF_6040,
         BodyKind::Star(S::D) => 0x00E8_E8FF,
+        BodyKind::Star(S::N) => 0x00C0_D8FF,
+        BodyKind::Star(S::X) => 0x0030_3038,
+        BodyKind::Star(S::R) => 0x00A0_3828,
         BodyKind::Planet(p) | BodyKind::Moon(p) => match p {
             P::Barren => 0x00A8_A8A8,
             P::Dwarf => 0x0088_90A0,
@@ -158,6 +161,8 @@ pub fn kind_color(k: BodyKind) -> u32 {
             AstType::S => 0x00C8_A870,
             AstType::M => 0x00B8_C8D8,
             AstType::I => 0x0088_C8FF,
+            AstType::V => 0x00D8_9878,
+            AstType::D => 0x0070_5040,
         },
         BodyKind::Station => 0x0040_E8E8,
         BodyKind::Anomaly(_) => 0x00C0_60FF,
@@ -425,15 +430,23 @@ fn draw_cockpit(fb: &mut Framebuffer, v: &View) {
         let px = b.radius / dist.max(1.0) * focal;
         let spin = Mat3::rot_y(v.sim.time * 2.0e-5 + i as f64);
         match b.kind {
-            BodyKind::Star(c) => cam.draw_sphere(
-                fb,
-                b.pos,
-                b.radius,
-                &spin,
-                4,
-                8,
-                kind_color(BodyKind::Star(c)),
-            ),
+            BodyKind::Star(c) => {
+                // A variable star swells and shrinks with its light.
+                let swell = (v.sim.system.luminosity_at(v.sim.time) / v.sim.system.luminosity)
+                    .max(0.0)
+                    .sqrt()
+                    .sqrt();
+                let swell = if i == 0 { swell } else { 1.0 };
+                cam.draw_sphere(
+                    fb,
+                    b.pos,
+                    b.radius * swell,
+                    &spin,
+                    4,
+                    8,
+                    kind_color(BodyKind::Star(c)),
+                )
+            }
             BodyKind::Planet(k) if k.is_giant() => draw_ball(fb, &cam, v, i, col, true),
             BodyKind::Planet(_) | BodyKind::Moon(_) => {
                 // A surveyed solid world close enough to see: its relief, seas and continents;
@@ -476,6 +489,7 @@ fn draw_cockpit(fb: &mut Framebuffer, v: &View) {
                 fb.line(x - 3.0, y, x + 3.0, y, col);
                 fb.line(x, y - 3.0, x, y + 3.0, col);
             }
+            crate::sky_view::overlay(fb, &cam, v, i, x, y, px);
             // Atmosphere halo and giant rings, once the body is big enough to show them.
             if px > 10.0 && v.sim.scan[i] >= SCAN_SURVEYED {
                 if let BodyKind::Planet(k) | BodyKind::Moon(k) = b.kind {
@@ -483,10 +497,6 @@ fn draw_cockpit(fb: &mut Framebuffer, v: &View) {
                     let r = px as f32;
                     if matches!(k, P::Terran | P::Ocean | P::Venusian | P::Tundra) || k.is_giant() {
                         ellipse(fb, x, y, r * 1.08, r * 1.08, dimmed(col, 0.5));
-                    }
-                    if k.is_giant() && i % 2 == 0 {
-                        ellipse(fb, x, y, r * 1.9, r * 0.45, dimmed(col, 0.7));
-                        ellipse(fb, x, y, r * 2.2, r * 0.52, dimmed(col, 0.4));
                     }
                 }
             }
@@ -713,7 +723,16 @@ fn draw_map(fb: &mut Framebuffer, v: &View) {
             );
         }
         match cb.kind {
-            BodyKind::Star(_) => fb.circle(x, y, r.max(4.0), SUN),
+            BodyKind::Star(c) => fb.circle(
+                x,
+                y,
+                r.max(4.0),
+                if v.sim.scan[i] > 0 {
+                    kind_color(BodyKind::Star(c))
+                } else {
+                    SUN
+                },
+            ),
             BodyKind::Asteroid(_) => fb.plot(x as i32, y as i32, col),
             BodyKind::Anomaly(_) => {
                 fb.circle(x, y, 4.0, 0x00C0_60FF);
@@ -725,6 +744,7 @@ fn draw_map(fb: &mut Framebuffer, v: &View) {
             }
             _ => fb.circle(x, y, r.min(8.0), col),
         }
+        crate::sky_view::map_overlay(fb, v, i, &to_px);
         let shown = match cb.kind {
             BodyKind::Asteroid(_) => false,
             BodyKind::Anomaly(_) => true,
@@ -1203,13 +1223,70 @@ fn draw_target_panel(fb: &mut Framebuffer, v: &View, rows: usize, cols: usize) {
         &format!("TYPE  {}", kind_label(cb.kind)),
         AMBER,
     );
+    if let BodyKind::Star(_) = cb.kind {
+        // What the star is, and what it does to whoever comes close.
+        let sys = &sim.system;
+        let what = if i == 0 {
+            sys.stage.label().to_string()
+        } else {
+            "ETOILE COMPAGNE".to_string()
+        };
+        let extra = match (i, sys.variable(), sys.pulsar()) {
+            (0, Some(var), _) => format!(
+                "  VARIABLE P {:.0} J +/-{:.0} %",
+                var.period_days,
+                var.amplitude * 100.0
+            ),
+            (0, _, Some(p)) => format!(
+                "  {} P {:.3} S",
+                if p.magnetar { "MAGNETAR" } else { "PULSAR" },
+                p.period_s
+            ),
+            (0, _, _) if sys.accreting() => "  DISQUE D'ACCRETION".to_string(),
+            _ => String::new(),
+        };
+        fb.text(x, rows - 4, &format!("{what}{extra}"), DIM);
+        fb.text(
+            x,
+            rows - 3,
+            &format!(
+                "RAYON {}  T {:.0} K  {:.2} MSOL",
+                fmt_dist(t.radius),
+                cb.temp,
+                cb.mass / vector_world::orbit::M_SUN
+            ),
+            DIM,
+        );
+        let dose = if i == 0 {
+            sys.star_radiation(range.max(1.0e6))
+        } else {
+            0.0
+        };
+        let gain = sys.lens_gain(r.length());
+        fb.text(
+            x,
+            rows - 2,
+            &format!(
+                "DOSE ICI {dose:.2} GY/H  LENTILLE x{gain:.1}  {} COMPAGNONS",
+                sys.companions().len()
+            ),
+            if dose > 0.5 { RED } else { DIM },
+        );
+        return;
+    }
     if let BodyKind::Anomaly(a) = cb.kind {
         let def = sim.data.anomaly_def(a.id());
+        let tail = sim
+            .system
+            .comet_tail(i, sim.time)
+            .map_or(String::new(), |t| {
+                format!("  QUEUE {}", fmt_dist(t.length()))
+            });
         fb.text(
             x,
             rows - 4,
             &format!(
-                "RAYON {}  ZONE {}",
+                "RAYON {}  ZONE {}{tail}",
                 fmt_dist(t.radius),
                 fmt_dist(def.map_or(0.0, |d| d.radius))
             ),
@@ -1297,6 +1374,10 @@ pub fn body_label<'a>(v: &'a View, i: usize) -> &'a str {
 
 pub fn kind_label(k: BodyKind) -> String {
     match k {
+        BodyKind::Star(vector_world::StarClass::D) => "NAINE BLANCHE".into(),
+        BodyKind::Star(vector_world::StarClass::N) => "ETOILE A NEUTRONS".into(),
+        BodyKind::Star(vector_world::StarClass::X) => "TROU NOIR STELLAIRE".into(),
+        BodyKind::Star(vector_world::StarClass::R) => "PLANETE ERRANTE".into(),
         BodyKind::Star(c) => format!("ETOILE {}", c.letter()),
         BodyKind::Planet(p) => format!("PLANETE {}", p.label()),
         BodyKind::Moon(p) => format!("LUNE {}", p.label()),

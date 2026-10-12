@@ -214,6 +214,7 @@ pub fn help_lines(screen: Screen) -> &'static [&'static str] {
             "Tab T Y R : cibles (proche, asteroide, station, PNJ)",
             "V : laser de minage   Ctrl : tir   B : missiles",
             "G : pilote auto   D : amarrer   M : carte systeme",
+            "Anneaux = blocs de glace minables ; queue de comete = plasma qui abime l'electronique ; pulsar, trou noir : rayonnement et lentille (cible = detail)",
             "PgUp/PgDn : temps   P : pause   Echap : menu",
             "H vaisseau  K equipage  I soute  J journal  X factions",
             "L galaxie  F2 empire  F3 flotte  F4 techno  F6 codex  Entree : appeler le vaisseau cible",
@@ -279,7 +280,9 @@ pub fn help_lines(screen: Screen) -> &'static [&'static str] {
         Screen::Galaxy => &[
             "Haut/Bas : etoile   +/- : zoom   Entree : saut FTL",
             "Retour arriere : annuler une charge de saut",
-            "La lettre est la classe stellaire (O B A F G K M D).",
+            "La lettre est la classe stellaire (O B A F G K M, D naine blanche, N neutrons, X trou noir, R monde errant).",
+            "Les cercles sont des nebuleuses, amas et restes de supernova (rayonnement, capteurs brouilles, labos plus efficaces).",
+            "Ondes gravitationnelles : un labo qui tourne les analyse et gagne de la recherche (voir le journal).",
         ],
         Screen::Contracts => &["Entree : accepter / livrer   X : abandonner"],
         Screen::Bank => &[
@@ -362,7 +365,7 @@ pub fn help_lines(screen: Screen) -> &'static [&'static str] {
         ],
         Screen::Surface => &[
             "Fleches : deplacer le curseur (Maj : x4)",
-            "Tab : couche (biomes, altitude, temperature, humidite, meteo, vie, nuages) ; lacs, fleuves et glaces des saisons sur la couche biomes",
+            "Tab : couche (biomes, altitude, temperature, humidite, meteo, vie, nuages, biosphere, geologie : plaques, failles, volcans, gisements) ; lacs, fleuves et glaces des saisons sur la couche biomes",
             "G : globe fil de fer avec courbes de niveau (Gauche/Droite : tourner)",
             "F : codex   F8 ou Echap : retour au vol",
         ],

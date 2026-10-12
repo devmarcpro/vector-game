@@ -215,3 +215,38 @@ Le jeu avait une trentaine d'écrans atteints par des touches éparses (F2, F4, 
 Un scénario (`data/scenarios.ron`) = une liste de vaisseaux possibles (coque + modules, tous vérifiés viables par test), crédits, soute, points d'équipage, technologies, réputations, prime. `start::new_sim_with` ne contient aucune règle de plus : il règle l'état de départ. Le **Naufrage** n'a pas de système parallèle : c'est le vaisseau normal avec des modules endommagés (la santé par module existe déjà), réparé par les ingénieurs avec des pièces détachées (mécanique existante), posé sur un monde (atterrissage `parked` existant), exploré à pied (`rogue.rs`). Seul ajout de règle : verser le carburant de la soute au réservoir (`refuel_from_hold`), qui sert aussi à tout butin de carburant. Les aléas ordinaires (éruptions, météores) restent actifs : un vaisseau cloué au sol peut être abîmé de nouveau, c'est voulu.
 ## Vue a la troisieme personne
 Un seul rendu de vaisseau : `ship_model::build(data, design, state)` est une fonction pure (design + etat -> triangles), utilisee par la camera externe, les PNJ, les stations, le codex et le chantier naval ; `hud::draw_cockpit` reste le seul dessinateur de la scene (la vue externe change la camera et remplace les filaires des vaisseaux/stations par les modeles, rien d'autre). Le rasteriseur est logiciel et z-buffer (`ship_model::draw`), distinct des lignes additives de `Framebuffer::plot` : les parties opaques ecrivent avec `px_set`, les flammes sont additives et testees en profondeur sans ecrire. La poussee de la flamme vient de la sim (`Sim.main_throttle`, part de la poussee principale utilisee, non sauvegardee) et non des touches. Le train sort quand le vaisseau est a moins de 600 m du sol reel (relief de `Terrain::sample`) et plus lent que 250 m/s ; l'ombre et la poussiere n'existent qu'au-dessus d'un monde solide ; le vaisseau n'est pas pose par la sim (l'atterrissage est le domaine d'un autre agent) : seul le rendu remonte le modele pour que les pieds touchent. Choix assume : la lumiere est plate par triangle (style vectoriel), sans ombre portee sur la coque elle-meme.
+## Le relief d'un monde derive de sa tectonique (`world/geology.rs`)
+
+Un monde solide n'est plus un simple bruit : `surface::generate_with(seed, kind, temp, GeoParams)` tire
+des plaques (6 a 11 sur un monde a plaques, 10 a 15 sur un monde volcanique, une seule sur un couvercle
+fige, aucune structure sur un monde mort) autour de points de la sphere, chacune avec un pole d'Euler ;
+la vitesse relative de deux plaques voisines projetee sur la normale de leur frontiere donne le type de
+frontiere (convergente, divergente, transformante). Le relief brut est la somme du bruit d'avant et de la
+contribution tectonique (decalage continental +0,30 / oceanique -0,35, chaines de montagnes, fosses,
+dorsales, rifts, bosses de points chauds), puis le niveau de la mer est choisi par quantile : la part de
+mers de chaque type de monde ne change pas. L'erosion (`geology::erode`) s'applique ensuite pendant l'age
+du systeme (hydraulique ~ humidite x age, eolienne si l'air est assez dense, glaciaire aux hautes
+latitudes) : elle ne change jamais le signe d'une case (la terre reste terre), elle abaisse les montagnes et
+depose des sediments dans les bassins. Les gisements et la roche sont deduits du resultat (veines sur les
+frontieres convergentes et les arcs, sulfures sur les dorsales, kimberlite loin de toute frontiere,
+evaporites dans les bassins arides, petrole dans les sediments des mondes qui ont eu la vie...). Un seul
+systeme : l'`Activity` de `physics.rs` decide de tout (plaques, volcanisme, mort), la meme fonction
+(`Geology::quake_site`, `eruption_site`) choisit ou frappent les catastrophes de `planet.rs`, et les
+gisements alimentent le sol des colonies existantes (`colony::site_deposits` + `geo.rs`) au lieu d'un
+inventaire parallele. Les cartes des mondes changent donc par rapport aux versions precedentes (meme
+graine, autre relief) ; rien n'est stocke, donc aucune sauvegarde ne casse, mais les villes d'une
+colonie deja fondee sont recalculees sur la nouvelle carte.
+
+## Les etoiles evoluees et les objets du ciel sont des corps du systeme (`world/stellar.rs`, `cosmos.rs`)
+
+Nouvelles classes d'etoiles N (etoile a neutrons), X (trou noir stellaire) et R (monde errant) : elles
+prennent la place de 55 % des tirages de la classe D (naine blanche), de sorte que les autres etoiles ne
+changent pas. Le stade (`StarStage`) vient d'un tirage par hash : quelques % des etoiles de chaque classe
+sont des geantes/supergeantes rouges (rayon, temperature, luminosite coherents : L = R^2 (T/5772)^4),
+variables (`System::variable`) ; les panneaux solaires suivent la courbe de lumiere (`Sim::solar_flux`).
+Tout ce qui s'ajoute a un systeme (compagnons, anneaux, Troyens, orbites des cometes) est calcule apres le
+reste avec un flux aleatoire a part : rien de ce qui existait ne bouge. Les anneaux sont de vrais
+asteroides (type glace, parent = la planete) a l'interieur de la limite de Roche : le minage, le radar et
+le codex les traitent comme n'importe quel astéroide. Le milieu interstellaire est une grille de cellules
+de 40 al avec au plus un objet chacune (`Galaxy::features_in_cell`) ; ses effets passent par
+`Sim::environment_at` (rayonnement, capteurs) et `ship_research_rate` (interet), comme les anomalies.

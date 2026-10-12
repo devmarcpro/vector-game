@@ -1,5 +1,6 @@
 //! Ship combat: beams, kinetic projectiles with real ballistics, guided missiles, mines, shields,
 //! armour, point defence, hostile AI, wrecks, salvage and boarding.
+use crate::arms::{self, HitKind};
 use crate::crew::DAY;
 use crate::npc::{AiMode, NpcRole, NpcState};
 use crate::{Event, ShipInput, Sim, SHIP_RADIUS};
@@ -12,7 +13,10 @@ pub const MAX_WRECKS: usize = 24;
 pub const SALVAGE_RANGE: f64 = 600.0;
 pub const BOARD_RANGE: f64 = 500.0;
 /// Fraction of damage that goes to the structure (the rest hurts modules).
-const STRUCTURE_SHARE: f64 = 0.6;
+pub(crate) const STRUCTURE_SHARE: f64 = 0.6;
+/// Seconds between the missiles of an experienced hostile crew, and what one does.
+const MISSILE_PERIOD: f64 = 12.0;
+const MISSILE_DAMAGE: f64 = 120.0;
 const HAIL_RANGE: f64 = 6_000.0;
 const HAIL_TIME: f64 = 40.0;
 /// Distance at which NPCs give up the chase.
@@ -169,29 +173,45 @@ impl Sim {
 
     // ---- damage ----------------------------------------------------------
 
-    /// Hit the player's ship: shield, then armour, then structure and modules.
+    /// Hit the player's ship with a kinetic blow (see `damage_player_hit`).
     pub fn damage_player(&mut self, dmg: f64) {
+        self.damage_player_hit(dmg, HitKind::Kinetic);
+    }
+
+    /// Hit the player's ship: the escorts take their share, then the shield, the reactive and
+    /// ablative plates and the armour, and what gets through is split between the hull, the
+    /// modules and the cabins by how much energy the hit carries (`arms::split_hit`).
+    pub fn damage_player_hit(&mut self, dmg: f64, kind: HitKind) {
         let dmg = dmg * self.rules.damage;
         if dmg <= 0.0 || self.destroyed || self.rules.invulnerable {
             return;
         }
+        let screen = self.escort_screen();
+        let dmg = if screen > 0.0 {
+            self.escort_absorb(dmg * screen);
+            dmg * (1.0 - screen)
+        } else {
+            dmg
+        };
         let now = self.time;
+        let armour = self.armour_profile();
+        let z = crate::arms::split_hit(dmg, kind, self.ship.sys.shield_pts, &armour);
+        self.last_zones = z;
         let s = &mut self.ship;
         s.sys.last_hit = now;
-        let absorbed = s.sys.shield_pts.min(dmg);
-        s.sys.shield_pts -= absorbed;
-        let mut rest = dmg - absorbed;
-        rest /= 1.0 + 0.25 * self.effective.armor;
+        s.sys.shield_pts -= z.shield;
+        let rest = z.total_through();
         if rest <= 0.0 {
             return;
         }
-        s.hull = (s.hull - rest * STRUCTURE_SHARE).max(0.0);
+        s.hull = (s.hull - z.hull).max(0.0);
         let pick = hash_coord(self.system.seed, (now * 100.0) as i64, 5, 17);
         let data = std::sync::Arc::clone(&self.data);
-        s.sys
-            .damage_modules(&data, &s.design, rest * (1.0 - STRUCTURE_SHARE), pick);
-        s.refresh_stats(&data);
-        self.injure_crew(rest);
+        s.sys.damage_modules(&data, &s.design, z.modules, pick);
+        self.ablate_armour(z.ablated);
+        self.ship.refresh_stats(&data);
+        // The shock of the whole hit shakes the crew; a penetrating one reaches the cabins.
+        self.injure_crew(0.4 * rest + 4.0 * z.crew);
         if self.ship.hull <= 0.0 {
             self.destroyed = true;
             self.events.push(Event::PlayerDestroyed);
@@ -200,6 +220,12 @@ impl Sim {
 
     /// Hit NPC `k`; returns true if it was destroyed (and removed).
     pub fn damage_npc(&mut self, k: usize, dmg: f64) -> bool {
+        let dmg = if self.is_ambush(k) {
+            self.note_ambush();
+            dmg * arms::AMBUSH_MULT
+        } else {
+            dmg
+        };
         let Some(n) = self.npcs.get_mut(k) else {
             return false;
         };
@@ -210,6 +236,9 @@ impl Sim {
         n.provoked = true;
         let (role, faction) = (n.role, n.faction);
         if first_provocation {
+            if let Some(f) = faction {
+                self.treaty_violation(f);
+            }
             self.change_reputation(faction, -10.0);
             self.mark_wanted(faction, 3.0);
             self.offend(faction, "agression");
@@ -302,6 +331,12 @@ impl Sim {
             cargo,
             born: self.time,
         });
+        if n.role != NpcRole::Pirate {
+            self.note_destroyed(n.faction, n.hull_max);
+            if n.disabled {
+                self.record_war_crime(n.faction, "un vaisseau neutralise a ete acheve");
+            }
+        }
         if n.hostile && n.role == NpcRole::Pirate {
             self.credits += stats.bounty;
             self.change_reputation(self.faction, 1.5);
@@ -323,8 +358,11 @@ impl Sim {
         self.enemy_beams.clear();
         self.ecm_range = 0.0;
         self.player_weapons(dt, input);
+        self.decoys_tick(dt);
+        self.escort_tick(dt);
         self.step_projectiles(dt);
         self.npc_combat(dt);
+        self.battery_tick(dt);
         // Shield recharge.
         let cap = self.effective.shield_cap;
         let s = &mut self.ship.sys;
@@ -507,6 +545,10 @@ impl Sim {
         let ship_pos = self.ship.pos;
         let ship_vel = self.ship.vel;
         let ecm = self.ecm_range;
+        // A heat seeker picks the brightest source: the ship's own heat or a flare.
+        let ship_kw = self.emission_kw();
+        let decoys = self.decoys.clone();
+        let mut spent: Vec<usize> = Vec::new();
         let mut hits_npc: Vec<(usize, f64)> = Vec::new();
         let mut hit_player = 0.0;
         let mut keep: Vec<Projectile> = Vec::with_capacity(self.projectiles.len());
@@ -529,7 +571,12 @@ impl Sim {
                         .iter()
                         .find(|n| n.id == *id)
                         .map(|n| (n.pos, n.vel)),
-                    (Owner::Npc(_), _) => Some((ship_pos, ship_vel)),
+                    (Owner::Npc(_), _) => {
+                        match arms::seeker_pick(p.pos, ship_pos, ship_kw, &decoys) {
+                            Some(i) => Some((decoys[i].pos, decoys[i].vel)),
+                            None => Some((ship_pos, ship_vel)),
+                        }
+                    }
                     _ => None,
                 };
                 let mut turn_rate = *turn;
@@ -573,6 +620,16 @@ impl Sim {
             let b = p.pos + p.vel * dt;
             p.pos = b;
             let mut consumed = false;
+            // A missile that reaches a flare blows up on it.
+            if matches!(p.owner, Owner::Npc(_)) && matches!(p.kind, ProjKind::Missile { .. }) {
+                if let Some(i) = decoys
+                    .iter()
+                    .position(|d| (d.pos - p.pos).length() < arms::DECOY_FUSE)
+                {
+                    spent.push(i);
+                    continue;
+                }
+            }
             match (&p.kind, p.owner) {
                 (ProjKind::Mine { armed_at }, Owner::Player) => {
                     if now >= *armed_at {
@@ -619,6 +676,13 @@ impl Sim {
             }
         }
         self.projectiles = keep;
+        spent.sort_unstable();
+        spent.dedup();
+        for i in spent.into_iter().rev() {
+            if i < self.decoys.len() {
+                self.decoys.remove(i);
+            }
+        }
         // Apply hits from the highest index down so removals do not shift pending targets.
         hits_npc.sort_by_key(|h| std::cmp::Reverse(h.0));
         for (k, d) in hits_npc {
@@ -641,6 +705,7 @@ impl Sim {
         let ship_vel = self.ship.vel;
         let ai_mult = self.rules.ai_aggression;
         let mut damage_to_player = 0.0;
+        let mut launches: Vec<(usize, Vec3, Vec3)> = Vec::new();
         let mut demands: Vec<(usize, f64)> = Vec::new();
         let mut ended: Vec<usize> = Vec::new();
         for k in 0..self.npcs.len() {
@@ -656,7 +721,13 @@ impl Sim {
             let rel = ship_pos - n.pos;
             let d = rel.length().max(1.0);
             let mut mode = mode;
-            if n.hull < 0.25 * n.hull_max && n.role != NpcRole::Patrol {
+            // A pirate band breaks off when its doctrine says so; the others when hurt badly.
+            let flee_below = if n.role == NpcRole::Pirate {
+                arms::pirate_doctrine(self.system.seed, n.id).flee_below()
+            } else {
+                0.25
+            };
+            if n.hull < flee_below * n.hull_max && n.role != NpcRole::Patrol {
                 mode = AiMode::Flee;
                 n.state = NpcState::Combat { mode };
             }
@@ -716,7 +787,31 @@ impl Sim {
                 .clamp(0.12, 0.9);
                 damage_to_player += stats.dps * dt * accuracy * ai_mult;
                 self.enemy_beams.push((n.pos, ship_pos));
+                // Seasoned crews also loose a guided missile every twelve seconds.
+                let phase = f64::from(n.id) * 1.7;
+                if n.level >= 2
+                    && d > 2000.0
+                    && ((now + phase) / MISSILE_PERIOD).floor()
+                        != ((now - dt + phase) / MISSILE_PERIOD).floor()
+                {
+                    launches.push((k, n.pos, n.vel + dir * 150.0));
+                }
             }
+        }
+        for (k, pos, vel) in launches {
+            let id = self.npcs[k].id;
+            self.projectiles.push(Projectile {
+                pos,
+                vel,
+                damage: MISSILE_DAMAGE,
+                life: 40.0,
+                owner: Owner::Npc(id),
+                kind: ProjKind::Missile {
+                    target: None,
+                    turn: 0.8,
+                    top_speed: 650.0,
+                },
+            });
         }
         for k in ended.into_iter().rev() {
             self.end_combat(k);
@@ -730,7 +825,7 @@ impl Sim {
             self.events.push(Event::PirateDemand { amount });
         }
         if damage_to_player > 0.0 {
-            self.damage_player(damage_to_player);
+            self.damage_player_hit(damage_to_player, HitKind::Beam);
         }
     }
 
@@ -815,6 +910,7 @@ impl Sim {
             total += got;
         }
         w.cargo.retain(|(_, kg)| *kg > 0.5);
+        self.findings.insert("wreck:salvaged".to_string());
         if self.wrecks[i].cargo.is_empty() {
             self.wrecks.remove(i);
         }
@@ -882,6 +978,15 @@ impl Sim {
             }
             Ok(BoardOutcome::Repelled { casualties })
         }
+    }
+
+    /// Take a ship out of the sky without wreck, bounty or crime (a prize).
+    pub(crate) fn remove_npc_silent(&mut self, k: usize) {
+        self.destroy_npc_silent(k);
+    }
+
+    pub(crate) fn mark_wanted_pub(&mut self, faction: Option<usize>, days: f64) {
+        self.mark_wanted(faction, days);
     }
 
     /// Remove a captured ship without wreck or bounty.

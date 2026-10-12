@@ -116,6 +116,14 @@ pub struct Module {
     pub aperture: f64,
     /// Heat radiated while firing (kW): a firing ship is seen by passive sensors.
     pub flash: f64,
+    /// Armour that burns away: the share (0..1) of what it absorbs that eats its own structure.
+    pub ablative: f64,
+    /// Reactive armour: the share (0..1) of a kinetic or missile hit it cancels by exploding.
+    pub reactive: f64,
+    /// Decoy launcher: heat (kW) of each flare, which a seeker prefers to a colder ship.
+    pub decoy: f64,
+    /// Active sensor: radiated power (kW) that lights up the ship for any passive sensor.
+    pub sensor: f64,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -293,6 +301,32 @@ pub struct Building {
     pub source: String,
     /// Energy storage of the building, kWh (batteries).
     pub battery: f64,
+    /// Hectares of fields it works (see `colony_works`): open land or, with `shelter`, a greenhouse.
+    pub farm: f64,
+    /// Share of the weather a farm is protected from (greenhouse 0.8, hydroponic hall 1).
+    pub shelter: f64,
+    /// Hectares of fields it irrigates.
+    pub irrigation: f64,
+    /// kg of food kept cold (slows spoilage).
+    pub preserve: f64,
+    /// People whose meals are cooked there.
+    pub cooking: f64,
+    /// Share of the labour it replaces by machines (0..1), at a price in power and spares.
+    pub automation: f64,
+    /// Standards office or quality lab: raises the quality of everything the colony makes.
+    pub quality: f64,
+    /// People whose waste and sewage it handles.
+    pub sanitation: f64,
+    /// People it carries to work (roads, tram, metro).
+    pub transit: f64,
+    /// kg per day a convoy dock or an orbital elevator moves between ground and orbit.
+    pub lift: f64,
+    /// Pollution it emits per day at full load (negative: it cleans the air and the ground).
+    pub pollution: f64,
+    /// Tools and workshops: how many buildings it keeps in order, in eighths.
+    pub tooling: f64,
+    /// Wear multiplier on the building (0 means the default of its category).
+    pub wear: f64,
 }
 
 /// A colony policy with discrete levels: (label, credits per person per day, productivity delta, happiness delta).
@@ -312,9 +346,49 @@ pub struct Tech {
     pub field: String,
     pub cost: f64,
     pub requires: Vec<String>,
-    /// (kind, id) with kind in module | hull | building.
+    /// (kind, id) with kind in module | hull | building | capacity.
     pub unlocks: Vec<(String, String)>,
     pub start: bool,
+    /// Findings (see `Sim::findings`) the research needs besides its prerequisites: rare
+    /// resources held, anomalies explored, ruins and wrecks studied.
+    #[serde(default)]
+    pub needs: Vec<String>,
+}
+
+/// Emergent capacities a technology can unlock (`unlocks: [("capacity", id)]`); the colony
+/// simulation checks them by their position in this list.
+pub const CAPACITIES: [&str; 16] = [
+    "automation",
+    "robotics",
+    "precision_tooling",
+    "norms",
+    "crop_rotation",
+    "irrigation",
+    "synthetic_fertilizer",
+    "cold_chain",
+    "sanitation",
+    "recycling",
+    "mass_transit",
+    "orbital_lift",
+    "convoys",
+    "district_planning",
+    "air_scrubbing",
+    "reverse_engineering",
+];
+
+/// Agronomy of a domestic crop: the plant itself is a producer of `species.ron`, this adds what
+/// farming needs to know (see `data/crops.ron`).
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct Crop {
+    pub species: String,
+    /// Botanical family: rotating families keeps the soil, repeating one tires it.
+    pub family: String,
+    /// Water need, 1 = what a temperate crop gets from rain.
+    pub water: f64,
+    /// Soil drawn per day of growth (negative: legumes fix nitrogen and feed it).
+    pub draw: f64,
+    /// Nutrition of one kg: (energy, protein, vitamins), each 0..1.
+    pub nutrition: (f64, f64, f64),
 }
 
 /// A point of interest in a system (see `vector_world::AnomalyKind::id`).
@@ -931,6 +1005,16 @@ pub struct Gear {
     /// Radius (cells) at which a shot wakes sleeping monsters.
     #[serde(default)]
     pub noise: f64,
+    /// Firearms: rounds in a magazine (0 = a blade or a tool), the resource the rounds are
+    /// reloaded from, how much each shot shakes the aim (0..1) and the reach (cells).
+    #[serde(default)]
+    pub mag: u32,
+    #[serde(default)]
+    pub ammo: String,
+    #[serde(default)]
+    pub recoil: f64,
+    #[serde(default)]
+    pub range: i32,
 }
 
 impl Gear {
@@ -1042,6 +1126,7 @@ pub struct GameData {
     pub buildings: Vec<Building>,
     pub policies: Vec<Policy>,
     pub techs: Vec<Tech>,
+    pub crops: Vec<Crop>,
     pub anomalies_def: Vec<AnomalyDef>,
     pub biomes: Vec<Biome>,
     pub species: Vec<Species>,
@@ -1242,13 +1327,20 @@ impl GameData {
             recipes: read(&dir.join("recipes.ron"))?,
             buildings: read(&dir.join("buildings.ron"))?,
             policies: read(&dir.join("colony_policies.ron"))?,
-            techs: read(&dir.join("techs.ron"))?,
+            techs: {
+                // Tools of the colonies (industry, farming, cities) are a second file.
+                let mut v: Vec<Tech> = read(&dir.join("techs.ron"))?;
+                v.extend(read::<Vec<Tech>>(&dir.join("techs_works.ron"))?);
+                v
+            },
+            crops: read(&dir.join("crops.ron"))?,
             anomalies_def: read(&dir.join("worldgen/anomalies.ron"))?,
             biomes: read(&dir.join("biomes.ron"))?,
             species: {
                 // Xenobiology is a second file of the same table.
                 let mut v: Vec<Species> = read(&dir.join("species.ron"))?;
                 v.extend(read::<Vec<Species>>(&dir.join("species_xeno.ron"))?);
+                v.extend(read::<Vec<Species>>(&dir.join("species_crops.ron"))?);
                 v
             },
             chemistries: read(&dir.join("xenobio.ron"))?,
@@ -1291,6 +1383,14 @@ impl GameData {
         d.resources.append(&mut extra_resources);
         let mut chem_resources: Vec<Resource> = read(&dir.join("resources_chemistry.ron"))?;
         d.resources.append(&mut chem_resources);
+        d.resources.append(&mut read::<Vec<Resource>>(
+            &dir.join("resources_works.ron"),
+        )?);
+        d.recipes
+            .append(&mut read::<Vec<Recipe>>(&dir.join("recipes_works.ron"))?);
+        d.buildings.append(&mut read::<Vec<Building>>(
+            &dir.join("buildings_works.ron"),
+        )?);
         let mut extra_events: Vec<EventDef> = read(&dir.join("events_extra.ron"))?;
         d.events.append(&mut extra_events);
         let mut extra_recipes: Vec<Recipe> = read(&dir.join("recipes_extra.ron"))?;
@@ -1498,15 +1598,19 @@ impl GameData {
                 return bad(format!("module invalide: {}", m.id));
             }
             if !m.weapon.is_empty() {
-                if !["beam", "kinetic", "missile", "mine", "pd", "ecm"].contains(&m.weapon.as_str())
+                if !["beam", "kinetic", "missile", "mine", "pd", "ecm", "decoy"]
+                    .contains(&m.weapon.as_str())
                 {
                     return bad(format!("arme {}: type inconnu {}", m.id, m.weapon));
                 }
                 if !m.ammo.is_empty() && self.resource_index(&m.ammo).is_none() {
                     return bad(format!("arme {}: munition inconnue {}", m.id, m.ammo));
                 }
-                if m.weapon != "ecm" && m.range <= 0.0 {
+                if !matches!(m.weapon.as_str(), "ecm" | "decoy") && m.range <= 0.0 {
                     return bad(format!("arme {}: portee nulle", m.id));
+                }
+                if m.weapon == "decoy" && m.decoy <= 0.0 {
+                    return bad(format!("leurre {}: chaleur nulle", m.id));
                 }
                 if m.weapon == "kinetic" && (m.proj_mass <= 0.0 || m.speed <= 0.0) {
                     return bad(format!(
@@ -1516,6 +1620,15 @@ impl GameData {
                 }
                 if m.weapon == "beam" && (m.wavelength <= 0.0 || m.aperture <= 0.0) {
                     return bad(format!("arme {}: longueur d'onde ou ouverture nulle", m.id));
+                }
+                if !(0.0..=1.0).contains(&m.ablative) || !(0.0..=1.0).contains(&m.reactive) {
+                    return bad(format!(
+                        "blindage {}: part ablative ou reactive hors de 0..1",
+                        m.id
+                    ));
+                }
+                if m.decoy < 0.0 || m.sensor < 0.0 {
+                    return bad(format!("module {}: leurre ou capteur negatif", m.id));
                 }
                 if m.spread < 0.0 || m.flash < 0.0 {
                     return bad(format!("arme {}: dispersion ou chaleur negative", m.id));
@@ -1712,6 +1825,26 @@ impl GameData {
             if !b.recipes.is_empty() && b.throughput <= 0.0 {
                 return bad(format!("batiment {}: debit nul", b.id));
             }
+            let works = [
+                b.farm,
+                b.shelter,
+                b.irrigation,
+                b.preserve,
+                b.cooking,
+                b.automation,
+                b.quality,
+                b.sanitation,
+                b.transit,
+                b.lift,
+                b.tooling,
+                b.wear,
+            ];
+            if works.iter().any(|v| *v < 0.0 || !v.is_finite())
+                || b.shelter > 1.0
+                || b.automation > 1.0
+            {
+                return bad(format!("batiment {}: capacites de colonie invalides", b.id));
+            }
         }
         for p in &self.policies {
             if p.levels.is_empty() || p.default_level >= p.levels.len() {
@@ -1731,6 +1864,7 @@ impl GameData {
                     "module" => self.module_index(id).is_some(),
                     "hull" => self.hull_index(id).is_some(),
                     "building" => self.building_index(id).is_some(),
+                    "capacity" => CAPACITIES.contains(&id.as_str()),
                     "project" => self.project_index(id).is_some(),
                     _ => false,
                 };
@@ -1739,7 +1873,21 @@ impl GameData {
                 }
             }
         }
+        self.validate_crops()?;
         for t in &self.techs {
+            for n in &t.needs {
+                let ok = match n.split_once(':') {
+                    Some(("resource", id)) => self.resource_index(id).is_some(),
+                    Some(("anomaly", id)) => self.anomalies_def.iter().any(|a| a.id == id),
+                    Some(("artefact", id)) => self.history.artefacts.iter().any(|a| a.id == id),
+                    Some(("study", id)) => ["colony", "lab"].contains(&id),
+                    Some(("wreck", id)) => id == "salvaged",
+                    _ => false,
+                };
+                if !ok {
+                    return bad(format!("technologie {}: decouverte inconnue {n}", t.id));
+                }
+            }
             for r in &t.requires {
                 if !tids.contains(r.as_str()) {
                     return bad(format!("technologie {}: prerequis inconnu {r}", t.id));
@@ -2421,6 +2569,14 @@ impl GameData {
                     g.id, g.slot
                 ));
             }
+            if g.mag > 0
+                && (self.resource_index(&g.ammo).is_none()
+                    || !(0.0..=1.0).contains(&g.recoil)
+                    || g.range < 1
+                    || g.slot != "weapon")
+            {
+                return bad(format!("arme a feu {}: munition, recul ou portee", g.id));
+            }
             if g.attack < 0.0
                 || !(0.0..0.9).contains(&g.defense)
                 || g.gather < 0.0
@@ -2978,6 +3134,45 @@ impl GameData {
         Ok(())
     }
 
+    /// Crops: each one is a domestic producer of `species.ron`, once.
+    fn validate_crops(&self) -> Result<(), DataError> {
+        let bad = |s: String| Err(DataError::Invalid(s));
+        let mut seen = BTreeSet::new();
+        for c in &self.crops {
+            if !seen.insert(c.species.as_str()) {
+                return bad(format!("culture {} en double", c.species));
+            }
+            match self.species_index(&c.species) {
+                Some(i) if self.species[i].is_producer() && self.species[i].domestic => {}
+                _ => {
+                    return bad(format!(
+                        "culture {}: pas un producteur domestique",
+                        c.species
+                    ))
+                }
+            }
+            let food = self
+                .species_index(&c.species)
+                .is_some_and(|i| self.species[i].yields.iter().any(|(r, _)| r == "food"));
+            if !food {
+                return bad(format!("culture {}: ne donne pas de vivres", c.species));
+            }
+            let n = c.nutrition;
+            if c.water <= 0.0
+                || c.family.is_empty()
+                || [n.0, n.1, n.2].iter().any(|v| !(0.0..=1.0).contains(v))
+            {
+                return bad(format!("culture {}: valeurs invalides", c.species));
+            }
+        }
+        // Rotation needs at least three families to be worth anything.
+        let families: BTreeSet<&str> = self.crops.iter().map(|c| c.family.as_str()).collect();
+        if families.len() < 3 {
+            return bad("cultures: au moins trois familles pour la rotation".into());
+        }
+        Ok(())
+    }
+
     /// Chemistries: known species, each in at most one chemistry, and every species lives
     /// in biomes whose temperature range meets the chemistry's.
     fn validate_chemistries(&self) -> Result<(), DataError> {
@@ -3203,6 +3398,57 @@ mod tests {
         let mut z = d.clone();
         z.ethos.profiles[0].1[0] = 3.0;
         assert!(z.validate().is_err());
+    }
+
+    #[test]
+    fn the_data_of_the_colony_works_is_checked_at_load() {
+        let d = GameData::load(&dir()).expect("data loads");
+        assert!(d.crops.len() >= 10 && d.techs.iter().any(|t| !t.needs.is_empty()));
+        let mut x = d.clone();
+        x.techs[1].unlocks.push(("capacity".into(), "nope".into()));
+        assert!(x.validate().is_err(), "unknown capacity");
+        let mut x = d.clone();
+        x.techs[1].needs.push("resource:nope".into());
+        assert!(x.validate().is_err(), "unknown resource to discover");
+        let mut x = d.clone();
+        x.techs[1].needs.push("anomaly:nope".into());
+        assert!(x.validate().is_err(), "unknown anomaly to discover");
+        let mut x = d.clone();
+        x.techs[1].needs.push("rumour:x".into());
+        assert!(x.validate().is_err(), "unknown kind of discovery");
+        let mut x = d.clone();
+        x.crops[0].species = "plancton".into();
+        assert!(x.validate().is_err(), "a crop is a domestic producer");
+        let mut x = d.clone();
+        x.crops.push(d.crops[0].clone());
+        assert!(x.validate().is_err(), "a crop twice");
+        let mut x = d.clone();
+        x.crops.retain(|c| c.family == "cereal");
+        assert!(x.validate().is_err(), "rotation needs families");
+        let mut x = d.clone();
+        let farm = x.building_index("farmland").expect("farmland");
+        x.buildings[farm].farm = -3.0;
+        assert!(x.validate().is_err(), "negative fields");
+        let mut x = d.clone();
+        x.buildings[farm].shelter = 1.5;
+        assert!(x.validate().is_err(), "a shelter above 100 %");
+        let mut x = d.clone();
+        let c = x
+            .crops
+            .iter()
+            .position(|c| c.species == "champignon")
+            .expect("crop");
+        x.crops[c].nutrition.0 = 3.0;
+        assert!(x.validate().is_err(), "nutrition out of range");
+        // The capacities named in the data exist and each is unlocked by something.
+        for cap in CAPACITIES {
+            assert!(
+                d.techs
+                    .iter()
+                    .any(|t| t.unlocks.iter().any(|(k, i)| k == "capacity" && i == cap)),
+                "{cap} is unlocked by no technology"
+            );
+        }
     }
 
     #[test]

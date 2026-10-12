@@ -1,0 +1,11 @@
+// Domestic crops added for farming (see crops.ron for their agronomy). Same table and rules as species.ron.
+[
+ (id:"riz", name:"Riz", trophic:"producer", habitat:["marais", "jungle"], diet:[], body:0.1, growth:0.13, yields:[("food",1.1)], domestic:true, danger:0.0, invasive:0.2, text:"Céréale des terres inondées : gourmande en eau, généreuse en grain."),
+ (id:"mais", name:"Maïs", trophic:"producer", habitat:["savane", "prairie"], diet:[], body:0.4, growth:0.12, yields:[("food",1.2)], domestic:true, danger:0.0, invasive:0.2, text:"Grande céréale des plaines chaudes."),
+ (id:"orge", name:"Orge", trophic:"producer", habitat:["steppe", "taiga", "montagne"], diet:[], body:0.1, growth:0.1, yields:[("food",0.7)], domestic:true, danger:0.0, invasive:0.2, text:"Céréale rustique des climats frais et secs."),
+ (id:"soja", name:"Soja", trophic:"producer", habitat:["foret_temperee", "prairie", "savane"], diet:[], body:0.15, growth:0.11, yields:[("food",0.9)], domestic:true, danger:0.0, invasive:0.2, text:"Légumineuse riche en protéines, elle nourrit le sol qui la porte."),
+ (id:"lentille", name:"Lentille", trophic:"producer", habitat:["steppe", "prairie", "taiga"], diet:[], body:0.05, growth:0.1, yields:[("food",0.6)], domestic:true, danger:0.0, invasive:0.1, text:"Légumineuse sobre des terres pauvres."),
+ (id:"patate_douce", name:"Patate douce", trophic:"producer", habitat:["savane", "jungle"], diet:[], body:0.6, growth:0.1, yields:[("food",1.3)], domestic:true, danger:0.0, invasive:0.2, text:"Racine sucrée des climats chauds."),
+ (id:"verger", name:"Arbres fruitiers", trophic:"producer", habitat:["foret_temperee", "prairie", "jungle"], diet:[], body:30.0, growth:0.05, yields:[("food",1.0)], domestic:true, danger:0.0, invasive:0.1, text:"Vergers : vitamines, mais des années pour porter."),
+ (id:"choux", name:"Choux et feuilles", trophic:"producer", habitat:["taiga", "foret_temperee", "prairie", "montagne"], diet:[], body:0.8, growth:0.09, yields:[("food",0.8)], domestic:true, danger:0.0, invasive:0.1, text:"Légumes-feuilles des climats froids."),
+]

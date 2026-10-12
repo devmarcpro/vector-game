@@ -715,7 +715,7 @@ mod tests {
     fn the_castaway_can_reach_space_by_mending_and_refuelling_with_what_he_finds() {
         let d = data();
         let mut sim = new_sim_with(&cfg(&d, "naufrage", 2), Arc::clone(&d)).expect("wreck");
-        let (body, _) = sim.parked.expect("down");
+        let (body, off0) = sim.parked.expect("down");
         sim.rogue = None;
         // Flares and meteoroids are the ordinary hazards of any ship; keep the test about the repair.
         sim.rules.event_freq = 0.0;
@@ -743,6 +743,9 @@ mod tests {
             sim.data.resource_index("water").unwrap(),
         );
         for _ in 0..120 {
+            // The ground turns under the parked ship (day and night): keep the wreck in the light
+            // it crashed in, the test is about the mending.
+            sim.parked = Some((body, off0));
             sim.ship.cargo.kg[food] = sim.ship.cargo.kg[food].max(25.0);
             sim.ship.cargo.kg[water] = sim.ship.cargo.kg[water].max(60.0);
             for _ in 0..16 {

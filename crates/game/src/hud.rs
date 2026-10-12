@@ -124,6 +124,7 @@ pub fn draw(fb: &mut Framebuffer, v: &View) {
         draw_cockpit(fb, v);
     }
     draw_status(fb, v);
+    crate::landing_view::draw(fb, v);
     draw_console(fb, v.console);
 }
 
@@ -240,9 +241,8 @@ fn terrain_view(
     ));
     let fwd = cam.rot.transpose().mul_vec(Vec3::new(0.0, 0.0, 1.0));
     let pitch = fwd.dot(up).clamp(-1.0, 1.0).asin();
-    if pitch < -1.0 {
-        return false;
-    }
+    // Straight down the heightfield degenerates: look at it from a steep angle instead.
+    let pitch = pitch.max(-1.45);
     let yaw = fwd.dot(east).atan2(fwd.dot(north));
     let sun = (b.pos * -1.0).normalized();
     let air = map.pressure;
@@ -394,7 +394,7 @@ fn draw_cockpit(fb: &mut Framebuffer, v: &View) {
     } else {
         Camera {
             pos: ship.pos,
-            rot: ship.rot.transpose(),
+            rot: v.game.view_rot(&ship.rot),
             fov_y: if v.boost { 1.4 } else { 1.2 },
         }
     };
@@ -985,6 +985,30 @@ fn draw_status(fb: &mut Framebuffer, v: &View) {
     }
     if sim.is_wanted() {
         fb.text(1, 11, "RECHERCHE DANS CE TERRITOIRE !", RED);
+    }
+    // The war around the ship: a siege, the radar, the flares, the squadron.
+    {
+        let mut war: Vec<String> = Vec::new();
+        if sim.here_besieged().is_some() {
+            war.push("BLOCUS DU SECTEUR".to_string());
+        }
+        if sim.active_sensors {
+            war.push("RADAR ACTIF".to_string());
+        }
+        if !sim.decoys.is_empty() {
+            war.push(format!("LEURRES {}", sim.decoys.len()));
+        }
+        let escorts = sim
+            .fleet
+            .iter()
+            .filter(|f| f.order != vector_sim::fleet::FleetOrder::Trade)
+            .count();
+        if escorts > 0 {
+            war.push(format!("ESCADRE {escorts}"));
+        }
+        if !war.is_empty() {
+            fb.text(1, 10, &war.join("  "), AMBER);
+        }
     }
     let ammo = |id: &str| {
         sim.data

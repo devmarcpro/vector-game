@@ -69,6 +69,45 @@ pub struct FleetShip {
     pub cargo: Option<(usize, f64, f64)>,
     pub trips: u32,
     pub earnings: f64,
+    /// Trade, or a post in the player's squadron (see `FleetOrder`).
+    pub order: FleetOrder,
+    /// 1 = intact, 0 = lost; what the guns of a fight take away.
+    pub condition: f64,
+    /// Ammunition left (0..1) of a warship; refilled from the hold.
+    pub ammo: f64,
+    /// A ship taken in a boarding: its crew's loyalty, hands aboard and prisoners to decide on.
+    pub prize: bool,
+    pub loyalty: f64,
+    pub crew: u32,
+    pub prisoners: u32,
+    /// The people a prize belonged to (who hears of what is done to its crew).
+    pub origin: Option<usize>,
+}
+
+impl FleetShip {
+    /// A freighter fresh from the yard: intact, supplied, no prize crew.
+    pub fn base(id: u32, name: String, hull: usize, capacity_kg: f64, upkeep: f64) -> FleetShip {
+        FleetShip {
+            id,
+            name,
+            hull,
+            capacity_kg,
+            upkeep,
+            route: None,
+            state: FleetState::Idle,
+            cargo: None,
+            trips: 0,
+            earnings: 0.0,
+            order: FleetOrder::Trade,
+            condition: 1.0,
+            ammo: 1.0,
+            prize: false,
+            loyalty: 1.0,
+            crew: 0,
+            prisoners: 0,
+            origin: None,
+        }
+    }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -167,28 +206,24 @@ impl Sim {
         };
         let id = self.next_fleet;
         self.next_fleet += 1;
-        self.fleet.push(FleetShip {
+        let name = {
+            let nh = hash_coord(self.system.seed, i64::from(id), 0x5417, 0);
+            let culture = self.faction.map(|f| self.data.factions[f].culture.as_str());
+            vector_world::names::Spec::new(if nh & 1 == 0 {
+                "ship_civil_m"
+            } else {
+                "ship_civil_f"
+            })
+            .culture(culture)
+            .name(nh >> 1)
+        };
+        self.fleet.push(FleetShip::base(
             id,
-            name: {
-                let nh = hash_coord(self.system.seed, i64::from(id), 0x5417, 0);
-                let culture = self.faction.map(|f| self.data.factions[f].culture.as_str());
-                vector_world::names::Spec::new(if nh & 1 == 0 {
-                    "ship_civil_m"
-                } else {
-                    "ship_civil_f"
-                })
-                .culture(culture)
-                .name(nh >> 1)
-            },
+            name,
             hull,
-            capacity_kg: (h.mass * mult).round(),
-            upkeep: h.cost * PURCHASE_FACTOR * UPKEEP_RATE,
-            route: None,
-            state: FleetState::Idle,
-            cargo: None,
-            trips: 0,
-            earnings: 0.0,
-        });
+            (h.mass * mult).round(),
+            h.cost * PURCHASE_FACTOR * UPKEEP_RATE,
+        ));
         Ok(id)
     }
 
@@ -245,6 +280,9 @@ impl Sim {
         let s = self.fleet.get_mut(ship_idx).ok_or("vaisseau inconnu")?;
         if !matches!(s.state, FleetState::Idle) {
             return Err("le vaisseau est en mission");
+        }
+        if s.order != FleetOrder::Trade {
+            return Err("le vaisseau sert dans l'escadre : rendez-lui d'abord le commerce");
         }
         s.route = Some(rid);
         self.routes[route_idx].active = true;
@@ -505,31 +543,424 @@ impl Sim {
         if day > self.fleet_paid_day {
             let days = (day - self.fleet_paid_day).min(3650) as f64;
             self.fleet_paid_day = day;
-            let upkeep: f64 = self.fleet.iter().map(|f| f.upkeep).sum::<f64>() * days;
+            let upkeep: f64 = self
+                .fleet
+                .iter()
+                .map(|f| f.upkeep * f.order.upkeep_mult())
+                .sum::<f64>()
+                * days;
             self.credits -= upkeep;
         }
     }
 }
 
+// ---- the player's squadron: orders, escorts, prizes -------------------------------------------
+
+/// What an owned ship does. `Trade` is the freighter's own routine (`routes`); the rest make
+/// it a warship of the squadron that goes where the player goes.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum FleetOrder {
+    #[default]
+    Trade,
+    /// Keeps formation: screens the ship a little, fires on nobody.
+    Follow,
+    /// Fires on the target of the player.
+    Attack,
+    /// Takes hits for the player's ship.
+    Defend,
+    /// Engages hostile ships that come near.
+    Patrol,
+    /// Hired out to a people at war (see `arms::Merc`).
+    Mercenary,
+}
+
+pub const ORDERS: [FleetOrder; 5] = [
+    FleetOrder::Trade,
+    FleetOrder::Follow,
+    FleetOrder::Attack,
+    FleetOrder::Defend,
+    FleetOrder::Patrol,
+];
+
+impl FleetOrder {
+    pub fn label(self) -> &'static str {
+        match self {
+            FleetOrder::Trade => "COMMERCE",
+            FleetOrder::Follow => "SUIVRE",
+            FleetOrder::Attack => "ATTAQUER",
+            FleetOrder::Defend => "DEFENDRE",
+            FleetOrder::Patrol => "PATROUILLER",
+            FleetOrder::Mercenary => "MERCENAIRE",
+        }
+    }
+    /// What the order means, with its numbers.
+    pub fn text(self) -> String {
+        match self {
+            FleetOrder::Trade => "Le vaisseau suit ses routes de commerce (entretien x1 ; un vaisseau de guerre coute x2).".to_string(),
+            FleetOrder::Follow => format!(
+                "Reste en formation : prend {:.0} % des coups visant votre vaisseau, ne tire sur personne.",
+                FOLLOW_SHARE * 100.0
+            ),
+            FleetOrder::Attack => format!(
+                "Tire sur la cible que vous avez designee, avec {:.0} % des armes de ses points d'emport ; les munitions s'epuisent.",
+                ESCORT_FIRE * 100.0
+            ),
+            FleetOrder::Defend => format!(
+                "Se place devant vous : prend {:.0} % des coups visant votre vaisseau (plafond {:.0} % pour l'escadre) et peut etre perdu.",
+                DEFEND_SHARE * 100.0,
+                SCREEN_CAP * 100.0
+            ),
+            FleetOrder::Patrol => format!(
+                "Engage seul les hostiles a moins de {:.0} km, a demi-cadence.",
+                PATROL_RANGE / 1000.0
+            ),
+            FleetOrder::Mercenary => format!("Loue a un secteur en guerre pour {:.0} jours : ses coques comptent dans sa ligne de front, paie a la fin (x1,5 si victoire, x0,5 sinon).", crate::arms::MERC_DAYS),
+        }
+    }
+
+    /// Warships on a war footing cost twice the upkeep of a freighter.
+    pub fn upkeep_mult(self) -> f64 {
+        if self == FleetOrder::Trade {
+            1.0
+        } else {
+            2.0
+        }
+    }
+}
+
+/// Share of the damage aimed at the player that a screening ship takes, per ship.
+pub const DEFEND_SHARE: f64 = 0.12;
+pub const FOLLOW_SHARE: f64 = 0.05;
+pub const SCREEN_CAP: f64 = 0.5;
+/// Fraction of the weapons of the data an escort brings to bear.
+pub const ESCORT_FIRE: f64 = 0.35;
+/// Range (m) at which a patrol engages.
+pub const PATROL_RANGE: f64 = 40_000.0;
+/// Kilograms of ammunition that refill one ship from empty.
+pub const RESUPPLY_KG: f64 = 500.0;
+/// Loyalty of a prize, and what the daily round does to it.
+pub const PRIZE_LOYALTY: f64 = 0.3;
+
 impl Sim {
+    /// Give an order to ship `idx`. Joining or leaving the squadron is done at a station.
+    pub fn set_order(&mut self, idx: usize, order: FleetOrder) -> Result<(), &'static str> {
+        if order == FleetOrder::Mercenary {
+            return Err("un contrat se signe aupres d'un secteur en guerre");
+        }
+        let cur = self.fleet.get(idx).ok_or("vaisseau inconnu")?.order;
+        if cur == FleetOrder::Mercenary {
+            return Err("le vaisseau est sous contrat");
+        }
+        if (cur == FleetOrder::Trade) != (order == FleetOrder::Trade) {
+            self.docked_station()?;
+        }
+        let s = &mut self.fleet[idx];
+        if order != FleetOrder::Trade && (s.route.is_some() || !matches!(s.state, FleetState::Idle))
+        {
+            return Err("le vaisseau est en mission de commerce");
+        }
+        s.order = order;
+        Ok(())
+    }
+
+    /// Ships of the squadron with this order.
+    pub fn squadron(&self, order: FleetOrder) -> impl Iterator<Item = &FleetShip> {
+        self.fleet.iter().filter(move |s| s.order == order)
+    }
+
+    /// Share of the hits aimed at the player that the escorts take.
+    pub fn escort_screen(&self) -> f64 {
+        let n = |o| self.squadron(o).filter(|s| s.condition > 0.0).count() as f64;
+        (n(FleetOrder::Defend) * DEFEND_SHARE + n(FleetOrder::Follow) * FOLLOW_SHARE)
+            .min(SCREEN_CAP)
+    }
+
+    /// Escorts take `amount` of damage points, shared between the screening ships; a ship
+    /// whose condition falls to zero is lost.
+    pub(crate) fn escort_absorb(&mut self, amount: f64) {
+        let ids: Vec<usize> = (0..self.fleet.len())
+            .filter(|&i| {
+                matches!(self.fleet[i].order, FleetOrder::Defend | FleetOrder::Follow)
+                    && self.fleet[i].condition > 0.0
+            })
+            .collect();
+        if ids.is_empty() || amount <= 0.0 {
+            return;
+        }
+        let each = amount / ids.len() as f64;
+        let mut lost = Vec::new();
+        for &i in &ids {
+            let hp = self.data.hulls[self.fleet[i].hull].hp.max(1.0);
+            let s = &mut self.fleet[i];
+            s.condition = (s.condition - each / hp).max(0.0);
+            if s.condition <= 0.0 {
+                lost.push(i);
+            }
+        }
+        for i in lost.into_iter().rev() {
+            let s = self.fleet.remove(i);
+            let t = self.time;
+            self.news_push(
+                t,
+                1,
+                0.0,
+                format!("{} est perdu en couvrant votre vaisseau.", s.name),
+            );
+        }
+    }
+
+    /// Fire of the squadron for one step: attackers on the target of the player, patrols on
+    /// the nearest hostile ship. Ammunition runs down while they fire.
+    pub(crate) fn escort_tick(&mut self, dt: f64) {
+        if self.docked.is_some() || self.fleet.is_empty() {
+            return;
+        }
+        let data = std::sync::Arc::clone(&self.data);
+        let base = crate::arms::mean_weapon_dps(&data) * ESCORT_FIRE;
+        let target_hostile = || -> Option<usize> {
+            (0..self.npcs.len())
+                .filter(|&k| {
+                    let n = &self.npcs[k];
+                    n.hostile
+                        && !n.disabled
+                        && n.visible()
+                        && (n.pos - self.ship.pos).length() <= PATROL_RANGE
+                })
+                .min_by(|&a, &b| {
+                    (self.npcs[a].pos - self.ship.pos)
+                        .length()
+                        .total_cmp(&(self.npcs[b].pos - self.ship.pos).length())
+                })
+        };
+        let patrol_target = target_hostile();
+        let mut shots: Vec<(usize, f64)> = Vec::new();
+        for s in self.fleet.iter_mut() {
+            let (target, mult) = match s.order {
+                FleetOrder::Attack => (self.target_npc, 1.0),
+                FleetOrder::Patrol => (patrol_target, 0.5),
+                _ => continue,
+            };
+            let Some(k) = target else { continue };
+            if s.ammo <= 0.0 || s.condition <= 0.0 {
+                continue;
+            }
+            let dps = base * crate::arms::hardpoints(&data, s.hull) * s.condition * mult;
+            if dps <= 0.0 {
+                continue;
+            }
+            s.ammo = (s.ammo - 0.005 * dt).max(0.0);
+            shots.push((k, dps * dt));
+        }
+        shots.sort_by_key(|x| std::cmp::Reverse(x.0));
+        let mut done: Vec<usize> = Vec::new();
+        for (k, d) in shots {
+            // A kill earlier in the pass shifts the indices above it: skip stale ones.
+            if done.iter().any(|&x| x < k) || k >= self.npcs.len() {
+                continue;
+            }
+            if self.damage_npc(k, d) {
+                done.push(k);
+            }
+        }
+    }
+
+    /// Refill the ammunition of the squadron from the hold (ammunition slugs).
+    pub fn resupply_escorts(&mut self) -> Result<f64, &'static str> {
+        let slugs = self
+            .data
+            .resource_index("ammo_slugs")
+            .ok_or("pas de munitions")?;
+        let need: f64 = self
+            .fleet
+            .iter()
+            .filter(|s| s.order != FleetOrder::Trade)
+            .map(|s| (1.0 - s.ammo) * RESUPPLY_KG)
+            .sum();
+        if need <= 0.0 {
+            return Err("l'escadre est ravitaillee");
+        }
+        let have = self.ship.cargo.kg[slugs];
+        if have <= 0.0 {
+            return Err("pas de munitions en soute");
+        }
+        let frac = (have / need).min(1.0);
+        let data = std::sync::Arc::clone(&self.data);
+        self.ship.cargo.remove(&data, slugs, need * frac);
+        for s in self
+            .fleet
+            .iter_mut()
+            .filter(|s| s.order != FleetOrder::Trade)
+        {
+            s.ammo = (s.ammo + (1.0 - s.ammo) * frac).min(1.0);
+        }
+        Ok(need * frac)
+    }
+
+    /// Repair the squadron at a station for a fee proportional to the damage.
+    pub fn repair_squadron(&mut self) -> Result<f64, &'static str> {
+        self.docked_station()?;
+        let cost: f64 = self
+            .fleet
+            .iter()
+            .map(|s| (1.0 - s.condition) * self.data.hulls[s.hull].cost * 0.2)
+            .sum();
+        if cost <= 0.0 {
+            return Err("rien a reparer");
+        }
+        if cost > self.credits {
+            return Err("fonds insuffisants");
+        }
+        self.credits -= cost;
+        for s in &mut self.fleet {
+            s.condition = 1.0;
+        }
+        Ok(cost)
+    }
+
+    // ---- prizes ---------------------------------------------------------------------------
+
+    /// A ship taken in a boarding becomes the player's: a hull of the class its owners flew,
+    /// with its crew still aboard as prisoners.
+    pub(crate) fn capture_prize(&mut self, b: &crate::arms::Boarding) -> u32 {
+        let data = std::sync::Arc::clone(&self.data);
+        let want = match b.role {
+            crate::npc::NpcRole::Trader => "cargo",
+            crate::npc::NpcRole::Miner => "mineur",
+            _ => "combat",
+        };
+        let mut pool: Vec<usize> = (0..data.hulls.len())
+            .filter(|&i| data.hulls[i].class == want)
+            .collect();
+        if pool.is_empty() {
+            pool = (0..data.hulls.len()).collect();
+        }
+        let h = hash_coord(
+            self.system.seed,
+            i64::from(b.npc_id),
+            0xB0A8D,
+            i64::from(b.level),
+        );
+        let hull = pool[(h % pool.len() as u64) as usize];
+        let hd = &data.hulls[hull];
+        let id = self.next_fleet;
+        self.next_fleet += 1;
+        let mut s = FleetShip::base(
+            id,
+            b.name.clone(),
+            hull,
+            (hd.mass * 0.5).round(),
+            hd.cost * PURCHASE_FACTOR * UPKEEP_RATE,
+        );
+        s.prize = true;
+        s.origin = b.faction;
+        s.loyalty = PRIZE_LOYALTY;
+        s.crew = 3 + 2 * u32::from(b.level);
+        s.prisoners = s.crew;
+        // A ship won in battle is a wreck: the guns of the fight left their mark.
+        s.condition = 0.5;
+        s.ammo = 0.3;
+        s.cargo = b.cargo.map(|(r, kg)| (r, kg, 0.0));
+        self.fleet.push(s);
+        id
+    }
+
+    fn prize_index(&self, id: u32) -> Result<usize, &'static str> {
+        self.fleet
+            .iter()
+            .position(|s| s.id == id && s.prize && s.prisoners > 0)
+            .ok_or("pas de prisonniers sur ce vaisseau")
+    }
+
+    /// Take the crew of a prize into service: loyal sailors, but a bigger payroll.
+    pub fn prize_enlist(&mut self, id: u32) -> Result<(), &'static str> {
+        let i = self.prize_index(id)?;
+        let s = &mut self.fleet[i];
+        s.prisoners = 0;
+        s.loyalty = (s.loyalty + 0.5).min(1.0);
+        s.upkeep *= 1.3;
+        Ok(())
+    }
+
+    /// Let the prisoners go: the people they belong to remembers it.
+    pub fn prize_release(&mut self, id: u32) -> Result<(), &'static str> {
+        let i = self.prize_index(id)?;
+        self.fleet[i].prisoners = 0;
+        let faction = self.fleet[i].origin;
+        self.change_reputation(faction, 4.0);
+        Ok(())
+    }
+
+    /// Sell the prisoners back: credits, and the displeasure of their people.
+    pub fn prize_ransom(&mut self, id: u32) -> Result<f64, &'static str> {
+        let i = self.prize_index(id)?;
+        let faction = self.fleet[i].origin;
+        let n = self.fleet[i].prisoners;
+        self.fleet[i].prisoners = 0;
+        let sum = 600.0 * f64::from(n);
+        self.credits += sum;
+        self.change_reputation(faction, -5.0);
+        Ok(sum)
+    }
+
+    /// Kill the prisoners: a crime of war, recorded and punished.
+    pub fn prize_execute(&mut self, id: u32) -> Result<(), &'static str> {
+        let i = self.prize_index(id)?;
+        self.fleet[i].prisoners = 0;
+        let faction = self.fleet[i].origin;
+        self.record_war_crime(faction, "execution de prisonniers apres un abordage");
+        Ok(())
+    }
+
+    /// Daily round of the prizes: prisoners make a crew restless, an unpaid payroll loses it.
+    pub(crate) fn prize_tick(&mut self, days: f64) {
+        let broke = self.credits < 0.0;
+        let mut mutinies = Vec::new();
+        for (i, s) in self.fleet.iter_mut().enumerate().filter(|(_, s)| s.prize) {
+            if s.prisoners > 0 {
+                s.loyalty -= 0.02 * days;
+            } else if broke {
+                s.loyalty -= 0.05 * days;
+            } else {
+                s.loyalty = (s.loyalty + 0.01 * days).min(1.0);
+            }
+            if s.loyalty <= 0.0 {
+                mutinies.push(i);
+            }
+        }
+        for i in mutinies.into_iter().rev() {
+            let s = self.fleet.remove(i);
+            let t = self.time;
+            self.news_push(
+                t,
+                6,
+                0.0,
+                format!(
+                    "Mutinerie : l'equipage de {} s'est enfui avec le vaisseau.",
+                    s.name
+                ),
+            );
+        }
+    }
+}
+
+impl Sim {
+    /// Add a ship to the fleet without paying (tests and scripted scenes).
+    pub fn buy_fleet_ship_free_pub(&mut self, hull: usize) {
+        self.buy_fleet_ship_free(hull);
+    }
+
     /// Test helper: add a freighter without paying.
-    #[cfg(test)]
     pub(crate) fn buy_fleet_ship_free(&mut self, hull: usize) {
         let id = self.next_fleet;
         self.next_fleet += 1;
         let h = &self.data.hulls[hull];
-        self.fleet.push(FleetShip {
+        self.fleet.push(FleetShip::base(
             id,
-            name: format!("test #{id}"),
+            format!("test #{id}"),
             hull,
-            capacity_kg: h.mass * 2.0,
-            upkeep: 0.0,
-            route: None,
-            state: FleetState::Idle,
-            cargo: None,
-            trips: 0,
-            earnings: 0.0,
-        });
+            h.mass * 2.0,
+            0.0,
+        ));
     }
 }
 

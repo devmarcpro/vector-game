@@ -223,7 +223,12 @@ mod tests {
                     "seed {seed}: never arrived at {}",
                     s.bodies[p].name
                 );
-                assert!(s.ship.fuel > 0.0 && s.ship.fuel <= fuel0);
+                assert!(
+                    s.ship.fuel > 0.0 && s.ship.fuel <= fuel0,
+                    "seed {seed} body {p} {}: fuel {} of {fuel0}",
+                    s.bodies[p].name,
+                    s.ship.fuel
+                );
                 burned_any |= s.ship.fuel < fuel0;
                 // Stays put afterwards (parked above a world), no fall.
                 for _ in 0..60 {

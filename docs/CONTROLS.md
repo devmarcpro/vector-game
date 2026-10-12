@@ -15,6 +15,13 @@
 | R | Cibler le vaisseau PNJ le plus proche (cycle) |
 | T / Y | Cible : asteroide / station le(la) plus proche |
 | V (maintenir) | Laser de minage (cible asteroide a < 2 km, visee dans le cone) |
+| D | Amarrer (station < 500 m, vitesse relative < 8 m/s ; au-dessus de 2 m/s ou nez a plus de 15 deg de l'axe du port, la prise est brutale et coute de la coque) |
+| 0 a 9 (rangee du haut) | Maintien d'attitude (SAS) : 0 coupe, 1 cap, 2 prograde, 3 retrograde, 4 normale, 5 anti-normale, 6 radial sortant, 7 radial entrant, 8 vers la cible, 9 verticale (normale du sol). La main sur tangage/lacet/roulis reprend la main ; le cap est retenu la ou on lache |
+| Pave num. 3 | Train d'atterrissage sorti / rentre (sorti : 6 m/s de contact sur et 3 m/s lateral ; rentre : 1,5 et 1) |
+| Pave num. 8 / 2 / 0 / 5 | Accelerateur +10 % / -10 % / coupure / plein (Espace pousse a ce taux) |
+| Pave num. 7 / 9 | Marquer le site d'atterrissage le plus plat pres du point sous le vaisseau / l'effacer |
+| Pave num. 4 | Pilote : pose le vaisseau (au-dessus d'un sol), le fait decoller jusqu'a l'orbite (pose), ou l'amene au port (pres d'une station) ; refaire F10 ou toucher aux commandes le debraye. |
+| I | Soute / inventaire (J = jeter la ressource) |
 | D | Amarrer (station < 500 m, vitesse relative < 8 m/s) |
 | I | Soute / inventaire (J = jeter la ressource, F = verser le carburant de la soute dans le reservoir) |
 | K | Equipage (Gauche/Droite poste, T quart, X débarquer à quai, J journal) |
@@ -22,7 +29,7 @@
 | L | Carte galactique (Haut/Bas étoile, +/- zoom, Entrée = saut FTL) ; Retour arrière annule une charge de saut |
 | F2 | Empire (colonies) ; Entrée = détail ; F3 = Flotte |
 | O | Fonder une colonie sur le corps ciblé (kit en soute) |
-| F4 | Arbre technologique (Entrée lance une recherche) ; E = panneau ESPRIT (budget de calcul de l'IA, logiciels, autres IA : Gauche/Droite budget, Entrée installer, C/A/L contacter/allier/libérer, S ancre) |
+| F4 | Arbre technologique (Entrée lance une recherche ; une recherche peut exiger des découvertes : ressource détenue, anomalie explorée, artefact traduit, épave récupérée, étude, affichées en rouge tant qu'elles manquent) ; E = panneau ESPRIT (budget de calcul de l'IA, logiciels, autres IA : Gauche/Droite budget, Entrée installer, C/A/L contacter/allier/libérer, S ancre) |
 | Ctrl / Entrée (maintenir) | Tir principal (faisceaux, canons) |
 | B (maintenir) | Missiles et mines |
 | Z | Payer le tribut demandé par des pirates |
@@ -39,9 +46,11 @@
 | ~ (Backquote) | Console de debug : help, list, tp, tpbody, stop, speed, fuel, repair, assist, time |
 | F1 | Aide contextuelle de l'ecran courant (re-appuyer pour fermer) |
 | F6 | Codex (Gauche/Droite categorie, Haut/Bas entree ; categorie REACTIONS = laboratoire : L ou Entree lance un lot de 100 kg de reactifs tires de la soute) |
+| F10 (tutoriel en cours) | Ignorer le tutoriel |
 | F10 | Ignorer le tutoriel |
 | F6 | Codex (Gauche/Droite categorie, Haut/Bas entree) |
 | F10 | Menu principal : les huit espaces qui regroupent tous les ecrans (voir « Le menu principal ») ; re-appuyer ferme |
+| \ ou Pause | Tableau de bord (neuf panneaux, depuis n'importe quel ecran de jeu) ; re-appuyer ferme (voir � Le tableau de bord �) |
 | Suppr | Ignorer le tutoriel |
 
 Options de ligne de commande : `--snapshot fichier.png [scene]` (rendu headless), `--bench`, `--script fichier.txt` (jeu scripte sans fenetre, voir `crates/game/src/script.rs`).
@@ -55,7 +64,7 @@ Station : N = recruter (Entrée embauche au poste de sa meilleure compétence), 
 Station : T = bourse (Haut/Bas ressource, PgUp/PgDn x10, Tab ou Gauche/Droite période 30/90/180 jours, T ou Échap retour).
 Station : C = contrats (Entrée accepter/livrer, X abandonner), E = banque (Haut emprunter 1000, Bas rembourser 1000, Entrée tout rembourser, H hypothéquer le vaisseau / lever l'hypothèque, C acheter 1000 CR de monnaie locale, V la revendre, B blanchir l'argent sale ; le tableau ECONOMIE LOCALE et les rapports mensuels sont sur le même écran).
 
-Ecran colonie : Tab zone (bâtiments / stocks / politiques / construction), Haut/Bas, Espace on/off, R recette, X démolir, D déposer / W retirer (stocks, amarré), Gauche/Droite politique, Entrée construire, T récupérer la caisse, U décoller. F = schéma des chaînes de production, H = suivi sanitaire (épidémies de la colonie, secteur, équipage, journal) ; les mêmes boutons sont cliquables en haut à droite.
+Ecran colonie : Tab zone (bâtiments / stocks / politiques / construction), Haut/Bas, Espace on/off, R recette, X démolir, D déposer / W retirer (stocks, amarré), Gauche/Droite politique, Entrée construire, T récupérer la caisse, U décoller. F = schéma des chaînes de production, H = suivi sanitaire (épidémies de la colonie, secteur, équipage, journal) ; les mêmes boutons sont cliquables en haut à droite. Onglets des travaux de la colonie (même touche ou Échap pour revenir) : I = industrie (Haut/Bas choisir un bâtiment, Espace on/off, R recette ; limite, charge, usure, qualité, automatisation, goulot), G = agriculture et vivres (C changer de culture, R rotation automatique ; sol, climat, irrigation, engrais, avarie, nutrition, cultures possibles), V = ville (quartiers, densité, assainissement, pollution, criminalité, siège ; courbes de 60 jours), L = logistique (Gauche/Droite destination, Haut/Bas marchandise, Entrée ou boutons texte « ENVOYER 500 / 2000 / 10000 KG », « TOUT ENVOYER » ; convois en route, délais, imports et exports de vivres).
 Ecran colonie : Tab zone (bâtiments / stocks / politiques / construction), Haut/Bas, Espace on/off, R recette, X démolir, D déposer / W retirer (stocks, amarré), Gauche/Droite politique, Entrée construire, T récupérer la caisse, U décoller, F schéma des chaînes, H suivi sanitaire, P écran des projets.
 
 Écran des projets (P dans l'écran colonie ; P ou Échap pour revenir) : terraformation et mégastructures. Tab change de zone (travaux / catalogue / usines atmosphériques), Haut/Bas choisit, Entrée commande le projet du catalogue (ou choisit le procédé des usines), [ et ] changent le nombre d'unités commandées (1, 10, 100... 100 000), Gauche/Droite change l'espèce semée, Espace met un ouvrage en marche ou à l'arrêt, X abandonne les unités non finies. À la souris : clic sur une ligne, double-clic sur le catalogue pour commander, clic sur [COMMANDER] ou sur un procédé. L'écran montre l'échelle de Kardashev de la civilisation, ce qui retient chaque chantier (matériaux, énergie, main-d'œuvre) et l'état du climat du monde (température, bilan, pression, composition, mers, glaces, vie native, souches, habitabilité).
@@ -87,6 +96,12 @@ F10 ou un clic sur « MENU (F10) » (en haut a droite de tous les ecrans) ouvre 
 Un espace ouvre l'ecran existant par la meme fonction que sa touche : aucun ecran n'est duplique. Une ligne grisee dit pourquoi elle est indisponible (amarrage requis, decollage requis, a pied).
 **Echap remonte d'un niveau, partout** : un ecran ouvert depuis le menu revient a la page de son espace ; la page revient a la liste des espaces ; la liste ferme le menu, qui rend l'ecran d'ou il a ete ouvert (cockpit, quai ou marche a pied). Le clic droit fait de meme.
 A pied (equipe sur le terrain), seuls les ecrans d'information s'ouvrent (vaisseau, soute, equipage, journal, codex, technologies) et Echap revient a la marche.
+
+## Le tableau de bord (\ ou Pause)
+La barre oblique inverse (a gauche de Entree sur un clavier ISO) ou Pause ouvre, depuis n'importe quel ecran de jeu, le tableau de bord ; aussi : un clic sur le compteur ALERTES du bandeau du haut, le bouton TABLEAU DE BORD de l'orientation du menu F10, ou 0 dans ce menu. Il gele le vol.
+Neuf panneaux (1 VAISSEAU, 2 EQUIPAGE, 3 FINANCES, 4 MONDE LOCAL, 5 CONTRATS ET MISSIONS, 6 ALERTES, 7 COLONIES ET PROJETS, 8 EXPLORATION A PIED, 9 ESPRIT DE L'IA) ; jauges vertes au-dessus de 50 %, ambre au-dessus de 25 %, rouges dessous ; sparkline de la valeur nette.
+Tab / Fleche droite : panneau suivant ; Maj+Tab / Fleche gauche : precedent ; 1 a 9 : aller au panneau ; Haut/Bas : ligne du panneau ; Entree, Espace ou clic : ouvre l'ecran detaille de la ligne (vaisseau, equipage, banque, journal...) ; **Echap** revient ici depuis cet ecran, puis ferme le tableau et rend l'ecran d'ou il a ete ouvert ; le clic droit fait de meme. Une ligne grisee dit pourquoi elle est indisponible (amarrage, vol).
+Le panneau ALERTES liste tout ce qui demande attention, du plus grave au plus benin (CRIT rouge, ATT ambre, INFO) : Entree sur une alerte ouvre l'ecran qui la traite. Les alertes ne sont jamais obligatoires. Le compteur � ALERTES n CRIT m ATT � du bandeau du haut est visible sur tous les ecrans.
 
 ## Naufrage (scenario)
 Le vaisseau est un epave : moteur a 0 %, reservoirs vides, aucun credit, un ingenieur seul, a pied sur un monde choisi pour son air. Les epaves, campements, ruines et grottes de la surface (touche Fin / carte de surface) donnent des pieces detachees et du carburant ; le butin va en soute au retour (Entree sur < ou R) ; l'ingenieur de quart repare avec les pieces detachees (ses reparations ordinaires, le module le plus abime d'abord) ; **I puis F** verse le carburant de la soute dans le reservoir ; le menu (F10) dit moteur, energie, pieces et carburant. Le vaisseau peut decoller (Espace) quand la poussee depasse son poids sur ce monde. Rien n'est impose : on peut aussi rester vivre sur place.
@@ -165,7 +180,7 @@ Par défaut AZERTY : tangage Z/S, lacet Q/D, roulis A/E. Options > Clavier bascu
 
 - Fin (vol ou quai) : explorer a pied (fleches / pave numerique, Entree escalier, Espace attendre, Tab chef, clic = marcher).
 - Exploration à pied (un seul système pour les mondes, stations, épaves, ruines, grottes, portails, dimensions) : touche Fin en vol ou à quai, ou E sur la carte de surface (F8). Mondes : « Atterrir » ; la surface a ses sites qui mènent aux étages des lieux.
-- Pilotage : Inser (ou « ORBITE CIRCULAIRE » du menu) met le vaisseau sur une orbite circulaire autour du monde le plus proche (dans 12 rayons), payee en carburant. Un contact a moins de 25 m/s avec un monde solide est un atterrissage (le vaisseau reste pose jusqu'a la poussee ; Fin pour explorer a pied) ; plus vite, c'est un impact. L'air des mondes freine les plongees.
+- Pilotage : Inser (ou « ORBITE CIRCULAIRE » du menu) met le vaisseau sur une orbite circulaire autour du monde le plus proche (dans 12 rayons), payee en carburant. Le contact avec un monde solide est juge sur la vitesse, la pente et l'inclinaison du nez (voir SIM_MODEL, atterrissage) : propre, dur (degats, rebond), bascule (couche sur le flanc) ou destruction. Le vaisseau pose reste sur le terrain (il tourne avec le monde) jusqu'a ce que la poussee depasse le poids ; Fin pour explorer a pied. L'air des mondes freine les plongees.
 - Exploration a pied : F bascule la vue a la premiere personne (prototype a la Daggerfall : memes etages, memes tours ; gauche/droite tournent d'un huitieme de tour, haut/bas avancent et reculent ; creatures, gens, arbres, plantes, bornes et escaliers sont des panneaux faits d'ASCII).
 - Matiere (exploration à pied) : X creuse ou casse la case devant (outil et dureté = temps ; donne les ressources de la matière selon la physique du monde), B construit un mur de pierre taillée, N pose un sol de tôle (ou un pont sur l'eau) avec ce que porte l'équipe ; les cases bâties sont à vous. La glace fait déraper, soufre et lave blessent, le froid mord sans vêtements chauds.
 
@@ -182,3 +197,13 @@ Barre d'onglets en haut du chantier : COQUES, CONCEPTION, EQUIPEMENT, PLANS ET C
 - CONCEPTION : clic sur une piece de la liste (ou PgUp/PgDn), clic sur la grille pour la poser (outils POSER, RETIRER, CHOISIR ; fleches = curseur, Entree pose, X retire) ; couche (etage) Debut/Fin ou boutons - et + ; M ou bouton SYMETRIE pour poser aussi le miroir (babord/tribord) ; N nomme le plan. Glisser la souris sur l'apercu le fait tourner. Les pieces cerclees de rouge ne sont pas reliees au noyau.
 - EQUIPEMENT : clic sur une case de la grille, puis sur un emplacement, puis sur un module (double clic ou Entree installe, X retire) ; Espace change de zone (grille, emplacements, modules), fleches pour naviguer.
 - PLANS ET COMMANDES : colonnes MES PLANS (clic choisit, double clic modifie ; boutons NOUVEAU, COPIER, SUPPRIMER, NOM, MODIFIER, EXPORTER ; fichiers de `saves/plans` a importer d'un clic), PLANS EN VENTE (double clic ou Entree achete), CONSTRUIRE (boutons - + equipes, COMMANDER LA CONSTRUCTION ; O au clavier ; PgUp/PgDn equipes) et MA FLOTTE (EMBARQUER, DEMONTER, REFONDRE AVEC LE PLAN CHOISI ; au clavier Entree, D, R). Gauche/Droite change de colonne, F nouveau plan, C copier, X supprimer, E exporter, I importer.
+
+## Militaire
+| Touche | Action |
+|---|---|
+| , (en vol) | Lancer un leurre thermique (lance-leurres + ressource leurres) |
+| . (en vol) | Radar actif ON/OFF : voir plus loin, mais etre vu de tres loin |
+| / (en vol) | Aborder a pied la cible neutralisee ; U reste le pillage abstrait |
+| X puis G | Page GUERRE : fronts, blocus, batteries, paix (P), contrats de mercenaires (M), agents : R recruter, A agent suivant, C secteur vise, I infiltrer, 1-4 sabotage / vol de plans / ecoutes / rumeur, W rappeler, D drone ; Gauche/Droite change de peuple ; G ou Echap revient |
+| F3 (flotte) | O ordre du vaisseau choisi (commerce, suivre, attaquer, defendre, patrouiller), R ravitailler l'escadre, V reparer (a quai), 1-4 sort des prisonniers d'une prise (enroler, liberer, rancon, executer) |
+| Exploration : T / E / G | Tirer (armes a feu), recharger depuis la soute, lancer une grenade |

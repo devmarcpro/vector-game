@@ -229,6 +229,13 @@ impl Sim {
             return;
         }
         a.translated = true;
+        // Taking a find apart is the work of engineers: with the technology, the lessons double.
+        let reverse =
+            self.capacity_mask() & crate::colony_works::cap_bit("reverse_engineering") != 0;
+        if !self.archive.artefacts[i].fake {
+            self.findings.insert(format!("artefact:{}", def.id));
+        }
+        let a = &mut self.archive.artefacts[i];
         let (fake, fallen, cause, builder, cell) = (a.fake, a.fallen, a.cause, a.builder, a.cell);
         let t = self.time;
         let who = builder.map_or("un peuple oublie", |f| self.data.factions[f].name.as_str());
@@ -240,8 +247,8 @@ impl Sim {
             )
         } else {
             match def.id.as_str() {
-                "technologie" => {
-                    let pts = def.value / 10.0;
+                "technologie" | "outil" => {
+                    let pts = def.value / 10.0 * if reverse { 2.0 } else { 1.0 };
                     self.research_pool += pts;
                     format!(
                         "{} etudiee : {pts:.0} points de recherche (ouvrage de {who}).",

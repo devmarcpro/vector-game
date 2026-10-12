@@ -7,6 +7,7 @@
  (id:"contrebande", name:"Contrebande", text:"Detenir ou negocier une marchandise interdite", when:[], fine:600.0, severity:2),
  (id:"agression", name:"Agression", text:"Tirer sur un vaisseau qui ne vous menace pas", when:[], fine:400.0, severity:1),
  (id:"meurtre", name:"Destruction de vaisseau civil", text:"Detruire un vaisseau qui ne vous menacait pas", when:[], fine:2500.0, severity:3),
+ (id:"crime_de_guerre", name:"Crime de guerre", text:"Achever un vaisseau neutralise ou tirer sur un equipage qui se rend", when:[], fine:5000.0, severity:3),
  (id:"chirurgie", name:"Chirurgie interdite", text:"Operer un corps tenu pour sacre", when:[("corps","<",-0.4)], fine:800.0, severity:1),
  (id:"clonage", name:"Clonage", text:"Cloner un organe ou un etre vivant", when:[("corps","<",-0.4),("tradition",">",0.65)], fine:800.0, severity:1),
  (id:"prelevement", name:"Prelevement d'organe", text:"Prelever un organe sur une personne", when:[("corps","<",-0.4),("honneur",">",0.8)], fine:1500.0, severity:2),

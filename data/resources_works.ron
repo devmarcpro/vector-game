@@ -1,0 +1,5 @@
+// Resources of the colony works (waste cycle and food conservation).
+[
+ (id:"waste", name:"Déchets", category:"waste", density:400.0, value:0.05),
+ (id:"preserves", name:"Conserves", category:"consumable", density:900.0, value:3.0),
+]

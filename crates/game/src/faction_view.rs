@@ -127,6 +127,10 @@ fn draw_relations(fb: &mut Framebuffer, g: &Game) {
 }
 
 pub fn draw(fb: &mut Framebuffer, g: &Game) {
+    if g.war_page {
+        crate::war_view::draw_war(fb, g);
+        return;
+    }
     if g.rel_page {
         draw_relations(fb, g);
         return;
@@ -139,7 +143,7 @@ pub fn draw(fb: &mut Framebuffer, g: &Game) {
     let fs = &g.data.factions;
     let n = fs.len();
     fb.text(1, 1, "FACTIONS, MOEURS ET LOIS", AMBER);
-    fb.text(40, 1, "[TAB] RELATIONS   [S] SOCIETE", DIM);
+    fb.text(40, 1, "[TAB] RELATIONS   [S] SOCIETE   [G] GUERRE", DIM);
     fb.text(
         1,
         2,

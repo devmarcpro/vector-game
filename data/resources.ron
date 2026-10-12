@@ -78,6 +78,8 @@
  (id:"ammo_slugs", name:"Munitions cinétiques", category:"ammo", density:7800.0, value:6.0),
  (id:"missiles", name:"Missiles", category:"ammo", density:1500.0, value:120.0),
  (id:"mines", name:"Mines", category:"ammo", density:2500.0, value:90.0),
+ (id:"decoys", name:"Leurres thermiques", category:"ammo", density:900.0, value:40.0),
+ (id:"grenades", name:"Grenades", category:"ammo", density:1200.0, value:30.0),
  (id:"artifacts", name:"Artefacts anciens", category:"artifact", density:3000.0, value:900.0),
  (id:"antimatter", name:"Antimatiere", category:"exotic", density:1000.0, value:5000000.0),
  (id:"dark_matter", name:"Matiere noire condensee", category:"exotic", density:12000.0, value:90000.0),

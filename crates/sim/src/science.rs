@@ -73,6 +73,55 @@ impl Sim {
                 .requires
                 .iter()
                 .all(|r| self.data.tech_index(r).is_some_and(|i| self.researched[i]))
+            && self.missing_findings(t).is_empty()
+    }
+
+    /// The discoveries tech `t` still waits for (see `Tech::needs`).
+    pub fn missing_findings(&self, t: usize) -> Vec<String> {
+        self.data.techs[t]
+            .needs
+            .iter()
+            .filter(|n| !self.findings.contains(*n))
+            .cloned()
+            .collect()
+    }
+
+    /// Note what the ship and the colonies hold, and what the labs and colonies study, for the
+    /// technologies that wait for discoveries.
+    fn scan_findings(&mut self) {
+        let mut wanted: Vec<&str> = Vec::new();
+        for (t, tech) in self.data.techs.iter().enumerate() {
+            if !self.researched[t] {
+                wanted.extend(tech.needs.iter().map(String::as_str));
+            }
+        }
+        let mut found: Vec<String> = Vec::new();
+        for n in wanted {
+            if self.findings.contains(n) {
+                continue;
+            }
+            match n.split_once(':') {
+                Some(("resource", id)) => {
+                    if let Some(i) = self.data.resource_index(id) {
+                        if self.ship.cargo.kg[i] > 0.0
+                            || self.colonies.iter().any(|c| c.storage[i] > 0.0)
+                        {
+                            found.push(n.to_string());
+                        }
+                    }
+                }
+                Some(("study", "colony"))
+                    if self.colonies.iter().any(|c| c.life.discoveries > 0) =>
+                {
+                    found.push(n.to_string());
+                }
+                Some(("study", "lab")) if self.ship_research_rate() > 0.0 => {
+                    found.push(n.to_string());
+                }
+                _ => {}
+            }
+        }
+        self.findings.extend(found);
     }
 
     pub fn start_research(&mut self, t: usize) -> Result<(), &'static str> {
@@ -81,6 +130,9 @@ impl Sim {
         }
         if self.researched[t] {
             return Err("deja maitrisee");
+        }
+        if !self.missing_findings(t).is_empty() {
+            return Err("decouvertes manquantes (voir la fiche de la technologie)");
         }
         if !self.tech_available(t) {
             return Err("prerequis manquants");
@@ -108,6 +160,7 @@ impl Sim {
     /// Collect lab output and colony research into the pool, then spend it on the current project.
     pub fn tick_research(&mut self, dt: f64) {
         let speed = self.rules.research_speed;
+        self.scan_findings();
         self.research_pool += self.ship_research_rate() * dt / DAY * speed;
         for c in &mut self.colonies {
             if c.research > 0.0 {
@@ -422,6 +475,7 @@ impl Sim {
             return;
         }
         self.explored[i] = true;
+        self.findings.insert(format!("anomaly:{}", kind.id()));
         let Some(def) = self.data.anomaly_def(kind.id()).cloned() else {
             return;
         };

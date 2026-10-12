@@ -6,7 +6,7 @@ use vector_data::GameData;
 use vector_world::generate_system;
 
 pub const MAGIC: [u8; 4] = *b"VECT";
-pub const VERSION: u32 = 38;
+pub const VERSION: u32 = 40;
 
 #[derive(Debug)]
 pub enum SaveError {
@@ -70,6 +70,7 @@ pub struct SaveGame {
     pub next_fleet: u32,
     pub next_route: u32,
     pub fleet_paid_day: i64,
+    pub military: crate::arms::Military,
     pub wrecks: Vec<crate::combat::Wreck>,
     pub next_wreck: u32,
     pub wanted_until: Vec<(usize, f64)>,
@@ -78,6 +79,7 @@ pub struct SaveGame {
     pub current_research: Option<usize>,
     pub research_progress: f64,
     pub explored: Vec<bool>,
+    pub findings: Vec<String>,
     pub rules: crate::rules::Rules,
     /// Food web of each colony's territory: (colony id, game time, biomass in kg).
     pub ecologies: Vec<(u32, f64, Vec<f32>, Vec<bool>)>,
@@ -339,6 +341,7 @@ impl Sim {
             next_fleet: self.next_fleet,
             next_route: self.next_route,
             fleet_paid_day: self.fleet_paid_day,
+            military: self.military.clone(),
             wrecks: self.wrecks.clone(),
             next_wreck: self.next_wreck,
             wanted_until: self.wanted_until.iter().map(|(k, v)| (*k, *v)).collect(),
@@ -347,6 +350,7 @@ impl Sim {
             current_research: self.current_research,
             research_progress: self.research_progress,
             explored: self.explored.clone(),
+            findings: self.findings.iter().cloned().collect(),
             rules: self.rules.clone(),
             relations: self.relations.clone(),
             surprises: self.surprises.clone(),
@@ -438,6 +442,7 @@ impl Sim {
         sim.next_fleet = save.next_fleet;
         sim.next_route = save.next_route;
         sim.fleet_paid_day = save.fleet_paid_day;
+        sim.military = save.military;
         sim.wrecks = save.wrecks;
         sim.next_wreck = save.next_wreck;
         sim.wanted_until = save.wanted_until.into_iter().collect();
@@ -480,6 +485,7 @@ impl Sim {
             }
         }
         sim.research_pool = save.research_pool;
+        sim.findings = save.findings.into_iter().collect();
         sim.current_research = save.current_research;
         sim.research_progress = save.research_progress;
         if save.explored.len() == sim.explored.len() {

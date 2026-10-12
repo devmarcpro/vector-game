@@ -66,7 +66,7 @@ impl Sim {
         a == b || fa.allies.contains(&fb.id) || fb.allies.contains(&fa.id)
     }
 
-    fn record_index(&mut self, faction: usize) -> usize {
+    pub(crate) fn record_index(&mut self, faction: usize) -> usize {
         let now = self.time;
         match self.trade.record.iter().position(|r| r.faction == faction) {
             Some(i) => {

@@ -34,6 +34,7 @@ pub fn draw(fb: &mut Framebuffer, g: &Game) {
         Screen::MainMenu => draw_main(fb, g),
         Screen::NewGame => crate::newgame::draw(fb, g),
         Screen::Hub => crate::hub::draw(fb, g),
+        Screen::Dashboard => crate::dash_view::draw(fb, g),
         Screen::Pause => {
             fb.text(fb.cols() / 2 - 4, 6, "== PAUSE ==", AMBER);
             menu(fb, g, 9, &PAUSE_MENU, g.menu_sel);
@@ -158,6 +159,7 @@ pub fn draw_overlay(fb: &mut Framebuffer, g: &Game) {
     crate::flight_menu::draw(fb, g);
     // Before the command bar: the bar stays the last zone drawn.
     crate::hub::draw_menu_button(fb, g);
+    crate::dash_view::draw_alert_badge(fb, g);
     if g.settings.ticker && !matches!(g.screen, Screen::MainMenu | Screen::NewGame) {
         draw_ticker(fb, g);
     }
@@ -228,8 +230,14 @@ pub fn draw_overlay(fb: &mut Framebuffer, g: &Game) {
         }
     }
     if g.help_open && g.screen != Screen::MainMenu {
-        let lines: Vec<String> = crate::tutorial::help_lines(g.screen)
+        let lesson: &[&str] = if g.screen == Screen::Flight && g.sim.surface_state().is_some() {
+            crate::tutorial::landing_help()
+        } else {
+            &[]
+        };
+        let lines: Vec<String> = lesson
             .iter()
+            .chain(crate::tutorial::help_lines(g.screen).iter())
             .map(|l| g.settings.localize(l))
             .collect();
         let w = lines.iter().map(|l| l.len()).max().unwrap_or(10).max(14) + 2;
@@ -1491,6 +1499,55 @@ fn draw_galaxy(fb: &mut Framebuffer, g: &Game) {
     fb.line(cx - 6.0, cy, cx + 6.0, cy, RED);
     fb.line(cx, cy - 6.0, cx, cy + 6.0, RED);
     fb.text_at(cx as i32 + 8, cy as i32 + 6, "ICI", RED);
+    if let Some(sg) = s.here_besieged() {
+        fb.text(
+            1,
+            3,
+            &format!(
+                "BLOCUS EN COURS DANS CE SECTEUR PAR {} : LES ROUTES SONT COUPEES, LES PRIX MONTENT",
+                sg.besieger
+                    .map_or("UNE FLOTTE SANS DRAPEAU".to_string(), |f| g.data.factions[f]
+                        .name
+                        .to_uppercase())
+            ),
+            RED,
+        );
+    } else if !s.military.sieges.is_empty() {
+        fb.text(
+            1,
+            3,
+            &format!(
+                "{} SECTEUR(S) ASSIEGE(S) A PORTEE (CADRES ROUGES, DEZOOMEZ : -)  GUERRE ET PAIX : X PUIS G",
+                s.military.sieges.len()
+            ),
+            RED,
+        );
+    }
+    // Sectors under siege: a red frame the size of the sector (240 ly), with the besieger.
+    let mut drawn: Vec<vector_sim::politics::Cell> = Vec::new();
+    for sg in &s.military.sieges {
+        if drawn.contains(&sg.cell) {
+            continue;
+        }
+        drawn.push(sg.cell);
+        let c = vector_sim::politics::cell_center(sg.cell);
+        let half = (vector_sim::politics::SECTOR_LY / 2.0) as f32 * zoom;
+        let (x, y) = proj(c);
+        let (l, t, r, b) = (x - half, y - half, x + half, y + half);
+        for (a, bb, cc, d) in [(l, t, r, t), (r, t, r, b), (r, b, l, b), (l, b, l, t)] {
+            fb.line(a, bb, cc, d, RED);
+        }
+        fb.text_at(
+            l as i32 + 3,
+            t as i32 + 3,
+            &format!(
+                "BLOCUS {}",
+                sg.besieger
+                    .map_or(String::new(), |f| g.data.factions[f].name.to_uppercase())
+            ),
+            RED,
+        );
+    }
     // The medium between the stars: nebulae, clusters, remnants, as circles of their true size.
     for f in &g.gal_features {
         let (x, y) = proj(f.pos);
@@ -2119,9 +2176,22 @@ fn draw_colony(fb: &mut Framebuffer, g: &Game) {
         ),
         GREEN,
     );
-    fb.text(100, 1, "[F] CHAINES  [H] SANTE", DIM);
-    g.hit_cells(100, 1, 10, 1, Act::Key(KeyCode::KeyF), None);
-    g.hit_cells(112, 1, 9, 1, Act::Key(KeyCode::KeyH), None);
+    fb.text(
+        74,
+        1,
+        "[F] CHAINES [H] SANTE [I] INDUSTRIE [G] AGRICULTURE [V] VILLE [L] LOGISTIQUE",
+        DIM,
+    );
+    g.hit_cells(74, 1, 11, 1, Act::Key(KeyCode::KeyF), None);
+    g.hit_cells(86, 1, 9, 1, Act::Key(KeyCode::KeyH), None);
+    g.hit_cells(96, 1, 13, 1, Act::Key(KeyCode::KeyI), None);
+    g.hit_cells(110, 1, 15, 1, Act::Key(KeyCode::KeyG), None);
+    g.hit_cells(126, 1, 9, 1, Act::Key(KeyCode::KeyV), None);
+    g.hit_cells(136, 1, 14, 1, Act::Key(KeyCode::KeyL), None);
+    if g.col_tab != 0 {
+        crate::works_view::draw(fb, g);
+        return;
+    }
     if g.col_flow {
         crate::flow_view::draw(fb, g);
         return;
@@ -2403,7 +2473,11 @@ fn draw_fleet(fb: &mut Framebuffer, g: &Game) {
                 format!("RETOUR (J{:.0})", t1 / 86_400.0)
             }
         };
-        let route = f.route.map_or("-".to_string(), |r| format!("ROUTE {r}"));
+        let route = if f.order != vector_sim::fleet::FleetOrder::Trade {
+            f.order.label().to_string()
+        } else {
+            f.route.map_or("-".to_string(), |r| format!("ROUTE {r}"))
+        };
         fb.text(
             1,
             top + 1 + i,
@@ -2480,8 +2554,11 @@ fn draw_fleet(fb: &mut Framebuffer, g: &Game) {
             );
         }
     }
+    if g.editor.is_none() && g.hull_pick.is_none() {
+        crate::war_view::draw_squad(fb, g, ry + 3 + s.routes.len().max(1));
+    }
     let b = fb.rows() - 4;
-    fb.text(1, b, "TAB:LISTE  N:NOUVELLE ROUTE  A:AFFECTER  U:RETIRER  X:SUPPRIMER/VENDRE  B:ACHETER (A QUAI)  F2:EMPIRE  ECHAP:RETOUR", DIM);
+    fb.text(1, b, "TAB:LISTE  N:NOUVELLE ROUTE  A:AFFECTER  U:RETIRER  X:SUPPRIMER/VENDRE  B:ACHETER (A QUAI)  O:ORDRE  R:RAVITAILLER  V:REPARER  F2:EMPIRE  ECHAP:RETOUR", DIM);
     msgs(fb, g, b + 1);
 }
 

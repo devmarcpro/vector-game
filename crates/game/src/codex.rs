@@ -2,7 +2,7 @@
 //! weapon, faction, anomaly and condition, generated from the real data (no hand-written numbers).
 use vector_data::GameData;
 
-pub const CATEGORIES: [&str; 60] = [
+pub const CATEGORIES: [&str; 65] = [
     "RESSOURCES",
     "MODULES",
     "ARMES",
@@ -63,7 +63,194 @@ pub const CATEGORIES: [&str; 60] = [
     "PIECES DE VAISSEAU",
     "PLANS DE VAISSEAU",
     "PROJETS",
+    "DOCTRINES ET OPERATIONS",
+    "CULTURES",
+    "CAPACITES",
+    "DECOUVERTES",
+    "PILOTAGE",
 ];
+
+/// The cards of the military codex: doctrines, secret operations and orders to the squadron,
+/// as (name, text) generated from the very constants the game plays with.
+pub fn military_cards() -> Vec<(String, String)> {
+    use vector_sim::arms::{Doctrine, SPY_OPS};
+    use vector_sim::fleet::ORDERS;
+    let mut v = Vec::new();
+    for d in [
+        Doctrine::Aggressive,
+        Doctrine::Defensive,
+        Doctrine::Harassment,
+    ] {
+        v.push((format!("Doctrine {}", d.label().to_lowercase()), d.text()));
+    }
+    for op in SPY_OPS {
+        v.push((
+            format!("Operation {}", op.label().to_lowercase()),
+            op.text(),
+        ));
+    }
+    for o in ORDERS {
+        v.push((format!("Ordre {}", o.label().to_lowercase()), o.text()));
+    }
+    v
+}
+
+/// The abilities technologies unlock in the colony simulation (ids of `vector_data::CAPACITIES`):
+/// name and what they change.
+const CAPACITY_TEXT: [(&str, &str, &str); 16] = [
+    ("automation", "Automatisation", "Les centres d'automatisation remplacent une part du personnel (jusqu'a 55 %) : moins d'emplois a pourvoir et une production plus reguliere, mais du chomage et de la criminalite si la ville n'offre pas d'autres emplois."),
+    ("robotics", "Robotique industrielle", "Les ateliers robotises portent l'automatisation jusqu'a 80 % du travail."),
+    ("precision_tooling", "Outillage de precision", "Les outils usent moins la qualite : les normes et les laboratoires de metrologie donnent tout leur effet (moins de rebuts)."),
+    ("norms", "Normalisation", "Les bureaux des normes comptent pleinement : produits conformes, moins de defauts, moins de dechets."),
+    ("crop_rotation", "Rotation des cultures", "Les cultures changent de famille chaque saison : le sol est menage, les legumineuses le nourrissent, le regime se diversifie."),
+    ("irrigation", "Irrigation", "Les reseaux d'irrigation pompent l'eau du stock vers les champs : les terres seches donnent des recoltes."),
+    ("synthetic_fertilizer", "Engrais de synthese", "L'engrais rend tout son effet au sol (le procede Haber fournit l'ammoniac) : sol entretenu, rendements soutenus."),
+    ("cold_chain", "Chaine du froid", "Entrepots frigorifiques, conserveries et cuisines collectives : moins d'avaries, des conserves pour les disettes."),
+    ("sanitation", "Assainissement", "Les egouts et stations d'epuration collectent pleinement les dechets : moins d'ordures dans les rues, moins de maladies."),
+    ("recycling", "Recyclage", "Les centres de tri valorisent les dechets en metaux, plastiques et verre."),
+    ("mass_transit", "Transports de masse", "Tramways et metros amenent les ouvriers aux ateliers : la grande ville reste productive."),
+    ("orbital_lift", "Ascenseur orbital", "Un cable vers l'orbite : des convois plus rapides et un port de plus."),
+    ("convoys", "Convois logistiques", "Les routes et depots expedient des marchandises entre colonies avec des delais reels, et permettent d'importer des vivres ou d'exporter un surplus."),
+    ("district_planning", "Urbanisme", "Des quartiers planifies : densite toleree plus haute, pollution moins ressentie."),
+    ("air_scrubbing", "Epuration de l'air", "Les epurateurs nettoient pleinement l'air que l'industrie souille."),
+    ("reverse_engineering", "Ingenierie inverse", "Les ruines, objets anciens et epaves rapportent deux fois plus de savoir quand les ingenieurs savent les demonter."),
+];
+
+/// The distinct discoveries technologies wait for (`Tech::needs`), sorted.
+fn finding_keys(data: &GameData) -> Vec<String> {
+    let mut v: Vec<String> = data.techs.iter().flat_map(|t| t.needs.clone()).collect();
+    v.sort();
+    v.dedup();
+    v
+}
+
+/// How a discovery is made, in words.
+fn finding_label(data: &GameData, key: &str) -> (String, String) {
+    match key.split_once(':') {
+        Some(("resource", id)) => (
+            format!("Ressource : {}", res_name(data, id).unwrap_or_else(|| id.to_string())),
+            "Se decouvre en detenant cette ressource, dans la soute ou dans une colonie (miner, acheter, echanger).".to_string(),
+        ),
+        Some(("anomaly", id)) => (
+            format!(
+                "Anomalie : {}",
+                data.anomalies_def.iter().find(|a| a.id == id).map_or(id.to_string(), |a| a.name.clone())
+            ),
+            "Se decouvre en scannant completement une anomalie de ce genre.".to_string(),
+        ),
+        Some(("artefact", id)) => (
+            format!(
+                "Artefact : {}",
+                data.history.artefacts.iter().find(|a| a.id == id).map_or(id.to_string(), |a| a.name.clone())
+            ),
+            "Se decouvre en faisant traduire un vrai artefact de ce genre (fouilles de ruines et d'epaves).".to_string(),
+        ),
+        Some(("wreck", _)) => (
+            "Epave recuperee".to_string(),
+            "Se decouvre en recuperant la cargaison d'une epave (touche de recuperation en vol).".to_string(),
+        ),
+        Some(("study", "colony")) => (
+            "Etude d'une colonie".to_string(),
+            "Se decouvre quand une colonie annonce sa premiere decouverte (laboratoires de colonie).".to_string(),
+        ),
+        Some(("study", _)) => (
+            "Etude du laboratoire du bord".to_string(),
+            "Se decouvre des que les laboratoires du vaisseau travaillent.".to_string(),
+        ),
+        _ => (key.to_string(), String::new()),
+    }
+}
+
+/// Piloting and landing: the attitude holds and the rules of the touchdown, written from the
+/// constants of the simulation (`vector_sim::landing`), so that the codex cannot disagree with it.
+fn pilot_topics() -> Vec<(String, Vec<String>)> {
+    use vector_sim::landing as l;
+    let mut out: Vec<(String, Vec<String>)> = Vec::new();
+    for (k, m) in l::Sas::ALL.iter().enumerate() {
+        let what = match m {
+            l::Sas::Off => "Les commandes seules pilotent : aucune aide ne tient le nez.",
+            l::Sas::Hold => "Garde le cap ou le nez pointait quand on a lache les commandes.",
+            l::Sas::Prograde => {
+                "Nez dans le sens de la vitesse (par rapport au sol quand on est bas)."
+            }
+            l::Sas::Retrograde => {
+                "Nez contre la vitesse : l'attitude de freinage, moteur dans le sens du mouvement."
+            }
+            l::Sas::Normal => {
+                "Nez perpendiculaire au plan de l'orbite (r x v) : change l'inclinaison."
+            }
+            l::Sas::AntiNormal => "Oppose a la normale.",
+            l::Sas::RadialOut => "Nez vers l'exterieur, loin du centre du monde de reference.",
+            l::Sas::RadialIn => "Nez vers le centre du monde de reference.",
+            l::Sas::Target => "Nez vers la cible choisie (Tab, T, Y).",
+            l::Sas::Up => {
+                "Nez le long de la normale du sol : debout sur la queue pour se poser ou decoller."
+            }
+        };
+        out.push((
+            format!("SAS : {}", m.label()),
+            vec![
+                format!("SAS : {}  (touche {k})", m.label()),
+                what.to_string(),
+                "La main sur tangage, lacet ou roulis reprend la main. Le couple des RCS divise par l'inertie : ergols et soute alourdissent, des modules RCS accelerent.".to_string(),
+            ],
+        ));
+    }
+    out.push((
+        "TRAIN D'ATTERRISSAGE".to_string(),
+        vec![
+            "TRAIN D'ATTERRISSAGE  (pave num. 3)".to_string(),
+            format!(
+                "Sorti : contact sur jusqu'a {:.1} m/s vers le sol et {:.1} m/s le long du sol.",
+                l::GEAR_V_IN,
+                l::GEAR_V_T
+            ),
+            format!(
+                "Rentre : {:.1} m/s et {:.1} m/s seulement (la coque porte le choc).",
+                l::BELLY_V_IN,
+                l::BELLY_V_T
+            ),
+            "Le pilote d'atterrissage le sort tout seul sous 150 m.".to_string(),
+        ],
+    ));
+    out.push((
+        "FREINAGE SUICIDE".to_string(),
+        vec![
+            "FREINAGE SUICIDE  (panneau DESCENTE)".to_string(),
+            "Allumer a l'altitude v^2 / (2 (a - g)) : a = poussee / masse, g = pesanteur du monde. Plus tard, le vaisseau ne s'arrete pas ; plus tot, du carburant est perdu.".to_string(),
+            "Il faut a > g : le rapport poussee/poids (TWR) doit depasser 1. Le panneau clignote a 105 % de l'altitude d'allumage.".to_string(),
+            "L'air et le parachute aident ; le pilote d'atterrissage (PAV4) suit ce profil jusqu'a ~1 m/s.".to_string(),
+        ],
+    ));
+    out.push((
+        "PENTE ET BASCULE".to_string(),
+        vec![
+            "PENTE ET BASCULE".to_string(),
+            format!(
+                "Au-dela de {:.0} degres de pente, ou {:.0} degres entre le nez et la normale du sol (plus la rugosite), le vaisseau bascule et reste couche sur le flanc.",
+                l::SLOPE_MAX.to_degrees(),
+                l::TILT_MAX.to_degrees()
+            ),
+            format!(
+                "Surplus de vitesse au-dela du sur : degats = coque x (surplus/{:.0})^2 ; a {:.0} m/s de surplus la coque est detruite ; au-dela de deux fois la vitesse sure le vaisseau rebondit ({:.0} %).",
+                l::CRASH_EXCESS,
+                l::CRASH_EXCESS,
+                l::RESTITUTION * 100.0
+            ),
+            "Le site plat (pave num. 7) lit la pente du terrain sur 25 m et 150 m.".to_string(),
+        ],
+    ));
+    out.push((
+        "DECOLLAGE ET ORBITE".to_string(),
+        vec![
+            "DECOLLAGE ET ORBITE".to_string(),
+            "La poussee doit battre le poids : sinon le vaisseau reste au sol (TWR < 1).".to_string(),
+            "Le sol tourne avec le monde : le vaisseau decolle avec sa vitesse (bonus vers l'est).".to_string(),
+            "Le pilote de decollage monte droit 250 m, puis incline vers l'horizon, coupe au bon apoapsis, plane, et circularise a 97 % de l'altitude voulue (au-dessus de l'air).".to_string(),
+        ],
+    ));
+    out
+}
 
 /// The category of the reactions: the laboratory.
 pub const LAB_CATEGORY: usize = 34;
@@ -239,6 +426,11 @@ fn entries(data: &GameData, cat: usize) -> Vec<usize> {
         57 => (0..data.ship_parts.len()).collect(),
         58 => (0..data.ship_plans.len()).collect(),
         59 => (0..data.projects.len()).collect(),
+        60 => (0..military_cards().len()).collect(),
+        61 => (0..data.crops.len()).collect(),
+        62 => (0..CAPACITY_TEXT.len()).collect(),
+        63 => (0..finding_keys(data).len()).collect(),
+        64 => (0..pilot_topics().len()).collect(),
         _ => Vec::new(),
     }
 }
@@ -304,6 +496,15 @@ pub fn names(data: &GameData, cat: usize) -> Vec<String> {
             57 => data.ship_parts[i].name.clone(),
             58 => data.ship_plans[i].name.clone(),
             59 => data.projects[i].name.clone(),
+            60 => military_cards()[i].0.clone(),
+            61 => data
+                .species_index(&data.crops[i].species)
+                .map_or(data.crops[i].species.clone(), |s| {
+                    data.species[s].name.clone()
+                }),
+            62 => CAPACITY_TEXT[i].1.to_string(),
+            63 => finding_label(data, &finding_keys(data)[i]).0,
+            64 => pilot_topics()[i].0.clone(),
             18 => format!(
                 "Appeler : {}",
                 vector_data::dialogue::ROLES[i].to_lowercase()
@@ -629,6 +830,26 @@ pub fn entry(data: &GameData, cat: usize, k: usize) -> Vec<String> {
             stat("Portee de saut", m.jump_range, "al");
             stat("Bouclier", m.shield, "MJ");
             stat("Blindage", m.armor, "");
+            stat(
+                "Part ablative",
+                m.ablative * 100.0,
+                "% (brule et emporte la chaleur des faisceaux)",
+            );
+            stat(
+                "Plaques reactives",
+                m.reactive * 100.0,
+                "% (annulent une part des coups cinetiques)",
+            );
+            stat(
+                "Chaleur de leurre",
+                m.decoy,
+                "kW (les missiles a tete chercheuse la preferent a un vaisseau froid)",
+            );
+            stat(
+                "Radar actif",
+                m.sensor,
+                "kW (voit plus loin, mais le vaisseau devient visible de tres loin)",
+            );
             stat("Agilite", m.agility, "");
             stat(
                 "Degats",
@@ -743,6 +964,25 @@ pub fn entry(data: &GameData, cat: usize, k: usize) -> Vec<String> {
                 "geothermal" => out.push("Source : chaleur interne de la planete".into()),
                 _ => {}
             }
+            let works: [(&str, f64, &str); 12] = [
+                ("Champs", b.farm, "ha"),
+                ("Abri contre le climat", b.shelter * 100.0, "%"),
+                ("Irrigation", b.irrigation, "ha"),
+                ("Froid pour les vivres", b.preserve, "kg"),
+                ("Repas cuisines", b.cooking, "personnes"),
+                ("Automatisation du travail", b.automation * 100.0, "%"),
+                ("Qualite des produits", b.quality, "(normes)"),
+                ("Assainissement", b.sanitation, "personnes"),
+                ("Transport des travailleurs", b.transit, "personnes"),
+                ("Convois", b.lift, "kg/jour"),
+                ("Entretien des batiments", b.tooling * 8.0, "batiments"),
+                ("Pollution", b.pollution, "par jour (negatif : epure)"),
+            ];
+            for (what, v, unit) in works {
+                if v != 0.0 {
+                    out.push(format!("{what} : {v:.1} {unit}"));
+                }
+            }
             if b.battery > 0.0 {
                 out.push(format!(
                     "Batterie : {:.0} kWh (rendement {:.0} %)",
@@ -806,6 +1046,9 @@ pub fn entry(data: &GameData, cat: usize, k: usize) -> Vec<String> {
             ));
             for (k, id) in &t.unlocks {
                 out.push(format!("Debloque ({k}) : {id}"));
+            }
+            for n in &t.needs {
+                out.push(format!("Decouverte requise : {}", finding_label(data, n).0));
             }
         }
         7 => {
@@ -1289,6 +1532,11 @@ pub fn entry(data: &GameData, cat: usize, k: usize) -> Vec<String> {
         48 => out = crate::codex_sky::geology_entry(data, i),
         49 => out = crate::codex_sky::cosmos_entry(data, i),
         59 => project_entry(data, i, &mut out),
+        60 => {
+            let (name, text) = military_cards().swap_remove(i);
+            out.push(name);
+            out.push(text);
+        }
         28 => {
             let m = &data.materials[i];
             out.push(format!(
@@ -1615,6 +1863,15 @@ pub fn entry(data: &GameData, cat: usize, k: usize) -> Vec<String> {
             };
             out.push(format!("{}  ({slot})", g.name));
             out.push(g.text.clone());
+            if g.mag > 0 {
+                out.push(format!(
+                    "Arme a feu : chargeur de {} coups, munitions : {}, recul {:.0} % par coup, portee {} cases",
+                    g.mag,
+                    res_name(data, &g.ammo).unwrap_or_else(|| g.ammo.clone()),
+                    g.recoil * 100.0,
+                    g.range
+                ));
+            }
             if g.attack > 0.0 {
                 out.push(format!("Attaque : +{:.1} de degats par coup", g.attack));
             }
@@ -2143,6 +2400,56 @@ pub fn entry(data: &GameData, cat: usize, k: usize) -> Vec<String> {
                 vector_sim::body::OVERDOSE
             ));
         }
+        61 => {
+            let c = &data.crops[i];
+            let sp = &data.species[data.species_index(&c.species).unwrap_or(0)];
+            out.push(format!("{}  [famille {}]", sp.name, c.family));
+            let (lo, hi) = vector_sim::colony_works::crop_window(data, i);
+            out.push(format!(
+                "Pousse entre {lo:.0} K et {hi:.0} K ({:.0} a {:.0} C) ; rendement ideal {:.1} kg/ha/jour",
+                lo - 273.15,
+                hi - 273.15,
+                vector_sim::colony_works::crop_yield(data, i)
+            ));
+            out.push(format!(
+                "Besoin en eau : {:.1} (1 = la pluie d'un climat tempere) ; {} le sol de {:.4} par jour",
+                c.water,
+                if c.draw < 0.0 { "enrichit" } else { "epuise" },
+                c.draw.abs()
+            ));
+            out.push(format!(
+                "Nutrition par kg : energie {:.2}, proteines {:.2}, vitamines {:.2}",
+                c.nutrition.0, c.nutrition.1, c.nutrition.2
+            ));
+            out.push(format!("Milieux d'origine : {}", sp.habitat.join(", ")));
+            out.push("Tourner les familles menage le sol (rotation, technologie d'agronomie) ; repeter la meme famille l'epuise deux fois plus vite.".to_string());
+            out.push(sp.text.clone());
+        }
+        62 => {
+            let (id, name, text) = CAPACITY_TEXT[i];
+            out.push(format!("{name}  [capacite {id}]"));
+            out.push(text.to_string());
+            let by: Vec<String> = data
+                .techs
+                .iter()
+                .filter(|t| t.unlocks.iter().any(|(k, u)| k == "capacity" && u == id))
+                .map(|t| format!("{} ({:.0} points)", t.name, t.cost))
+                .collect();
+            out.push(format!("Debloquee par : {}", by.join(", ")));
+        }
+        63 => {
+            let key = &finding_keys(data)[i];
+            let (name, how) = finding_label(data, key);
+            out.push(name);
+            out.push(how);
+            let by: Vec<String> = data
+                .techs
+                .iter()
+                .filter(|t| t.needs.contains(key))
+                .map(|t| format!("{} ({:.0} points)", t.name, t.cost))
+                .collect();
+            out.push(format!("Requise par : {}", by.join(", ")));
+        }
         16 => {
             let o = &data.organs[i];
             out.push(format!(
@@ -2307,6 +2614,7 @@ pub fn entry(data: &GameData, cat: usize, k: usize) -> Vec<String> {
                 b.fertility * 100.0
             ));
         }
+        64 => out.extend(pilot_topics()[i].1.iter().cloned()),
         _ => {
             let n = &data.industries[i];
             out.push(n.name.clone());

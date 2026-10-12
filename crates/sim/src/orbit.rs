@@ -5,8 +5,8 @@ use crate::{Event, Sim, G0};
 use vector_core::Vec3;
 use vector_world::BodyKind;
 
-/// Contact speed (m/s) up to which touching a solid world is a landing, not a crash.
-pub const LANDING_SPEED: f64 = 25.0;
+/// Contact speed (m/s) into the ground up to which the gear lands the ship cleanly (see landing.rs).
+pub const LANDING_SPEED: f64 = crate::landing::GEAR_V_IN;
 /// The strongest braking of the air (m/s^2).
 pub const MAX_DRAG: f64 = 150.0;
 /// The orbit assist works within this many radii of the world.
@@ -25,7 +25,7 @@ impl Sim {
             .filter(|&i| self.landable(i) && self.docked.is_none())
             .filter(|&i| {
                 (self.ship.pos - self.bodies[i].pos).length()
-                    < self.bodies[i].radius + crate::SHIP_RADIUS + 1.0
+                    < self.bodies[i].radius + self.local_ground(i).0 + crate::SHIP_RADIUS + 1.0
             })
     }
 
@@ -41,7 +41,8 @@ impl Sim {
             if alt >= air.top() || alt < 0.0 {
                 continue;
             }
-            let rel = self.ship.vel - b.vel;
+            // The air turns with the world: speed is measured against it, not against the centre.
+            let rel = self.ship.vel - b.vel - self.surface_velocity(i, self.ship.pos - b.pos);
             let v = rel.length();
             if v < 1.0 {
                 continue;
@@ -132,6 +133,7 @@ mod tests {
     use crate::scene::new_sim;
     use crate::ShipInput;
     use std::sync::Arc;
+    use vector_core::Mat3;
     use vector_data::GameData;
 
     fn sim() -> Sim {
@@ -168,7 +170,9 @@ mod tests {
         let up = Vec3::new(0.0, 0.0, -1.0);
         // Gentle: 5 m/s into the ground.
         s.ship.pos = b.pos + up * (b.radius + crate::SHIP_RADIUS + 0.5);
-        s.ship.vel = b.vel - up * 5.0;
+        s.ship.vel = b.vel + s.surface_velocity(i, s.ship.pos - b.pos) - up * 5.0;
+        s.gear_down = true;
+        s.ship.rot = Mat3::look_at(up, Vec3::new(0.0, 1.0, 0.0));
         let hull = s.ship.hull;
         let mut told = false;
         for _ in 0..40 {
@@ -181,15 +185,20 @@ mod tests {
         assert!(told, "the landing is announced");
         assert_eq!(s.landed_on(), Some(i), "landed");
         assert_eq!(s.ship.hull, hull, "no damage");
-        assert!((s.ship.vel - b.vel).length() < 1.0);
+        assert!(
+            (s.ship.vel - s.bodies[i].vel - s.surface_velocity(i, s.ship.pos - s.bodies[i].pos))
+                .length()
+                < 1.0
+        );
         // Staying put over time, even as the world moves.
         for _ in 0..300 {
             s.step(&ShipInput::default());
         }
         assert_eq!(s.landed_on(), Some(i));
-        // Thrust takes it off the ground again.
+        // Thrust beyond the weight takes it off the ground again (nose up, main engine).
+        s.ship.rot = Mat3::look_at(up, Vec3::new(0.0, 1.0, 0.0));
         let up_thrust = ShipInput {
-            fwd: -1.0,
+            fwd: 1.0,
             ..Default::default()
         };
         for _ in 0..60 {

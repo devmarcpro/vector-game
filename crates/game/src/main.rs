@@ -6,6 +6,7 @@ mod codex_sky;
 mod console;
 mod cosmos_view;
 mod crew_net_view;
+mod dash_view;
 mod designer_view;
 mod dialogue_view;
 mod eco_view;
@@ -23,6 +24,7 @@ mod globe;
 mod health_view;
 mod hub;
 mod hud;
+mod landing_view;
 mod medicine_view;
 mod mind_view;
 mod mouse;
@@ -45,7 +47,9 @@ mod terrain;
 mod trade_view;
 mod tutorial;
 mod ui;
+mod war_view;
 mod wire_shape;
+mod works_view;
 
 use game::{Game, Screen, DEFAULT_SEED};
 use std::{num::NonZeroU32, rc::Rc, sync::Arc, time::Instant};
@@ -271,6 +275,53 @@ impl ApplicationHandler for App {
 }
 
 /// Headless scripted scenes for visual verification.
+/// Piloting and landing scenes: `descent` (pilot flying the burn), `contact` (just landed), `takeoff`
+/// (ascent pilot after liftoff), `toppled` (a steep slope), all over the first solid world.
+fn landing_scene(g: &mut Game, stage: &str) {
+    use vector_core::{Mat3, Vec3};
+    g.sim.reveal_all();
+    let i = (0..g.sim.bodies.len())
+        .filter(|&i| g.sim.landable(i))
+        .max_by(|&a, &b| g.sim.bodies[a].radius.total_cmp(&g.sim.bodies[b].radius))
+        .expect("a solid world");
+    let b = g.sim.bodies[i].clone();
+    let up = Vec3::new(0.3, 0.8, 0.5).normalized();
+    let alt = if stage == "descent" { 420.0 } else { 0.4 };
+    g.sim.ship.pos = b.pos + up * (b.radius + vector_sim::SHIP_RADIUS + alt);
+    g.sim.ship.vel = b.vel + g.sim.surface_velocity(i, g.sim.ship.pos - b.pos);
+    g.sim.ship.rot = Mat3::look_at(up, Vec3::new(0.0, 0.0, 1.0));
+    g.sim.ship.fuel = g.sim.ship.stats.fuel_cap;
+    g.sim.target = Some(i);
+    g.sim.update_ref_pub();
+    g.update_ground();
+    if let Some(gr) = g.sim.ground {
+        // Put the hull on the ground the cockpit draws.
+        g.sim.ship.pos = b.pos + up * (b.radius + gr.height + vector_sim::SHIP_RADIUS + alt);
+        g.sim.ship.vel = b.vel + g.sim.surface_velocity(i, g.sim.ship.pos - b.pos);
+    }
+    g.sim.gear_down = true;
+    g.sim.ship.assist = false;
+    match stage {
+        "descent" => {
+            g.sim.ship.vel = g.sim.ship.vel - up * 45.0;
+            g.rear_view = true;
+            let _ = g.find_site();
+            let _ = g.sim.engage_pilot(vector_sim::landing::PilotKind::Land);
+            g.advance(3.0);
+        }
+        "takeoff" => {
+            g.advance(1.0);
+            let _ = g.sim.engage_pilot(vector_sim::landing::PilotKind::Ascend);
+            g.advance(6.0);
+        }
+        _ => {
+            g.sim.ship.vel = g.sim.ship.vel - up * 3.0;
+            g.rear_view = true;
+            g.advance(1.5);
+        }
+    }
+}
+
 fn snapshot(path: &str, scene: &str, data: Arc<GameData>) {
     let mut g = Game::new(data, DEFAULT_SEED);
     // "ext_<scene>[@yaw,pitch,zoom]": the same scene seen from the third-person camera.
@@ -388,6 +439,9 @@ fn snapshot(path: &str, scene: &str, data: Arc<GameData>) {
             g.sim.target = Some(i);
             g.sim.update_ref_pub();
         }
+        s if s.starts_with("land_") => {
+            landing_scene(&mut g, &s[5..]);
+        }
         "visit_ship" | "visit_station" => {
             let d = Arc::clone(&g.data);
             for k in 0..4 {
@@ -476,6 +530,89 @@ fn snapshot(path: &str, scene: &str, data: Arc<GameData>) {
             }
             if scene == "hub_dock" {
                 g.hub_select(4);
+            }
+        }
+        // The dashboard: in flight, docked (with contracts, a loan, an insurance and shares),
+        // on foot, the three scenarios of the start, and a crisis (heat, illness, radiation,
+        // low fuel, a falling ship).
+        "dash" | "dash_dock" | "dash_foot" | "dash_naufrage" | "dash_marchand"
+        | "dash_voyageur" | "dash_crise" | "dash_crise_vol" => {
+            g.tut_step = None;
+            if scene == "dash_naufrage" || scene == "dash_marchand" || scene == "dash_voyageur" {
+                let mut cfg = vector_sim::start::StartConfig::new(DEFAULT_SEED);
+                let id = &scene[5..];
+                cfg.scenario = g.data.scenario_index(id).expect("scenario");
+                g.start_game(&cfg);
+                g.tut_step = None;
+            }
+            if scene == "dash_dock" || scene.starts_with("dash_crise") {
+                let (st, _) = g.sim.nearest_station().expect("station");
+                g.sim.spawn_near(st, g.sim.bodies[st].radius + 200.0);
+                g.key(KeyCode::KeyD, None, true);
+                g.sim.credits = 30_000.0;
+                g.sim.borrow(4000.0).expect("loan");
+                let offers = g.sim.offered_contracts();
+                for c in offers.into_iter().take(3) {
+                    let _ = g.sim.accept_contract(c);
+                }
+                if let Some(c) = g.sim.contracts.first_mut() {
+                    c.expires = g.sim.time + 2.0 * 86_400.0;
+                }
+                let _ = g.sim.buy_insurance(false);
+                let _ = g.sim.buy_shares(0, 5.0);
+                for _ in 0..16 {
+                    g.sim.advance(2.5 * 86_400.0, &ShipInput::default());
+                    for p in &mut g.sim.crew.members {
+                        (p.hunger, p.thirst, p.health) = (0.1, 0.1, 1.0);
+                    }
+                }
+            }
+            if scene == "dash_foot" {
+                for p in &mut g.sim.crew.members {
+                    p.health = 1.0;
+                }
+                g.sim.ship.cargo.cap_mass = 1.0e7;
+                let theme = g.data.rogue_theme_index("epave").unwrap_or(0);
+                let party = g.sim.rogue_squad();
+                g.sim.rogue_begin(theme, 12345, party);
+            }
+            if scene.starts_with("dash_crise") {
+                // Undock and then let things go wrong.
+                g.key(KeyCode::KeyU, None, true);
+                let data = Arc::clone(&g.data);
+                g.sim.ship.sys.temp_k = 700.0;
+                g.sim.ship.sys.overheating = true;
+                g.sim.ship.sys.dose_gy = 1.5;
+                g.sim.ship.hull *= 0.4;
+                g.sim.ship.fuel *= 0.08;
+                g.sim.crew.unpaid = true;
+                if let Some(p) = g.sim.crew.members.get_mut(0) {
+                    p.disease = Some((0, 5.0));
+                    p.health = 0.25;
+                    let _ = p.body.add_wound(&data, "fracture_os", 0, 0.7);
+                }
+                g.sim.mind.malware = 0.4;
+                g.sim.ship.sys.health[0] = 0.1;
+                // Falling toward the nearest planet.
+                let b = g
+                    .sim
+                    .bodies
+                    .iter()
+                    .position(|b| matches!(b.kind, vector_world::BodyKind::Planet(_)))
+                    .expect("planet");
+                let dir = vector_core::Vec3::new(1.0, 0.0, 0.0);
+                g.sim.ship.pos = g.sim.bodies[b].pos + dir * (g.sim.bodies[b].radius + 20_000.0);
+                g.sim.ship.vel = g.sim.bodies[b].vel - dir * 300.0;
+                g.sim.parked = None;
+                g.sim.update_ref_pub();
+            }
+            g.screen = if scene == "dash_foot" {
+                Screen::Rogue
+            } else {
+                Screen::Flight
+            };
+            if scene != "dash_crise_vol" {
+                g.open_dashboard();
             }
         }
         // A castaway on foot, right after the start.
@@ -652,6 +789,141 @@ fn snapshot(path: &str, scene: &str, data: Arc<GameData>) {
                 g.key(KeyCode::Enter, None, true);
                 g.key(KeyCode::Enter, None, true);
             }
+        }
+        "war" | "squad" | "blocus" => {
+            use vector_sim::{arms, politics};
+            let d = Arc::clone(&g.data);
+            g.sim.credits = 900_000.0;
+            g.sim.researched.iter_mut().for_each(|r| *r = true);
+            // A sector at war (or besieged) near the origin, with the ship in it.
+            let mut found = None;
+            'o: for c in politics::cells_around([0, 0, 0], 2) {
+                for m in 1..400 {
+                    let t = m as f64 * politics::WAR_PERIOD + 1.0;
+                    let ok = if scene == "blocus" {
+                        arms::is_besieged(&d, &g.sim.galaxy, g.sim.galaxy.seed, c, t)
+                    } else {
+                        !arms::fronts(&d, &g.sim.galaxy, g.sim.galaxy.seed, c, t).is_empty()
+                    };
+                    if ok {
+                        found = Some((c, t));
+                        break 'o;
+                    }
+                }
+            }
+            let (c, t) = found.expect("a war near the origin");
+            g.sim.here_pos = politics::cell_center(c);
+            g.sim.time = t;
+            let (st, _) = g.sim.nearest_station().expect("station");
+            g.sim.docked = Some(st);
+            g.sim.refresh_sieges();
+            if scene == "blocus" {
+                g.sim.docked = None;
+                g.key(KeyCode::KeyL, None, true);
+                g.gal_zoom = 0.5;
+            } else if scene == "war" {
+                for _ in 0..14 {
+                    let _ = g.sim.recruit_agent();
+                }
+                let ids: Vec<u32> = g.sim.military.agents.iter().map(|a| a.id).collect();
+                for id in ids {
+                    let _ = g.sim.infiltrate(id, c);
+                }
+                let spies: Vec<u32> = g
+                    .sim
+                    .military
+                    .agents
+                    .iter()
+                    .filter(|a| a.state == arms::AgentState::Infiltrated)
+                    .map(|a| a.id)
+                    .collect();
+                if let Some(&id) = spies.first() {
+                    let _ = g.sim.spy_op(id, arms::SPY_OPS[2]);
+                }
+                g.sim.military.agents.truncate(5);
+                g.sim.military.destroyed.push((4, 80_000.0));
+                g.sim.military.crimes.push(arms::WarCrime {
+                    time: t,
+                    faction: Some(4),
+                    what: "un vaisseau neutralise a ete acheve".into(),
+                });
+                g.sim.set_reputation(4, -80.0);
+                g.fac_sel = 4;
+                let hull = d.hull_index("frigate").expect("hull");
+                g.sim.credits = 9_000_000.0;
+                g.sim.buy_fleet_ship(hull).expect("ship");
+                g.screen = Screen::Factions;
+                g.open_war_page();
+            } else {
+                // The squadron: a defender, an attacker, a patrol and a prize with prisoners.
+                let hull = d.hull_index("frigate").expect("hull");
+                g.sim.credits = 9_000_000.0;
+                for _ in 0..4 {
+                    g.sim.buy_fleet_ship(hull).expect("ship");
+                }
+                use vector_sim::fleet::FleetOrder;
+                g.sim.set_order(0, FleetOrder::Defend).expect("order");
+                g.sim.set_order(1, FleetOrder::Attack).expect("order");
+                g.sim.set_order(2, FleetOrder::Patrol).expect("order");
+                g.sim.fleet[1].ammo = 0.45;
+                g.sim.fleet[0].condition = 0.7;
+                let p = &mut g.sim.fleet[3];
+                p.prize = true;
+                p.prisoners = 7;
+                p.crew = 9;
+                p.loyalty = 0.3;
+                p.condition = 0.5;
+                g.ship_sel2 = 3;
+                g.endpoints = g.sim.known_endpoints();
+                g.screen = Screen::Fleet;
+            }
+        }
+        "abordage" => {
+            use vector_sim::npc::NpcRole;
+            g.sim.spawn_traffic();
+            for p in &mut g.sim.crew.members {
+                p.health = 1.0;
+            }
+            g.sim.ship.cargo.cap_mass = 1.0e7;
+            let k = g
+                .sim
+                .npcs
+                .iter()
+                .position(|n| n.role == NpcRole::Pirate)
+                .or(if g.sim.npcs.is_empty() { None } else { Some(0) })
+                .expect("a ship");
+            let (pos, vel) = (g.sim.ship.pos, g.sim.ship.vel);
+            let n = &mut g.sim.npcs[k];
+            n.disabled = true;
+            n.pos = pos + vector_core::Vec3::new(0.0, 0.0, 200.0);
+            n.vel = vel;
+            g.sim.target_npc = Some(k);
+            g.sim.board_on_foot().expect("board");
+            // Fight through the first corridors.
+            for _ in 0..6 {
+                let target = {
+                    let r = g.sim.rogue.as_ref().expect("a run");
+                    let mut best = (r.x, r.y);
+                    let mut dd = 0;
+                    for y in 0..r.h as i32 {
+                        for x in 0..r.w as i32 {
+                            if r.floor().seen[r.idx(x, y)] && r.tile(x, y) != 0 {
+                                let d = (x - r.x).abs().max((y - r.y).abs());
+                                if d > dd {
+                                    dd = d;
+                                    best = (x, y);
+                                }
+                            }
+                        }
+                    }
+                    best
+                };
+                let _ = g.sim.rogue_travel(target.0, target.1, 30);
+                if g.sim.rogue.as_ref().is_some_and(|r| r.over) {
+                    break;
+                }
+            }
+            g.screen = Screen::Rogue;
         }
         "proto0" | "proto1" => {
             g.proto = if scene == "proto0" { 0 } else { 1 };
@@ -1065,7 +1337,8 @@ fn snapshot(path: &str, scene: &str, data: Arc<GameData>) {
                 g.advance(1.0 / 30.0);
             }
         }
-        "empire" | "colony" | "fleet" | "fleetmap" | "flow" | "projects" => {
+        "empire" | "colony" | "fleet" | "fleetmap" | "flow" | "projects" | "industry" | "farm"
+        | "city" | "logistics" | "dash_colonie" => {
             let data = Arc::clone(&g.data);
             let planet = g
                 .sim
@@ -1115,6 +1388,7 @@ fn snapshot(path: &str, scene: &str, data: Arc<GameData>) {
                         enabled: true,
                         recipe: 0,
                         health: 1.0,
+                        ops: Default::default(),
                     });
             }
             let d = data.building_index("fission_plant").expect("building");
@@ -1126,6 +1400,7 @@ fn snapshot(path: &str, scene: &str, data: Arc<GameData>) {
                     enabled: true,
                     recipe: 0,
                     health: 1.0,
+                    ops: Default::default(),
                 });
             for (id, kg) in [
                 ("food", 4000.0),
@@ -1147,7 +1422,10 @@ fn snapshot(path: &str, scene: &str, data: Arc<GameData>) {
             if scene == "flow" {
                 g.col_flow = true;
             }
-            if scene == "projects" {
+            if matches!(scene, "industry" | "farm" | "city" | "logistics") {
+                works_scene(&mut g, ci, scene);
+            }
+            if scene == "projects" || scene == "dash_colonie" {
                 g.sim.researched.iter_mut().for_each(|r| *r = true);
                 for (id, units) in [("miroirs_orbitaux", 40u32), ("comete_eau", 2)] {
                     let def = data.project_index(id).expect("project");
@@ -1178,6 +1456,11 @@ fn snapshot(path: &str, scene: &str, data: Arc<GameData>) {
             }
             if scene == "empire" {
                 g.screen = Screen::Empire;
+            }
+            if scene == "dash_colonie" {
+                g.tut_step = None;
+                g.screen = Screen::Flight;
+                g.open_dashboard();
             }
             if scene == "fleet" || scene == "fleetmap" {
                 let (st, _) = g.sim.nearest_station().expect("station");
@@ -1384,6 +1667,165 @@ fn bench(data: Arc<GameData>) {
         "save: {bytes} bytes in {:.3} ms",
         t.elapsed().as_secs_f64() * 1000.0
     );
+}
+
+/// The tabs of the colony works (industry, farming, city, logistics) on a colony with enough
+/// buildings, stocks and time to show something: all technologies are on, the climate of the
+/// city is made temperate (a snapshot is not the place to look for a lucky planet).
+fn works_scene(g: &mut game::Game, ci: usize, scene: &str) {
+    use vector_sim::colony::BuildingInst;
+    let data = Arc::clone(&g.data);
+    g.sim.rules.tech_locks = false;
+    let put = |g: &mut game::Game, id: &str, n: usize| {
+        let def = data.building_index(id).expect("building");
+        for _ in 0..n {
+            g.sim.colonies[ci].buildings.push(BuildingInst {
+                def,
+                progress: 1.0,
+                enabled: true,
+                recipe: 0,
+                health: 1.0,
+                ops: Default::default(),
+            });
+        }
+    };
+    let stock = |g: &mut game::Game, id: &str, kg: f64| {
+        g.sim.colonies[ci].storage[data.resource_index(id).expect("res")] += kg;
+    };
+    {
+        let c = &mut g.sim.colonies[ci];
+        c.works.env.ready = true;
+        c.works.env.air = true;
+        c.works.env.fertility = 0.7;
+        c.works.env.hum = 0.55;
+        c.works.env.t_mean = 286.0;
+        c.works.env.t_amp = 12.0;
+        c.works.env.year = 2.6e7;
+        c.works.soil = 0.7;
+    }
+    for id in [
+        "spare_parts",
+        "tools",
+        "construction_materials",
+        "fertilizer",
+        "iron",
+        "carbon",
+        "water",
+        "food",
+        "consumer_goods",
+    ] {
+        stock(g, id, 6000.0);
+    }
+    // A town that eats and drinks for the length of the scene.
+    stock(g, "food", 60_000.0);
+    stock(g, "water", 120_000.0);
+    match scene {
+        "industry" => {
+            for (id, n) in [
+                ("solar_farm", 4),
+                ("workshop", 2),
+                ("automation_hub", 1),
+                ("standards_office", 1),
+                ("component_factory", 1),
+                ("electronics_fab", 1),
+                ("chemical_plant", 1),
+                ("recycler", 1),
+                ("residential_block", 2),
+            ] {
+                put(g, id, n);
+            }
+            g.sim.colonies[ci].pop = 650.0;
+            g.sim.colonies[ci].treasury = 20_000.0;
+            stock(g, "steel", 3000.0);
+            stock(g, "electronics", 400.0);
+            g.col_tab = 1;
+            g.tab_sel = 5;
+        }
+        "farm" => {
+            for (id, n) in [
+                ("farmland", 3),
+                ("greenhouse_hall", 1),
+                ("irrigation_net", 2),
+                ("cold_store", 1),
+                ("canteen", 1),
+                ("fish_farm", 1),
+                ("cannery", 1),
+                ("residential_block", 2),
+            ] {
+                put(g, id, n);
+            }
+            g.sim.colonies[ci].pop = 220.0;
+            g.sim.colonies[ci].treasury = 20_000.0;
+            stock(g, "food", 3000.0);
+            stock(g, "organics", 1500.0);
+            g.col_tab = 2;
+        }
+        "city" => {
+            for (id, n) in [
+                ("residential_block", 5),
+                ("arcology", 1),
+                ("warehouse", 3),
+                ("sewage_plant", 1),
+                ("composter", 1),
+                ("waste_sorting", 1),
+                ("road_network", 2),
+                ("tram_line", 1),
+                ("police_station", 2),
+                ("air_scrubber", 1),
+                ("smelter", 3),
+                ("chemical_plant", 2),
+                ("school", 1),
+                ("recreation_center", 1),
+                ("solar_farm", 6),
+            ] {
+                put(g, id, n);
+            }
+            g.sim.colonies[ci].pop = 900.0;
+            g.sim.colonies[ci].treasury = 20_000.0;
+            stock(g, "ammonia", 8000.0);
+            stock(g, "phosphorus", 3000.0);
+            g.col_tab = 3;
+        }
+        _ => {
+            for (id, n) in [
+                ("convoy_depot", 1),
+                ("road_network", 2),
+                ("orbital_elevator", 1),
+                ("residential_block", 2),
+            ] {
+                put(g, id, n);
+            }
+            let mut other = g.sim.colonies[ci].clone();
+            other.id += 100;
+            other.name = "Port Nuage".into();
+            other.body = if other.body == 1 { 2 } else { 1 };
+            other.storage.iter_mut().for_each(|v| *v = 0.0);
+            other.buildings.truncate(3);
+            g.sim.colonies.push(other);
+            g.sim.colonies[ci].treasury = 50_000.0;
+            g.col_tab = 4;
+        }
+    }
+    g.sim.time += 60.0 * 86_400.0;
+    g.sim.update_colonies_pub();
+    if scene == "logistics" {
+        let to = g.sim.colonies.len() - 1;
+        let items: Vec<usize> = (0..data.resources.len())
+            .filter(|&i| g.sim.colonies[ci].storage[i] > 0.5)
+            .collect();
+        g.ship_res = items
+            .iter()
+            .position(|&i| data.resources[i].id == "food")
+            .unwrap_or(0);
+        for (res, kg) in [
+            (data.resource_index("food").expect("res"), 2500.0),
+            (data.resource_index("steel").expect("res"), 800.0),
+        ] {
+            g.sim.colonies[ci].storage[res] += kg;
+            let _ = g.sim.colony_dispatch(ci, to, res, kg);
+        }
+        g.sim.colonies[ci].works.food_price = 1.35;
+    }
 }
 
 fn main() {

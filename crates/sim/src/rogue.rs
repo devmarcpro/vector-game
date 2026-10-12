@@ -37,6 +37,25 @@ pub const VIEW_RADIUS: i32 = 9;
 pub const TURN_SECONDS: f64 = 5.0;
 pub const SURFACE_TURN_SECONDS: f64 = 60.0;
 pub const MAX_PARTY: usize = 4;
+/// Firearms: kilograms of ammunition per round, the cap of the recoil, and how fast it dies.
+pub const ROUND_KG: f64 = 0.02;
+pub const MAX_RECOIL: f64 = 0.5;
+pub const RECOIL_DECAY: f64 = 0.6;
+/// Grenades: the stock resource, the explosive reaction of its charge (see `chemistry.rs`), the
+/// mass of that charge, damage points per MJ released, blast radius and throwing range (cells),
+/// and the noise (cells) that wakes the sleepers.
+pub const GRENADE_RESOURCE: &str = "grenades";
+pub const GRENADE_REACTION: &str = "ammonium_nitrate_blast";
+pub const GRENADE_CHARGE_KG: f64 = 0.4;
+pub const BLAST_DMG_PER_MJ: f64 = 14.0;
+pub const BLAST_RADIUS: i32 = 2;
+pub const GRENADE_RANGE: i32 = 7;
+pub const GRENADE_NOISE: f64 = 14.0;
+
+/// Chance that a round hits a target `dist` cells away with `recoil` shaking the aim.
+pub fn fire_accuracy(dist: f64, recoil: f64) -> f64 {
+    (0.95 - 0.06 * dist - recoil).clamp(0.1, 0.95)
+}
 /// Distance within which a body can be entered (m): stations, anomalies, wrecks.
 pub const ENTER_RANGE: f64 = 150_000.0;
 /// What one person and the rover can carry, kg; tiles per move with the rover.
@@ -156,6 +175,12 @@ pub struct Rogue {
     pub social: bool,
     /// The terminal the squad just used (index in `ROGUE_TERMINALS`), for the screen to open.
     pub terminal: Option<usize>,
+    /// Rounds left in the magazine of each member who has fired: (crew index, rounds).
+    #[serde(default)]
+    pub mags: Vec<(usize, u32)>,
+    /// How much the last shots shake the aim of the next ones (0..`MAX_RECOIL`).
+    #[serde(default)]
+    pub recoil: f64,
 }
 
 impl Rogue {
@@ -1352,6 +1377,95 @@ impl Sim {
         Ok(())
     }
 
+    /// Board the crippled target on foot: the squad crosses the airlock and fights through the
+    /// corridors of the enemy ship (a floor of the theme `abordage`, its walls and decks of the
+    /// materials of that hull). Clearing the garrison and walking back out takes the ship.
+    pub fn board_on_foot(&mut self) -> Result<(), &'static str> {
+        if self.rogue.is_some() {
+            return Err("une exploration est deja en cours");
+        }
+        let k = self.target_npc.ok_or("aucune cible")?;
+        let n = self.npcs.get(k).ok_or("cible inconnue")?;
+        if !n.disabled {
+            return Err("la cible n'est pas neutralisee");
+        }
+        if (n.pos - self.ship.pos).length() > crate::combat::BOARD_RANGE
+            || (n.vel - self.ship.vel).length() > 60.0
+        {
+            return Err("trop loin ou trop rapide pour un abordage");
+        }
+        let theme = self
+            .data
+            .rogue_theme_index("abordage")
+            .ok_or("pas de theme d'abordage")?;
+        let party = self.able(self.rogue_squad());
+        if party.is_empty() {
+            return Err("personne n'est en etat de partir");
+        }
+        let b = crate::arms::Boarding {
+            npc_id: n.id,
+            name: n.name.clone(),
+            role: n.role,
+            faction: n.faction,
+            level: n.level,
+            hull_max: n.hull_max,
+            cargo: n.cargo,
+        };
+        let seed = hash_coord(self.system.seed, i64::from(b.npc_id), 0xAB02, 7);
+        let mut r = self.new_run(theme, seed, party);
+        // The walls and the decks of the ship are what its builders used.
+        let (wall, deck) = match b.role {
+            crate::npc::NpcRole::Patrol => ("coque_blindee", "pont_blinde"),
+            crate::npc::NpcRole::Pirate => ("coque_rouillee", "caillebotis"),
+            _ => ("cloison", "tole"),
+        };
+        if let (Some(w), Some(d)) = (
+            self.data.material_index(wall),
+            self.data.material_index(deck),
+        ) {
+            let f = &mut r.floors[0];
+            for i in 0..f.tiles.len().min(f.mats.len()) {
+                match f.tiles[i] {
+                    T_WALL => f.mats[i] = w as u8,
+                    T_FLOOR => f.mats[i] = d as u8,
+                    _ => {}
+                }
+            }
+        }
+        r.place = format!("ABORDAGE : {}", b.name);
+        r.reveal();
+        self.military.boarding = Some(b);
+        self.rogue = Some(r);
+        Ok(())
+    }
+
+    /// The ship the squad leaves, once the boarding walk is over: taken if the garrison is
+    /// dead, otherwise the squad falls back and the ship drifts on, crippled.
+    fn boarding_outcome(&mut self, r: &Rogue) -> Option<String> {
+        let b = self.military.boarding.take()?;
+        let cleared = r.floors[0]
+            .monsters
+            .iter()
+            .all(|m| m.friendly || m.hp <= 0.0);
+        if !cleared {
+            return Some(format!(
+                "{} N'EST PAS PRIS : LA GARNISON TIENT ENCORE",
+                b.name
+            ));
+        }
+        let k = self.npcs.iter().position(|n| n.id == b.npc_id)?;
+        if !b.faction.is_none() && b.role != crate::npc::NpcRole::Pirate {
+            self.change_reputation(b.faction, -20.0);
+            self.mark_wanted_pub(b.faction, 10.0);
+        }
+        self.remove_npc_silent(k);
+        self.capture_prize(&b);
+        Some(format!(
+            "{} EST A VOUS : DECIDEZ DU SORT DES PRISONNIERS (F3)",
+            b.name
+        ))
+    }
+
     /// The terminals the ship's modules give it: the bridge, the crew's quarters and the time
     /// anchors always, the rest from what is installed.
     pub fn ship_terminals(&self) -> Vec<usize> {
@@ -1478,6 +1592,8 @@ impl Sim {
             parent: None,
             social: false,
             terminal: None,
+            mags: Vec::new(),
+            recoil: 0.0,
         };
         r.say(format!("{} : {}", t.name, t.text));
         r.reveal();
@@ -1785,6 +1901,8 @@ impl Sim {
             parent: None,
             social: false,
             terminal: None,
+            mags: Vec::new(),
+            recoil: 0.0,
         };
         r.say(format!(
             "Debarquement en {} : {}{}.",
@@ -1957,6 +2075,337 @@ impl Sim {
         (0.8 + 0.22 * combat + 2.0 * p.gear_stat(&self.data, "attack")) * (0.7 + 0.6 * rng.f64())
     }
 
+    // ---- firearms: magazines, recoil, reloading, grenades ------------------------------------
+
+    /// The firearm a member carries (a weapon with a magazine), if any.
+    fn firearm(&self, who: usize) -> Option<&vector_data::Gear> {
+        self.crew
+            .members
+            .get(who)?
+            .gear
+            .iter()
+            .flatten()
+            .filter_map(|&g| self.data.gear.get(g))
+            .find(|g| g.mag > 0)
+    }
+
+    /// Rounds left in the magazine of a member (a full one until the first shot of the run).
+    pub fn rogue_rounds(&self, r: &Rogue, who: usize) -> u32 {
+        let full = self.firearm(who).map_or(0, |g| g.mag);
+        r.mags
+            .iter()
+            .find(|m| m.0 == who)
+            .map_or(full, |m| m.1.min(full))
+    }
+
+    /// Rounds in the magazines of the squad and their capacity, if anyone carries a firearm.
+    pub fn rogue_ammo_status(&self, r: &Rogue) -> Option<(u32, u32)> {
+        let guns: Vec<usize> = self
+            .party_up(r)
+            .into_iter()
+            .filter(|&w| self.firearm(w).is_some())
+            .collect();
+        if guns.is_empty() {
+            return None;
+        }
+        let rounds = guns.iter().map(|&w| self.rogue_rounds(r, w)).sum();
+        let cap = guns
+            .iter()
+            .filter_map(|&w| self.firearm(w).map(|g| g.mag))
+            .sum();
+        Some((rounds, cap))
+    }
+
+    fn set_rounds(r: &mut Rogue, who: usize, n: u32) {
+        match r.mags.iter_mut().find(|m| m.0 == who) {
+            Some(m) => m.1 = n,
+            None => r.mags.push((who, n)),
+        }
+    }
+
+    /// The nearest hostile creature in view within `range` cells and with a clear line.
+    fn rogue_nearest_foe(&self, r: &Rogue, range: i32) -> Option<usize> {
+        let vis = r.visible();
+        r.floor()
+            .monsters
+            .iter()
+            .enumerate()
+            .filter(|(_, m)| {
+                !m.friendly
+                    && m.hunts
+                    && vis[r.idx(m.x, m.y)]
+                    && (m.x - r.x).abs().max((m.y - r.y).abs()) <= range
+                    && r.line_clear(r.x, r.y, m.x, m.y)
+            })
+            .min_by_key(|(_, m)| (m.x - r.x).abs().max((m.y - r.y).abs()))
+            .map(|(k, _)| k)
+    }
+
+    /// Wake the sleepers within `noise` cells of the squad.
+    fn rogue_noise(r: &mut Rogue, noise: f64) {
+        let (px, py) = (r.x, r.y);
+        for o in &mut r.floor_mut().monsters {
+            if !o.awake && f64::from((o.x - px).abs().max((o.y - py).abs())) <= noise {
+                o.awake = true;
+            }
+        }
+    }
+
+    /// The squad's firearms shoot the nearest hostile in view: one round each, a hit chance
+    /// that falls with the distance and with the recoil of the shots before, a louder noise
+    /// than a blade. Empty magazines click.
+    pub fn rogue_fire(&mut self) -> Result<String, &'static str> {
+        let mut r = self.rogue.take().ok_or("pas d'exploration en cours")?;
+        let res = self.rogue_fire_inner(&mut r);
+        self.rogue = Some(r);
+        res
+    }
+
+    fn rogue_fire_inner(&mut self, r: &mut Rogue) -> Result<String, &'static str> {
+        if r.over {
+            return Err("l'exploration est terminee");
+        }
+        let up = self.party_up(r);
+        let shooters: Vec<usize> = up
+            .iter()
+            .copied()
+            .filter(|&w| self.firearm(w).is_some())
+            .collect();
+        if shooters.is_empty() {
+            return Err("aucune arme a feu equipee");
+        }
+        let range = shooters
+            .iter()
+            .filter_map(|&w| self.firearm(w).map(|g| g.range))
+            .max()
+            .unwrap_or(0);
+        let k = self
+            .rogue_nearest_foe(r, range)
+            .ok_or("aucune cible a portee")?;
+        let (tx, ty) = (r.floor().monsters[k].x, r.floor().monsters[k].y);
+        let dist = f64::from((tx - r.x).abs().max((ty - r.y).abs()));
+        let mut rng = Rng::new(hash_coord(r.seed, i64::from(r.turn), 13, 47));
+        let lead = r.active.min(up.len().saturating_sub(1));
+        let mut dealt = 0.0;
+        let (mut shots, mut clicks) = (0, 0);
+        let mut noise: f64 = 0.0;
+        for &who in &shooters {
+            let rounds = self.rogue_rounds(r, who);
+            let g = self.firearm(who).expect("a shooter").clone();
+            if rounds == 0 || g.range < dist as i32 {
+                clicks += u32::from(rounds == 0);
+                continue;
+            }
+            Self::set_rounds(r, who, rounds - 1);
+            shots += 1;
+            noise = noise.max(g.noise);
+            let accuracy = fire_accuracy(dist, r.recoil);
+            r.recoil = (r.recoil + g.recoil).min(MAX_RECOIL);
+            if rng.f64() < accuracy {
+                let who_is_lead = up.get(lead) == Some(&who);
+                dealt += self.rogue_blow(who, &mut rng) * 1.5 * if who_is_lead { 1.0 } else { 0.7 };
+            }
+        }
+        if shots == 0 {
+            if clicks > 0 {
+                r.say("Clic : chargeur vide.");
+                self.rogue_end_turn(r);
+                return Err("chargeur vide : rechargez");
+            }
+            return Err("cible hors de portee");
+        }
+        Self::rogue_noise(r, noise);
+        let name = r.floor().monsters[k].name.to_lowercase();
+        if dealt <= 0.0 {
+            r.say(format!("Vous tirez sur {name} : manque."));
+            self.rogue_end_turn(r);
+            return Ok(format!("{shots} COUP(S) : MANQUE"));
+        }
+        let defense = r.floor().monsters[k].defense;
+        let dmg = dealt * (1.0 - defense) * if r.buff > 0 { 1.5 } else { 1.0 };
+        self.rogue_wound_monster(r, k, dmg, &mut rng, "touchez");
+        self.rogue_end_turn(r);
+        Ok(format!("{shots} COUP(S) : {dmg:.1} DEGATS"))
+    }
+
+    /// Reload every firearm of the squad from the ammunition of the hold (a turn).
+    pub fn rogue_reload(&mut self) -> Result<String, &'static str> {
+        let mut r = self.rogue.take().ok_or("pas d'exploration en cours")?;
+        let res = (|| {
+            if r.over {
+                return Err("l'exploration est terminee");
+            }
+            let data = std::sync::Arc::clone(&self.data);
+            let mut loaded = 0;
+            let mut empty_hold = false;
+            let mut any_gun = false;
+            for who in self.party_up(&r) {
+                let Some(g) = self.firearm(who).cloned() else {
+                    continue;
+                };
+                any_gun = true;
+                let have = self.rogue_rounds(&r, who);
+                let missing = g.mag.saturating_sub(have);
+                if missing == 0 {
+                    continue;
+                }
+                let Some(res) = data.resource_index(&g.ammo) else {
+                    continue;
+                };
+                let take = (f64::from(missing) * ROUND_KG).min(self.ship.cargo.kg[res]);
+                if take < ROUND_KG {
+                    empty_hold = true;
+                    continue;
+                }
+                let n = (take / ROUND_KG).floor() as u32;
+                self.ship.cargo.remove(&data, res, f64::from(n) * ROUND_KG);
+                Self::set_rounds(&mut r, who, have + n);
+                loaded += n;
+            }
+            if !any_gun {
+                return Err("aucune arme a feu equipee");
+            }
+            if loaded == 0 {
+                return Err(if empty_hold {
+                    "plus de munitions en soute"
+                } else {
+                    "les chargeurs sont pleins"
+                });
+            }
+            r.say(format!("Rechargement : {loaded} coups."));
+            self.rogue_end_turn(&mut r);
+            Ok(format!("RECHARGEMENT : {loaded} COUPS"))
+        })();
+        self.rogue = Some(r);
+        res
+    }
+
+    /// Damage (points) of a charge of `kg` of the explosive reaction `reaction` of the
+    /// chemistry: the heat it releases (Hess' law, per kg of reagents) times a fixed share.
+    pub fn blast_damage(&self, reaction: &str, kg: f64) -> Option<f64> {
+        let r = self.data.reactions.iter().find(|r| r.id == reaction)?;
+        let mj_per_kg = -crate::chemistry::energy_density(&self.data, r);
+        (mj_per_kg > 0.0).then_some(mj_per_kg * kg * BLAST_DMG_PER_MJ)
+    }
+
+    /// Throw a grenade at the nearest hostile in view: the blast follows the chemistry of the
+    /// charge, falls off with the distance from the centre, stops at walls, and hurts the squad
+    /// too when it is thrown too close. A grenade makes a noise that wakes everything near.
+    pub fn rogue_grenade(&mut self) -> Result<String, &'static str> {
+        let mut r = self.rogue.take().ok_or("pas d'exploration en cours")?;
+        let res = self.rogue_grenade_inner(&mut r);
+        self.rogue = Some(r);
+        res
+    }
+
+    fn rogue_grenade_inner(&mut self, r: &mut Rogue) -> Result<String, &'static str> {
+        if r.over {
+            return Err("l'exploration est terminee");
+        }
+        let stock = self
+            .data
+            .resource_index(GRENADE_RESOURCE)
+            .ok_or("pas de grenades dans ce monde")?;
+        if self.ship.cargo.kg[stock] < 1.0 {
+            return Err("aucune grenade en soute");
+        }
+        let k = self
+            .rogue_nearest_foe(r, GRENADE_RANGE)
+            .ok_or("aucune cible a portee")?;
+        let (cx, cy) = (r.floor().monsters[k].x, r.floor().monsters[k].y);
+        let base = self
+            .blast_damage(GRENADE_REACTION, GRENADE_CHARGE_KG)
+            .ok_or("charge inconnue")?;
+        let data = std::sync::Arc::clone(&self.data);
+        self.ship.cargo.remove(&data, stock, 1.0);
+        let mut rng = Rng::new(hash_coord(r.seed, i64::from(r.turn), 17, 53));
+        let falloff = |d: i32| 1.0 / (1.0 + f64::from(d * d));
+        // The creatures first, from the highest index down so removals shift nothing.
+        let mut hit: Vec<(usize, f64)> = r
+            .floor()
+            .monsters
+            .iter()
+            .enumerate()
+            .filter(|(_, m)| {
+                let d = (m.x - cx).abs().max((m.y - cy).abs());
+                d <= BLAST_RADIUS && r.line_clear(cx, cy, m.x, m.y)
+            })
+            .map(|(i, m)| {
+                let d = (m.x - cx).abs().max((m.y - cy).abs());
+                (i, base * falloff(d) * (1.0 - m.defense))
+            })
+            .collect();
+        hit.sort_by_key(|h| std::cmp::Reverse(h.0));
+        let mut total = 0.0;
+        for (i, d) in &hit {
+            if r.floor().monsters[*i].friendly {
+                continue;
+            }
+            total += d;
+            self.rogue_wound_monster(r, *i, *d, &mut rng, "soufflez");
+        }
+        // Then the squad, if it stands in the blast.
+        let mut own = 0;
+        for who in self.party_up(r) {
+            let d = (r.x - cx).abs().max((r.y - cy).abs());
+            if d <= BLAST_RADIUS && r.line_clear(cx, cy, r.x, r.y) {
+                let p = &mut self.crew.members[who];
+                p.health = (p.health - (0.1 * base * falloff(d) / 6.0) as f32).max(0.0);
+                own += 1;
+            }
+        }
+        Self::rogue_noise(r, GRENADE_NOISE);
+        r.say(format!(
+            "La grenade explose : {total:.1} degats{}.",
+            if own > 0 {
+                ", l'equipe est touchee"
+            } else {
+                ""
+            }
+        ));
+        self.rogue_end_turn(r);
+        Ok(format!("EXPLOSION : {total:.1} DEGATS"))
+    }
+
+    /// Hurt creature `k` for `dmg`; if it falls, count the kill and drop its loot.
+    fn rogue_wound_monster(
+        &mut self,
+        r: &mut Rogue,
+        k: usize,
+        dmg: f64,
+        rng: &mut Rng,
+        verb: &str,
+    ) {
+        let name = r.floor().monsters[k].name.clone();
+        let m = &mut r.floor_mut().monsters[k];
+        m.hp -= dmg;
+        m.awake = true;
+        if m.hp > 0.0 {
+            r.say(format!("Vous {verb} {} ({dmg:.1}).", name.to_lowercase()));
+            return;
+        }
+        let m = r.floor_mut().monsters.remove(k);
+        r.kills += 1;
+        self.kill_relations(r.body, m.hunts, m.boss);
+        r.say(format!("{name} est abattu."));
+        let mult = if m.boss { 3.0 } else { 1.0 } * (1.0 + 0.3 * r.depth() as f64);
+        for (res, lo, hi) in &m.drops {
+            let kg = (lo + (hi - lo) * rng.f64()) * mult;
+            r.floor_mut().items.push(Item {
+                x: m.x,
+                y: m.y,
+                res: *res,
+                kg,
+                plant: false,
+            });
+        }
+        if m.boss {
+            r.boss_dead = true;
+            self.research_pool += 100.0;
+            r.say("Le maitre des lieux est tombe : on en tirera des enseignements.");
+        }
+    }
+
     // ---- moving ----------------------------------------------------------------------------
 
     /// One move of the squad: a step (two with the rover on open ground), or an attack when
@@ -2107,46 +2556,14 @@ impl Sim {
             total *= 1.5;
         }
         let defense = r.floor().monsters[k].defense;
-        let name = r.floor().monsters[k].name.clone();
         let dmg = total * (1.0 - defense);
         // A loud weapon wakes the sleepers around it (the gear's `noise` radius, in cells).
         let noise = up
             .iter()
             .map(|&who| self.crew.members[who].gear_stat(&self.data, "noise"))
             .fold(0.0, f64::max);
-        let (px, py) = (r.x, r.y);
-        for o in &mut r.floor_mut().monsters {
-            if !o.awake && f64::from((o.x - px).abs().max((o.y - py).abs())) <= noise {
-                o.awake = true;
-            }
-        }
-        let m = &mut r.floor_mut().monsters[k];
-        m.hp -= dmg;
-        m.awake = true;
-        if m.hp > 0.0 {
-            r.say(format!("Vous frappez {} ({dmg:.1}).", name.to_lowercase()));
-            return;
-        }
-        let m = r.floor_mut().monsters.remove(k);
-        r.kills += 1;
-        self.kill_relations(r.body, m.hunts, m.boss);
-        r.say(format!("{name} est abattu."));
-        let mult = if m.boss { 3.0 } else { 1.0 } * (1.0 + 0.3 * r.depth() as f64);
-        for (res, lo, hi) in &m.drops {
-            let kg = (lo + (hi - lo) * rng.f64()) * mult;
-            r.floor_mut().items.push(Item {
-                x: m.x,
-                y: m.y,
-                res: *res,
-                kg,
-                plant: false,
-            });
-        }
-        if m.boss {
-            r.boss_dead = true;
-            self.research_pool += 100.0;
-            r.say("Le maitre des lieux est tombe : on en tirera des enseignements.");
-        }
+        Self::rogue_noise(r, noise);
+        self.rogue_wound_monster(r, k, dmg, &mut rng, "frappez");
     }
 
     /// The squad is on a new tile: pick up what lies there, search what lies there, trip what
@@ -2607,6 +3024,7 @@ impl Sim {
     fn rogue_end_turn(&mut self, r: &mut Rogue) {
         r.turn += 1;
         r.buff = r.buff.saturating_sub(1);
+        r.recoil *= RECOIL_DECAY;
         if r.drone_turns > 0 {
             r.drone_turns -= 1;
             self.rogue_drone_gather(r);
@@ -2958,7 +3376,11 @@ impl Sim {
             }
         }
         r.over = true;
+        let taken = self.boarding_outcome(r);
         let mut msg = format!("RETOUR AU VAISSEAU : {kg_total:.0} KG RAPPORTES");
+        if let Some(t) = taken {
+            msg = format!("{msg} - {t}");
+        }
         if !left.is_empty() {
             msg = format!("{msg} (SOUTE PLEINE : {} LAISSE)", left.join(", "));
         }
@@ -2986,6 +3408,8 @@ impl Sim {
     pub fn rogue_close(&mut self) {
         if self.rogue.as_ref().is_some_and(|r| r.over) {
             self.rogue = None;
+            // A squad lost aboard takes no ship.
+            self.military.boarding = None;
         }
     }
 
@@ -5166,5 +5590,147 @@ mod tests {
             .find(|a| crate::biosphere::variant_now(&d, a.world, 0.0, elk, biome, 0.0).speciated())
             .expect("some world has a diverged population");
         assert!(mon_adapted(&d, elk, 0, 0, &named).name.contains("variante"));
+    }
+
+    // ---- firearms and grenades ----------------------------------------------------------------
+
+    /// Open an arena around the squad (floor from the squad to fourteen cells east, seven rows).
+    fn arena(s: &mut Sim) -> (i32, i32) {
+        let r = s.rogue.as_mut().unwrap();
+        let (x0, y0) = (r.x, r.y);
+        for dy in -3..=3 {
+            for dx in -1..=14 {
+                let (x, y) = (x0 + dx, y0 + dy);
+                if r.inside(x, y) && r.tile(x, y) != T_UP {
+                    let i = r.idx(x, y);
+                    r.floor_mut().tiles[i] = T_FLOOR;
+                }
+            }
+        }
+        r.floor_mut().monsters.clear();
+        r.floor_mut().items.clear();
+        (x0, y0)
+    }
+
+    fn equip(s: &mut Sim, gear: &str) {
+        let g = s.data.gear_index(gear).unwrap();
+        let who = s.rogue.as_ref().unwrap().party[0];
+        s.crew.members[who].gear[0] = Some(g);
+    }
+
+    #[test]
+    fn accuracy_falls_with_distance_and_recoil() {
+        assert!(fire_accuracy(2.0, 0.0) > fire_accuracy(8.0, 0.0));
+        assert!(fire_accuracy(4.0, 0.0) > fire_accuracy(4.0, 0.4));
+        assert!(fire_accuracy(20.0, 0.5) >= 0.1 && fire_accuracy(0.0, 0.0) <= 0.95);
+    }
+
+    #[test]
+    fn firearms_have_magazines_recoil_noise_and_reload_from_the_hold() {
+        let mut s = run_on("epave", 11);
+        let (x0, y0) = arena(&mut s);
+        let who = s.rogue.as_ref().unwrap().party[0];
+        assert!(s.rogue_fire().is_err(), "no firearm yet");
+        equip(&mut s, "fusil");
+        assert_eq!(s.rogue_rounds(s.rogue.as_ref().unwrap(), who), 12);
+        assert!(
+            s.rogue_fire().unwrap_err().contains("cible"),
+            "nothing to shoot at"
+        );
+        {
+            let foe = mon(&s, "rat", x0 + 4, y0, 1.0e6, true);
+            let sleeper = mon(&s, "rat", x0 + 3, y0 + 3, 5.0, false);
+            let r = s.rogue.as_mut().unwrap();
+            r.floor_mut().monsters.extend([foe, sleeper]);
+        }
+        let hp0 = s.rogue.as_ref().unwrap().floor().monsters[0].hp;
+        s.rogue_fire().expect("fire");
+        {
+            let r = s.rogue.as_ref().unwrap();
+            assert_eq!(s.rogue_rounds(r, who), 11);
+            assert!(r.recoil > 0.0 && r.recoil <= MAX_RECOIL);
+            assert!(
+                r.floor().monsters[1].awake,
+                "the shot wakes the sleeper nearby"
+            );
+        }
+        let mut hit = s.rogue.as_ref().unwrap().floor().monsters[0].hp < hp0;
+        for _ in 0..11 {
+            let _ = s.rogue_fire();
+            hit |= s.rogue.as_ref().unwrap().floor().monsters[0].hp < hp0;
+        }
+        assert!(hit, "twelve shots at four cells land at least once");
+        let r = s.rogue.as_ref().unwrap();
+        assert_eq!(s.rogue_rounds(r, who), 0);
+        assert!(r.recoil <= MAX_RECOIL);
+        assert!(s.rogue_fire().unwrap_err().contains("chargeur"));
+        // The hold has no ammunition: nothing to load. With some, the magazine fills.
+        assert!(s.rogue_reload().unwrap_err().contains("munitions"));
+        let slugs = s.data.resource_index("ammo_slugs").unwrap();
+        let data = std::sync::Arc::clone(&s.data);
+        s.ship.cargo.add(&data, slugs, 10.0);
+        let before = s.ship.cargo.kg[slugs];
+        s.rogue_reload().expect("reload");
+        let r = s.rogue.as_ref().unwrap();
+        assert_eq!(s.rogue_rounds(r, who), 12);
+        assert!((before - s.ship.cargo.kg[slugs] - 12.0 * ROUND_KG).abs() < 1e-9);
+        assert!(s.rogue_reload().unwrap_err().contains("pleins"));
+        // Out of reach: a target beyond the range of the gun is not shot at.
+        s.rogue.as_mut().unwrap().floor_mut().monsters.clear();
+        let far = mon(&s, "rat", x0 + 13, y0, 5.0, true);
+        s.rogue.as_mut().unwrap().floor_mut().monsters.push(far);
+        assert!(s.rogue_fire().unwrap_err().contains("cible"));
+    }
+
+    #[test]
+    fn a_grenade_blast_follows_the_chemistry_and_falls_off_with_the_distance() {
+        let mut s = run_on("epave", 12);
+        let an = s.blast_damage(GRENADE_REACTION, GRENADE_CHARGE_KG).unwrap();
+        let nitro = s
+            .blast_damage("nitroglycerin_blast", GRENADE_CHARGE_KG)
+            .unwrap();
+        assert!(an > 3.0 && an < 60.0, "{an}");
+        assert!(nitro > an, "nitroglycerin is the stronger explosive");
+        let (x0, y0) = arena(&mut s);
+        assert!(s.rogue_grenade().unwrap_err().contains("grenade"));
+        let g = s.data.resource_index(GRENADE_RESOURCE).unwrap();
+        let data = std::sync::Arc::clone(&s.data);
+        s.ship.cargo.add(&data, g, 3.0);
+        {
+            // The target 5 cells east, one at 1 and one at 2 cells from it, one behind a wall,
+            // and one asleep far away.
+            let ms = [
+                mon(&s, "rat", x0 + 5, y0, 1.0e6, true),
+                mon(&s, "rat", x0 + 5, y0 + 1, 1.0e6, true),
+                mon(&s, "rat", x0 + 7, y0, 1.0e6, true),
+                mon(&s, "rat", x0 + 5, y0 + 3, 1.0e6, true),
+                mon(&s, "rat", x0 + 6, y0 - 3, 1.0e6, false),
+            ];
+            let r = s.rogue.as_mut().unwrap();
+            // A wall at (x0+5, y0+2) shields the one at y0+3 from the centre.
+            let i = r.idx(x0 + 5, y0 + 2);
+            r.floor_mut().tiles[i] = T_WALL;
+            r.floor_mut().monsters.extend(ms);
+        }
+        s.rogue_grenade().expect("throw");
+        let r = s.rogue.as_ref().unwrap();
+        let lost = |k: usize| 1.0e6 - r.floor().monsters[k].hp;
+        assert!(
+            (lost(0) - an * (1.0 - r.floor().monsters[0].defense)).abs() < 1e-6,
+            "centre"
+        );
+        assert!(lost(1) < lost(0) * 0.6 && lost(1) > 0.0, "one cell away");
+        assert!(lost(2) < lost(1) && lost(2) > 0.0, "two cells away");
+        assert_eq!(lost(3), 0.0, "the wall stops the blast");
+        assert!(r.floor().monsters[4].awake, "the bang wakes the sleeper");
+        assert!((s.ship.cargo.kg[g] - 2.0).abs() < 1e-9);
+        // Thrown at a target next to the squad, it hurts the squad too.
+        let who = s.rogue.as_ref().unwrap().party[0];
+        let h0 = s.crew.members[who].health;
+        s.rogue.as_mut().unwrap().floor_mut().monsters.clear();
+        let near = mon(&s, "rat", x0 + 1, y0, 1.0e6, true);
+        s.rogue.as_mut().unwrap().floor_mut().monsters.push(near);
+        s.rogue_grenade().expect("throw close");
+        assert!(s.crew.members[who].health < h0, "the squad is in the blast");
     }
 }

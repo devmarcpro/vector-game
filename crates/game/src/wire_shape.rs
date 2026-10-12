@@ -239,8 +239,8 @@ fn module(category: &str) -> Shape {
             s.cuboid([0.0, 0.0, 0.0], [0.9, 0.6, 0.6]);
             s.line([0.0, -0.6, 0.6], [0.0, 0.6, 0.6]);
         }
-        "habitat" | "life_support" | "medbay" | "greenhouse" | "lab" | "workshop" | "mining"
-        | "gyro" => {
+        "habitat" | "life_support" | "medbay" | "greenhouse" | "hydroponics" | "aquarium"
+        | "lab" | "workshop" | "mining" | "gyro" => {
             s.cuboid([0.0, 0.0, 0.0], [0.7, 0.5, 0.7]);
             s.cylinder([0.0, 0.7, 0.0], 0.3, 0.2, 8);
         }

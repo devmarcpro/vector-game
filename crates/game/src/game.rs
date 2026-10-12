@@ -76,6 +76,8 @@ pub enum Screen {
     NewGame,
     /// The one menu: the eight spaces that gather the screens.
     Hub,
+    /// The dashboard: the whole state of the game in nine panels (see `dash_view`).
+    Dashboard,
 }
 
 /// Route being composed in the fleet screen.
@@ -142,6 +144,12 @@ pub struct Game {
     pub col_flow: bool,
     /// Colony screen: health tracking (epidemics) instead of the lists.
     pub col_health: bool,
+    /// Colony screen: 0 the lists, 1 industry, 2 farming, 3 the city, 4 logistics (`works_view`).
+    pub col_tab: u8,
+    /// Selected building of the industry tab, destination colony and goods of the logistics tab.
+    pub tab_sel: usize,
+    pub ship_to: usize,
+    pub ship_res: usize,
     /// Colony screen: projects (terraforming, megastructures) instead of the lists.
     pub col_proj: bool,
     /// Projects screen: zone with the keys (0 works, 1 catalogue, 2 plants), selections, units
@@ -162,6 +170,11 @@ pub struct Game {
     pub soc_art: usize,
     pub soc_sport: usize,
     pub rel_sel: usize,
+    /// Factions screen: the war page (fronts, sieges, peace, mercenaries, spies).
+    pub war_page: bool,
+    pub war_agent: usize,
+    pub war_target: usize,
+    pub war_cells: Vec<vector_sim::politics::Cell>,
     /// Crew screen: relations network instead of the table.
     pub crew_net: bool,
     /// Crew screen: the organ list of the selected person has the keys.
@@ -278,6 +291,8 @@ pub struct Game {
     pub family_tab: usize,
     pub family_ped: Option<vector_sim::genealogy::Pedigree>,
     pub help_open: bool,
+    /// The cockpit looks astern (at the ground of a ship landing tail first).
+    pub rear_view: bool,
     pub tut_step: Option<usize>,
     pub tut_keys: Vec<(Screen, KeyCode)>,
     pub save_path: PathBuf,
@@ -286,6 +301,9 @@ pub struct Game {
     pub hub: crate::hub::HubUi,
     /// The space whose screen is open (Escape goes back to its page).
     pub hub_origin: Option<usize>,
+    /// The dashboard: its selection, and whether the open screen came from it (Escape goes back).
+    pub dash: crate::dash_view::DashUi,
+    pub dash_origin: bool,
 }
 
 /// Ranges of the exchange charts, days.
@@ -351,6 +369,10 @@ impl Game {
             col_focus: 0,
             col_flow: false,
             col_health: false,
+            col_tab: 0,
+            tab_sel: 0,
+            ship_to: 0,
+            ship_res: 0,
             col_proj: false,
             proj_focus: 1,
             proj_sel: 0,
@@ -366,6 +388,10 @@ impl Game {
             soc_art: 0,
             soc_sport: 0,
             rel_sel: 0,
+            war_page: false,
+            war_agent: 0,
+            war_target: 0,
+            war_cells: Vec::new(),
             crew_net: false,
             organ_mode: false,
             med_mode: false,
@@ -452,12 +478,15 @@ impl Game {
             family_tab: 0,
             family_ped: None,
             help_open: false,
+            rear_view: false,
             tut_step: None,
             tut_keys: Vec::new(),
             save_path: PathBuf::from("saves").join("slot1.sav"),
             ng: Default::default(),
             hub: Default::default(),
             hub_origin: None,
+            dash: Default::default(),
+            dash_origin: false,
         };
         g.fit_map();
         g
@@ -486,6 +515,7 @@ impl Game {
         self.help_open = false;
         self.tut_step = None;
         self.hub_origin = None;
+        self.dash_origin = false;
         self.rogue_visit = false;
         self.rogue_from_surface = false;
         // The guided tutorial teaches the cockpit: a castaway has no cockpit yet.
@@ -625,6 +655,7 @@ impl Game {
         } else {
             self.input()
         };
+        self.update_ground();
         self.sim.events.clear();
         if self.timescale <= 1.0 {
             let steps = (seconds / SIM_DT).round() as usize;
@@ -657,14 +688,17 @@ impl Game {
     }
 
     /// Write a line in the ship's journal in the AI's own voice.
-    fn note(&mut self, text: String) {
+    pub(crate) fn note(&mut self, text: String) {
         let now = self.sim.time;
         self.sim.crew.log_event(now, format!("IA : {text}"));
     }
 
-    fn handle_events(&mut self) {
+    pub(crate) fn handle_events(&mut self) {
         let evs = std::mem::take(&mut self.sim.events);
         for e in evs {
+            if self.say_pilot_event(&e) {
+                continue;
+            }
             match e {
                 Event::Impact {
                     body,
@@ -687,6 +721,11 @@ impl Game {
                     self.timescale = 1.0;
                 }
                 Event::Orbit { .. } => {}
+                Event::Toppled { .. }
+                | Event::PilotDone(_)
+                | Event::PilotFailed(_)
+                | Event::TooHeavy
+                | Event::HardDock { .. } => {}
                 Event::OutOfFuel => self.say("CARBURANT EPUISE"),
                 Event::Arrived { body } => {
                     let name = self.sim.bodies[body].name.clone();
@@ -962,6 +1001,21 @@ impl Game {
                 }
             }
         }
+        // Escape from a screen the dashboard opened comes back to the dashboard.
+        if self.dash_origin {
+            let root = matches!(self.screen, Screen::Flight | Screen::Station);
+            if self.screen == Screen::Dashboard {
+                self.dash_origin = false;
+            } else if root {
+                if pressed
+                    && code == KeyCode::Escape
+                    && !matches!(at, Screen::Flight | Screen::Station | Screen::Dashboard)
+                {
+                    self.screen = Screen::Dashboard;
+                }
+                self.dash_origin = false;
+            }
+        }
         if self.rogue_visit {
             if self.sim.rogue.is_none() {
                 self.rogue_visit = false;
@@ -1015,11 +1069,24 @@ impl Game {
             self.open_hub();
             return;
         }
+        // The dashboard is one key away from every screen (backslash, or Pause).
+        if matches!(
+            code,
+            KeyCode::Backslash | KeyCode::IntlBackslash | KeyCode::Pause
+        ) && !matches!(
+            self.screen,
+            Screen::MainMenu | Screen::NewGame | Screen::Destroyed | Screen::Designer
+        ) {
+            self.help_open = false;
+            self.open_dashboard();
+            return;
+        }
         self.keys.insert(code);
         match self.screen {
             Screen::MainMenu => self.main_menu_key(code, text),
             Screen::NewGame => self.newgame_key(code, text),
             Screen::Hub => self.hub_key(code),
+            Screen::Dashboard => self.dash_key(code),
             Screen::Pause => self.pause_key(code),
             Screen::Station => self.station_key(code),
             Screen::Inventory => self.inventory_key(code),
@@ -1977,6 +2044,20 @@ impl Game {
     }
 
     fn factions_key(&mut self, code: KeyCode) {
+        if self.war_page {
+            match code {
+                KeyCode::KeyG | KeyCode::Escape => self.war_page = false,
+                KeyCode::KeyX => self.screen = Screen::Flight,
+                c => {
+                    self.war_key(c);
+                }
+            }
+            return;
+        }
+        if code == KeyCode::KeyG {
+            self.open_war_page();
+            return;
+        }
         if code == KeyCode::Tab {
             self.rel_page = !self.rel_page;
             return;
@@ -2145,14 +2226,19 @@ impl Game {
         let nb = self.sim.colonies[ci].buildings.len();
         let nres = self.data.resources.len();
         let np = self.data.policies.len();
+        if self.colony_tab_key(code, ci) {
+            return;
+        }
         match code {
             KeyCode::KeyF => {
                 self.col_flow = !self.col_flow;
                 self.col_health = false;
+                self.col_tab = 0;
             }
             KeyCode::KeyH => {
                 self.col_health = !self.col_health;
                 self.col_flow = false;
+                self.col_tab = 0;
             }
             KeyCode::KeyP => self.col_proj = true,
             KeyCode::Tab => self.col_focus = (self.col_focus + 1) % 4,
@@ -2228,6 +2314,97 @@ impl Game {
             _ => {}
         }
         let _ = here;
+    }
+
+    /// Keys of the works tabs (industry, farming, city, logistics). True when the key was used.
+    fn colony_tab_key(&mut self, code: KeyCode, ci: usize) -> bool {
+        for (i, (_, key, _)) in crate::works_view::TABS.iter().enumerate() {
+            if code == *key {
+                let tab = (i + 1) as u8;
+                self.col_tab = if self.col_tab == tab { 0 } else { tab };
+                self.col_flow = false;
+                self.col_health = false;
+                return true;
+            }
+        }
+        if self.col_tab == 0 {
+            return false;
+        }
+        let nb = self.sim.colonies[ci].buildings.len();
+        match (self.col_tab, code) {
+            (_, KeyCode::Escape) => self.col_tab = 0,
+            (1, KeyCode::ArrowUp) if nb > 0 => self.tab_sel = (self.tab_sel + nb - 1) % nb,
+            (1, KeyCode::ArrowDown) if nb > 0 => self.tab_sel = (self.tab_sel + 1) % nb,
+            (1, KeyCode::Space) if nb > 0 => {
+                let b = &mut self.sim.colonies[ci].buildings[self.tab_sel.min(nb - 1)];
+                b.enabled = !b.enabled;
+            }
+            (1, KeyCode::KeyR) if nb > 0 => {
+                self.sim.colonies[ci].buildings[self.tab_sel.min(nb - 1)].recipe += 1;
+            }
+            (2, KeyCode::KeyC) => {
+                let n = self.data.crops.len();
+                let w = &mut self.sim.colonies[ci].works;
+                if n > 0 {
+                    w.prev_crop = w.crop;
+                    w.crop = if w.crop >= n { 0 } else { (w.crop + 1) % n };
+                    w.planted = self.sim.time;
+                    self.say("NOUVELLE CULTURE SEMEE");
+                }
+            }
+            (2, KeyCode::KeyR) => {
+                let w = &mut self.sim.colonies[ci].works;
+                w.rotate = !w.rotate;
+            }
+            (4, KeyCode::ArrowLeft) => self.ship_to = self.ship_to.saturating_sub(1),
+            (4, KeyCode::ArrowRight) => self.ship_to += 1,
+            (4, KeyCode::ArrowUp) => self.ship_res = self.ship_res.saturating_sub(1),
+            (4, KeyCode::ArrowDown) => self.ship_res += 1,
+            (4, KeyCode::Enter) => self.click_ship(1),
+            _ => return false,
+        }
+        true
+    }
+
+    /// Send a convoy of the goods and destination chosen in the logistics tab: 0..2 the preset
+    /// loads, 3 everything.
+    pub fn click_ship(&mut self, which: usize) {
+        let ci = self.col_idx;
+        let Some(c) = self.sim.colonies.get(ci) else {
+            return;
+        };
+        let dests: Vec<usize> = self
+            .sim
+            .colonies
+            .iter()
+            .enumerate()
+            .filter(|(i, o)| *i != ci && o.system_seed == c.system_seed)
+            .map(|(i, _)| i)
+            .collect();
+        let items: Vec<usize> = (0..self.data.resources.len())
+            .filter(|&i| c.storage[i] > 0.5)
+            .collect();
+        if dests.is_empty() || items.is_empty() {
+            self.say("RIEN A ENVOYER OU PERSONNE A QUI L'ENVOYER");
+            return;
+        }
+        let to = dests[self.ship_to % dests.len()];
+        let res = items[self.ship_res % items.len()];
+        let kg = match which {
+            0 => 500.0,
+            1 => 2000.0,
+            2 => 10_000.0,
+            _ => c.storage[res],
+        }
+        .min(c.storage[res]);
+        match self.sim.colony_dispatch(ci, to, res, kg) {
+            Ok(d) => self.say(format!("CONVOI PARTI : ARRIVEE DANS {d:.1} JOURS")),
+            Err(e) => self.say(e.to_uppercase()),
+        }
+    }
+
+    pub fn click_tab_row(&mut self, k: usize) {
+        self.tab_sel = k;
     }
 
     fn fleet_key(&mut self, code: KeyCode) {
@@ -2331,6 +2508,13 @@ impl Game {
                 Err(e) => self.say(e.to_uppercase()),
             },
             KeyCode::KeyU if ns > 0 => self.sim.unassign_ship(self.ship_sel2.min(ns - 1)),
+            KeyCode::KeyO if ns > 0 => self.squad_click(0),
+            KeyCode::KeyR if ns > 0 => self.squad_click(1),
+            KeyCode::KeyV if ns > 0 => self.squad_click(2),
+            KeyCode::Digit1 if ns > 0 => self.squad_click(3),
+            KeyCode::Digit2 if ns > 0 => self.squad_click(4),
+            KeyCode::Digit3 if ns > 0 => self.squad_click(5),
+            KeyCode::Digit4 if ns > 0 => self.squad_click(6),
             KeyCode::KeyX => {
                 if self.fleet_focus == 1 && nr > 0 {
                     match self.sim.delete_route(self.route_sel.min(nr - 1)) {
@@ -2709,6 +2893,9 @@ impl Game {
         if self.ext_key(code) {
             return;
         }
+        if self.pilot_aid_key(code) {
+            return;
+        }
         match code {
             KeyCode::Delete => self.toggle_ext_view(),
             KeyCode::Home => self.screen = Screen::Cosmos,
@@ -2820,6 +3007,22 @@ impl Game {
                 Err(e) => self.say(e.to_uppercase()),
             },
             KeyCode::KeyO => self.found_colony_at_target(),
+            KeyCode::Comma => match self.sim.launch_decoy() {
+                Ok(()) => self.say("LEURRE THERMIQUE LANCE"),
+                Err(e) => self.say(e.to_uppercase()),
+            },
+            KeyCode::Period => match self.sim.toggle_active_sensors() {
+                Ok(true) => self.say("RADAR ACTIF : VOUS VOYEZ LOIN, ET ON VOUS VOIT DE TRES LOIN"),
+                Ok(false) => self.say("RADAR COUPE : DETECTION PASSIVE SEULE"),
+                Err(e) => self.say(e.to_uppercase()),
+            },
+            KeyCode::Slash => match self.sim.board_on_foot() {
+                Ok(()) => {
+                    self.rogue_from_surface = false;
+                    self.screen = Screen::Rogue;
+                }
+                Err(e) => self.say(e.to_uppercase()),
+            },
             KeyCode::F4 => self.open_tech(),
             KeyCode::F8 => self.open_surface(),
             KeyCode::F6 => self.open_codex(Screen::Flight),
@@ -4472,6 +4675,77 @@ mod tests {
         assert!(g.sim.credits > c0);
         g.key(KeyCode::KeyU, None, true);
         assert_eq!(g.screen, Screen::Flight);
+    }
+
+    #[test]
+    fn the_war_page_hires_spies_and_answers_every_button() {
+        use crate::war_view::{W_AGENT, W_CELL, W_PEACE, W_RECRUIT};
+        let mut g = Game::new(data(), 1);
+        g.key(KeyCode::Enter, None, true);
+        assert_eq!(g.screen, Screen::Flight);
+        g.key(KeyCode::KeyX, None, true);
+        assert_eq!(g.screen, Screen::Factions);
+        assert!(!g.war_page);
+        g.key(KeyCode::KeyG, None, true);
+        assert!(g.war_page, "G opens the war page");
+        // Hiring needs a quay.
+        g.click_war(W_RECRUIT);
+        assert!(g.sim.military.agents.is_empty());
+        let (st, _) = g.sim.nearest_station().expect("station");
+        g.sim.docked = Some(st);
+        g.sim.credits = 100_000.0;
+        g.key(KeyCode::KeyR, None, true);
+        assert_eq!(g.sim.military.agents.len(), 1, "R recruits");
+        assert!(g.sim.credits < 100_000.0);
+        g.click_war(W_AGENT);
+        g.click_war(W_CELL);
+        // No war with the people selected: peace is refused with a reason.
+        g.click_war(W_PEACE);
+        assert!(g.messages.last().is_some_and(|m| m.contains("GUERRE")));
+        // Escape leaves the page, X leaves the screen.
+        g.key(KeyCode::Escape, None, true);
+        assert!(!g.war_page && g.screen == Screen::Factions);
+        g.key(KeyCode::KeyX, None, true);
+        assert_eq!(g.screen, Screen::Flight);
+    }
+
+    #[test]
+    fn flight_keys_for_flares_radar_and_boarding_answer_with_a_reason() {
+        let mut g = Game::new(data(), 1);
+        g.key(KeyCode::Enter, None, true);
+        g.key(KeyCode::Comma, None, true);
+        assert!(g
+            .messages
+            .last()
+            .is_some_and(|m| m.contains("LANCE-LEURRES")));
+        g.key(KeyCode::Period, None, true);
+        assert!(g.messages.last().is_some_and(|m| m.contains("RADAR")));
+        g.key(KeyCode::Slash, None, true);
+        assert!(g.messages.last().is_some_and(|m| m.contains("CIBLE")));
+        assert_eq!(g.screen, Screen::Flight);
+    }
+
+    #[test]
+    fn the_fleet_screen_gives_orders_and_judges_prizes() {
+        let mut g = Game::new(data(), 1);
+        g.key(KeyCode::Enter, None, true);
+        let (st, _) = g.sim.nearest_station().expect("station");
+        g.sim.docked = Some(st);
+        let frigate = g.data.hull_index("frigate").expect("hull");
+        g.sim.buy_fleet_ship_free_pub(frigate);
+        g.screen = Screen::Fleet;
+        assert_eq!(g.sim.fleet[0].order, vector_sim::fleet::FleetOrder::Trade);
+        g.key(KeyCode::KeyO, None, true);
+        assert_eq!(g.sim.fleet[0].order, vector_sim::fleet::FleetOrder::Follow);
+        g.key(KeyCode::KeyO, None, true);
+        assert_eq!(g.sim.fleet[0].order, vector_sim::fleet::FleetOrder::Attack);
+        // A prize with prisoners: key 1 enlists them.
+        g.sim.fleet[0].prize = true;
+        g.sim.fleet[0].prisoners = 5;
+        g.key(KeyCode::Digit1, None, true);
+        assert_eq!(g.sim.fleet[0].prisoners, 0);
+        g.key(KeyCode::Digit1, None, true);
+        assert!(g.messages.last().is_some_and(|m| m.contains("PRISONNIERS")));
     }
 
     fn press(g: &mut Game, k: KeyCode) {

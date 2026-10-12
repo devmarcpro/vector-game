@@ -363,6 +363,7 @@ impl Sim {
                 cargo: None,
                 trips: 0,
                 earnings: 0.0,
+                ..FleetShip::base(id, String::new(), hi, 0.0, 0.0)
             });
             self.events.push(Event::ShipBuilt { name: o.name });
         }
@@ -462,6 +463,7 @@ impl Sim {
             cargo: None,
             trips: 0,
             earnings: 0.0,
+            ..FleetShip::base(s.id, String::new(), old_hull, 0.0, 0.0)
         };
         Ok(())
     }

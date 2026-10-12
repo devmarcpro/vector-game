@@ -1048,6 +1048,12 @@ impl Sim {
                         ) {
                             self.parked = Some((ap.target, ride.rel_pos));
                         }
+                        // At a station the nose is brought onto the port axis: docking crooked
+                        // costs hull (`dock_damage`), and a ride must end ready to dock.
+                        if self.bodies[ap.target].kind == BodyKind::Station {
+                            self.ship.rot = Mat3::look_at(Vec3::new(0.0, 0.0, 1.0), Vec3::new(0.0, 1.0, 0.0));
+                            self.ship.ang = Vec3::ZERO;
+                        }
                         self.events.push(Event::Arrived { body: ap.target })
                     }
                 }

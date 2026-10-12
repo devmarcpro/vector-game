@@ -538,6 +538,9 @@ fn play(
         if policy == Policy::Pacifist {
             // Dock as fast as a player would: poll every 5 minutes until docked (at most 6 h).
             for poll in 0..72 {
+                if std::env::var("QA_CREW").is_ok() {
+                    eprintln!("  poll {poll} coque {:.0} vitesse {:.1} auto {} docked {:?}", s.ship.hull, (s.ship.vel - s.bodies[s.nearest_station().map_or(0, |x| x.0)].vel).length(), s.autopilot.is_some(), s.docked);
+                }
                 pacify(&mut s);
                 if s.docked.is_some() {
                     if std::env::var("QA_CREW").is_ok() {
@@ -649,6 +652,9 @@ fn play(
                 break;
             }
             left -= chunk;
+            if std::env::var("QA_CREW").is_ok() && day < 2 {
+                eprintln!("  h{k} j{day} coque {:.0} sante_min {:.2} flare {:?} evts {:?} dose {:.3}", s.ship.hull, s.ship.sys.health.iter().cloned().fold(9.0, f64::min), s.pending_flare, s.events, s.ship.sys.dose_gy);
+            }
             if capped {
                 let near = s
                     .bodies
@@ -740,7 +746,7 @@ fn play(
         }
         if std::env::var("QA_CREW").is_ok() {
             eprintln!(
-                "  sys j{day} log {:?} | surchauffe {} sante_min {:.2} offre {:.1} demande {:.1} batterie {:.1} life_ok {} solaire {:.1}kW docked {:?}",
+                "  sys j{day} log {:?} | surchauffe {} sante_min {:.2} offre {:.1} demande {:.1} batterie {:.1} life_ok {} solaire {:.1}kW docked {:?} coque {:.0}",
                 s.crew.log.iter().rev().take(3).map(|l| l.text.clone()).collect::<Vec<_>>(),
                 s.ship.sys.overheating,
                 s.ship.sys.health.iter().cloned().fold(9.0, f64::min),
@@ -749,7 +755,8 @@ fn play(
                 s.ship.sys.battery_mj,
                 s.effective.life_ok,
                 s.solar_heat_kw(),
-                s.docked
+                s.docked,
+                s.ship.hull
             );
         }
         let alive = s.crew.members.iter().filter(|p| p.alive).count();

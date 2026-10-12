@@ -930,6 +930,14 @@ fn draw_recap(fb: &mut Framebuffer, g: &Game) {
         ("SOUTE", kg_list(g, &sc.cargo)),
         ("EQUIPAGE", crew.join(", ")),
         (
+            "CRYOSOMMEIL",
+            if c.cryo.members.is_empty() {
+                "AUCUN".to_string()
+            } else {
+                format!("{} PERSONNE(S) DORMENT AU DEPART", c.cryo.members.len())
+            },
+        ),
+        (
             "CONTACTS",
             if contacts.is_empty() {
                 "AUCUN".to_string()

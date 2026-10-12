@@ -146,6 +146,9 @@ pub fn hint_line(g: &Game) -> String {
         Screen::Crew if g.gear_mode => {
             "FLECHES CHOISIR UN EQUIPEMENT  ENTREE EQUIPER (IL FAUT L'OBJET EN SOUTE)  U RETIRER  E/ECHAP RETOUR A LA LISTE"
         }
+        Screen::Crew if g.cryo_mode => {
+            "HAUT/BAS PERSONNE  E ENDORMIR  R REVEILLER  U URGENCE  A/L/D REVEIL PROGRAMME  P PLAN AUTO  T ROTATION  K/B COLONS  C/ECHAP"
+        }
         Screen::Crew if g.med_mode => {
             "HAUT/BAS PERSONNE  </> MEDICAMENT  ENTREE DONNER  TAB PLAIE  A PREMIERS SOINS  S OPERER  R CHOC  C CRYOSTASE  M/ECHAP RETOUR"
         }
@@ -290,6 +293,7 @@ pub fn help_lines(screen: Screen) -> &'static [&'static str] {
             "V : reseau des relations (amis, rivaux, famille)",
             "E : equipement (arme, armure, outil pris en soute ; Entree equipe, U retire)",
             "O : organes (Entree greffe, P prothese, H prelever, </> choisir un implant, I poser, U retirer, K cloner l'organe a l'hopital, M mutagene ; piece en soute)",
+            "C : cryogenisation (caissons, dormeurs, reveil programme a une date, a l'arrivee ou sur alerte critique ; E endormir, R reveiller, U urgence, P plan auto tous sauf N, T rotation des veilleurs, K/B colons)",
             "M : medecine (silhouette, plaies, medicaments ; A premiers soins, S operer, Entree donner le medicament, </> choisir, R choc electrique, C cryostase)",
         ],
         Screen::Recruit => &["Haut/Bas : candidat   Entree : embaucher"],

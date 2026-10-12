@@ -316,4 +316,29 @@ mod tests {
             "and speeds up at least the fuel-limited ones"
         );
     }
+    #[test]
+    fn a_ride_to_a_station_ends_ready_to_dock_without_hull_damage() {
+        let mut s = sim_seed(7);
+        let st = s
+            .bodies
+            .iter()
+            .position(|b| b.kind == BodyKind::Station)
+            .expect("station");
+        s.spawn_near(st, 40_000.0);
+        s.engage_autopilot(st).expect("plan");
+        let hull0 = s.ship.hull;
+        for _ in 0..200 {
+            if s.autopilot.is_none() {
+                break;
+            }
+            s.advance(600.0, &crate::ShipInput::default());
+        }
+        assert!(s.autopilot.is_none(), "the ride must end");
+        s.try_dock().expect("docks after the ride");
+        assert!(
+            (s.ship.hull - hull0).abs() < 1e-6,
+            "hard dock: hull {} of {hull0}",
+            s.ship.hull
+        );
+    }
 }

@@ -2,7 +2,7 @@
 //! weapon, faction, anomaly and condition, generated from the real data (no hand-written numbers).
 use vector_data::GameData;
 
-pub const CATEGORIES: [&str; 66] = [
+pub const CATEGORIES: [&str; 67] = [
     "RESSOURCES",
     "MODULES",
     "ARMES",
@@ -68,6 +68,7 @@ pub const CATEGORIES: [&str; 66] = [
     "CAPACITES",
     "DECOUVERTES",
     "PILOTAGE",
+    "CRYOGENISATION",
     "CREATION DE PARTIE",
 ];
 
@@ -248,6 +249,90 @@ fn finding_label(data: &GameData, key: &str) -> (String, String) {
         ),
         _ => (key.to_string(), String::new()),
     }
+}
+
+/// Cryogenisation: the rules of the long sleep, written from the constants and functions of the
+/// simulation (`vector_sim::cryo`, `body`), so that the codex cannot disagree with it.
+fn cryo_topics() -> Vec<(String, Vec<String>)> {
+    use vector_sim::body as b;
+    use vector_sim::cryo as c;
+    let chance =
+        |years: f64, rel: f64| c::wake_death_chance(years, rel, 0.0, 35.0, 0.0, 0.0, false) * 100.0;
+    let s = |t: &str| t.to_string();
+    vec![
+        (
+            s("PRINCIPE"),
+            vec![
+                s("Un caisson cryo (module) endort jusqu'a N personnes : le coeur de chaque dormeur descend a la temperature de service du caisson."),
+                format!("Un dormeur ne mange, ne boit, ne respire et ne se fatigue plus ; sa paie tombe a {:.0} % (retenue) ; ses blessures et ses maladies attendent ; une grossesse s'arrete.", c::RETAINER * 100.0),
+                s("Le joueur, IA du vaisseau, decide : endormir, reveiller, programmer, planifier. Rien n'est obligatoire."),
+            ],
+        ),
+        (
+            s("VITRIFICATION ET GLACE"),
+            vec![
+                format!("Entre 0 et -40 C l'eau du corps cristallise : une traversee sans protection ajoute {:.0} % de degats de glace ; un sang charge de cryoprotecteur en evite {:.0} %.", b::ICE_CROSSING * 100.0, b::ICE_PROTECTION * 100.0),
+                format!("Il faut {:.1} kg de cryoprotecteur (ressource, recette Cryoprotecteur) par dormeur ; sans lui, le risque monte.", c::CPA_KG),
+                format!("Un caisson plus chaud que {:.0} C ne fait pas de verre : la glace repousse (jusqu'a {:.1} % par jour). A -130 C ou moins, plus rien.", b::RECRYSTALLISE_BELOW, b::RECRYSTALLISE * 100.0),
+                s("A 1.0 de degats de glace, le dormeur est mort : l'integrite se lit dans l'onglet CRYO."),
+            ],
+        ),
+        (
+            s("VIEILLISSEMENT"),
+            vec![
+                format!("Le corps vieillit au rythme de {:.2} a 4 C, {:.4} a -80 C, {:.4} a -130 C et {:.4} a -196 C (par rapport a l'eveil).", b::bio_rate(4.0), b::bio_rate(-80.0), b::bio_rate(-130.0), b::bio_rate(-196.0)),
+                s("L'age affiche est l'age biologique : dormir dix ans ne vieillit presque pas. Ceux qui restent dehors vieillissent, eux."),
+            ],
+        ),
+        (
+            s("REANIMATION"),
+            vec![
+                format!("Le rechauffement dure {:.0} h ({:.0} h avec un bon medecin et une infirmerie, {:.0} h en urgence, plus risque).", c::WAKE_HOURS, c::wake_hours(8.0, 1.0, false), c::WAKE_HOURS_URGENT),
+                format!("Risque d'echec d'un reveil sans soins (caisson a 97 %) : {:.0} % apres 1 an, {:.0} % apres 10 ans, {:.0} % apres 100 ans ; {:.0} % si le caisson ne fait que 90 %.", chance(1.0, 0.97), chance(10.0, 0.97), chance(100.0, 0.97), chance(10.0, 0.90)),
+                s("Il monte avec la glace et l'age, il baisse avec la fiabilite du caisson, la competence du medecin et l'infirmerie."),
+                s("Au reveil : pertes de memoire (competences amoindries), mal de cryo (fatigue, stress), moral et relations entames par les annees, nouvelles du monde accumulees."),
+            ],
+        ),
+        (
+            s("PANNE D'ENERGIE"),
+            vec![
+                s("Les caissons sont des modules : sans courant (batteries a plat), ils ne tiennent plus personne. Les dormeurs en trop se rechauffent sans controle."),
+                format!("Au-dessus de 8 C ils perdent {:.0} % d'integrite par heure : en quelques heures ils sont morts.", b::UNCONTROLLED_THAW * 100.0),
+                s("L'alerte CRITIQUE le dit au tableau de bord ; un reveil programme sur alerte les sort (en urgence)."),
+                format!("Les caissons consomment des pieces detachees ; sans elles, les pannes sont quatre fois plus frequentes (base {:.1} % par jour a fiabilite 0).", c::FAIL_PER_DAY * 100.0),
+            ],
+        ),
+        (
+            s("RADIATION"),
+            vec![
+                s("La dose recue s'additionne meme endormi : le blindage compte autant. Rien ne repare les cellules gelees, la dose ne s'efface pas."),
+                s("Au reveil, une dose de plus de 1 Sv donne le mal des rayons ; l'instabilite genetique monte avec chaque dose."),
+            ],
+        ),
+        (
+            s("PROGRAMMES DE REVEIL"),
+            vec![
+                s("A une date, a l'arrivee (nouvelle etoile ou amarrage), sur toute alerte critique (le meilleur veilleur ou tout le monde)."),
+                s("Plan auto : tout le monde dort sauf N veilleurs (pilote, medecin, ingenieur d'abord) et reveil general a l'arrivee."),
+                s("Rotation : tous les 7, 30 ou 90 jours le veilleur eveille depuis le plus longtemps s'endort et le dormeur le plus ancien se reveille."),
+            ],
+        ),
+        (
+            s("COLONS ET PASSAGERS"),
+            vec![
+                format!("Les colons en soute (ressource Colons, {:.0} kg par tete) peuvent dormir en masse : un caisson par tete, {:.0} kg de cryoprotecteur chacun.", vector_sim::colony::COLONIST_KG, c::COLONIST_CPA_KG),
+                s("Un vaisseau de colons sans equipage eveille fonde une colonie : les survivants au reveil la peuplent (K endormir, B reveiller a une de nos colonies)."),
+                s("Les passagers des contrats voyagent aussi dans les caissons libres : moins chers (-25 %), sans confort."),
+            ],
+        ),
+        (
+            s("DROIT ET ETHIQUE"),
+            vec![
+                format!("Endormir quelqu'un de mecontent (loyaute sous {:.0} %) et en bonne sante est un crime (loi Cryogenisation non consentie) : amende et notoriete, moral de la victime - {:.0} %, des autres - {:.0} %, loyaute de tous - {:.0} %.", c::UNWILLING_LOYALTY * 100.0, c::FORCED_MORALE_VICTIM * 100.0, c::FORCED_MORALE_OTHERS * 100.0, c::FORCED_LOYALTY * 100.0),
+                s("Certains peuples interdisent la congelation des vivants. Soigner un blesse en attendant l'infirmerie n'est pas un enlevement."),
+            ],
+        ),
+    ]
 }
 
 /// Piloting and landing: the attitude holds and the rules of the touchdown, written from the
@@ -520,7 +605,8 @@ fn entries(data: &GameData, cat: usize) -> Vec<usize> {
         62 => (0..CAPACITY_TEXT.len()).collect(),
         63 => (0..finding_keys(data).len()).collect(),
         64 => (0..pilot_topics().len()).collect(),
-        65 => (0..start_cards(data).len()).collect(),
+        65 => (0..cryo_topics().len()).collect(),
+        66 => (0..start_cards(data).len()).collect(),
         _ => Vec::new(),
     }
 }
@@ -595,7 +681,8 @@ pub fn names(data: &GameData, cat: usize) -> Vec<String> {
             62 => CAPACITY_TEXT[i].1.to_string(),
             63 => finding_label(data, &finding_keys(data)[i]).0,
             64 => pilot_topics()[i].0.clone(),
-            65 => start_cards(data)[i].0.clone(),
+            65 => cryo_topics()[i].0.clone(),
+            66 => start_cards(data)[i].0.clone(),
             18 => format!(
                 "Appeler : {}",
                 vector_data::dialogue::ROLES[i].to_lowercase()
@@ -917,6 +1004,14 @@ pub fn entry(data: &GameData, cat: usize, k: usize) -> Vec<String> {
             stat("Portee de minage", m.mining_range, "m");
             stat("Support de vie", m.life_support, "personnes");
             stat("Couchettes", m.crew_cap, "");
+            stat("Dormeurs en cryostase", m.cryo, "places");
+            stat("Temperature de service", m.cryo_temp, "C");
+            stat("Fiabilite", m.reliability * 100.0, "%");
+            stat(
+                "Entretien",
+                m.cryo_upkeep,
+                "kg de pieces par dormeur et par jour",
+            );
             stat("Portee du scanner", m.scan_range, "m");
             stat("Portee de saut", m.jump_range, "al");
             stat("Bouclier", m.shield, "MJ");
@@ -2706,7 +2801,8 @@ pub fn entry(data: &GameData, cat: usize, k: usize) -> Vec<String> {
             ));
         }
         64 => out.extend(pilot_topics()[i].1.iter().cloned()),
-        65 => {
+        65 => out.extend(cryo_topics()[i].1.iter().cloned()),
+        66 => {
             let c = start_cards(data).swap_remove(i);
             out.push(c.0);
             out.extend(c.1);

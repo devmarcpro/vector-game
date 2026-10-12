@@ -183,6 +183,11 @@ pub struct Game {
     pub med_mode: bool,
     pub med_drug: usize,
     pub med_wound: usize,
+    /// Crew screen: the CRYO tab (caissons, sleepers, scheduled wakes); the delay chosen for a
+    /// dated wake (index into `cryo_view::DELAYS`) and the number of watchers the auto plan keeps.
+    pub cryo_mode: bool,
+    pub cryo_delay: usize,
+    pub cryo_keep: usize,
     /// Crew screen: the equipment list of the selected person has the keys.
     pub gear_mode: bool,
     pub gear_sel: usize,
@@ -397,6 +402,9 @@ impl Game {
             med_mode: false,
             med_drug: 0,
             med_wound: 0,
+            cryo_mode: false,
+            cryo_delay: 1,
+            cryo_keep: 1,
             gear_mode: false,
             gear_sel: 0,
             organ_sel: 0,
@@ -1952,6 +1960,96 @@ impl Game {
         }
     }
 
+    /// Keys of the CRYO tab of the crew screen.
+    fn cryo_key(&mut self, code: KeyCode) {
+        use vector_sim::cryo::{When, Who};
+        let n = self.sim.crew.members.len();
+        let member = self.crew_sel.min(n.saturating_sub(1));
+        let (id, asleep) = self
+            .sim
+            .crew
+            .members
+            .get(member)
+            .map_or((0, false), |p| (p.id, p.alive && p.body.cryo));
+        let who = if asleep { Who::One(id) } else { Who::All };
+        let result: Result<String, &'static str> = match code {
+            KeyCode::ArrowUp if n > 0 => {
+                self.crew_sel = (self.crew_sel + n - 1) % n;
+                return;
+            }
+            KeyCode::ArrowDown if n > 0 => {
+                self.crew_sel = (self.crew_sel + 1) % n;
+                return;
+            }
+            KeyCode::ArrowLeft => {
+                self.cryo_delay = self.cryo_delay.saturating_sub(1);
+                return;
+            }
+            KeyCode::ArrowRight => {
+                self.cryo_delay = (self.cryo_delay + 1).min(crate::cryo_view::DELAYS.len() - 1);
+                return;
+            }
+            KeyCode::PageUp => {
+                self.cryo_keep = (self.cryo_keep + 1).min(n.saturating_sub(1));
+                return;
+            }
+            KeyCode::PageDown => {
+                self.cryo_keep = self.cryo_keep.saturating_sub(1);
+                return;
+            }
+            KeyCode::Escape | KeyCode::KeyC => {
+                self.cryo_mode = false;
+                return;
+            }
+            KeyCode::KeyE if n > 0 => self.sim.cryo_put(member),
+            KeyCode::KeyR if n > 0 => self.sim.cryo_wake(member),
+            KeyCode::KeyU if n > 0 => self.sim.cryo_wake_with(member, true),
+            KeyCode::KeyA => Ok(self.sim.cryo_order(who, When::Arrival)),
+            KeyCode::KeyL => Ok(self.sim.cryo_order(Who::Best, When::Alert)),
+            KeyCode::KeyD => {
+                let at = self.sim.time
+                    + crate::cryo_view::DELAYS
+                        [self.cryo_delay.min(crate::cryo_view::DELAYS.len() - 1)]
+                        * 86_400.0;
+                Ok(self.sim.cryo_order(who, When::At(at)))
+            }
+            KeyCode::KeyX => {
+                self.sim.cryo_clear_orders();
+                Ok("PROGRAMMES EFFACES".to_string())
+            }
+            KeyCode::KeyP => self.sim.cryo_auto_plan(self.cryo_keep),
+            KeyCode::KeyT => {
+                let cur = self.sim.crew.cryo.rotation_days;
+                let rots = crate::cryo_view::ROTATIONS;
+                let k = rots
+                    .iter()
+                    .position(|r| (*r - cur).abs() < 0.5)
+                    .unwrap_or(0);
+                let next = rots[(k + 1) % rots.len()];
+                self.sim.cryo_set_rotation(next);
+                Ok(if next > 0.0 {
+                    format!("ROTATION DES VEILLEURS TOUS LES {next:.0} J")
+                } else {
+                    "ROTATION ARRETEE".to_string()
+                })
+            }
+            KeyCode::KeyK => {
+                let heads = self
+                    .data
+                    .resource_index("colonists")
+                    .map_or(0.0, |r| self.sim.ship.cargo.kg[r])
+                    / vector_sim::colony::COLONIST_KG;
+                self.sim.cryo_load_colonists(heads.floor() as u32)
+            }
+            KeyCode::KeyB => self.sim.cryo_land_colonists(),
+            _ => return,
+        };
+        match result {
+            Ok(r) => self.say(r.to_uppercase()),
+            Err(e) => self.say(e.to_uppercase()),
+        }
+    }
+
     pub fn click_wound(&mut self, k: usize) {
         self.med_wound = k;
     }
@@ -1959,6 +2057,10 @@ impl Game {
     pub fn crew_key(&mut self, code: KeyCode) {
         if self.med_mode {
             self.med_key(code);
+            return;
+        }
+        if self.cryo_mode {
+            self.cryo_key(code);
             return;
         }
         if self.organ_mode {
@@ -1987,6 +2089,7 @@ impl Game {
             KeyCode::KeyV => self.crew_net = !self.crew_net,
             KeyCode::KeyO if n > 0 => self.organ_mode = true,
             KeyCode::KeyM if n > 0 => self.med_mode = true,
+            KeyCode::KeyC if n > 0 => self.cryo_mode = true,
             KeyCode::KeyE if n > 0 => self.gear_mode = true,
             KeyCode::KeyT if n > 0 => {
                 let p = &mut self.sim.crew.members[self.crew_sel.min(n - 1)];

@@ -530,11 +530,19 @@ impl Sim {
         Ok(pay)
     }
 
-    /// Berths not taken by the crew or by passengers already aboard.
+    /// Berths not taken by the crew awake or by passengers already aboard, plus the caissons
+    /// free in the powered cryo bank (passengers ride asleep: cheaper, no comfort).
     pub fn free_berths(&self) -> u32 {
-        let used =
-            self.crew.count() as f64 + self.contracts.iter().map(|c| f64::from(c.pax)).sum::<f64>();
-        (self.ship.stats.crew_cap - used).max(0.0) as u32
+        let used = self.crew.awake_count() as f64
+            + self.contracts.iter().map(|c| f64::from(c.pax)).sum::<f64>();
+        let berths = (self.ship.stats.crew_cap - used).max(0.0) as u32;
+        let st = self.cryo_status();
+        berths
+            + if st.hospital {
+                0
+            } else {
+                st.free.min(1_000_000) as u32
+            }
     }
 
     /// Passengers step off: the fare (scaled by the comfort of the trip), a tax, and, for
@@ -552,7 +560,18 @@ impl Sim {
             1.0
         };
         let guide = if c.guide { 1.0 + GUIDE_BONUS } else { 1.0 };
-        let pay = c.reward * comfort * hotel * guide * (1.0 - self.tax_rate());
+        // Those who ride asleep in free caissons pay the cheap fare (no cabin, no comfort).
+        let cold = {
+            let st = self.cryo_status();
+            let pods = if st.hospital {
+                0.0
+            } else {
+                st.free.min(1_000_000) as f64
+            };
+            (pods / f64::from(c.pax.max(1))).min(1.0)
+        };
+        let pay =
+            c.reward * comfort * hotel * guide * (1.0 - 0.25 * cold) * (1.0 - self.tax_rate());
         self.credits += pay;
         self.change_reputation(self.faction, if kind == 3 { 6.0 } else { 2.0 });
         if matches!(kind, 2 | 3) {

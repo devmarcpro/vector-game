@@ -6,6 +6,7 @@ mod codex_sky;
 mod console;
 mod cosmos_view;
 mod crew_net_view;
+mod cryo_view;
 mod dash_view;
 mod designer_view;
 mod dialogue_view;
@@ -1522,7 +1523,7 @@ fn snapshot(path: &str, scene: &str, data: Arc<GameData>) {
             g.sim.update_ref_pub();
             g.open_galaxy();
         }
-        "crew" | "crewnet" | "recruit" | "journal" | "medicine" => {
+        "crew" | "crewnet" | "recruit" | "journal" | "medicine" | "cryo" => {
             let (st, _) = g.sim.nearest_station().expect("station");
             g.sim.spawn_near(st, g.sim.bodies[st].radius + 200.0);
             g.key(KeyCode::KeyD, None, true);
@@ -1535,12 +1536,55 @@ fn snapshot(path: &str, scene: &str, data: Arc<GameData>) {
                     .cargo
                     .add(&data, data.resource_index(id).expect("res"), kg);
             }
-            let days = if scene == "medicine" { 2.0 } else { 40.0 };
+            let days = if scene == "medicine" {
+                2.0
+            } else if scene == "cryo" {
+                12.0
+            } else {
+                40.0
+            };
+            if scene == "cryo" {
+                // A bank of caissons in the first roomy internal slot, a plan, three sleepers.
+                g.sim.ship.stats.crew_cap = 8.0;
+                g.sim.hire(2, 3).expect("hire");
+                g.sim.hire(3, 5).expect("hire");
+                g.sim.undock();
+                let pod = data.module_index("cryo_pod_mk2").expect("pod");
+                let hull = g.sim.ship.design.hull;
+                let slot = data.hulls[hull]
+                    .slots
+                    .iter()
+                    .position(|(t, s)| *t == vector_data::SlotType::Internal && *s >= 2)
+                    .expect("an internal slot");
+                g.sim.ship.design.slots[slot] = Some(pod);
+                g.sim.ship.refresh_stats(&data);
+                if let Some(r) = data.resource_index("cryoprotectant") {
+                    g.sim.ship.cargo.add(&data, r, 8.0);
+                }
+                g.sim.advance(600.0, &ShipInput::default());
+                g.sim.cryo_put(1).expect("sleep");
+                g.sim.cryo_put(2).expect("sleep");
+                let at = g.sim.time + 400.0 * 86_400.0;
+                g.sim
+                    .cryo_order(vector_sim::cryo::Who::All, vector_sim::cryo::When::At(at));
+                g.sim
+                    .cryo_order(vector_sim::cryo::Who::Best, vector_sim::cryo::When::Arrival);
+                g.sim.rules.invulnerable = true;
+                g.sim.cryo_set_rotation(30.0);
+                g.crew_sel = 1;
+                for (id, kg) in [("food", 400.0), ("water", 900.0), ("spare_parts", 20.0)] {
+                    g.sim
+                        .ship
+                        .cargo
+                        .add(&data, data.resource_index(id).expect("res"), kg);
+                }
+            }
             g.sim.advance(days * 86_400.0, &ShipInput::default());
             g.screen = match scene {
-                "crew" | "crewnet" | "medicine" => {
+                "crew" | "crewnet" | "medicine" | "cryo" => {
                     g.crew_net = scene == "crewnet";
                     g.med_mode = scene == "medicine";
+                    g.cryo_mode = scene == "cryo";
                     if g.med_mode {
                         // A few injuries to look at.
                         let d = Arc::clone(&g.data);

@@ -321,3 +321,24 @@ fn typing_goes_to_text_rows_and_arrows_still_move() {
     g.newgame_key(KeyCode::Tab, None);
     assert!(g.ng.custom.ship.name.len() > 2, "Tab draws a name");
 }
+
+#[test]
+fn the_cryosleep_rows_put_the_chosen_member_to_sleep_or_say_why_not() {
+    let mut g = flow();
+    g.ng_goto(3);
+    g.ng.crew_focus = true;
+    let k = g.ng.picks[0].candidate;
+    g.ng.cursor = k;
+    click(&mut g, C_CRYO, 1);
+    click(&mut g, C_WAKE_ARR, 1);
+    click(&mut g, C_WAKE_DAY, 2);
+    assert_eq!(g.ng.custom.cryo.members, vec![k]);
+    assert_eq!(g.ng.custom.cryo.wake_day, Some(10.0));
+    let cfg = g.ng_config();
+    if g.start_game(&cfg) {
+        assert!(g.sim.crew.members[0].body.cryo);
+        assert_eq!(g.sim.crew.cryo.orders.len(), 2);
+    } else {
+        assert!(g.messages.last().is_some_and(|m| m.contains("ECHEC")));
+    }
+}

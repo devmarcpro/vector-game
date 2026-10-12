@@ -455,7 +455,7 @@ pub fn new_sim_with(cfg: &StartConfig, data: Arc<GameData>) -> Result<Sim, Strin
     let mut sim = crate::scene::base_sim_at(galaxy, &home, Arc::clone(&data));
     sim.set_rules(cfg.rules.clone());
     // The ship.
-    let design = match custom.ship.mode {
+    let mut design = match custom.ship.mode {
         sc_::ShipMode::Scenario => {
             build_design(&data, sc, cfg.ship)
                 .ok_or("vaisseau inconnu")?
@@ -475,6 +475,13 @@ pub fn new_sim_with(cfg: &StartConfig, data: Arc<GameData>) -> Result<Sim, Strin
     if custom.ship.mode != sc_::ShipMode::Scenario {
         sc_::flyable(&data, &design)?;
     }
+    let sleepers = custom
+        .cryo
+        .members
+        .iter()
+        .filter(|m| picks.iter().any(|p| p.candidate == **m))
+        .count();
+    let pods_cost = sc_::cryo_fit(&data, &mut design, sleepers)?;
     let labs = design
         .modules(&data)
         .filter(|(_, m)| m.science > 0.0)
@@ -490,6 +497,12 @@ pub fn new_sim_with(cfg: &StartConfig, data: Arc<GameData>) -> Result<Sim, Strin
     sim.weapon_cd = vec![0.0; sim.ship.design.slots.len()];
     // Money, hold, knowledge.
     sim.credits = sc.credits;
+    if pods_cost > sim.credits + 1e-6 {
+        return Err(format!(
+            "les caissons cryo coutent {pods_cost:.0} credits : pas assez pour les installer"
+        ));
+    }
+    sim.credits -= pods_cost;
     for (id, kg) in &sc.cargo {
         if let Some(r) = data.resource_index(id) {
             sim.ship.cargo.add(&data, r, *kg * custom.world.provisions);
@@ -555,6 +568,9 @@ pub fn new_sim_with(cfg: &StartConfig, data: Arc<GameData>) -> Result<Sim, Strin
         sc_::place_ship(&mut sim, place);
     }
     sc_::apply_after(&mut sim, cfg);
+    let mut cfg2 = cfg.clone();
+    cfg2.crew = Some(picks);
+    sc_::apply_cryo(&mut sim, &cfg2)?;
     Ok(sim)
 }
 

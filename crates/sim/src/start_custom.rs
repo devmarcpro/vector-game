@@ -203,11 +203,26 @@ pub struct CustomStart {
     pub world: WorldCustom,
     /// 0 free, 1 only when docked, 2 one slot, only when docked.
     pub save_mode: u8,
+    /// The crew asleep at the start.
+    pub cryo: CryoStart,
     pub ext: Vec<(String, String)>,
 }
 
-/// What the start leaves in the `Sim` (names, frequencies, save mode).
-#[derive(Clone, Debug, PartialEq)]
+/// A crew asleep at the start (see `cryo`): who sleeps (candidates of the pool) and the plan of
+/// the wake-ups (on arrival, on a critical alert, on a day). Pods are fitted if the ship has
+/// none (their price comes out of the credits).
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct CryoStart {
+    pub members: Vec<usize>,
+    pub wake_on_arrival: bool,
+    pub wake_on_alert: bool,
+    /// Wake everybody on this day of the game.
+    pub wake_day: Option<f64>,
+}
+
+/// What the start leaves in the `Sim` (names, frequencies, save mode); saved with the game.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Runtime {
     pub ship_name: String,
     pub registration: String,
@@ -501,6 +516,49 @@ pub fn contacts_valid(data: &GameData, contacts: &[ContactSpec]) -> Result<(), S
         if contacts[..i].iter().any(|d| d.faction == c.faction) {
             return Err("un seul contact par faction".into());
         }
+    }
+    Ok(())
+}
+
+// ---- cryosleep at the start ---------------------------------------------------------------
+
+/// Fit sleeping pods in free internal slots until `need` people can sleep. Returns the price.
+pub fn cryo_fit(data: &GameData, design: &mut ShipDesign, need: usize) -> Result<f64, String> {
+    let have = |d: &ShipDesign| d.modules(data).map(|(_, m)| m.cryo).sum::<f64>();
+    let mut cost = 0.0;
+    while have(design) + 1e-9 < need as f64 {
+        let id = "cryo_pod_mk1";
+        design
+            .install_first_fit(data, id)
+            .map_err(|_| "pas d'emplacement interne libre pour un caisson cryo".to_string())?;
+        cost += data.modules[data.module_index(id).ok_or("caisson cryo inconnu")?].cost;
+    }
+    Ok(cost)
+}
+
+/// Put the chosen crew to sleep and set the wake plan (the hired members, in the order of the picks).
+pub(crate) fn apply_cryo(sim: &mut Sim, cfg: &StartConfig) -> Result<(), String> {
+    use crate::cryo::{When, Who};
+    let c = &cfg.custom.cryo;
+    let picks = cfg.crew.clone().unwrap_or_default();
+    if !c.members.is_empty() {
+        // One tick so that the pods are powered and counted (a few hundredths of a second).
+        sim.advance(0.05, &crate::ShipInput::default());
+    }
+    for cand in &c.members {
+        let Some(i) = picks.iter().position(|p| p.candidate == *cand) else {
+            continue;
+        };
+        sim.cryo_put(i).map_err(|e| e.to_string())?;
+    }
+    if c.wake_on_arrival {
+        sim.cryo_order(Who::All, When::Arrival);
+    }
+    if c.wake_on_alert {
+        sim.cryo_order(Who::Best, When::Alert);
+    }
+    if let Some(d) = c.wake_day {
+        sim.cryo_order(Who::All, When::At(d * 86_400.0));
     }
     Ok(())
 }

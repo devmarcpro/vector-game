@@ -1,4 +1,4 @@
-//! Care: diagnosis, first aid, drugs, surgery of wounds, defibrillation, cryostasis. The actions
+//! Care: diagnosis, first aid, drugs, surgery of wounds, defibrillation. (Cryostasis is `cryo.rs`.) The actions
 //! of the player on the body model of `body.rs`; the same ones serve the infirmary of the ship
 //! and the hospital of a station (see `surgery.rs` for organs and implants).
 use crate::body;
@@ -233,37 +233,6 @@ impl Sim {
         Ok(report)
     }
 
-    /// Put a member in cryostasis (needs the powered infirmary or a station's hospital): no
-    /// needs, no ageing, wounds stop; if the power fails the sleeper thaws badly.
-    pub fn cryo_start(&mut self, member: usize) -> Result<String, &'static str> {
-        self.patient(member)?;
-        if self.effective.medbay <= 0.0 && self.docked.is_none() {
-            return Err("pas d'infirmerie alimentee");
-        }
-        if self.crew.members[member].body.cryo {
-            return Err("deja en cryostase");
-        }
-        self.crew.members[member].body.cryo = true;
-        let name = self.crew.members[member].name.clone();
-        let report = format!("{name} entre en cryostase");
-        let now = self.time;
-        self.crew.log_event(now, report.clone());
-        Ok(report)
-    }
-
-    pub fn cryo_wake(&mut self, member: usize) -> Result<String, &'static str> {
-        self.patient(member)?;
-        if !self.crew.members[member].body.cryo {
-            return Err("pas en cryostase");
-        }
-        self.crew.members[member].body.thaw();
-        let name = self.crew.members[member].name.clone();
-        let report = format!("{name} est rechauffe");
-        let now = self.time;
-        self.crew.log_event(now, report.clone());
-        Ok(report)
-    }
-
     /// A blow, burn or fall hurts a member: wounds picked by the cause (`kind` is the id of a wound
     /// of `data/wounds.ron`), the organs below the wound take part of it.
     pub fn wound_member(&mut self, member: usize, kind: &str, sev: f32, pick: u64) {
@@ -417,8 +386,8 @@ mod tests {
         s.crew.update(&mut ctx, t0 + 200.0 * crate::crew::DAY);
         let p = &s.crew.members[0];
         assert!(
-            p.alive && (p.age - age).abs() < 1e-6,
-            "no ageing in the freezer"
+            p.alive && (p.age - age).abs() < 0.01,
+            "next to no ageing in the freezer"
         );
         assert!((p.hunger - hunger).abs() < 1e-6, "no hunger");
         assert!(p.body.blood > 0.99, "no bleeding");

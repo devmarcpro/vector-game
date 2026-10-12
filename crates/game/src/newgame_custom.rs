@@ -80,6 +80,10 @@ const C_IMPLANT: u32 = 16;
 const C_REROLL: u32 = 17;
 const C_LOCK: u32 = 18;
 const C_RESET: u32 = 19;
+const C_CRYO: u32 = 40;
+const C_WAKE_ARR: u32 = 41;
+const C_WAKE_ALERT: u32 = 42;
+const C_WAKE_DAY: u32 = 43;
 const C_TRAIT_ADD: u32 = 20;
 const C_SKILL: u32 = 100;
 const C_TRAIT: u32 = 200;
@@ -569,6 +573,37 @@ impl Game {
             "OK >",
             "",
             Kind::Action,
+        ));
+        let cy = &self.ng.custom.cryo;
+        let asleep = cy.members.contains(&k);
+        v.push(row(
+            C_CRYO,
+            "CRYOSOMMEIL AU DEPART",
+            if asleep { "OUI" } else { "NON" },
+            "LA PERSONNE DORT DANS UN CAISSON DES LE JOUR 0 ET NE CONSOMME RIEN ; LES CAISSONS MANQUANTS SONT INSTALLES ET PAYES.",
+            Kind::Pick,
+        ));
+        v.push(row(
+            C_WAKE_ARR,
+            "  REVEIL A L'ARRIVEE",
+            if cy.wake_on_arrival { "OUI" } else { "NON" },
+            "REVEILLE LES DORMEURS A LA PREMIERE ARRIVEE (NOUVELLE ETOILE OU QUAI).",
+            Kind::Pick,
+        ));
+        v.push(row(
+            C_WAKE_ALERT,
+            "  REVEIL SUR ALERTE",
+            if cy.wake_on_alert { "OUI" } else { "NON" },
+            "LE MEILLEUR VEILLEUR SE REVEILLE EN CAS D'ALERTE CRITIQUE.",
+            Kind::Pick,
+        ));
+        v.push(row(
+            C_WAKE_DAY,
+            "  REVEIL A LA DATE",
+            cy.wake_day
+                .map_or("AUCUN".to_string(), |d| format!("JOUR {d:.0}")),
+            "REVEILLE TOUS LES DORMEURS CE JOUR-LA.",
+            Kind::Pick,
         ));
         v
     }
@@ -1309,6 +1344,25 @@ impl Game {
                 }
             }
             C_RESET => self.ng.custom.crew.edits.retain(|e| e.candidate != k),
+            C_CRYO => {
+                let m = &mut self.ng.custom.cryo.members;
+                if let Some(i) = m.iter().position(|&c| c == k) {
+                    m.remove(i);
+                } else {
+                    m.push(k);
+                }
+            }
+            C_WAKE_ARR => self.ng.custom.cryo.wake_on_arrival ^= true,
+            C_WAKE_ALERT => self.ng.custom.cryo.wake_on_alert ^= true,
+            C_WAKE_DAY => {
+                let cur = self.ng.custom.cryo.wake_day.unwrap_or(0.0);
+                let n = match part {
+                    0 => (cur - 10.0).max(0.0),
+                    3 => ((h % 30) as f64 + 1.0) * 10.0,
+                    _ => cur + 10.0,
+                };
+                self.ng.custom.cryo.wake_day = (n > 0.0).then_some(n);
+            }
             C_TRAIT_ADD => {
                 let n = d.traits.len();
                 if part == 1 {
@@ -1451,6 +1505,11 @@ impl Game {
         }
         self.ng.custom.crew.edits.retain(|e| e.candidate != k);
         self.ng.custom.crew.locked.retain(|c| *c != k);
+        for c in &mut self.ng.custom.cryo.members {
+            if *c == k {
+                *c = n;
+            }
+        }
         self.ng.cursor = n;
         // The budget of points may no longer hold: say so.
         if self.ng_points_used() > sc::crew_points(&self.data, &self.ng_config()) {

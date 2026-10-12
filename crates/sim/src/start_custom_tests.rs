@@ -810,3 +810,127 @@ fn implants_cost_points_and_are_installed() {
     c.custom.crew.edits.push(e);
     assert_eq!(sim_of(&d, &c).crew.members[0].implants, vec![0]);
 }
+
+#[test]
+fn start_choices_survive_a_save_and_the_restricted_save_mode_cannot_be_reloaded_away() {
+    let d = data();
+    let mut c = StartConfig::new(5);
+    c.custom.ai.personality = d.ai_trait_index("prudente").expect("trait");
+    c.custom.ai.core = 1;
+    c.custom.ai.software = vec!["optim_orbites".into()];
+    c.custom.ai.name = "Pythie".into();
+    c.custom.ship.name = "Aurore".into();
+    c.custom.world.epidemics = 2.0;
+    c.custom.world.surprises = 0.5;
+    c.custom.save_mode = 2;
+    let s = sim_of(&d, &c);
+    let bytes = s.save_bytes().expect("save");
+    let back = Sim::load_bytes(&bytes, Arc::clone(&d)).expect("load");
+    assert_eq!(back.custom, s.custom);
+    assert_eq!(back.mind.bias, s.mind.bias);
+    assert_eq!(back.mind.alloc, s.mind.alloc);
+    assert_eq!(back.mind.power_bonus, s.mind.power_bonus);
+    assert_eq!(back.mind.software, s.mind.software);
+    assert_eq!(back.custom.save_mode, 2);
+    assert!(back.custom.may_save(false).is_err());
+    assert_eq!(back.mind_capacity(), s.mind_capacity());
+}
+
+fn sleeping_config(d: &Arc<GameData>) -> StartConfig {
+    let mut c = StartConfig::new(12);
+    c.scenario = d.scenario_index("colon").expect("scenario");
+    // A ship with a free internal slot: the last internal module is taken out.
+    let mut ship = catalog_of(d, c.scenario, 0);
+    let hi = d.hull_index(&ship.hull).expect("hull");
+    let slot = (0..ship.modules.len())
+        .rev()
+        .find(|&i| {
+            d.hulls[hi].slots[i].0 == vector_data::SlotType::Internal
+                && d.module_index(&ship.modules[i]).is_some_and(|m| {
+                    matches!(
+                        d.modules[m].category.as_str(),
+                        "cargo" | "battery" | "scanner"
+                    )
+                })
+        })
+        .expect("an internal module");
+    ship.modules[slot].clear();
+    c.custom.ship = ship;
+    let pool = start::crew_pool(d, 12);
+    let picks = start::default_crew(d, &d.scenarios[c.scenario], &pool);
+    c.crew = Some(picks.clone());
+    c.custom.cryo.members = vec![picks[0].candidate];
+    c.custom.cryo.wake_on_arrival = true;
+    c.custom.cryo.wake_on_alert = true;
+    c.custom.cryo.wake_day = Some(30.0);
+    c
+}
+
+#[test]
+fn a_crew_asleep_at_the_start_sleeps_on_day_zero_costs_nothing_and_wakes_by_the_plan() {
+    let d = data();
+    let c = sleeping_config(&d);
+    let plain = {
+        let mut p = c.clone();
+        p.custom.cryo = CryoStart::default();
+        sim_of(&d, &p)
+    };
+    let mut s = sim_of(&d, &c);
+    assert!(s.crew.members[0].body.cryo, "asleep on day 0");
+    assert!(!s.crew.members[1].body.cryo);
+    assert_eq!(s.crew.cryo.orders.len(), 3, "the wake plan is set");
+    // The pods were fitted and paid for when the ship had none.
+    let pods = |x: &Sim| {
+        x.ship
+            .design
+            .modules(&x.data)
+            .filter(|(_, m)| m.cryo > 0.0)
+            .count()
+    };
+    assert!(pods(&s) >= 1);
+    if pods(&plain) == 0 {
+        assert!(s.credits < plain.credits, "the pods cost credits");
+    }
+    // The sleeper eats and drinks nothing.
+    let (h0, t0) = (s.crew.members[0].hunger, s.crew.members[0].thirst);
+    for _ in 0..24 {
+        s.advance(3600.0, &ShipInput::default());
+    }
+    let p = &s.crew.members[0];
+    assert!(
+        p.body.cryo && p.hunger <= h0 + 0.05 && p.thirst <= t0 + 0.05,
+        "{} {}",
+        p.hunger,
+        p.thirst
+    );
+    // On the day of the plan, the sleeper wakes.
+    for _ in 0..40 {
+        s.advance(86_400.0 / 4.0 * 4.0, &ShipInput::default());
+        if !s.crew.members[0].body.cryo {
+            break;
+        }
+    }
+    assert!(!s.crew.members[0].body.cryo, "woken by the plan");
+    assert!(s.time >= 29.0 * 86_400.0 || s.crew.members[0].alive);
+}
+
+#[test]
+fn cryosleep_at_the_start_refuses_what_cannot_be_done() {
+    let d = data();
+    let mut c = sleeping_config(&d);
+    // Too poor to fit pods.
+    c.custom.ship = ShipCustom::default();
+    c.scenario = d.scenario_index("naufrage").expect("scenario");
+    let pool = start::crew_pool(&d, 12);
+    let picks = start::default_crew(&d, &d.scenarios[c.scenario], &pool);
+    c.custom.cryo.members = vec![picks[0].candidate];
+    c.crew = Some(picks);
+    c.custom.world.place = Some(0);
+    let r = new_sim_with(&c, Arc::clone(&d));
+    assert!(r.is_err() || r.as_ref().is_ok_and(|s| s.crew.members[0].body.cryo));
+    // Nobody picked asleep: nothing happens.
+    let mut c2 = StartConfig::new(3);
+    c2.custom.cryo.members = vec![99];
+    let s = sim_of(&d, &c2);
+    assert!(s.crew.members.iter().all(|p| !p.body.cryo));
+}

@@ -2,11 +2,15 @@ mod archive_view;
 mod audio;
 mod bourse_view;
 mod codex;
+mod codex_sky;
 mod console;
 mod cosmos_view;
 mod crew_net_view;
+mod designer_view;
 mod dialogue_view;
+mod eco_view;
 mod expedition_view;
+mod ext_view;
 mod faction_view;
 mod family_view;
 mod farm_view;
@@ -17,17 +21,24 @@ mod fpv_view;
 mod game;
 mod globe;
 mod health_view;
+mod hub;
 mod hud;
 mod landing_view;
 mod medicine_view;
 mod mind_view;
 mod mouse;
+mod newgame;
 mod power_view;
+mod project_view;
 mod proto_view;
 mod rogue_view;
 mod scene;
 mod script;
 mod settings;
+mod ship_model;
+mod ship_preview;
+mod sky_view;
+mod society_view;
 mod sprites;
 mod surface_view;
 mod tech_view;
@@ -310,9 +321,20 @@ fn landing_scene(g: &mut Game, stage: &str) {
 
 fn snapshot(path: &str, scene: &str, data: Arc<GameData>) {
     let mut g = Game::new(data, DEFAULT_SEED);
+    // "ext_<scene>[@yaw,pitch,zoom]": the same scene seen from the third-person camera.
+    let (scene, cam) = scene.split_once('@').unwrap_or((scene, ""));
+    let (scene, ext) = match scene.strip_prefix("ext_") {
+        Some(rest) => (rest, true),
+        None => (scene, false),
+    };
+    let cam: Vec<f64> = cam.split(',').filter_map(|x| x.parse().ok()).collect();
+    if let [yaw, pitch, zoom] = cam[..] {
+        (g.ext_yaw, g.ext_pitch, g.ext_zoom) = (yaw, pitch, zoom);
+    }
     if scene != "menu" {
         g.new_game(DEFAULT_SEED);
     }
+    g.ext_view = ext;
     // A world with life, for the views of planets: look for a seed that has a Terran or Ocean one.
     if scene.starts_with("world_life") {
         for seed in 1..400u64 {
@@ -376,11 +398,14 @@ fn snapshot(path: &str, scene: &str, data: Arc<GameData>) {
                 .expect("a solid planet");
             let b = &g.sim.bodies[i];
             let dir = vector_core::Vec3::new(0.3, 0.15, -1.0).normalized();
-            let low = s.ends_with("low");
+            let land = s.ends_with("land");
+            let low = s.ends_with("low") || land || s.ends_with("touch");
             g.sim.ship.pos = b.pos
                 - dir
                     * (b.radius
-                        * if low {
+                        * if land || s.ends_with("touch") {
+                            1.0 + 3000.0 / b.radius
+                        } else if low {
                             1.012
                         } else if near {
                             1.25
@@ -388,6 +413,19 @@ fn snapshot(path: &str, scene: &str, data: Arc<GameData>) {
                             3.2
                         });
             g.sim.ship.vel = b.vel;
+            if land || s.ends_with("touch") {
+                // Over the real ground: 60 m up on approach, on its gear when touching.
+                // Under the star at noon (a little off the zenith so the shadow shows).
+                let sun = (b.pos * -1.0).normalized();
+                let side = sun
+                    .cross(vector_core::Vec3::new(0.0, 1.0, 0.0))
+                    .normalized();
+                let up = (sun + side * 0.45).normalized();
+                let (c, r) = (b.pos, b.radius);
+                let gr = crate::ext_view::ground(&g, &g.sim).map_or(3000.0, |x| x.h);
+                let want = if land { 60.0 } else { 0.0 };
+                g.sim.ship.pos = c + up * (r + 3000.0 - gr + want);
+            }
             g.sim.ship.rot = if low {
                 // Flying along the ground, nose a little down.
                 let forward = (vector_core::Vec3::new(1.0, -0.12, 0.0)).normalized();
@@ -449,6 +487,54 @@ fn snapshot(path: &str, scene: &str, data: Arc<GameData>) {
             }
             g.screen = Screen::Rogue;
         }
+        // The new-game flow, one scene per step: newgame0 .. newgame6 (newgame1_naufrage, ...).
+        s if s.starts_with("newgame") => {
+            let step: usize = s[7..8].parse().unwrap_or(0);
+            g.open_new_game();
+            if s.ends_with("naufrage") {
+                g.click_ng_scenario(g.data.scenario_index("naufrage").expect("scenario"));
+            } else if s.ends_with("marchand") {
+                g.click_ng_scenario(g.data.scenario_index("marchand").expect("scenario"));
+            }
+            g.tut_step = None;
+            g.ng.seed_text = if step >= 4 {
+                "ANDROMEDE".into()
+            } else {
+                String::new()
+            };
+            if step >= 4 {
+                g.ng.cursor = 2;
+            }
+            g.ng_goto(step);
+        }
+        // The one menu: hub (the eight spaces), hub_vaisseau (a page), hub_dock (docked),
+        // hub_castaway (the castaway's orientation).
+        "hub" | "hub_vaisseau" | "hub_dock" | "hub_castaway" => {
+            if scene == "hub_dock" {
+                let (st, _) = g.sim.nearest_station().expect("station");
+                g.sim.spawn_near(st, g.sim.bodies[st].radius + 200.0);
+                g.key(KeyCode::KeyD, None, true);
+            }
+            if scene == "hub_castaway" {
+                let mut cfg = vector_sim::start::StartConfig::new(DEFAULT_SEED);
+                cfg.scenario = g.data.scenario_index("naufrage").expect("scenario");
+                g.start_game(&cfg);
+            }
+            g.tut_step = None;
+            g.open_hub();
+            if scene == "hub_vaisseau" {
+                g.hub_select(2);
+            }
+            if scene == "hub_dock" {
+                g.hub_select(4);
+            }
+        }
+        // A castaway on foot, right after the start.
+        "castaway" => {
+            let mut cfg = vector_sim::start::StartConfig::new(DEFAULT_SEED);
+            cfg.scenario = g.data.scenario_index("naufrage").expect("scenario");
+            g.start_game(&cfg);
+        }
         "rogue0" => {
             let (st, _) = g.sim.nearest_station().expect("station");
             g.sim.spawn_near(st, g.sim.bodies[st].radius + 200.0);
@@ -501,6 +587,32 @@ fn snapshot(path: &str, scene: &str, data: Arc<GameData>) {
             let _ = g.sim.rewind(0);
             g.screen = Screen::Cosmos;
         }
+        "haute_sf" => {
+            g.sim.credits = 500_000.0;
+            let d = std::sync::Arc::clone(&g.sim.data);
+            g.sim.ship.cargo.cap_mass = 1.0e7;
+            g.sim.ship.cargo.cap_vol = 1.0e7;
+            for (id, kg) in [("antimatter", 0.02), ("nanites", 3.0)] {
+                if let Some(r) = d.resource_index(id) {
+                    g.sim.ship.cargo.add(&d, r, kg);
+                }
+            }
+            let p = vector_sim::crew::generate_person(&d, 4, None);
+            g.sim.crew.hire(&d, p, 1, 0.0);
+            let slot = g
+                .sim
+                .ship
+                .design
+                .modules(&d)
+                .find(|(_, m)| m.jump_range > 0.0)
+                .map(|(i, _)| i);
+            if let Some(i) = slot {
+                g.sim.ship.design.slots[i] = d.module_index("exo_warp_drive");
+            }
+            g.sim.ship.refresh_stats(&d);
+            let _ = g.sim.clone_crew(0);
+            g.screen = Screen::Cosmos;
+        }
         "courtage" => {
             let (st, _) = g.sim.nearest_station().expect("station");
             g.sim.spawn_near(st, g.sim.bodies[st].radius + 200.0);
@@ -508,6 +620,69 @@ fn snapshot(path: &str, scene: &str, data: Arc<GameData>) {
             g.sim.time = 120.0 * 86_400.0;
             g.screen = Screen::Trading;
             g.trade_ui.tab = 0;
+        }
+        "assurance" | "titres" | "ventes" | "lignes" | "economie" => {
+            let (st, _) = g.sim.nearest_station().expect("station");
+            g.sim.spawn_near(st, g.sim.bodies[st].radius + 200.0);
+            g.sim.try_dock().expect("dock");
+            g.sim.credits = 300_000.0;
+            g.sim.time = 400.0 * 86_400.0;
+            let data = std::sync::Arc::clone(&g.data);
+            for (id, kg) in [("gold", 150.0), ("iron", 4000.0), ("food", 900.0)] {
+                if let Some(r) = data.resource_index(id) {
+                    g.sim.ship.cargo.add(&data, r, kg);
+                }
+            }
+            g.screen = Screen::Trading;
+            g.trade_ui.tab = match scene {
+                "assurance" => 4,
+                "titres" => 5,
+                "ventes" => 6,
+                "lignes" => 7,
+                _ => 8,
+            };
+            let gold = data.resource_index("gold").unwrap_or(0);
+            match scene {
+                "assurance" => {
+                    let _ = g.sim.buy_insurance(true);
+                    let _ = g.sim.declare_loss(gold, 20.0);
+                }
+                "titres" => {
+                    let iron = data.resource_index("iron").unwrap_or(0);
+                    g.click_eco(100);
+                    g.click_eco(120);
+                    g.trade_ui.sel = iron;
+                    g.click_eco(130);
+                    g.click_eco(131);
+                }
+                "ventes" => {
+                    g.trade_ui.sel = gold;
+                    g.click_eco(200);
+                    g.click_eco(240);
+                }
+                "lignes" => {
+                    let galaxy = g.sim.galaxy;
+                    if let Some(hub) = galaxy
+                        .nearby([0.0; 3], 25.0)
+                        .into_iter()
+                        .find(|s| !vector_sim::lanes::lines_at(&data, &galaxy, s.pos).is_empty())
+                    {
+                        g.sim.here_pos = hub.pos;
+                    }
+                    let lines = g.sim.lines_here();
+                    if let Some(lv) = lines.first() {
+                        for k in 0..lv.convoys.len() {
+                            if g.sim
+                                .finance_convoy(lv.line.id, lv.convoys[k].k, 1000.0)
+                                .is_ok()
+                            {
+                                break;
+                            }
+                        }
+                    }
+                }
+                _ => {}
+            }
         }
         "elevage" | "casino" => {
             let (st, _) = g.sim.nearest_station().expect("station");
@@ -540,6 +715,20 @@ fn snapshot(path: &str, scene: &str, data: Arc<GameData>) {
             g.sim.set_reputation(4, -70.0);
             g.key(KeyCode::KeyX, None, true);
             g.fac_sel = 4;
+        }
+        "societe" => {
+            let (st, _) = g.sim.nearest_station().expect("station");
+            g.sim.spawn_near(st, g.sim.bodies[st].radius + 200.0);
+            g.sim.try_dock().ok();
+            g.sim.credits = 50_000.0;
+            let id = g.sim.crew.members[0].id;
+            for k in 0..3 {
+                g.sim.time += 86_400.0;
+                g.sim.compose(id, k).ok();
+            }
+            g.key(KeyCode::KeyX, None, true);
+            g.fac_sel = g.sim.faction.unwrap_or(0);
+            g.soc_page = true;
         }
         "bourse" | "bourse2" => {
             let (st, _) = g.sim.nearest_station().expect("station");
@@ -591,6 +780,11 @@ fn snapshot(path: &str, scene: &str, data: Arc<GameData>) {
             g.screen = Screen::Crew;
             g.key(KeyCode::KeyG, None, true);
         }
+        "stationview" => {
+            let (st, _) = g.sim.nearest_station().expect("station");
+            g.sim.spawn_near(st, g.sim.bodies[st].radius * 2.5);
+            g.sim.reveal_all();
+        }
         "station" => {
             let (st, _) = g.sim.nearest_station().expect("station");
             g.sim.spawn_near(st, g.sim.bodies[st].radius + 200.0);
@@ -633,8 +827,66 @@ fn snapshot(path: &str, scene: &str, data: Arc<GameData>) {
             g.sim.target = Some(i);
             g.sim.update_ref_pub();
         }
-        "surface" | "biosphere" | "biosphere_card" | "globe" | "walk" | "walk_fpv"
-        | "expedition" => {
+        "sky_ring" | "sky_bh" | "sky_pulsar" | "sky_comet" => {
+            // A system chosen for what it holds (rings, a black hole, a pulsar, a comet), the
+            // ship parked in front of it with the object targeted.
+            use vector_world::stellar::StarStage;
+            let hit = |s: &vector_world::System| match scene {
+                "sky_ring" => !s.rings().is_empty(),
+                "sky_bh" => s.stage == StarStage::BlackHole && s.accreting(),
+                "sky_pulsar" => s.stage == StarStage::NeutronStar,
+                _ => s.bodies.iter().any(|b| {
+                    b.kind == vector_world::BodyKind::Anomaly(vector_world::AnomalyKind::Comet)
+                }),
+            };
+            let sys = (0..60_000u64)
+                .map(|k| k.wrapping_mul(0x9E37_79B9))
+                .map(vector_world::generate_system)
+                .find(|s| hit(s))
+                .expect("such a system");
+            let (i, back) = match scene {
+                "sky_ring" => {
+                    let r = sys.rings()[0];
+                    (r.planet, sys.bodies[r.planet].radius * 7.0)
+                }
+                "sky_bh" | "sky_pulsar" => (0, 4.0e7),
+                _ => (
+                    sys.bodies
+                        .iter()
+                        .position(|b| {
+                            b.kind
+                                == vector_world::BodyKind::Anomaly(vector_world::AnomalyKind::Comet)
+                        })
+                        .expect("a comet"),
+                    6.0e5,
+                ),
+            };
+            let data = Arc::clone(&g.data);
+            let mut sim = vector_sim::Sim::new(sys, data);
+            if scene == "sky_comet" {
+                let o = sim.system.bodies[i].orbit.clone().expect("orbit");
+                sim.time = (0..2000)
+                    .map(|k| f64::from(k) * o.period() / 2000.0)
+                    .rfind(|&t| sim.system.comet_tail(i, t).is_some())
+                    .expect("a tail");
+                sim.refresh_bodies();
+            }
+            sim.reveal_all();
+            let b = &sim.bodies[i];
+            // Seen from a little above the plane of the orbits, so that rings open into ellipses.
+            let lift = if scene == "sky_ring" {
+                back * 0.45
+            } else {
+                0.0
+            };
+            sim.ship.pos = b.pos + vector_core::Vec3::new(0.0, lift, -back);
+            sim.ship.vel = b.vel;
+            sim.target = Some(i);
+            sim.update_ref_pub();
+            g.sim = sim;
+        }
+        "surface" | "surface_geo" | "surface_clouds" | "biosphere" | "biosphere_card" | "globe"
+        | "walk" | "walk_fpv" | "expedition" => {
             g.sim.reveal_all();
             let i = g
                 .sim
@@ -663,6 +915,10 @@ fn snapshot(path: &str, scene: &str, data: Arc<GameData>) {
             if scene.starts_with("biosphere") {
                 g.surf_layer = surface_view::BIOSPHERE;
                 g.surf_card = scene == "biosphere_card";
+            } else if scene == "surface_clouds" {
+                g.surf_layer = 6;
+            } else if scene == "surface_geo" {
+                g.surf_layer = surface_view::GEOLOGIE;
             }
             g.surf_spin = 0.9;
             if scene.starts_with("walk") || scene == "expedition" {
@@ -733,6 +989,25 @@ fn snapshot(path: &str, scene: &str, data: Arc<GameData>) {
             g.codex_sel = 5;
             g.screen = Screen::Codex;
         }
+        "codex_geo" | "codex_sky" => {
+            g.codex_cat = if scene == "codex_geo" { 29 } else { 30 };
+            g.codex_sel = 4;
+            g.screen = Screen::Codex;
+        }
+        "galaxy_ism" => {
+            // Inside a supernova remnant or a nebula: circles of the medium on the galactic map.
+            use vector_world::cosmos::FeatureKind;
+            let galaxy = g.sim.galaxy;
+            let f = (-60..60)
+                .flat_map(|x| (-60..60).map(move |z| (x, z)))
+                .flat_map(|(x, z)| galaxy.features_in_cell((x, 0, z)))
+                .find(|f| f.kind == FeatureKind::SupernovaRemnant)
+                .expect("a remnant");
+            g.sim.here_pos = f.pos;
+            g.sim.reveal_all();
+            g.open_galaxy();
+            g.gal_zoom = 6.0;
+        }
         "help" => {
             g.help_open = true;
             g.start_tutorial();
@@ -802,7 +1077,15 @@ fn snapshot(path: &str, scene: &str, data: Arc<GameData>) {
             g.sim.target = Some(i);
             g.advance(0.2);
         }
+        "space" => {
+            // Under thrust, to see the flames.
+            g.keys.insert(KeyCode::Space);
+            for _ in 0..30 {
+                g.advance(1.0 / 30.0);
+            }
+        }
         "combat" => {
+            g.sim.rules.creative = true;
             let k = console::run("warship", &mut g.sim, &mut g.timescale);
             assert_eq!(k, vec!["warship ready".to_string()]);
             g.sim.ship.pos = vector_core::Vec3::new(4.0e11, 0.0, 0.0);
@@ -833,7 +1116,7 @@ fn snapshot(path: &str, scene: &str, data: Arc<GameData>) {
                 g.advance(1.0 / 30.0);
             }
         }
-        "empire" | "colony" | "fleet" | "fleetmap" | "flow" => {
+        "empire" | "colony" | "fleet" | "fleetmap" | "flow" | "projects" => {
             let data = Arc::clone(&g.data);
             let planet = g
                 .sim
@@ -914,6 +1197,35 @@ fn snapshot(path: &str, scene: &str, data: Arc<GameData>) {
             g.screen = Screen::Colony;
             if scene == "flow" {
                 g.col_flow = true;
+            }
+            if scene == "projects" {
+                g.sim.researched.iter_mut().for_each(|r| *r = true);
+                for (id, units) in [("miroirs_orbitaux", 40u32), ("comete_eau", 2)] {
+                    let def = data.project_index(id).expect("project");
+                    g.sim
+                        .colony_project_start(ci, def, units, 0)
+                        .expect("project");
+                }
+                let seed = data.project_index("ensemencement").expect("project");
+                let producer = (0..data.species.len())
+                    .find(|&i| data.species[i].is_producer())
+                    .expect("producer");
+                g.sim
+                    .colony_project_start(ci, seed, 1, producer)
+                    .expect("seeding");
+                for (id, kg) in [("aluminium", 4.0e6), ("polymers", 2.0e6), ("fuel", 3.0e6)] {
+                    g.sim.colonies[ci].storage[data.resource_index(id).expect("res")] += kg;
+                }
+                let swarm = data.project_index("essaim_dyson").expect("project");
+                let mut done = vector_sim::megastructure::ProjectInst::new(swarm, 0, 3000, 1.0);
+                done.units = 3000;
+                g.sim.colonies[ci].treasury = 5.0e6;
+                g.sim.colonies[ci].projects.push(done);
+                g.sim.time += 60.0 * 86_400.0;
+                g.sim.update_colonies_pub();
+                g.col_proj = true;
+                g.proj_focus = 1;
+                g.cat_sel = 0;
             }
             if scene == "empire" {
                 g.screen = Screen::Empire;
@@ -1024,6 +1336,63 @@ fn snapshot(path: &str, scene: &str, data: Arc<GameData>) {
             if scene == "yard" {
                 g.screen = Screen::Shipyard;
                 g.yard_sel = 5;
+            }
+        }
+        "ship_inside" => {
+            let (st, _) = g.sim.nearest_station().expect("station");
+            g.sim.spawn_near(st, g.sim.bodies[st].radius + 200.0);
+            g.key(KeyCode::KeyD, None, true);
+            g.sim.credits = 3_000_000.0;
+            g.advance(0.2);
+            let bi = g.sim.buy_plan(2).expect("plan");
+            g.sim.order_ship(bi, 4).expect("order");
+            if let Some(o) = g.sim.yard_orders.first() {
+                g.sim.time = o.ready + 1.0;
+            }
+            g.advance(0.2);
+            g.sim.ship.cargo.mass = 0.0;
+            g.sim.board_fleet_ship(0).expect("board");
+            let d = Arc::clone(&g.data);
+            for k in 0..3 {
+                let p = vector_sim::crew::generate_person(&d, 900 + k, None);
+                g.sim.crew.hire(&d, p, 1, 0.0);
+            }
+            let theme = d
+                .rogue_themes
+                .iter()
+                .position(|t| t.id == "vaisseau")
+                .expect("theme");
+            g.sim.rogue_begin_social(theme, 5, vec![0]);
+            g.screen = Screen::Rogue;
+        }
+        "designer" | "designer_fit" | "designer_plans" => {
+            let (st, _) = g.sim.nearest_station().expect("station");
+            g.sim.spawn_near(st, g.sim.bodies[st].radius + 200.0);
+            g.key(KeyCode::KeyD, None, true);
+            g.sim.credits = 3_000_000.0;
+            g.advance(0.2);
+            for i in [0usize, 1, 3] {
+                let _ = g.sim.buy_plan(i);
+            }
+            g.dz_open();
+            g.dz.bp = 0;
+            g.dz.cursor = (4, 0);
+            g.dz.layer = 1;
+            g.dz.part = 6;
+            g.dz.yaw = 0.7;
+            g.dz.tab = match scene {
+                "designer_fit" => 1,
+                "designer_plans" => 2,
+                _ => 0,
+            };
+            if scene == "designer_plans" {
+                let _ = g.sim.order_ship(0, 2);
+                if let Some(o) = g.sim.yard_orders.first() {
+                    g.sim.time = o.ready + 1.0;
+                }
+                g.advance(0.2);
+                let _ = g.sim.order_ship(2, 3);
+                g.dz.column = 2;
             }
         }
         _ => {

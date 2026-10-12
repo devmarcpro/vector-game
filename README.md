@@ -8,7 +8,7 @@ Bac à sable spatial solo pour PC, en lignes vectorielles. Tout est écrit en Ru
 
 ## Jouer en 2 minutes
 Le clavier est en **AZERTY** par défaut (Options > Clavier pour passer en QWERTY).
-1. **Nouvelle partie** (taper une graine avant de valider si vous voulez une galaxie précise). Le tutoriel guidé démarre ; `F10` l'ignore.
+1. **Nouvelle partie** : sept étapes claires (explications, scénario de départ — Voyageur, Marchand, Explorateur, Hors-la-loi, Colon ou Naufrage —, vaisseau, équipage, galaxie, options, récapitulatif). « Partie rapide » lance le voyageur standard (taper une graine avant de valider si vous voulez une galaxie précise). Le tutoriel guidé démarre ; `Suppr` l'ignore. **`F10` ouvre le menu principal** : huit espaces (pilotage, navigation, vaisseau, équipage, commerce, exploration à pied, colonies, codex/journal) qui regroupent tous les écrans et disent où vous êtes et ce que vous pouvez faire ; `Échap` remonte d'un niveau partout.
 2. Pilotage : `Z/S` tangage, `Q/D` lacet, `A/E` roulis, `Espace` poussée, `Maj` boost, `C` frein, `F` assistance de vol. `Tab` cible l'objet le plus proche, `Maj+Tab` une planète, `T` un astéroïde, `Y` une station, `R` un vaisseau ; `G` lance le pilote automatique, `D` amarre près d'une station. **Tout est aussi cliquable** : le menu de pilotage à droite du cockpit ouvre tous les écrans et tient les commandes tant que le bouton est enfoncé.
 3. À quai : `Haut/Bas` choisit une ressource, `Entrée` vend, `B` achète, `F` fait le plein, `R` répare ; `T` ouvre la bourse (contrats à terme : `B` hausse, `N` baisse).
 4. Minez un astéroïde (`T`, puis `V` maintenu à moins de 2 km), vendez, achetez de meilleurs modules (`H`) ou une autre coque (`Y`). Aucune technologie n'est obligatoire.

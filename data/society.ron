@@ -1,0 +1,84 @@
+// Society: languages, festivals, cuisine, arts, sports and schools. See crates/sim/src/society.rs.
+// languages: civs = ids of civilisations.ron, cultures = ids of cultures_names.ron (every one of
+//   them speaks exactly one language); two languages of the same family are half understood;
+//   era_years = how often the language drifts (words change, what was learned fades);
+//   words = [greeting, thanks, deal].
+// festivals: at = fraction of the local year (0..1) where it starts, days = length in local days,
+//   morale = mood given to the crew docked there, when = mores (any condition) of the people who
+//   hold it (empty = everyone).
+// arts: base = typical price of a middling work (CR); taste = (axis, sign): a people that scores
+//   high on that axis (sign +1) or low (sign -1) pays more; stems and epithets build the titles.
+// sports: runners in the field, margin = what the house keeps.
+// studies: kind skill | langue | art; target = skill id / art id ("" for langue: the local
+//   language); days of lessons, fee in CR, gain (skill points, or 0..1 of fluency / craft).
+(
+ languages:[
+  (id:"solaire_terre", name:"Terrien commun", family:"solaire", civs:[], cultures:["terrane"], era_years:60.0,
+   words:["salut","merci","marche conclu"], text:"La langue des archives et des contrats, parlee de la Terre aux premieres colonies."),
+  (id:"solaire_ceinture", name:"Patois des ceintures", family:"solaire", civs:[], cultures:["belter","errant"], era_years:25.0,
+   words:["oye","gracias","dealo"], text:"Un creole de mineurs : mots empruntes, phrases courtes, evolue vite."),
+  (id:"solaire_mars", name:"Martien technique", family:"solaire", civs:[], cultures:["martien"], era_years:40.0,
+   words:["salutations","merci","accord"], text:"Precis, pointilleux, plein de termes d'ingenieur."),
+  (id:"solaire_jove", name:"Jovien des ligues", family:"solaire", civs:[], cultures:["jovien"], era_years:45.0,
+   words:["bon vent","grace","affaire faite"], text:"La langue des courtiers des geantes gazeuses, riche en formules commerciales."),
+  (id:"stellaire", name:"Stellaire imperial", family:"solaire", civs:[], cultures:["stellaire"], era_years:80.0,
+   words:["gloire","gratitude","pacte"], text:"Une langue de commandement, figee par decret."),
+  (id:"phero", name:"Chant de ruche", family:"vivant", civs:["ruches"], cultures:[], era_years:200.0,
+   words:["zzik","vra","thak"], text:"Des phrases de pheromones doublees de cliquetis ; seuls les traducteurs en saisissent le sens."),
+  (id:"estuaire", name:"Langue des estuaires", family:"vivant", civs:["marees"], cultures:[], era_years:70.0,
+   words:["oa lum","nei","bru"], text:"Des voyelles longues qui portent sur l'eau ; la langue des marchands de rivage."),
+  (id:"steppe", name:"Parler des steppes", family:"nomade", civs:["nomades"], cultures:[], era_years:90.0,
+   words:["kar","dun","tel"], text:"Les clans y chantent leurs genealogies ; chaque insulte est une dette."),
+  (id:"resonance", name:"Resonance cristalline", family:"mineral", civs:["cristaux"], cultures:[], era_years:500.0,
+   words:["ilu","aer","ssy"], text:"Un chant lent ; une phrase peut durer une heure."),
+  (id:"canope", name:"Murmure de la canopee", family:"vivant", civs:["canopee"], cultures:[], era_years:120.0,
+   words:["wen","ola","iri"], text:"Siffle et murmure d'un arbre a l'autre."),
+  (id:"binaire", name:"Protocole binaire", family:"machine", civs:["machines"], cultures:[], era_years:30.0,
+   words:["ax","om","uni"], text:"Des trames plus qu'une langue : exacte, sans metaphore."),
+ ],
+ festivals:[
+  (id:"recolte", name:"Fete des recoltes", text:"Tables dressees dans les rues et marches de fruits.", at:0.62, days:3.0, morale:0.12, when:[("tradition",">",0.1)]),
+  (id:"fondation", name:"Jour de la Fondation", text:"Defiles, discours et feux d'artifice.", at:0.05, days:2.0, morale:0.10, when:[("autorite",">",0.2)]),
+  (id:"foire", name:"Grande foire", text:"Les comptoirs ouvrent la nuit et les prix se negocient en chantant.", at:0.30, days:4.0, morale:0.10, when:[("commerce",">",0.3)]),
+  (id:"veillee", name:"Veillee des ancetres", text:"On allume une lampe pour chaque disparu.", at:0.85, days:1.0, morale:0.06, when:[("foi",">",0.3)]),
+  (id:"solstice", name:"Solstice", text:"Le plus long jour ou la plus longue nuit, fete par tous.", at:0.50, days:1.0, morale:0.08, when:[]),
+  (id:"carnaval", name:"Carnaval", text:"Masques, jeux et inversion de tous les rangs.", at:0.15, days:3.0, morale:0.14, when:[("ouverture",">",0.3)]),
+ ],
+ dishes:[
+  (id:"ragout_algues", name:"Ragout d'algues", text:"Lent, iode, servi dans un bol de ceramique.", morale:0.02),
+  (id:"pain_asteroide", name:"Pain d'asteroide", text:"Pain dense a la farine de lichen et aux epices de serre.", morale:0.02),
+  (id:"soupe_mars", name:"Soupe rouge de Mars", text:"Betterave de serre, pois et piment.", morale:0.03),
+  (id:"fricassee_geante", name:"Fricassee de nuage", text:"Champignons de haute atmosphere sautes a la vapeur.", morale:0.03),
+  (id:"galette_clan", name:"Galette du clan", text:"Cuite a la plaque, partagee avant de partir.", morale:0.03),
+  (id:"fruits_confits", name:"Fruits confits", text:"Les fruits du jardin du bord au sucre de recup.", morale:0.02),
+ ],
+ arts:[
+  (id:"musique", name:"Musique", medium:"musique", base:300.0, taste:("ouverture", 1.0), text:"Compositions sonores, jouees au bord ou enregistrees.",
+   stems:["Aube","Reve","Chant","Marche","Nocturne","Hymne","Berceuse","Fugue"], epithets:["des etoiles","de la soute","sans retour","du long vol","en silence","des ceintures","de minuit","du reacteur"]),
+  (id:"peinture", name:"Peinture", medium:"peinture", base:500.0, taste:("tradition", 1.0), text:"Toiles et fresques de panneaux, dont la cote suit le nom de l'artiste.",
+   stems:["Portrait","Nebuleuse","Paysage","Nature morte","Eclipse","Ruines","Horizon","Autoportrait"], epithets:["en rouge","sous deux soleils","au port","de la derive","a la lampe","sans ciel","d'un ancien monde","du pilote"]),
+  (id:"litterature", name:"Litterature", medium:"litterature", base:250.0, taste:("foi", 1.0), text:"Recits, poemes et journaux de voyage.",
+   stems:["Journal","Elegie","Chroniques","Lettres","Fables","Epopee","Traite","Contes"], epithets:["d'un equipage","du vide","des mondes perdus","sans port","de la derniere station","d'une IA","au long cours","des mineurs"]),
+  (id:"cinema", name:"Cinema", medium:"cinema", base:900.0, taste:("violence", 1.0), text:"Films tournes a bord avec les moyens du bord.",
+   stems:["La Traversee","Choc","Dernier quai","Les Marees noires","Orbite","Contact","Mutinerie","Silence radio"], epithets:["I","II","(version longue)","- le film","en 3D","de Lagrange","a minuit","dans la tempete"]),
+ ],
+ sports:[
+  (id:"course", name:"Course de vaisseaux", runners:6, margin:0.08, text:"Un circuit d'asteroides autour de la station ; les pilotes locaux courent pour la gloire."),
+  (id:"tournoi", name:"Tournoi a pied", runners:8, margin:0.10, text:"Combats en gravite reduite sur les pontons de la station."),
+  (id:"arene", name:"Arene des betes", runners:4, margin:0.12, text:"Des creatures capturees s'affrontent dans la fosse ; l'honneur du clan est en jeu."),
+ ],
+ studies:[
+  (id:"pilotage", name:"Ecole de pilotage", kind:"skill", target:"pilotage", days:6.0, fee:300.0, gain:0.6, text:"Simulateurs et vols d'examen."),
+  (id:"ingenierie", name:"Ecole d'ingenieurs", kind:"skill", target:"ingenierie", days:8.0, fee:400.0, gain:0.6, text:"Calcul, materiaux et reacteurs."),
+  (id:"medecine", name:"Faculte de medecine", kind:"skill", target:"medecine", days:10.0, fee:500.0, gain:0.7, text:"Anatomie, chirurgie et pharmacie."),
+  (id:"science", name:"Universite de sciences", kind:"skill", target:"science", days:10.0, fee:450.0, gain:0.7, text:"Laboratoires ouverts aux etudiants etrangers."),
+  (id:"commerce", name:"Ecole de commerce", kind:"skill", target:"commerce", days:5.0, fee:250.0, gain:0.5, text:"Cours, cotes et contrats."),
+  (id:"commandement", name:"Academie de commandement", kind:"skill", target:"commandement", days:8.0, fee:600.0, gain:0.6, text:"Discipline et decision."),
+  (id:"langue", name:"Cours de langue locale", kind:"langue", target:"", days:5.0, fee:150.0, gain:0.35, text:"La langue du lieu, en classe et au marche."),
+  (id:"bibliotheque", name:"Etude a la bibliotheque", kind:"skill", target:"science", days:14.0, fee:0.0, gain:0.4, text:"Gratuit, lent, tout seul."),
+  (id:"conservatoire", name:"Conservatoire", kind:"art", target:"musique", days:6.0, fee:200.0, gain:0.15, text:"Solfege, orchestre et concours."),
+  (id:"atelier_peinture", name:"Atelier de peinture", kind:"art", target:"peinture", days:6.0, fee:200.0, gain:0.15, text:"Chevalet et modele vivant."),
+  (id:"atelier_ecriture", name:"Atelier d'ecriture", kind:"art", target:"litterature", days:6.0, fee:150.0, gain:0.15, text:"Une page par jour, relue par un maitre."),
+  (id:"ecole_cinema", name:"Ecole de cinema", kind:"art", target:"cinema", days:8.0, fee:350.0, gain:0.15, text:"Cadrage, montage et petits budgets."),
+ ],
+)

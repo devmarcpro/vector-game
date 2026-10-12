@@ -2,7 +2,7 @@
 //! weapon, faction, anomaly and condition, generated from the real data (no hand-written numbers).
 use vector_data::GameData;
 
-pub const CATEGORIES: [&str; 48] = [
+pub const CATEGORIES: [&str; 61] = [
     "RESSOURCES",
     "MODULES",
     "ARMES",
@@ -50,6 +50,19 @@ pub const CATEGORIES: [&str; 48] = [
     "PARTIES DU CORPS",
     "BLESSURES",
     "MEDICAMENTS",
+    "SCENARIOS",
+    "GEOLOGIE",
+    "ASTRONOMIE",
+    "LANGUES",
+    "FETES",
+    "PLATS",
+    "ARTS",
+    "SPORTS",
+    "ETUDES",
+    "SERVICES FINANCIERS",
+    "PIECES DE VAISSEAU",
+    "PLANS DE VAISSEAU",
+    "PROJETS",
     "PILOTAGE",
 ];
 
@@ -91,7 +104,7 @@ fn pilot_topics() -> Vec<(String, Vec<String>)> {
     out.push((
         "TRAIN D'ATTERRISSAGE".to_string(),
         vec![
-            "TRAIN D'ATTERRISSAGE  (touche Suppr)".to_string(),
+            "TRAIN D'ATTERRISSAGE  (pave num. 3)".to_string(),
             format!(
                 "Sorti : contact sur jusqu'a {:.1} m/s vers le sol et {:.1} m/s le long du sol.",
                 l::GEAR_V_IN,
@@ -111,7 +124,7 @@ fn pilot_topics() -> Vec<(String, Vec<String>)> {
             "FREINAGE SUICIDE  (panneau DESCENTE)".to_string(),
             "Allumer a l'altitude v^2 / (2 (a - g)) : a = poussee / masse, g = pesanteur du monde. Plus tard, le vaisseau ne s'arrete pas ; plus tot, du carburant est perdu.".to_string(),
             "Il faut a > g : le rapport poussee/poids (TWR) doit depasser 1. Le panneau clignote a 105 % de l'altitude d'allumage.".to_string(),
-            "L'air et le parachute aident ; le pilote d'atterrissage (F10) suit ce profil jusqu'a ~1 m/s.".to_string(),
+            "L'air et le parachute aident ; le pilote d'atterrissage (PAV4) suit ce profil jusqu'a ~1 m/s.".to_string(),
         ],
     ));
     out.push((
@@ -150,6 +163,97 @@ pub const LAB_CATEGORY: usize = 34;
 /// Index in the source table of entry `k` of a category (modules and weapons share a table).
 pub fn source_index(data: &GameData, cat: usize, k: usize) -> Option<usize> {
     entries(data, cat).get(k).copied()
+}
+
+/// The financial products and the services of the brokerage, from the constants the sim runs on:
+/// funds, kinds of passengers, bonds, options, insurance, auctions, flea market, ads, regular
+/// lines, customs. Each entry is (name, lines).
+fn finance_catalogue() -> Vec<(String, Vec<String>)> {
+    use vector_sim::{auction as au, economy as ec, lanes as ln, securities as se, trading as tr};
+    let mut v: Vec<(String, Vec<String>)> = Vec::new();
+    for (name, text) in se::FUNDS {
+        v.push((
+            name.to_string(),
+            vec![
+                name.to_string(),
+                format!("Une part d'un panier : {}.", text.to_lowercase()),
+                format!(
+                    "Frais {:.1} % a l'achat et a la vente, {:.1} % par an en parts retirees.",
+                    se::FEE * 100.0,
+                    se::FUND_FEE * 100.0
+                ),
+                "Courtage (D a quai), onglet TITRES.".to_string(),
+            ],
+        ));
+    }
+    for (name, fare, per_ly) in ec::PAX_KINDS {
+        let mut lines = vec![
+            name.to_string(),
+            format!(
+                "Passagers : {fare:.0} CR de base par tete et {per_ly:.0} CR par annee-lumiere."
+            ),
+        ];
+        lines.push(match name {
+            "CROISIERE" => "Plusieurs escales dans l'ordre, dans des systemes que les touristes aiment (beaute et securite) ; hotel a chaque escale.".to_string(),
+            "PELERINAGE" => "Plusieurs lieux saints a visiter dans l'ordre ; les pelerins paient peu mais depensent aux escales.".to_string(),
+            "TOURISTES" => "Le tarif suit les etoiles d'hotel de la destination : beaute du secteur, securite, pas d'epidemie.".to_string(),
+            "MIGRANTS" => "Ils s'installent : la colonie d'arrivee grandit, la production du secteur d'accueil aussi, celle du secteur de depart baisse.".to_string(),
+            _ => "Fuyant la guerre, ils paient peu et sont reconnaissants ; leur arrivee grossit le secteur d'accueil.".to_string(),
+        });
+        lines.push(format!(
+            "Un guide ({:.0} CR par passager et par etape) ajoute {:.0} % au tarif final.",
+            ec::GUIDE_FEE,
+            ec::GUIDE_BONUS * 100.0
+        ));
+        v.push((format!("PASSAGERS : {name}"), lines));
+    }
+    let svc = |name: &str, lines: Vec<String>| {
+        let mut l = vec![name.to_string()];
+        l.extend(lines);
+        (name.to_string(), l)
+    };
+    v.push(svc("OBLIGATIONS D'ETAT", vec![
+        format!("Titres a zero coupon d'un secteur, en sa monnaie, a {:.0} jours : achetes avec une decote qui est le rendement.", se::BOND_DAYS),
+        "Rendement = taux directeur + prime de risque (dette, guerre, krach). Si le rendement monte, le titre perd de la valeur.".to_string(),
+        format!("Defaut partiel ({:.0} % rembourse) si le secteur est en krach profond et trop endette ; frais {:.1} %.", se::RECOVERY * 100.0, se::FEE * 100.0),
+    ]));
+    v.push(svc("OPTIONS", vec![
+        format!("Droit au gain d'une hausse (achat) ou d'une baisse (vente) d'une marchandise, de {:.0} a {:.0} jours, prix fixe a la signature.", se::OPTION_MIN_DAYS, se::OPTION_MAX_DAYS),
+        "La prime croit avec la volatilite du bien et la racine de la duree ; la perte est limitee a la prime, le gain est regle en credits.".to_string(),
+        "Le patrimoine compte les options, les obligations, les fonds et les contrats a terme a leur valeur de marche.".to_string(),
+    ]));
+    v.push(svc("ASSURANCE", vec![
+        format!("Prime = valeur x risque reel du mois x {:.1} (marge de l'assureur) x dossier.", tr::LOADING),
+        format!("Risque de base {:.1} % par mois, plus pirates, guerre, blocus, catastrophe et agressivite du peuple : l'espace libre coute cher.", tr::BASE_ODDS * 100.0),
+        format!("Dossier : +30 % par sinistre de l'annee, +60 % par fraude ; rembourse {:.0} % (soute et coque).", tr::COVER * 100.0),
+        "Declarer une perte inventee est controle : plus de sinistres au dossier, plus d'enquetes ; une fraude annule la police et vaut une amende.".to_string(),
+    ]));
+    v.push(svc("ENCHERES", vec![
+        format!("{} lots par semaine et par station, ouverts {:.0} jours, avec un prix de reserve a {:.0} % de la valeur.", au::LOTS, au::OPEN_DAYS, au::RESERVE * 100.0),
+        "Regle du second prix : vous donnez votre maximum, vous payez 5 % de plus que le meilleur rival. La somme est bloquee jusqu'a la cloture.".to_string(),
+        format!("Un lot gagne attend {:.0} jours a la station ; au-dela la mise est rendue moins 10 % de frais de garde.", au::WAIT_DAYS),
+    ]));
+    v.push(svc("MARCHE AUX PUCES", vec![
+        format!("{} lots par jour, a des prix tres variables ; une part des biens est contrefaite selon le secteur (les marques s'y deprecient).", au::FLEA_LOTS),
+        format!("Une contrefacon ne contient que {:.0} % de vrai ; une expertise coute {:.0} % du prix et la revele.", au::FAKE_SHARE * 100.0, au::APPRAISAL * 100.0),
+        format!("On y vend aussi sa soute, a {:.0} % du prix de reference, sans taxe (mais les biens interdits restent interdits).", au::FLEA_SELL * 100.0),
+    ]));
+    v.push(svc("PUBLICITE", vec![
+        format!("Une campagne de {:.0} jours fait monter la demande, donc le prix, d'un bien autour de la station ({:.0} al) ; effet decroissant avec le budget.", au::AD_DAYS, au::AD_RADIUS_LY),
+        format!("Elle construit aussi la marque de votre maison (jusqu'a +4 % sur vos prix), qui s'estompe en {:.0} jours.", au::BRAND_DAYS),
+    ]));
+    v.push(svc("LIGNES REGULIERES", vec![
+        format!("Entre deux plaques tournantes ({:.0} % des etoiles) a moins de {:.0} al, une paire sur {:.0} est reliee par une ligne de cargos qui part a heure fixe.", ln::P_HUB * 100.0, ln::REACH_LY, 1.0 / ln::P_LINE),
+        "Le bien qu'un bout produit est vraiment emporte : il quitte le stock du depart, vole des jours, arrive. Retards : quarantaine, guerre, blocus. Pirates : meme risque que l'assurance.".to_string(),
+        format!("Ports {:.1} % de la cargaison a chaque bout (plus chez les peuples agressifs) et douanes de l'arrivee (la moitie de la taxe du peuple) ; un bien interdit la-bas n'est jamais transporte.", ln::PORT_FEE * 100.0),
+        format!("Financer un convoi ({:.0} % de frais) partage sa marge reelle et ses pertes.", ln::BROKER_FEE * 100.0),
+    ]));
+    v.push(svc("DOUANES ET PORTS", vec![
+        "Les droits de douane et les frais de port sont lus de la fiche du peuple qui tient le lieu (taxe, agressivite, produits interdits).".to_string(),
+        format!("Frais de port de base {:.1} % de la cargaison, plus selon l'agressivite du peuple ; douane = la moitie de sa taxe sur les ventes.", ln::PORT_FEE * 100.0),
+        "Voir l'onglet ECONOMIE du courtage pour les droits de chaque juridiction.".to_string(),
+    ]));
+    v
 }
 
 /// Number of entries in a category.
@@ -214,7 +318,20 @@ fn entries(data: &GameData, cat: usize) -> Vec<usize> {
         44 => (0..data.body_parts.len()).collect(),
         45 => (0..data.wounds.len()).collect(),
         46 => (0..data.drugs.len()).collect(),
-        47 => (0..pilot_topics().len()).collect(),
+        47 => (0..data.scenarios.len()).collect(),
+        48 => (0..data.geology.len()).collect(),
+        49 => (0..data.cosmos.len()).collect(),
+        50 => (0..data.society.languages.len()).collect(),
+        51 => (0..data.society.festivals.len()).collect(),
+        52 => (0..data.society.dishes.len()).collect(),
+        53 => (0..data.society.arts.len()).collect(),
+        54 => (0..data.society.sports.len()).collect(),
+        55 => (0..data.society.studies.len()).collect(),
+        56 => (0..finance_catalogue().len()).collect(),
+        57 => (0..data.ship_parts.len()).collect(),
+        58 => (0..data.ship_plans.len()).collect(),
+        59 => (0..data.projects.len()).collect(),
+        60 => (0..pilot_topics().len()).collect(),
         _ => Vec::new(),
     }
 }
@@ -267,7 +384,20 @@ pub fn names(data: &GameData, cat: usize) -> Vec<String> {
             44 => data.body_parts[i].name.clone(),
             45 => data.wounds[i].name.clone(),
             46 => data.drugs[i].name.clone(),
-            47 => pilot_topics()[i].0.clone(),
+            47 => data.scenarios[i].name.clone(),
+            48 => data.geology[i].name.clone(),
+            49 => data.cosmos[i].name.clone(),
+            50 => data.society.languages[i].name.clone(),
+            51 => data.society.festivals[i].name.clone(),
+            52 => data.society.dishes[i].name.clone(),
+            53 => data.society.arts[i].name.clone(),
+            54 => data.society.sports[i].name.clone(),
+            55 => data.society.studies[i].name.clone(),
+            56 => finance_catalogue()[i].0.clone(),
+            57 => data.ship_parts[i].name.clone(),
+            58 => data.ship_plans[i].name.clone(),
+            59 => data.projects[i].name.clone(),
+            60 => pilot_topics()[i].0.clone(),
             18 => format!(
                 "Appeler : {}",
                 vector_data::dialogue::ROLES[i].to_lowercase()
@@ -481,6 +611,7 @@ pub fn entry(data: &GameData, cat: usize, k: usize) -> Vec<String> {
     };
     let mut out = Vec::new();
     match cat {
+        56 => out = finance_catalogue()[i].1.clone(),
         0 => {
             let r = &data.resources[i];
             out.push(format!("{}  [{}]", r.name, r.category));
@@ -1190,6 +1321,68 @@ pub fn entry(data: &GameData, cat: usize, k: usize) -> Vec<String> {
                 .collect();
             out.push(format!("Especes : {}", names.join(", ")));
         }
+        47 => {
+            let s = &data.scenarios[i];
+            out.push(s.name.clone());
+            out.push(s.text.clone());
+            out.push(format!(
+                "Difficulte indicative : {}/5   credits de depart : {:.0}   {}",
+                s.difficulty,
+                s.credits,
+                if s.wreck {
+                    "depart au sol, a pied, sur un vaisseau hors d'etat de voler"
+                } else {
+                    "depart en vol, pres d'une station"
+                }
+            ));
+            let ships: Vec<String> = s
+                .ships
+                .iter()
+                .filter_map(|(h, _)| data.hull_index(h).map(|k| data.hulls[k].name.clone()))
+                .collect();
+            out.push(format!("Vaisseaux au choix : {}", ships.join(", ")));
+            let cargo: Vec<(String, f64)> = s.cargo.clone();
+            out.push(format!("Soute : {}", fmt_list(data, &cargo)));
+            let roles: Vec<String> = s
+                .crew
+                .iter()
+                .filter_map(|r| {
+                    data.roles
+                        .iter()
+                        .find(|ro| ro.id == *r)
+                        .map(|ro| ro.name.clone())
+                })
+                .collect();
+            out.push(format!(
+                "Equipage : {} ({} points a depenser)",
+                roles.join(", "),
+                s.crew_points
+            ));
+            if !s.techs.is_empty() {
+                out.push(format!(
+                    "Technologies connues : {}",
+                    names_of(data, &s.techs, |d, t| d
+                        .tech_index(t)
+                        .map(|k| d.techs[k].name.clone()))
+                ));
+            }
+            if s.wanted_days > 0.0 {
+                out.push(format!(
+                    "Recherche par le territoire de depart pendant {:.0} jours.",
+                    s.wanted_days
+                ));
+            }
+            if s.wreck {
+                out.push(
+                    "Pour repartir : pieces detachees et carburant (epaves, campements, ruines), puis l'ingenieur repare ; I puis F verse le carburant de la soute."
+                        .to_string(),
+                );
+            }
+            out.push("Se choisit au menu principal : Nouvelle partie.".to_string());
+        }
+        48 => out = crate::codex_sky::geology_entry(data, i),
+        49 => out = crate::codex_sky::cosmos_entry(data, i),
+        59 => project_entry(data, i, &mut out),
         28 => {
             let m = &data.materials[i];
             out.push(format!(
@@ -1357,6 +1550,20 @@ pub fn entry(data: &GameData, cat: usize, k: usize) -> Vec<String> {
                     vector_sim::exotic::CLUES_NEEDED
                 ));
             } else {
+                if e.kardashev > 0.0 {
+                    out.push(format!(
+                        "Echelle de Kardashev : K{:.1} (puissance {:.1e} W)",
+                        e.kardashev,
+                        vector_sim::exotic_field::power_of_kardashev(e.kardashev)
+                    ));
+                }
+                let radius = vector_sim::exotic_field::field_radius(&e.id);
+                if radius > 0.0 {
+                    out.push(format!(
+                        "Effet continu dans {:.0} 000 km : attraction, degats, paradoxe ou stase selon le phenomene.",
+                        radius / 1e6
+                    ));
+                }
                 out.push(format!(
                     "Genre : {}   danger {:.0} %   etude {:.0} a {:.0} points de recherche",
                     e.kind,
@@ -1778,6 +1985,216 @@ pub fn entry(data: &GameData, cat: usize, k: usize) -> Vec<String> {
                 .collect();
             out.push(format!("Peut toucher : {}", places.join(", ")));
         }
+        50 => {
+            let l = &data.society.languages[i];
+            out.push(format!("{}  (famille {})", l.name, l.family));
+            out.push(l.text.clone());
+            out.push(format!(
+                "Mots : {}  (bonjour, merci, marche conclu)",
+                l.words.join(" / ")
+            ));
+            out.push(format!(
+                "Derive tous les {:.0} ans : les mots changent et ce qu'on en savait s'efface sans pratique",
+                l.era_years
+            ));
+            let mut who: Vec<String> = l
+                .cultures
+                .iter()
+                .filter_map(|c| data.cultures.iter().find(|x| x.id == *c))
+                .map(|c| c.name.clone())
+                .collect();
+            who.extend(
+                l.civs
+                    .iter()
+                    .filter_map(|c| data.civilisations.iter().find(|x| x.id == *c))
+                    .map(|c| c.name.clone()),
+            );
+            out.push(format!("Parle par : {}", who.join(", ")));
+            out.push(
+                "Une langue de la meme famille est comprise a moitie ; l'IA traduit avec le budget de traduction, jamais comme une personne."
+                    .to_string(),
+            );
+        }
+        51 => {
+            let f = &data.society.festivals[i];
+            out.push(f.name.clone());
+            out.push(f.text.clone());
+            out.push(format!(
+                "Date : {:.0} % de l'annee locale, {:.0} jours ; moral de l'equipage a quai : +{:.0} %",
+                f.at * 100.0,
+                f.days,
+                f.morale * 100.0
+            ));
+            let places: Vec<String> = data
+                .factions
+                .iter()
+                .filter(|x| {
+                    f.when.is_empty()
+                        || f.when.iter().any(|(axis, op, lim)| {
+                            let p = data.ethos.profile(Some(&x.id));
+                            let v = data
+                                .ethos
+                                .axis(axis)
+                                .and_then(|a| p.get(a))
+                                .copied()
+                                .unwrap_or(0.0);
+                            if op == "<" {
+                                v < *lim
+                            } else {
+                                v > *lim
+                            }
+                        })
+                })
+                .map(|x| x.name.clone())
+                .collect();
+            out.push(format!("Fetee chez : {}", places.join(", ")));
+        }
+        52 => {
+            let d = &data.society.dishes[i];
+            out.push(d.name.clone());
+            out.push(d.text.clone());
+            out.push(format!("Moral a quai : +{:.0} %", d.morale * 100.0));
+            let by: Vec<String> = data
+                .factions
+                .iter()
+                .filter(|f| {
+                    let h = f.id.bytes().fold(0xcbf2_9ce4_8422_2325u64, |h, b| {
+                        (h ^ u64::from(b)).wrapping_mul(0x0100_0000_01b3)
+                    });
+                    (h % data.society.dishes.len() as u64) as usize == i
+                })
+                .map(|f| f.name.clone())
+                .collect();
+            out.push(format!(
+                "Specialite de : {}",
+                if by.is_empty() {
+                    "aucun peuple".to_string()
+                } else {
+                    by.join(", ")
+                }
+            ));
+        }
+        53 => {
+            let a = &data.society.arts[i];
+            out.push(format!("{}  ({})", a.name, a.medium));
+            out.push(a.text.clone());
+            out.push(format!("Prix d'une oeuvre moyenne : {:.0} CR ; la qualite compte au carre, le renom de l'artiste et le gout local aussi", a.base));
+            if let Some(k) = data.ethos.axis(&a.taste.0) {
+                let (lo, hi) = (&data.ethos.axes[k].low, &data.ethos.axes[k].high);
+                out.push(format!(
+                    "Gout : paye plus cher chez les peuples {}",
+                    if a.taste.1 > 0.0 { hi } else { lo }
+                ));
+            }
+            out.push(
+                "A vendre a la galerie ou a donner au musee de la station (reputation)".to_string(),
+            );
+        }
+        54 => {
+            let s = &data.society.sports[i];
+            out.push(s.name.clone());
+            out.push(s.text.clone());
+            out.push(format!(
+                "{} concurrents ; la maison garde {:.0} % ; mises de 10 a 5000 CR a quai",
+                s.runners,
+                s.margin * 100.0
+            ));
+        }
+        55 => {
+            let s = &data.society.studies[i];
+            out.push(s.name.clone());
+            out.push(s.text.clone());
+            out.push(format!(
+                "{} de {} : {:.0} jours, {:.0} CR (moins cher chez les ouverts), brevet a la fin ; un mentor accelere de moitie",
+                s.kind,
+                if s.target.is_empty() { "la langue locale" } else { s.target.as_str() },
+                s.days,
+                s.fee
+            ));
+        }
+        57 => {
+            let p = &data.ship_parts[i];
+            out.push(format!("{}  [{}]", p.name, p.kind));
+            out.push(format!(
+                "Masse : {:.0} kg   structure : {:.0}   volume : {:.0} m3 (habitable {:.0})",
+                p.mass, p.hp, p.volume, p.hab_m3
+            ));
+            let mats: Vec<String> = p
+                .materials
+                .iter()
+                .map(|(r, kg)| {
+                    format!(
+                        "{kg:.0} kg {}",
+                        res_name(data, r).unwrap_or_else(|| r.clone())
+                    )
+                })
+                .collect();
+            out.push(format!("Materiaux : {}", mats.join(", ")));
+            out.push(format!("Travail : {:.0} jours-equipe", p.labor));
+            let faces: Vec<&str> = [
+                (vector_data::ship::PORT_PX, "avant"),
+                (vector_data::ship::PORT_NX, "arriere"),
+                (vector_data::ship::PORT_PY, "tribord"),
+                (vector_data::ship::PORT_NY, "babord"),
+                (vector_data::ship::PORT_PZ, "dessus"),
+                (vector_data::ship::PORT_NZ, "dessous"),
+            ]
+            .iter()
+            .filter(|(b, _)| p.ports & b != 0)
+            .map(|(_, n)| *n)
+            .collect();
+            out.push(format!("Raccords : {}", faces.join(", ")));
+            if p.slots.is_empty() {
+                out.push("Emplacements : aucun".to_string());
+            } else {
+                let s: Vec<String> = p
+                    .slots
+                    .iter()
+                    .map(|(t, n)| format!("{} {n}", t.label().to_lowercase()))
+                    .collect();
+                out.push(format!("Emplacements : {}", s.join(", ")));
+            }
+            if p.berths > 0 {
+                out.push(format!("Couchettes : {}", p.berths));
+            }
+            if p.lift_area > 0.0 {
+                out.push(format!("Surface portante : {:.0} m2", p.lift_area));
+            }
+            if p.support_kg > 0.0 {
+                out.push(format!("Porte {:.0} kg a 1 g", p.support_kg));
+            }
+            if p.rcs > 0.0 {
+                out.push(format!("Propulseurs d'attitude : {:.0} kN", p.rcs / 1e3));
+            }
+            out.push(p.text.clone());
+        }
+        58 => {
+            let d = &data.ship_plans[i];
+            out.push(format!("{}  (plan, {:.0} cr)", d.name, d.price));
+            let mut bp = vector_sim::shipwright::Blueprint::new(0, &d.name);
+            for (part, x, y, z) in &d.cells {
+                let _ = bp.place(data, part, *x, *y, *z);
+            }
+            for (x, y, z, slot, m) in &d.loadout {
+                let _ = bp.fit(data, *x, *y, *z, *slot, m);
+            }
+            let r = vector_sim::shipwright::analyze(data, &bp);
+            out.push(format!(
+                "{} pieces   masse {:.0} kg a vide, {:.0} kg pleine",
+                r.cells, r.mass_dry, r.mass_wet
+            ));
+            out.push(format!(
+                "Poussee {:.0} kN   delta-v {:.0} m/s   puissance {:.0} kW",
+                r.thrust / 1e3,
+                r.dv_empty,
+                r.power_supply
+            ));
+            out.push(format!(
+                "Soute {:.0} kg   couchettes {}   valeur {:.0} cr",
+                r.cargo_kg, r.berths, r.value
+            ));
+            out.push(d.text.clone());
+        }
         46 => {
             let d = &data.drugs[i];
             out.push(format!("{}  ({})", d.name, d.text));
@@ -1984,7 +2401,7 @@ pub fn entry(data: &GameData, cat: usize, k: usize) -> Vec<String> {
                 b.fertility * 100.0
             ));
         }
-        47 => out.extend(pilot_topics()[i].1.iter().cloned()),
+        60 => out.extend(pilot_topics()[i].1.iter().cloned()),
         _ => {
             let n = &data.industries[i];
             out.push(n.name.clone());
@@ -2089,6 +2506,92 @@ pub fn variant_card(
     out
 }
 
+/// The codex entry of project `i` (terraforming works and megastructures).
+fn project_entry(data: &GameData, i: usize, out: &mut Vec<String>) {
+    let p = &data.projects[i];
+    out.push(format!("{}  [{}, {}]", p.name, p.category, p.kind));
+    out.push(p.text.clone());
+    for (n, s) in p.stages.iter().enumerate() {
+        out.push(format!(
+            "Etape {} : {} - {:.0} jours, equipe de {:.0}, {:.0} kW, {}{}",
+            n + 1,
+            s.name,
+            s.days,
+            s.crew,
+            s.power,
+            fmt_list(data, &s.cost),
+            match s.scale.as_str() {
+                "taper" => " (fois la section du cable a sa base)",
+                "radius" => " (fois le rayon du monde relatif a la Terre)",
+                _ => "",
+            }
+        ));
+    }
+    out.push(format!(
+        "Cout d'une unite : {}   duree {:.1} ans",
+        fmt_list(data, &p.total_cost()),
+        p.total_days() / 365.25
+    ));
+    let size = match p.kind.as_str() {
+        "mirror" => format!("Surface reflechissante d'une unite : {:.1e} m2", p.param),
+        "soot" => format!("Suie epandue par unite : {:.1e} kg", p.param),
+        "comet" => format!(
+            "Masse d'une comete : {:.1e} kg, faite de {}",
+            p.param,
+            p.volatile
+                .iter()
+                .map(|(g, f)| format!("{g} {:.0} %", f * 100.0))
+                .collect::<Vec<_>>()
+                .join(", ")
+        ),
+        "seeding" => format!("Biomasse fondatrice par unite : {:.1e} kg", p.param),
+        "elevator" => format!(
+            "Resistance specifique du cable : {:.1e} J/kg (la section a la base vient de la gravite et de la rotation du monde)",
+            p.param
+        ),
+        "dyson" => format!(
+            "Surface de collecteurs par unite : {:.1e} m2 (puissance = luminosite de l'etoile x part du ciel couverte x 30 %)",
+            p.param
+        ),
+        _ => format!("Taille : {:.1e}", p.param),
+    };
+    out.push(size);
+    let mut gives: Vec<String> = Vec::new();
+    for (label, v) in [
+        ("logements", p.housing),
+        ("stockage (kg)", p.storage),
+        ("recherche par jour", p.research),
+        ("defense", p.defense),
+        ("tonnes lancees par jour", p.payload),
+        ("productivite", p.prod),
+    ] {
+        if v > 0.0 {
+            gives.push(format!("{label} {v:.2e}"));
+        }
+    }
+    if p.port > 0.0 {
+        gives.push("astroport".into());
+    }
+    if !p.yields.is_empty() {
+        gives.push(format!("produit par jour : {}", fmt_list(data, &p.yields)));
+    }
+    if !p.inputs.is_empty() {
+        gives.push(format!("consomme par jour : {}", fmt_list(data, &p.inputs)));
+    }
+    if !gives.is_empty() {
+        out.push(format!("Par unite : {}", gives.join(", ")));
+    }
+    out.push(format!(
+        "Entretien {:.0} cr/jour par unite   usure {:.1} %/an   sites : {}",
+        p.upkeep,
+        p.decay * 100.0,
+        p.sites.join(", ")
+    ));
+    if let Some(t) = data.unlocking_tech("project", &p.id) {
+        out.push(format!("Debloque par : {}", data.techs[t].name));
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2131,8 +2634,8 @@ mod tests {
                 }
             }
         }
-        for k in 0..count(&d, 29) {
-            for l in entry(&d, 29, k) {
+        for k in 0..count(&d, 31) {
+            for l in entry(&d, 31, k) {
                 assert!(l.chars().all(drawable), "{l:?}");
             }
         }

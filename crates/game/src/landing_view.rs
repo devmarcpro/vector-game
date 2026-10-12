@@ -251,8 +251,8 @@ impl Game {
             return true;
         }
         match code {
-            KeyCode::Delete => self.landing_gear_key(),
-            KeyCode::F10 => self.pilot_key(),
+            KeyCode::Numpad3 => self.landing_gear_key(),
+            KeyCode::Numpad4 => self.pilot_key(),
             KeyCode::Numpad8 | KeyCode::Numpad2 | KeyCode::Numpad0 | KeyCode::Numpad5 => {
                 self.throttle_key(code)
             }
@@ -608,14 +608,14 @@ pub fn draw(fb: &mut Framebuffer, v: &View) {
     y += 1;
     // Clickable words.
     let mut x = 1;
-    x = word(fb, g, x, y, "[SUPPR] TRAIN", KeyCode::Delete, sim.gear_down);
+    x = word(fb, g, x, y, "[PAV3] TRAIN", KeyCode::Numpad3, sim.gear_down);
     x = word(
         fb,
         g,
         x,
         y,
-        "[F10] PILOTE",
-        KeyCode::F10,
+        "[PAV4] PILOTE",
+        KeyCode::Numpad4,
         sim.pilot.is_some(),
     );
     x = word(
@@ -690,7 +690,7 @@ mod tests {
         g.key(KeyCode::Digit0, None, true);
         assert_eq!(g.sim.sas, Sas::Off);
         let gear = g.sim.gear_down;
-        g.key(KeyCode::Delete, None, true);
+        g.key(KeyCode::Numpad3, None, true);
         assert_ne!(g.sim.gear_down, gear);
         g.key(KeyCode::Numpad2, None, true);
         g.key(KeyCode::Numpad2, None, true);

@@ -333,6 +333,47 @@ pub fn resource_shape(data: &GameData, i: usize) -> Option<Vec<Seg>> {
     Some(norm(resource(&data.resources.get(i)?.category)))
 }
 
+/// Wireframe of a ship part by its kind.
+fn part_shape(kind: &str) -> Shape {
+    let mut s = Shape::default();
+    match kind {
+        "wing" => {
+            s.cuboid([0.0, 0.0, 0.0], [0.9, 0.08, 0.5]);
+            s.line([-0.9, 0.0, -0.5], [0.9, 0.0, 0.5]);
+        }
+        "gear" => {
+            s.cuboid([0.0, -0.4, 0.0], [0.5, 0.08, 0.3]);
+            s.line([0.0, -0.3, 0.0], [0.0, 0.8, 0.0]);
+            s.ring([0.0, 0.8, 0.0], 0.2, 8);
+        }
+        "engine" | "nacelle" => {
+            s.cylinder([0.0, 0.0, 0.0], 0.4, 0.6, 10);
+            s.cone([0.0, -0.9, 0.0], 0.65, 0.3, 10);
+        }
+        "cockpit" => {
+            s.sphere([0.0, 0.0, 0.0], 0.6);
+            s.cuboid([0.0, -0.2, 0.0], [0.7, 0.3, 0.5]);
+        }
+        _ => {
+            s.cuboid([0.0, 0.0, 0.0], [0.8, 0.5, 0.5]);
+            s.line([-0.8, 0.0, 0.0], [0.8, 0.0, 0.0]);
+        }
+    }
+    s
+}
+
+/// Wireframe of a plan: one box per cell.
+fn plan_shape(def: &vector_data::ShipPlanDef) -> Shape {
+    let mut s = Shape::default();
+    for (_, x, y, z) in &def.cells {
+        s.cuboid(
+            [f32::from(*x), f32::from(*z), f32::from(*y)],
+            [0.42, 0.42, 0.42],
+        );
+    }
+    s
+}
+
 /// Wireframe of module number `i` of the modules table.
 pub fn module_shape(data: &GameData, i: usize) -> Option<Vec<Seg>> {
     Some(norm(module(&data.modules.get(i)?.category)))
@@ -357,6 +398,8 @@ pub fn shape_for(data: &GameData, cat: usize, k: usize) -> Option<Vec<Seg>> {
             s
         }
         17 => resource("cybernetique"),
+        57 => part_shape(&data.ship_parts.get(i)?.kind),
+        58 => plan_shape(data.ship_plans.get(i)?),
         _ => return None,
     };
     Some(norm(s))
@@ -397,7 +440,7 @@ mod tests {
         let d = data();
         let n = |cat: usize| crate::codex::count(&d, cat);
         let mut drawn = 0;
-        for cat in [0usize, 1, 2, 3, 4, 12, 13, 16, 17] {
+        for cat in [0usize, 1, 2, 3, 4, 12, 13, 16, 17, 57, 58] {
             for i in 0..n(cat) {
                 let segs = shape_for(&d, cat, i).unwrap_or_else(|| panic!("shape for {cat}/{i}"));
                 assert!(segs.len() >= 4, "{cat}/{i} has {} lines", segs.len());

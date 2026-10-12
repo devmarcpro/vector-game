@@ -97,7 +97,13 @@ impl Game {
     }
 
     /// The pointer moved by (dx, dy) pixels with the left button down: it turns the globe.
-    pub fn pointer_drag(&mut self, dx: i32, _dy: i32) {
+    pub fn pointer_drag(&mut self, dx: i32, dy: i32) {
+        if self.ext_active() {
+            self.ext_orbit(-f64::from(dx) * 0.008, f64::from(dy) * 0.008);
+        }
+        if self.screen == Screen::Designer {
+            self.dz_drag(dx, dy);
+        }
         if self.screen == Screen::Surface && self.surf_globe {
             self.surf_spin += f64::from(dx) * 0.01;
         }
@@ -249,6 +255,74 @@ impl Game {
     }
 
     /// Justice of the factions screen: 0 pay the fines, 1 bribe, 2 hire a lawyer (selected people).
+    /// Buttons of the society page (see `society_view`).
+    pub fn click_society(&mut self, k: usize) {
+        use crate::society_view::*;
+        let who = self.sim.crew.alive().nth(self.soc_who).map(|p| p.id);
+        let said: Result<String, &str> = match k {
+            ENROLL => who
+                .ok_or("PERSONNE")
+                .and_then(|id| self.sim.enroll(id, self.soc_study)),
+            COMPOSE => who.ok_or("PERSONNE").and_then(|id| {
+                self.sim.compose(id, self.soc_art).map(|i| {
+                    format!(
+                        "OEUVRE : {}",
+                        self.sim.society.works[i].title.to_uppercase()
+                    )
+                })
+            }),
+            SELL => match self.sim.society.works.len() {
+                0 => Err("AUCUNE OEUVRE"),
+                n => self
+                    .sim
+                    .sell_work(n - 1)
+                    .map(|v| format!("OEUVRE VENDUE {v:.0} CR")),
+            },
+            DONATE => match self.sim.society.works.len() {
+                0 => Err("AUCUNE OEUVRE"),
+                n => self.sim.donate_work(n - 1),
+            },
+            BET => {
+                let odds = self.sim.field_odds(self.soc_sport);
+                let fav = odds
+                    .iter()
+                    .enumerate()
+                    .max_by(|a, b| a.1 .0.total_cmp(&b.1 .0))
+                    .map_or(0, |(i, _)| i);
+                self.sim.bet(self.soc_sport, fav, 100.0).map(|r| {
+                    if r.payout > 0.0 {
+                        format!("PARI GAGNE : {:.0} CR", r.payout)
+                    } else {
+                        format!(
+                            "PARI PERDU : GAGNANT {}",
+                            self.sim
+                                .runner_name(self.soc_sport, r.winner)
+                                .to_uppercase()
+                        )
+                    }
+                })
+            }
+            NEXT_ART => {
+                self.soc_art = (self.soc_art + 1) % self.data.society.arts.len();
+                Ok(format!(
+                    "ART : {}",
+                    self.data.society.arts[self.soc_art].name.to_uppercase()
+                ))
+            }
+            _ => {
+                self.soc_sport = (self.soc_sport + 1) % self.data.society.sports.len();
+                Ok(format!(
+                    "SPORT : {}",
+                    self.data.society.sports[self.soc_sport].name.to_uppercase()
+                ))
+            }
+        };
+        match said {
+            Ok(t) => self.say(t),
+            Err(e) => self.say(e.to_uppercase()),
+        }
+    }
+
     pub fn click_justice(&mut self, k: usize) {
         let f = self.fac_sel;
         let said = match k {
@@ -376,7 +450,10 @@ impl Game {
     pub fn pointer_wheel(&mut self, lines: f64) {
         let steps = lines.abs().ceil().max(1.0) as usize;
         for _ in 0..steps.min(5) {
-            if self.screen == Screen::Flight && self.map {
+            if self.ext_active() {
+                // In the third-person view the wheel zooms the camera.
+                self.ext_zoom_by(if lines > 0.0 { 0.88 } else { 1.0 / 0.88 });
+            } else if self.screen == Screen::Flight && self.map {
                 // On the system map the wheel zooms.
                 self.run_act(Act::Key(if lines > 0.0 {
                     KeyCode::Equal
@@ -410,6 +487,7 @@ pub fn key_of_word(screen: Screen, word: &str) -> Option<KeyCode> {
         "ESP" | "ESPACE" => KeyCode::Space,
         "PGUP" => KeyCode::PageUp,
         "PGDN" => KeyCode::PageDown,
+        "SUPPR" => KeyCode::Delete,
         "F1" => KeyCode::F1,
         "F2" => KeyCode::F2,
         "F3" => KeyCode::F3,
@@ -442,6 +520,7 @@ pub fn key_of_word(screen: Screen, word: &str) -> Option<KeyCode> {
                 | KeyCode::F4
                 | KeyCode::F6
                 | KeyCode::F8
+                | KeyCode::F10
         )
     {
         return None;

@@ -119,6 +119,7 @@ pub fn key_code(name: &str) -> Option<KeyCode> {
         "ctrl" => KeyCode::ControlLeft,
         "shift" => KeyCode::ShiftLeft,
         "f7" => KeyCode::F7,
+        "delete" => KeyCode::Delete,
         "f8" => KeyCode::F8,
         "backquote" => KeyCode::Backquote,
         "f1" => KeyCode::F1,

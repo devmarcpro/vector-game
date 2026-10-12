@@ -713,6 +713,172 @@ pub fn generate_social(
     }
 }
 
+/// Tiles of a room of the player's ship: 5 by 3 of floor, a wall of one tile around.
+pub const SHIP_ROOM_W: usize = 6;
+pub const SHIP_ROOM_H: usize = 4;
+
+/// The walk-through floor of a ship built from a plan: one room per walkable part of its main
+/// deck, doors between neighbouring rooms, the entrance on the bridge, the terminals in the rooms
+/// that match them (engineering terminal in engineering, hold in the hold...) and the crew in the
+/// cabins. Returns the floor and its size in tiles.
+pub fn generate_ship_interior(
+    data: &GameData,
+    theme: usize,
+    seed: u64,
+    plan: &crate::shipwright::Blueprint,
+    funcs: &[usize],
+    crew: &[(u32, String)],
+) -> (Floor, (usize, usize)) {
+    let rooms = plan.interior(data);
+    let (minx, maxx) = rooms.iter().fold((i32::MAX, i32::MIN), |a, r| {
+        (a.0.min(i32::from(r.0)), a.1.max(i32::from(r.0)))
+    });
+    let (miny, maxy) = rooms.iter().fold((i32::MAX, i32::MIN), |a, r| {
+        (a.0.min(i32::from(r.1)), a.1.max(i32::from(r.1)))
+    });
+    let (nx, ny) = if rooms.is_empty() {
+        (1, 1)
+    } else {
+        ((maxx - minx + 1) as usize, (maxy - miny + 1) as usize)
+    };
+    let (w, h) = (nx * SHIP_ROOM_W + 1, ny * SHIP_ROOM_H + 1);
+    let mut tiles = vec![T_WALL; w * h];
+    let origin = |x: i8, y: i8| {
+        (
+            (i32::from(x) - minx) as usize * SHIP_ROOM_W + 1,
+            (i32::from(y) - miny) as usize * SHIP_ROOM_H + 1,
+        )
+    };
+    for (x, y, _) in &rooms {
+        let (ox, oy) = origin(*x, *y);
+        for dy in 0..SHIP_ROOM_H - 1 {
+            for dx in 0..SHIP_ROOM_W - 1 {
+                tiles[(oy + dy) * w + ox + dx] = T_FLOOR;
+            }
+        }
+        // Doors towards the neighbours in front and to starboard (the other side is theirs).
+        if rooms.iter().any(|r| r.0 == x + 1 && r.1 == *y) {
+            tiles[(oy + 1) * w + ox + SHIP_ROOM_W - 1] = T_FLOOR;
+        }
+        if rooms.iter().any(|r| r.0 == *x && r.1 == y + 1) {
+            tiles[(oy + SHIP_ROOM_H - 1) * w + ox + 2] = T_FLOOR;
+        }
+    }
+    let mut rng = Rng::new(hash_coord(seed, 0, 29, 31));
+    let find =
+        |kind: &str| -> Vec<usize> { (0..rooms.len()).filter(|&i| rooms[i].2 == kind).collect() };
+    let start = rooms
+        .iter()
+        .position(|r| r.2 == "passerelle")
+        .or(if rooms.is_empty() { None } else { Some(0) })
+        .map_or((1, 1), |i| {
+            let (ox, oy) = origin(rooms[i].0, rooms[i].1);
+            (ox + 2, oy + 1)
+        });
+    tiles[start.1 * w + start.0] = T_UP;
+    // Terminals: each in a room of its kind when there is one, else in any other room; never on
+    // the entrance tile nor on another terminal.
+    let wanted = |id: &str| -> &'static str {
+        match id {
+            "soute" => "soute",
+            "ingenierie" => "ingenierie",
+            "carte" => "passerelle",
+            "elevage" => "hangar",
+            _ => "cabines",
+        }
+    };
+    let mut used = std::collections::BTreeSet::new();
+    used.insert(start);
+    for &f in funcs {
+        let preferred = find(wanted(ROGUE_TERMINALS[f].0));
+        let mut order: Vec<usize> = preferred.clone();
+        // Which of the preferred rooms comes first is the seed's choice.
+        if order.len() > 1 {
+            let k = (rng.f64() * order.len() as f64) as usize % order.len();
+            order.rotate_left(k);
+        }
+        order.extend((0..rooms.len()).filter(|i| !preferred.contains(i)));
+        'rooms: for i in order {
+            let (ox, oy) = origin(rooms[i].0, rooms[i].1);
+            for (dx, dy) in [(2, 1), (1, 2), (3, 2), (4, 1), (1, 1)] {
+                let c = (ox + dx, oy + dy);
+                if !used.contains(&c) {
+                    used.insert(c);
+                    tiles[c.1 * w + c.0] = T_TERMINAL + f as u8;
+                    break 'rooms;
+                }
+            }
+        }
+    }
+    // The crew: in the cabins by preference.
+    let mut monsters: Vec<Mon> = Vec::new();
+    let homes: Vec<usize> = {
+        let mut v = find("cabines");
+        let rest: Vec<usize> = (0..rooms.len()).filter(|i| !v.contains(i)).collect();
+        v.extend(rest);
+        v
+    };
+    for (k, (id, name)) in crew.iter().enumerate() {
+        if homes.is_empty() {
+            break;
+        }
+        let room = homes[k % homes.len()];
+        let (ox, oy) = origin(rooms[room].0, rooms[room].1);
+        for _ in 0..30 {
+            let c = (
+                ox + (rng.f64() * (SHIP_ROOM_W - 1) as f64) as usize,
+                oy + (rng.f64() * (SHIP_ROOM_H - 1) as f64) as usize,
+            );
+            let free = tiles[c.1 * w + c.0] == T_FLOOR
+                && !monsters
+                    .iter()
+                    .any(|m| (m.x, m.y) == (c.0 as i32, c.1 as i32));
+            if free {
+                monsters.push(Mon {
+                    name: name.clone(),
+                    glyph: name
+                        .chars()
+                        .find(|c| c.is_ascii_alphabetic())
+                        .unwrap_or('c')
+                        .to_ascii_uppercase(),
+                    x: c.0 as i32,
+                    y: c.1 as i32,
+                    hp: 5.0,
+                    attack: 0.0,
+                    defense: 0.0,
+                    sight: 6,
+                    hunts: false,
+                    stationary: false,
+                    sleeper: false,
+                    awake: true,
+                    boss: false,
+                    drops: Vec::new(),
+                    friendly: true,
+                    crew: Some(*id),
+                    lines: Vec::new(),
+                    species: None,
+                });
+                break;
+            }
+        }
+    }
+    let t = &data.rogue_themes[theme];
+    let mats = paint(data, &tiles, w, t, seed, None);
+    (
+        Floor {
+            seen: vec![false; w * h],
+            tiles,
+            monsters,
+            items: Vec::new(),
+            sites: Vec::new(),
+            start: (start.0 as i32, start.1 as i32),
+            mats,
+            owned: Vec::new(),
+        },
+        (w, h),
+    )
+}
+
 /// A hard freeze turns the water of a surface floor into ice one can walk on (a thin freeze only
 /// makes the water "eau gelee", which still does not carry anyone).
 pub fn freeze_over(data: &GameData, tiles: &mut [u8], mats: &mut [u8], temp: f64) {
@@ -1236,8 +1402,26 @@ impl Sim {
         } else {
             Vec::new()
         };
-        let floor = generate_social(&self.data, theme, seed, &funcs, &crew);
+        let plan = if ship {
+            self.plan_of_hull(self.ship.design.hull).cloned()
+        } else {
+            None
+        };
+        let (floor, size) = match &plan {
+            Some(bp) if !bp.interior(&self.data).is_empty() => {
+                let (f, s) = generate_ship_interior(&self.data, theme, seed, bp, &funcs, &crew);
+                (f, Some(s))
+            }
+            _ => (
+                generate_social(&self.data, theme, seed, &funcs, &crew),
+                None,
+            ),
+        };
         let mut r = self.new_run(theme, seed, party);
+        if let Some((w, h)) = size {
+            r.w = w;
+            r.h = h;
+        }
         r.social = true;
         let (x, y) = floor.start;
         r.floors = vec![floor];

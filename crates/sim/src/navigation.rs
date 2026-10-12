@@ -437,6 +437,15 @@ impl Sim {
             let magnetic = self.system.physics(i, 0.0).magnetic;
             d.belt += belt_dose(magnetic, l);
         }
+        // Under an atmosphere the column of air above stops the radiation (the Earth's is about
+        // 1000 g/cm^2 against a stopping length near 150): a world with air is safe to stand on.
+        if let Some((_, air, alt)) = self.in_air_at(p) {
+            let column = air.pressure(alt) * 1.0e5 / air.gravity.max(0.05) * 0.1;
+            let through = (-column / 150.0).exp();
+            d.cosmic *= through;
+            d.stellar *= through;
+            d.belt *= through;
+        }
         d
     }
 

@@ -16,10 +16,16 @@ pub const RUMOUR_DAYS: f64 = 14.0;
 pub const P_FALSE: f64 = 0.3;
 /// Share of real events that are rumoured in advance.
 pub const P_LEAK: f64 = 0.8;
-/// Insurance: premium share of the covered value, cover share, duration.
-pub const PREMIUM: f64 = 0.02;
+/// Insurance: cover share of a claim, duration of a policy, the insurer's loading over the loss
+/// odds (it must make a profit), the monthly odds of losing a ship nobody has ever heard of
+/// in the calmest space, and how long a claim stays in the file.
 pub const COVER: f64 = 0.7;
 pub const INSURANCE_DAYS: f64 = 30.0;
+pub const LOADING: f64 = 1.8;
+pub const BASE_ODDS: f64 = 0.004;
+pub const CLAIM_MEMORY_DAYS: f64 = 365.0;
+/// Chance that a claim of nothing but the player's word is examined, before history.
+pub const AUDIT_BASE: f64 = 0.25;
 /// Cartel seat price, monthly payout at the base markup (0.25), antitrust fine and its monthly odds.
 pub const SEAT_PRICE: f64 = 4000.0;
 pub const SEAT_PAYOUT: f64 = 2500.0;
@@ -125,11 +131,91 @@ pub struct TenderOffer {
     pub ceiling: f64,
 }
 
+/// What can go wrong with a ship around a place at a date: it feeds the insurers' premiums
+/// and the losses of the regular lines (one representation of risk for both).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Risk {
+    /// Aggression of the people who hold the space (0.6 for the free space).
+    pub zone: f64,
+    /// Pirates: thick in the free space, thin under a strong flag.
+    pub pirates: f64,
+    pub war: bool,
+    pub siege: bool,
+    /// Epidemic running (share of the people infectious): ports close, ships wait.
+    pub sick: f64,
+    /// A catastrophe (an industrial incident) is shaking the sector.
+    pub catastrophe: bool,
+}
+
+pub fn risk_at(
+    data: &GameData,
+    galaxy: &vector_world::galaxy::Galaxy,
+    seed: u64,
+    pos: [f64; 3],
+    t: f64,
+) -> Risk {
+    let c = crate::politics::cell_of(pos);
+    let faction = crate::politics::faction_of(data, galaxy, c);
+    let unrest = crate::politics::unrest(seed, c, t);
+    let zone = faction.map_or(0.6, |f| data.factions[f].aggression);
+    let pirates = if faction.is_none() {
+        0.7 + 0.3 * unrest
+    } else {
+        0.15 * zone + 0.3 * unrest
+    };
+    Risk {
+        zone,
+        pirates: pirates.clamp(0.0, 1.0),
+        war: crate::politics::sector_at_war(data, galaxy, seed, c, t),
+        siege: crate::arms::is_besieged(data, galaxy, seed, c, t),
+        sick: crate::epidemic::prevalence_at(data, seed, pos, t)
+            .iter()
+            .map(|(_, i)| *i)
+            .sum(),
+        catastrophe: !crate::incidents::incidents_in_cell(data, seed, c, t, t).is_empty(),
+    }
+}
+
+impl Risk {
+    /// Chance per month that a ship loses its cargo or itself here.
+    pub fn monthly_loss_odds(&self) -> f64 {
+        BASE_ODDS
+            + 0.05 * self.pirates
+            + if self.war { 0.04 } else { 0.0 }
+            + if self.siege { 0.03 } else { 0.0 }
+            + if self.catastrophe { 0.015 } else { 0.0 }
+            + 0.01 * self.zone
+    }
+}
+
+/// What a month of cover would cost.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Quote {
+    pub cargo: f64,
+    pub hull: f64,
+    pub odds: f64,
+    pub history: f64,
+    pub premium: f64,
+}
+
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct TradeState {
-    /// Insurance: end date and covered value.
+    /// Insurance: end date and covered value of the cargo, covered value of the hull.
     pub insured_until: f64,
     pub covered: f64,
+    pub hull_covered: f64,
+    /// Dates of the claims paid in the last year (the premium follows the file) and the frauds
+    /// found out.
+    pub claims: Vec<f64>,
+    pub frauds: u32,
+    /// Bonds, funds and options (see `securities`).
+    pub folio: crate::securities::Portfolio,
+    /// Auctions, ads and the flea market (see `auction`).
+    pub dealings: crate::auction::Dealings,
+    /// Regular lines of cargo ships the player watches or has hit (see `lanes`).
+    pub lanes: crate::lanes::LaneLog,
+    /// Net migrants taken into each sector by the player (see `macroeco`).
+    pub migrants: Vec<([i64; 3], f64)>,
     /// Cartel seats held, and the month last settled.
     pub seats: Vec<usize>,
     pub last_cartel_month: i64,
@@ -206,41 +292,144 @@ impl Sim {
             .sum()
     }
 
-    /// Insure the cargo now aboard for a month; returns the premium.
-    pub fn buy_insurance(&mut self) -> Result<f64, &'static str> {
+    /// The risk around the ship now (see `risk_at`).
+    pub fn risk_here(&self) -> Risk {
+        risk_at(
+            &self.data,
+            &self.galaxy,
+            self.galaxy.seed,
+            self.here_pos,
+            self.time,
+        )
+    }
+
+    /// Claims of the last year still in the file.
+    pub fn recent_claims(&self) -> usize {
+        self.trade
+            .claims
+            .iter()
+            .filter(|t| self.time - **t < CLAIM_MEMORY_DAYS * DAY)
+            .count()
+    }
+
+    /// The premium multiplier of the player's file: 1 for a clean one, +30 % per claim of the
+    /// year and +60 % per fraud.
+    pub fn history_factor(&self) -> f64 {
+        1.0 + 0.3 * self.recent_claims() as f64 + 0.6 * f64::from(self.trade.frauds)
+    }
+
+    /// What a month of cover costs now: the loss odds around the ship, the insurer's loading and
+    /// the player's file applied to the values at risk.
+    pub fn insurance_quote(&self, with_hull: bool) -> Quote {
+        let cargo = self.cargo_value();
+        let hull = if with_hull { self.ship_value() } else { 0.0 };
+        let odds = self.risk_here().monthly_loss_odds();
+        let rate = odds * LOADING * self.history_factor();
+        Quote {
+            cargo,
+            hull,
+            odds,
+            history: self.history_factor(),
+            premium: ((cargo + hull) * rate).max(if cargo + hull > 0.0 { 20.0 } else { 0.0 }),
+        }
+    }
+
+    /// Insure the cargo now aboard (and the hull when asked) for a month; returns the premium.
+    pub fn buy_insurance(&mut self, with_hull: bool) -> Result<f64, &'static str> {
         self.docked
             .ok_or("non amarre : l'assureur est a la station")?;
-        let value = self.cargo_value();
-        if value < 100.0 {
-            return Err("soute trop peu chargee pour une police");
+        let q = self.insurance_quote(with_hull);
+        if q.cargo + q.hull < 100.0 {
+            return Err("rien d'assez precieux pour une police");
         }
-        let premium = (value * PREMIUM).max(20.0);
-        if premium > self.credits {
+        if q.premium > self.credits {
             return Err("fonds insuffisants");
         }
-        self.credits -= premium;
+        self.credits -= q.premium;
         self.trade.insured_until = self.time + INSURANCE_DAYS * DAY;
-        self.trade.covered = value;
-        Ok(premium)
+        self.trade.covered = q.cargo;
+        self.trade.hull_covered = q.hull;
+        Ok(q.premium)
     }
 
     pub fn insured(&self) -> bool {
         self.trade.insured_until > self.time
     }
 
-    /// Pay the insured part of a cargo of `value` lost (the ship was destroyed).
+    fn record_claim(&mut self) {
+        self.trade.claims.push(self.time);
+        let now = self.time;
+        self.trade
+            .claims
+            .retain(|t| now - *t < CLAIM_MEMORY_DAYS * DAY);
+    }
+
+    /// Pay the insured part of a cargo of `value` lost (the ship was destroyed), and of the hull.
     pub(crate) fn cargo_claim(&mut self, value: f64) {
         if !self.insured() {
             return;
         }
-        let pay = value.min(self.trade.covered) * COVER;
+        let pay = (value.min(self.trade.covered) + self.trade.hull_covered) * COVER;
         self.trade.insured_until = 0.0;
+        self.trade.hull_covered = 0.0;
         if pay > 0.0 {
+            self.record_claim();
             self.credits += pay;
             self.events.push(Event::MarketNews(format!(
-                "Assurance : {pay:.0} CR verses pour la cargaison perdue."
+                "Assurance : {pay:.0} CR verses (cargaison et coque)."
             )));
         }
+    }
+
+    /// Declare that `kg` of `res` were lost (taken by pirates, jettisoned, seized). The cargo
+    /// leaves the hold; the insurer pays `COVER` of the value, but may audit the claim: the
+    /// more claims in the file and the calmer the space where it happened, the likelier. A
+    /// false claim cancels the policy, costs three months of premium and is a crime.
+    pub fn declare_loss(&mut self, res: usize, kg: f64) -> Result<f64, &'static str> {
+        if !self.insured() {
+            return Err("aucune police en cours");
+        }
+        let kg = kg.min(self.ship.cargo.kg[res]);
+        if kg < 1.0 {
+            return Err("rien de tel en soute");
+        }
+        let value = (kg * self.data.resources[res].value).min(self.trade.covered);
+        self.ship.cargo.kg[res] -= kg;
+        self.trade.covered = (self.trade.covered - value).max(0.0);
+        let risk = self.risk_here();
+        // A real loss leaves traces where it is likely: in dangerous space the claim is believed.
+        let audit =
+            (AUDIT_BASE + 0.2 * self.recent_claims() as f64 + 0.2 * f64::from(self.trade.frauds)
+                - 1.5 * risk.monthly_loss_odds())
+            .clamp(0.05, 0.95);
+        let roll = unit(hash_coord(
+            self.galaxy.seed ^ 0xF4A0D,
+            (self.time / 60.0) as i64,
+            res as i64,
+            self.trade.claims.len() as i64 + 31 * i64::from(self.trade.frauds),
+        ));
+        // Nobody really took the cargo: only the audit stands between the player and the money.
+        if roll < audit {
+            let fee = 3.0 * self.insurance_quote(false).premium.max(20.0);
+            self.credits -= fee.min(self.credits.max(0.0));
+            self.trade.insured_until = 0.0;
+            self.trade.frauds += 1;
+            let faction = self.faction;
+            let _ = self.offend(faction, "fraude");
+            self.events.push(Event::MarketNews(
+                "Assurance : fraude decouverte, police annulee.".into(),
+            ));
+            return Err("fraude decouverte");
+        }
+        let pay = value * COVER;
+        self.credits += pay;
+        self.record_claim();
+        self.events.push(Event::MarketNews(format!(
+            "Assurance : sinistre de {:.0} kg de {} indemnise {pay:.0} CR.",
+            kg,
+            self.data.resources[res].name.to_lowercase()
+        )));
+        Ok(pay)
     }
 
     /// Value of the cargo, for the insurance claim at respawn.
@@ -394,6 +583,9 @@ impl Sim {
         self.accept_contract(crate::economy::Contract {
             pax: 0,
             pax_kind: 0,
+            legs: Vec::new(),
+            guide: false,
+            origin: [0; 3],
             id,
             dest_star: self.here,
             dest_seed: self.system.seed,
@@ -578,13 +770,14 @@ mod tests {
     fn insurance_pays_part_of_a_cargo_lost_only_while_it_runs() {
         let mut s = docked();
         s.ship.cargo.kg.fill(0.0);
-        assert!(s.buy_insurance().is_err(), "nothing to insure");
+        assert!(s.buy_insurance(false).is_err(), "nothing to insure");
         let gold = s.data.resource_index("gold").unwrap();
         s.ship.cargo.kg[gold] = 100.0;
         let value = s.cargo_value();
         let c = s.credits;
-        let premium = s.buy_insurance().expect("insured");
-        assert!((premium - value * PREMIUM).abs() < 1e-6);
+        let quote = s.insurance_quote(false);
+        let premium = s.buy_insurance(false).expect("insured");
+        assert!((premium - quote.premium).abs() < 1e-9);
         assert!(s.insured());
         s.credits = c - premium;
         s.claim_before_wipe();
@@ -593,11 +786,97 @@ mod tests {
         s.claim_before_wipe();
         assert!((s.credits - (c - premium + value * COVER)).abs() < 1e-6);
         // Expired policy pays nothing.
-        s.buy_insurance().unwrap();
+        s.buy_insurance(false).unwrap();
         s.time += (INSURANCE_DAYS + 1.0) * DAY;
         let c = s.credits;
         s.claim_before_wipe();
         assert_eq!(s.credits, c);
+    }
+
+    #[test]
+    fn the_premium_is_proportional_to_the_real_risk_and_to_the_file() {
+        let d = data();
+        let g = vector_world::galaxy::Galaxy::new(5);
+        // Free space is riskier than a calm, well-policed faction; war and siege add up.
+        let mut calm = f64::MAX;
+        let mut wild = 0.0_f64;
+        for x in -6..7 {
+            for y in -2..3 {
+                let r = risk_at(
+                    &d,
+                    &g,
+                    5,
+                    crate::politics::cell_center([x, y, 0]),
+                    10.0 * DAY,
+                );
+                calm = calm.min(r.monthly_loss_odds());
+                wild = wild.max(r.monthly_loss_odds());
+            }
+        }
+        assert!(wild > 2.0 * calm, "{calm} vs {wild}");
+        let base = Risk {
+            zone: 0.1,
+            pirates: 0.05,
+            war: false,
+            siege: false,
+            sick: 0.0,
+            catastrophe: false,
+        };
+        let war = Risk { war: true, ..base };
+        let both = Risk { siege: true, ..war };
+        assert!(base.monthly_loss_odds() < war.monthly_loss_odds());
+        assert!(war.monthly_loss_odds() < both.monthly_loss_odds());
+        // The premium is exactly value x odds x loading x file, and doubles with the value.
+        let mut s = docked();
+        s.ship.cargo.kg.fill(0.0);
+        let gold = s.data.resource_index("gold").unwrap();
+        s.ship.cargo.kg[gold] = 1000.0;
+        let q1 = s.insurance_quote(false);
+        s.ship.cargo.kg[gold] = 2000.0;
+        let q2 = s.insurance_quote(false);
+        assert!((q2.premium / q1.premium - 2.0).abs() < 1e-9);
+        assert!((q1.premium - q1.cargo * q1.odds * LOADING).abs() < 1e-6);
+        // The hull is insured too, for a premium of the same rate.
+        let qh = s.insurance_quote(true);
+        assert!((qh.premium / (qh.cargo + qh.hull) - q2.premium / q2.cargo).abs() < 1e-9);
+        // A claim in the file raises the next premium by 30 %.
+        s.trade.claims.push(s.time - DAY);
+        let q3 = s.insurance_quote(false);
+        assert!((q3.premium / q2.premium - 1.3).abs() < 1e-9);
+        // Claims fade after a year.
+        s.time += 400.0 * DAY;
+        assert_eq!(s.recent_claims(), 0);
+    }
+
+    #[test]
+    fn a_false_claim_is_sometimes_paid_sometimes_caught_and_the_file_remembers() {
+        let (mut paid, mut caught) = (0, 0);
+        for n in 0..60 {
+            let mut s = docked();
+            s.time = (100.0 + 3.0 * f64::from(n)) * DAY;
+            s.ship.cargo.kg.fill(0.0);
+            let gold = s.data.resource_index("gold").unwrap();
+            s.ship.cargo.kg[gold] = 100.0;
+            s.buy_insurance(false).unwrap();
+            let c = s.credits;
+            let kg_before = s.ship.cargo.kg[gold];
+            match s.declare_loss(gold, 50.0) {
+                Ok(pay) => {
+                    paid += 1;
+                    assert!((s.credits - c - pay).abs() < 1e-6);
+                    assert_eq!(s.recent_claims(), 1);
+                    assert!((s.ship.cargo.kg[gold] - (kg_before - 50.0)).abs() < 1e-9);
+                }
+                Err(e) => {
+                    assert_eq!(e, "fraude decouverte");
+                    caught += 1;
+                    assert!(s.credits < c, "the fee is charged");
+                    assert!(!s.insured() && s.trade.frauds == 1);
+                    assert!(s.history_factor() > 1.5);
+                }
+            }
+        }
+        assert!(paid > 10 && caught > 3, "{paid} paid, {caught} caught");
     }
 
     #[test]

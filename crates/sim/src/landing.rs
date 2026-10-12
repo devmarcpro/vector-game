@@ -582,6 +582,13 @@ impl Sim {
         if dt > 0.25 {
             return input;
         }
+        // Under flight assist the gear follows the height and the speed (out below 600 m, below
+        // 250 m/s); without it the gear is the pilot's.
+        if self.ship.assist {
+            self.gear_down = self
+                .surface_state()
+                .is_some_and(|s| s.alt < 600.0 && s.v.length() < 250.0);
+        }
         let rot_in = manual.pitch.abs() + manual.yaw.abs() + manual.roll.abs();
         let move_in = manual.fwd.abs() + manual.lat.abs() + manual.vert.abs();
         if let Some(mut p) = self.pilot {

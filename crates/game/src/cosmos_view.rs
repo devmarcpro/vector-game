@@ -20,6 +20,8 @@ pub struct CosmosUi {
     /// Days of the next stasis (in steps of 10, at least 10).
     pub stasis: usize,
     pub relay: usize,
+    /// Crew member shown for cloning (index into the crew).
+    pub clone: usize,
 }
 
 impl Game {
@@ -69,6 +71,14 @@ impl Game {
                 self.sim.meet_echo(how)
             }
             KeyCode::KeyB => self.sim.break_loop(),
+            KeyCode::KeyN => {
+                let k = self.sim.crew.members.len();
+                if k > 0 {
+                    self.cosmos_ui.clone = (self.cosmos_ui.clone + 1) % k;
+                }
+                return;
+            }
+            KeyCode::KeyK => self.sim.clone_crew(self.cosmos_ui.clone),
             KeyCode::KeyO => self.sim.build_outpost(),
             KeyCode::ArrowLeft | KeyCode::ArrowRight => {
                 let k = self.sim.relay_nodes().len();
@@ -278,9 +288,55 @@ pub fn draw(fb: &mut Framebuffer, g: &Game) {
         fb.text(3, 26, "A QUAI SEULEMENT.", DIM);
     }
     draw_oddities(fb, g);
+    draw_high_scifi(fb, g);
     for (i, m) in g.messages.iter().rev().take(1).enumerate() {
         fb.text(1, 37 + i, m, AMBER);
     }
+}
+
+/// Exotic systems of the ship, the Kardashev scale and the cloning vat (right-hand column).
+fn draw_high_scifi(fb: &mut Framebuffer, g: &Game) {
+    let s = &g.sim;
+    let x = 64;
+    fb.text(x, 3, "HAUTE SCIENCE-FICTION", AMBER);
+    fb.text(
+        x + 2,
+        4,
+        &format!(
+            "ECHELLE DE KARDASHEV DU VAISSEAU : K{:.2}",
+            s.ship_kardashev()
+        ),
+        GREEN,
+    );
+    let lines = s.exotic_hud();
+    if lines.is_empty() {
+        fb.text(x + 2, 5, "AUCUN SYSTEME EXOTIQUE ACTIF.", DIM);
+    }
+    for (i, (l, alert)) in lines.iter().take(4).enumerate() {
+        fb.text(x + 2, 5 + i, l, if *alert { DOWN } else { UP });
+    }
+    fb.text(
+        x + 2,
+        9,
+        &format!(
+            "LIAISON QUANTIQUE {}",
+            if s.qcomm_active() {
+                "ACTIVE : NOUVELLES INSTANTANEES"
+            } else {
+                "ABSENTE"
+            }
+        ),
+        DIM,
+    );
+    fb.text(x, 11, "CLONAGE (1 KG NANITES, 80000 CR)", AMBER);
+    let who = s
+        .crew
+        .members
+        .get(g.cosmos_ui.clone)
+        .map_or("PERSONNE".to_string(), |p| p.name.to_uppercase());
+    fb.text(x + 2, 12, &who, WHITE);
+    let nx = word(fb, g, x + 2, 13, "[N] SUIVANT", KeyCode::KeyN);
+    word(fb, g, nx, 13, "[K] CLONER", KeyCode::KeyK);
 }
 
 /// Echoes, loops of time, relay portals and outposts.

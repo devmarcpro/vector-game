@@ -941,6 +941,11 @@ fn start_names_come_from_the_shared_name_grammar() {
         assert_eq!(ship, random_ship_name(h), "deterministic");
         assert!(!random_company(h).is_empty());
     }
+    // The AI names come from the grammar too (kind "ai"), not from a list in the code.
+    let ais: std::collections::HashSet<String> = (0..80u64).map(random_ai_name).collect();
+    assert!(ais.len() >= 8, "{ais:?}");
+    assert!(ais.iter().all(|n| !n.is_empty() && *n == n.to_uppercase()));
+    assert_eq!(random_ai_name(3), random_ai_name(3));
     let distinct: std::collections::HashSet<String> = (0..40u64).map(random_ship_name).collect();
     assert!(distinct.len() > 15, "{}", distinct.len());
 }

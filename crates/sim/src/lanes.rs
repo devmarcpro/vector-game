@@ -401,6 +401,67 @@ pub fn good_factor(data: &GameData, galaxy: &Galaxy, pos: [f64; 3], t: f64, res:
     (-0.3 * stock / MARKET_KG).exp().clamp(0.6, 1.6)
 }
 
+/// A change that a convoy makes to the physical stock of the system at one of its ends:
+/// `kg` > 0 is a delivery, `kg` < 0 a departure or the shelves emptied by waiting.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Flow {
+    pub t: f64,
+    pub res: usize,
+    pub kg: f64,
+}
+
+/// Share of the cargo that the shelves lose while a convoy is late (the goods that were
+/// counted on and do not come).
+pub const LATE_SHORTFALL: f64 = 0.3;
+
+/// What the convoys of the lines of the system at `pos` did to its stock in (t0, t1], in order:
+/// the origin loses the cargo at the departure, the destination misses a part of it when the
+/// timetable is overrun and receives the delivered goods at the arrival. The markets of the
+/// stations (`Market::stock`) apply these flows to their one physical stock; the price follows.
+pub fn flows_between(
+    data: &GameData,
+    galaxy: &Galaxy,
+    pos: [f64; 3],
+    t0: f64,
+    t1: f64,
+) -> Vec<Flow> {
+    let mut out = Vec::new();
+    for line in lines_at(data, galaxy, pos).iter() {
+        let origin = (line.a[0] - pos[0]).abs() < 1e-6
+            && (line.a[1] - pos[1]).abs() < 1e-6
+            && (line.a[2] - pos[2]).abs() < 1e-6;
+        for c in convoys_between(data, galaxy, line, t0, t1) {
+            let inside = |t: f64| t > t0 && t <= t1;
+            if origin {
+                if inside(c.depart) {
+                    out.push(Flow {
+                        t: c.depart,
+                        res: line.res,
+                        kg: -c.loaded,
+                    });
+                }
+            } else {
+                if c.arrive - c.sched_eta > DAY && inside(c.sched_eta) {
+                    out.push(Flow {
+                        t: c.sched_eta,
+                        res: line.res,
+                        kg: -LATE_SHORTFALL * c.loaded,
+                    });
+                }
+                if inside(c.arrive) {
+                    out.push(Flow {
+                        t: c.arrive,
+                        res: line.res,
+                        kg: c.delivered(),
+                    });
+                }
+            }
+        }
+    }
+    out.sort_by(|a, b| a.t.total_cmp(&b.t));
+    out
+}
+
 /// A line at the player's system, with its next departures.
 #[derive(Clone, Debug)]
 pub struct LineView {
@@ -461,11 +522,30 @@ impl Sim {
             .collect()
     }
 
+    /// Price of a good at an end of a line: the reference price of the region, and, at the system
+    /// where the ship is docked, corrected by what the shelves of that station really hold (a
+    /// stock the player emptied makes the line worth more; one he filled, less).
+    pub fn line_price(&self, pos: [f64; 3], res: usize) -> f64 {
+        let base = self.reference_price(pos, self.time, res);
+        let here = pos
+            .iter()
+            .zip(&self.here_pos)
+            .all(|(a, b)| (a - b).abs() < 1e-6);
+        let live = here
+            .then(|| self.docked_station().ok())
+            .flatten()
+            .and_then(|st| self.markets.get(&st));
+        match live {
+            Some(m) => base * m.scarcity_at(res, m.stock[res]) / m.scarcity_at(res, m.target[res]),
+            None => base,
+        }
+    }
+
     /// Expected return of a convoy now: the destination price against the origin's, less both
     /// ports and the customs. Negative when the line does not pay.
     pub fn convoy_margin(&self, line: &Line) -> f64 {
-        let pa = self.reference_price(line.a, self.time, line.res);
-        let pb = self.reference_price(line.b, self.time, line.res);
+        let pa = self.line_price(line.a, line.res);
+        let pb = self.line_price(line.b, line.res);
         let fa = self.galaxy.territory(line.a, self.data.factions.len());
         let fb = self.galaxy.territory(line.b, self.data.factions.len());
         pb / pa.max(1e-9)
@@ -701,6 +781,81 @@ mod tests {
         // Other goods are untouched.
         let other = (0..d.resources.len()).find(|r| *r != line.res).unwrap();
         assert!((good_factor(&d, &g, line.b, c.arrive, other) - 1.0).abs() < 1e-12);
+    }
+
+    /// A sim docked at a hub with a regular line, at a time when something happens on it.
+    fn docked_at_a_hub(d: &Arc<GameData>) -> (Sim, usize, Line) {
+        let mut s = new_sim(5, d.clone());
+        let (st, _) = s.nearest_station().expect("station");
+        s.spawn_near(st, s.bodies[st].radius + 200.0);
+        s.try_dock().expect("dock");
+        let g = s.galaxy;
+        let hub = g
+            .nearby([0.0, 0.0, 0.0], 25.0)
+            .into_iter()
+            .find(|st| !lines_at(d, &g, st.pos).is_empty())
+            .expect("a hub with a line");
+        s.here_pos = hub.pos;
+        let line = lines_at(d, &g, hub.pos)[0].clone();
+        (s, st, line)
+    }
+
+    #[test]
+    fn convoys_load_and_unload_the_real_stock_of_the_station() {
+        // Audit B15: the lines write the physical stock; the price follows it.
+        let d = data();
+        let (mut s, st, line) = docked_at_a_hub(&d);
+        let origin =
+            (line.a[0] - s.here_pos[0]).abs() < 1e-6 && (line.a[1] - s.here_pos[1]).abs() < 1e-6;
+        let r = line.res;
+        // A convoy that leaves or arrives within the next weeks.
+        s.time = 30.0 * DAY;
+        s.market(st);
+        let c = (0..60)
+            .map(|k| convoy(&d, &s.galaxy, &line, k))
+            .find(|c| {
+                let t = if origin { c.depart } else { c.arrive };
+                t > s.time + DAY && c.sched_eta + 1e-9 >= c.depart && c.arrive - c.sched_eta < DAY
+            })
+            .expect("a convoy ahead");
+        let t_event = if origin { c.depart } else { c.arrive };
+        // Just before the event the shelves are at the station's usual level.
+        s.time = t_event - DAY / 24.0;
+        let before = s.market(st).stock[r];
+        let target = s.market(st).target[r];
+        let reference = s.market(st).reference[r];
+        // (the markets count the convoys once an hour)
+        s.time = t_event + 2.0 * DAY / 24.0;
+        let after = s.market(st).stock[r];
+        let moved = after - before;
+        let expected = if origin { -c.loaded } else { c.delivered() } * reference / MARKET_KG;
+        // (the stock also relaxes a little in the two hours of the window)
+        assert!(
+            (moved - expected).abs() < 0.05 * expected.abs() + 0.05 * (target - before).abs() + 1.0,
+            "moved {moved}, expected {expected}"
+        );
+        assert!(moved.signum() == expected.signum() || expected == 0.0);
+        // A departure makes the origin dearer, an arrival makes the destination cheaper.
+        let data = Arc::clone(&s.data);
+        if origin {
+            assert!(s.market(st).price(&data, r) > 0.0);
+        }
+        // The stock is the single record: emptying it makes the line pay more.
+        let m0 = s.convoy_margin(&line);
+        let kept = s.market(st).stock[r];
+        s.market(st).stock[r] = kept * 0.2 + 1.0;
+        let m1 = s.convoy_margin(&line);
+        if origin {
+            assert!(
+                m1 < m0,
+                "a dear origin makes the line pay less: {m0} -> {m1}"
+            );
+        } else {
+            assert!(
+                m1 > m0,
+                "a short destination makes the line pay more: {m0} -> {m1}"
+            );
+        }
     }
 
     #[test]

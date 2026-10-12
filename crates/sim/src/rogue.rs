@@ -98,8 +98,13 @@ pub struct Mon {
     pub friendly: bool,
     pub crew: Option<u32>,
     pub lines: Vec<String>,
-    /// The species of an animal of a planet (tame ones can be caught for the pens).
+    /// The species of an animal of a planet (tame ones can be caught for the pens): the same
+    /// species of `species.ron` as the animals of the pens.
     pub species: Option<usize>,
+    /// The genes of that animal (the four traits of the livestock, two alleles each): what a
+    /// capture brings to the pens and a release gives back to the wild.
+    #[serde(default)]
+    pub genes: Option<[[u8; 2]; 4]>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -390,6 +395,7 @@ fn mon_from_def(
         crew: None,
         lines: Vec::new(),
         species: None,
+        genes: None,
     }
 }
 
@@ -429,6 +435,7 @@ fn mon_from_species(data: &GameData, sp: usize, x: i32, y: i32) -> Mon {
         crew: None,
         lines: Vec::new(),
         species: Some(sp),
+        genes: None,
     }
 }
 
@@ -447,6 +454,14 @@ struct Ambient {
 fn mon_adapted(data: &GameData, sp: usize, x: i32, y: i32, amb: &Ambient) -> Mon {
     use crate::biosphere::{behavior_of, variant_now};
     let mut m = mon_from_species(data, sp, x, y);
+    // The gene pool of the local population (the individual is told from its neighbours by
+    // where it stands).
+    m.genes = Some(crate::livestock::wild_genes(
+        amb.world,
+        sp,
+        amb.biome,
+        (x as u64) << 16 | y as u64,
+    ));
     let v = variant_now(data, amb.world, amb.radiation, sp, amb.biome, amb.now);
     let f = v.mass_factor();
     m.hp *= f.cbrt();
@@ -689,6 +704,7 @@ pub fn generate_social(
             crew,
             lines,
             species: None,
+            genes: None,
         };
     let place = |monsters: &mut Vec<Mon>, rng: &mut Rng, who: Option<(u32, &String)>| {
         for _ in 0..40 {
@@ -883,6 +899,7 @@ pub fn generate_ship_interior(
                     crew: Some(*id),
                     lines: Vec::new(),
                     species: None,
+                    genes: None,
                 });
                 break;
             }
@@ -3320,16 +3337,31 @@ impl Sim {
             return Err("enclos pleins");
         }
         let name = r.floor().monsters[k].name.clone();
-        let n = self.herd_counter;
+        // The animal of the surface and the animal of the pens are one: the same species, and
+        // the genes of the beast it was go to the pens with it.
+        let a = match r.floor().monsters[k].genes {
+            Some(genes) => crate::livestock::Animal::from_wild(sp, genes, 30.0, self.time),
+            None => {
+                let n = self.herd_counter;
+                let mut a = crate::livestock::random_animal(
+                    hash_coord(self.galaxy.seed, r.seed as i64, i64::from(r.turn), 5),
+                    sp,
+                    self.time,
+                    n,
+                );
+                a.born = self.time - crate::bourse::DAY * 30.0;
+                a
+            }
+        };
         self.herd_counter += 1;
-        let mut a = crate::livestock::random_animal(
-            hash_coord(self.galaxy.seed, r.seed as i64, i64::from(r.turn), 5),
-            sp,
-            self.time,
-            n,
-        );
-        a.born = self.time - crate::bourse::DAY * 30.0;
         self.herd.push(a);
+        // What lives on the colony's ground is counted: the catch leaves the local population.
+        if let Some(ci) = self.surface_territory(r) {
+            let kg = self.data.species[sp].body;
+            if let Some(eco) = self.colony_ecology(ci) {
+                eco.harvest(sp, 0, kg);
+            }
+        }
         r.floor_mut().monsters.remove(k);
         r.say(format!(
             "Vous capturez : {}. Elle ira dans les enclos.",
@@ -3337,6 +3369,89 @@ impl Sim {
         ));
         self.rogue_end_turn(r);
         Ok(format!("{} CAPTURE", name.to_uppercase()))
+    }
+
+    /// The colony whose territory is the ground under the squad (same world, same biome as its
+    /// city), if any: the one place where the surface fauna has a stored food web.
+    fn surface_territory(&mut self, r: &Rogue) -> Option<usize> {
+        let (body, (cx, cy)) = (r.body?, r.land?);
+        let ci = (0..self.colonies.len()).find(|&i| {
+            self.colonies[i].body == body && self.colonies[i].system_seed == self.system.seed
+        })?;
+        let (map, city) = self.colony_world(ci)?;
+        (map.biome_at(city.0, city.1) == map.biome_at(cx, cy)).then_some(ci)
+    }
+
+    /// Let animal `i` of the pens go on the ground next to the squad. It must be a place where
+    /// its species can live; it keeps its genes (a catch of it brings them back) and, on the
+    /// territory of a colony, it joins the local population of the food web.
+    pub fn rogue_release(&mut self, i: usize) -> Result<String, &'static str> {
+        let mut r = self.rogue.take().ok_or("pas d'exploration en cours")?;
+        let res = self.rogue_release_inner(&mut r, i);
+        self.rogue = Some(r);
+        res
+    }
+
+    fn rogue_release_inner(&mut self, r: &mut Rogue, i: usize) -> Result<String, &'static str> {
+        if r.over {
+            return Err("l'exploration est terminee");
+        }
+        if !r.on_surface() {
+            return Err("on ne relache que sur la surface d'un monde");
+        }
+        let a = self
+            .herd
+            .get(i)
+            .ok_or("aucun animal choisi dans les enclos")?;
+        let (sp, genes) = (a.species, a.genes);
+        let (body, (cx, cy)) = (
+            r.body.ok_or("pas de surface")?,
+            r.land.ok_or("pas de surface")?,
+        );
+        let map = self.planet_map(body).ok_or("pas de surface solide")?;
+        let biome = map.biome_at(cx, cy);
+        if !self.data.species[sp]
+            .habitat
+            .contains(&self.data.biomes[biome].id)
+        {
+            return Err("cette bete ne survivrait pas ici");
+        }
+        let spot = [
+            (1, 0),
+            (-1, 0),
+            (0, 1),
+            (0, -1),
+            (1, 1),
+            (-1, -1),
+            (1, -1),
+            (-1, 1),
+        ]
+        .into_iter()
+        .map(|(dx, dy)| (r.x + dx, r.y + dy))
+        .find(|&(x, y)| {
+            r.inside(x, y)
+                && r.walkable(x, y)
+                && r.monster_at(x, y).is_none()
+                && !r.mat(x, y).is_some_and(|m| animal_avoids(&self.data, m))
+        })
+        .ok_or("pas de place pour la relacher")?;
+        let name = self.data.species[sp].name.clone();
+        let mut m = mon_from_species(&self.data, sp, spot.0, spot.1);
+        m.genes = Some(genes);
+        self.herd.remove(i);
+        if let Some(ci) = self.surface_territory(r) {
+            let kg = self.data.species[sp].body;
+            if let Some(eco) = self.colony_ecology(ci) {
+                eco.restock(sp, 0, kg);
+            }
+        }
+        r.floor_mut().monsters.push(m);
+        r.say(format!(
+            "Vous relachez : {}. Elle retourne au milieu des siens.",
+            name.to_lowercase()
+        ));
+        self.rogue_end_turn(r);
+        Ok(format!("{} RELACHE", name.to_uppercase()))
     }
 
     /// Wait a turn.
@@ -5212,6 +5327,90 @@ mod tests {
             s.herd.push(a);
         }
         assert!(s.rogue_capture().is_err());
+    }
+
+    #[test]
+    fn one_species_one_set_of_genes_from_the_wild_to_the_pens_and_back() {
+        // Audit B16: the animal of the surface and the animal of the pens are the same species
+        // of `species.ron`; the genes follow it into the pens and back out.
+        use crate::livestock::{wild_genes, ALLELE_MAX};
+        let (mut s, body, cx, cy) = landing_site();
+        s.rogue_land(body, cx, cy, vec![0], false).unwrap();
+        let map = s.planet_map(body).unwrap();
+        let biome = map.biome_at(cx, cy);
+        let tame = s.domestic_species()[0];
+        // Let the tame species live in this biome, whatever the landing site is.
+        let mut d = (*s.data).clone();
+        let id = d.biomes[biome].id.clone();
+        if !d.species[tame].habitat.contains(&id) {
+            d.species[tame].habitat.push(id);
+        }
+        s.data = Arc::new(d);
+        let (lx, ly) = {
+            let r = s.rogue.as_mut().unwrap();
+            r.floors[0].monsters.clear();
+            (r.x, r.y)
+        };
+        // The wild genes are a fact of the population: same place, same pool.
+        let pool: Vec<[[u8; 2]; 4]> = (0..40)
+            .map(|n| wild_genes(map.seed, tame, biome, n))
+            .collect();
+        assert_eq!(
+            pool[3],
+            wild_genes(map.seed, tame, biome, 3),
+            "deterministic"
+        );
+        for t in 0..4 {
+            let alleles: Vec<u8> = pool.iter().flat_map(|g| g[t]).collect();
+            let (lo, hi) = (
+                *alleles.iter().min().unwrap(),
+                *alleles.iter().max().unwrap(),
+            );
+            assert!(hi - lo <= 2 && hi <= ALLELE_MAX, "trait {t}: {lo}..{hi}");
+        }
+        // A beast with its genes next to the squad: the catch brings them to the pens.
+        let genes = wild_genes(map.seed, tame, biome, 7);
+        let mut m = mon_from_species(&s.data, tame, lx + 1, ly);
+        m.genes = Some(genes);
+        s.rogue.as_mut().unwrap().floors[0].monsters.push(m);
+        let herd = s.herd.len();
+        s.rogue_capture().expect("caught");
+        assert_eq!(s.herd.len(), herd + 1);
+        let a = s.herd.last().unwrap().clone();
+        assert_eq!(
+            (a.species, a.genes),
+            (tame, genes),
+            "the genes of the wild beast"
+        );
+        // The release puts the same species back on the ground with the same genes.
+        let msg = s.rogue_release(herd).expect("released");
+        assert!(msg.ends_with("RELACHE"), "{msg}");
+        assert_eq!(s.herd.len(), herd);
+        let out: Vec<Mon> = s.rogue.as_ref().unwrap().floor().monsters.clone();
+        assert_eq!(out.len(), 1);
+        assert_eq!((out[0].species, out[0].genes), (Some(tame), Some(genes)));
+        // And a second catch hands over the very same genes: nothing was lost on the way.
+        let (px, py) = {
+            let r = s.rogue.as_ref().unwrap();
+            (r.x, r.y)
+        };
+        // (it wandered a step in the turn that passed: bring it back within reach)
+        assert!((out[0].x - px).abs().max((out[0].y - py).abs()) <= 2);
+        {
+            let m = &mut s.rogue.as_mut().unwrap().floors[0].monsters[0];
+            (m.x, m.y) = (lx + 1, ly);
+        }
+        s.rogue_capture().expect("caught again");
+        assert_eq!(s.herd.last().unwrap().genes, genes);
+        // A species that cannot live here is refused, and so is a pen that is empty.
+        let mut d = (*s.data).clone();
+        d.species[tame].habitat.clear();
+        s.data = Arc::new(d);
+        assert_eq!(
+            s.rogue_release(herd),
+            Err("cette bete ne survivrait pas ici")
+        );
+        assert!(s.rogue_release(99).is_err());
     }
 
     // ---- matter: digging, building, sliding, burning ----------------------------------------

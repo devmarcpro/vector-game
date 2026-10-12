@@ -96,7 +96,7 @@ fn invariants(s: &Sim) -> Vec<String> {
         "temperature invalide",
     );
     bad(
-        fin(s.ship.sys.dose_gy) && s.ship.sys.dose_gy >= 0.0,
+        fin(s.dosimeter_gy()) && s.dosimeter_gy() >= 0.0,
         "dose invalide",
     );
     bad(
@@ -775,7 +775,7 @@ fn play(
                     s.ship.sys.health.iter().cloned().fold(9.0, f64::min),
                     s.pending_flare,
                     s.events,
-                    s.ship.sys.dose_gy
+                    s.dosimeter_gy()
                 );
             }
             if capped {
@@ -890,7 +890,7 @@ STATS charge: ...{}",
             for p in &s.crew.members {
                 eprintln!(
                     "  crew j{day} {} alive {} sante {:.2} faim {:.2} soif {:.2} fatigue {:.2} stress {:.2} moral {:.2} maladie {:?} air {:.2} dose {:.3} t {:.0}K aigu {:.2} sv/j {:.3}",
-                    p.name, p.alive, p.health, p.hunger, p.thirst, p.fatigue, p.stress, p.morale, p.disease, s.crew.air, s.ship.sys.dose_gy, s.ship.sys.temp_k, p.body.acute_dose, s.crew.env.rad_sv_day
+                    p.name, p.alive, p.health, p.hunger, p.thirst, p.fatigue, p.stress, p.morale, p.disease, s.crew.air, s.dosimeter_gy(), s.ship.sys.temp_k, p.body.acute_dose, s.crew.env.rad_sv_day
                 );
             }
         }

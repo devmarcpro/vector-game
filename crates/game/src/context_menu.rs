@@ -299,8 +299,7 @@ pub fn items_for(g: &Game, ctx: Ctx) -> (String, Vec<Item>) {
                 .members
                 .get(n)
                 .map_or("EQUIPAGE".into(), |p| up(&p.name));
-            let plain = g.screen == Screen::Crew
-                && !(g.gear_mode || g.cryo_mode || g.med_mode || g.organ_mode || g.crew_net);
+            let plain = g.screen == Screen::Crew && g.crew_tab == crate::game::CrewTab::List;
             it.push(Item::new(
                 "CHOISIR",
                 "CLIC",
@@ -1660,7 +1659,11 @@ mod tests {
             .position(|i| i.label == "CRYOGENISER")
             .unwrap();
         g.ctx_pick(i);
-        assert!(g.cryo_mode, "the menu pressed C on the chosen person");
+        assert_eq!(
+            g.crew_tab,
+            crate::game::CrewTab::Cryo,
+            "the menu pressed C on the chosen person"
+        );
     }
 
     #[test]

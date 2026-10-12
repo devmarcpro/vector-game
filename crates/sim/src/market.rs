@@ -29,6 +29,10 @@ pub struct Market {
     pub world: Vec<f64>,
     #[serde(skip)]
     pub world_day: i64,
+    /// Game time up to which the convoys of the regular lines have been counted in the stock
+    /// (derived: after a load it starts again from `updated`).
+    #[serde(skip)]
+    pub lanes_to: f64,
 }
 
 impl Market {
@@ -45,6 +49,7 @@ impl Market {
             updated: time,
             world: Vec::new(),
             world_day: i64::MIN,
+            lanes_to: time,
         };
         for i in 0..n {
             let id = data.resources[i].id.as_str();
@@ -81,6 +86,17 @@ impl Market {
             *s += (t - *s) * k;
         }
         self.updated = time;
+    }
+
+    /// Least game time between two countings of the convoys (they are looked at once an hour).
+    pub const LANE_STEP: f64 = 3600.0;
+
+    /// A delivery (`kg` > 0) or a departure (`kg` < 0) of a convoy of a regular line, counted
+    /// in the kilograms of the line's system, taken in proportion to this market's size: the
+    /// one way the lines act on the stock (and so on the price) of a station.
+    pub fn apply_flow(&mut self, res: usize, kg: f64) {
+        let scale = self.reference[res] / crate::lanes::MARKET_KG;
+        self.stock[res] = (self.stock[res] + kg * scale).max(0.0);
     }
 
     /// Price multiplier of the scarcity of `res` when the stock stands at `stock`: the one law

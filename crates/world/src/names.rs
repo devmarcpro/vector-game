@@ -83,7 +83,7 @@ pub struct NameBook {
 }
 
 /// Every kind of place or thing the grammar must be able to name.
-pub const KINDS: [&str; 26] = [
+pub const KINDS: [&str; 27] = [
     "star",
     "planet_dead",
     "planet_living",
@@ -110,6 +110,7 @@ pub const KINDS: [&str; 26] = [
     "cartel",
     "religion",
     "faction",
+    "ai",
 ];
 
 fn char_ok(c: char) -> bool {

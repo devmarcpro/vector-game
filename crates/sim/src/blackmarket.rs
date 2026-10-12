@@ -1,6 +1,9 @@
 //! The black market: where a good is banned (by the mores or the contraband list of the people
 //! whose station you are at) a contact trades it anyway, at a premium, away from the customs.
 //! Every deal may end in a raid: the goods and a fine are lost and the people's trust with them.
+//! It is a second door on the SAME physical stock of the station as the open market (`market.rs`):
+//! the contact sells only what the station holds, and what you sell him adds to it; the price
+//! is the station's own (scarcity included) with the premium and the risk of the back door.
 use crate::relations::Entity;
 use crate::{Event, Sim};
 use vector_core::{hash_coord, Rng};
@@ -47,9 +50,17 @@ impl Sim {
         )
     }
 
+    /// Mid price of the open market of the station where you are docked (credits per kg): the
+    /// base on which the contact puts his premium.
+    fn black_base_price(&mut self, res: usize) -> Result<f64, &'static str> {
+        let st = self.docked_station()?;
+        let data = std::sync::Arc::clone(&self.data);
+        Ok(self.market(st).price(&data, res))
+    }
+
     /// Whether the good is banned where you are docked (so a contact deals it).
     pub fn black_market_for(&self, res: usize) -> Result<(), &'static str> {
-        self.docked.ok_or("non amarre")?;
+        self.docked_station()?;
         let f = self
             .faction
             .ok_or("espace libre : ici tout se vend au grand jour")?;
@@ -95,7 +106,9 @@ impl Sim {
         if self.deal_raided(res, kg) {
             return Err(self.raid(res, kg));
         }
-        let pay = self.reference_price(self.here_pos, self.time, res) * kg * self.black_terms().1;
+        let pay = self.black_base_price(res)? * kg * self.black_terms().1;
+        let st = self.docked_station()?;
+        self.market(st).stock[res] += kg;
         self.credits += pay;
         self.bank.dirty += pay;
         self.set_trust(TRUST_STEP);
@@ -106,20 +119,25 @@ impl Sim {
     /// Buy `kg` kg of a banned good from the contact; returns what it cost.
     pub fn black_buy(&mut self, res: usize, kg: f64) -> Result<f64, &'static str> {
         self.black_market_for(res)?;
-        let price = self.reference_price(self.here_pos, self.time, res) * self.black_terms().0;
+        let price = self.black_base_price(res)? * self.black_terms().0;
+        let st = self.docked_station()?;
         let room = self.ship.cargo.cap_mass - self.ship.cargo.mass;
-        let kg = kg.min(self.credits / price).min(room);
+        let held = self.market(st).stock[res];
+        let kg = kg.min(self.credits / price).min(room).min(held);
         if kg <= 0.0 {
-            return Err("achat impossible (credits ou soute)");
+            return Err("achat impossible (credits, soute ou stock du contact)");
         }
         self.credits -= price * kg;
+        // The goods leave the shelves of the station, seized or not.
+        self.market(st).stock[res] -= kg;
         if self.deal_raided(res, kg) {
             return Err(self.raid(res, kg));
         }
         let data = std::sync::Arc::clone(&self.data);
         let got = self.ship.cargo.add(&data, res, kg);
-        // Whatever the hold could not take is paid back.
+        // Whatever the hold could not take is paid back, and goes back on the shelves.
         self.credits += price * (kg - got);
+        self.market(st).stock[res] += kg - got;
         self.set_trust(TRUST_STEP);
         self.stain();
         Ok(price * got)
@@ -176,7 +194,9 @@ mod tests {
         for t in 0..200 {
             s.time = f64::from(t) * 3600.0;
             s.credits = 1.0e6;
-            let reference = s.reference_price(s.here_pos, s.time, res);
+            let st = s.docked_station().unwrap();
+            let data = Arc::clone(&s.data);
+            let reference = s.market(st).price(&data, res);
             let credits = s.credits;
             let factor = s.black_terms().0;
             match s.black_buy(res, 10.0) {
@@ -206,6 +226,57 @@ mod tests {
             raided > 0 && (rate - RAID_CHANCE).abs() < 0.08,
             "raid rate {rate}"
         );
+    }
+
+    #[test]
+    fn the_black_market_is_a_second_door_on_the_stock_of_the_station() {
+        // Audit B15: one physical stock; the contact sells what the station holds and what he
+        // buys goes on its shelves, at the price the station itself asks.
+        let (mut s, res) = docked("verdant");
+        let st = s.docked_station().unwrap();
+        let data = Arc::clone(&s.data);
+        s.ship.cargo.cap_mass = 1.0e9;
+        s.ship.cargo.cap_vol = 1.0e9;
+        s.credits = 1.0e12;
+        // He cannot sell what the station has not got.
+        s.market(st).stock[res] = 0.0;
+        s.market(st).target[res] = 0.0;
+        s.ship.cargo.kg[res] = 0.0;
+        assert!(s.black_buy(res, 10.0).is_err(), "nothing on the shelves");
+        // With stock he sells, and the stock goes down by what he sold (a raid takes it too).
+        s.market(st).stock[res] = 500.0;
+        s.market(st).target[res] = 500.0;
+        let mut taken = 0.0;
+        for t in 0..30 {
+            s.time += 60.0 * f64::from(t % 2 + 1);
+            let before = s.market(st).stock[res];
+            let had = s.ship.cargo.kg[res];
+            if s.black_buy(res, 20.0).is_ok() {
+                taken += s.ship.cargo.kg[res] - had;
+                assert!(s.market(st).stock[res] < before + 1e-9);
+            }
+        }
+        assert!(taken > 0.0);
+        // The shelves are the same ones the open market reads: the price rises with the shortage.
+        let reference = s.market(st).reference[res];
+        s.market(st).stock[res] = 0.2 * reference;
+        let dear = s.market(st).price(&data, res);
+        s.market(st).stock[res] = 0.8 * reference;
+        assert!(s.market(st).price(&data, res) < dear);
+        // What he buys from you is added to them.
+        s.ship.cargo.add(&data, res, 30.0);
+        let mut sold = false;
+        for t in 0..30 {
+            s.time += 1000.0 * f64::from(t);
+            let before = s.market(st).stock[res];
+            if s.black_sell(res, 10.0).is_ok() {
+                let after = s.market(st).stock[res];
+                assert!((after - before - 10.0).abs() < 1e-6, "{before} -> {after}");
+                sold = true;
+                break;
+            }
+        }
+        assert!(sold);
     }
 
     #[test]

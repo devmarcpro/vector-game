@@ -115,7 +115,6 @@ impl Sim {
             })
             .product::<f64>()
             * self.ad_factor(pos, t, res)
-            * crate::lanes::good_factor(&self.data, &self.galaxy, pos, t, res)
     }
 
     pub(crate) fn surprise_ctx(&self) -> Ctx {

@@ -261,21 +261,6 @@ impl Runtime {
 
 // ---- names -------------------------------------------------------------------------------
 
-const AI_NAMES: [&str; 12] = [
-    "ORACLE",
-    "MNEMOSYNE",
-    "ATLAS",
-    "HESTIA",
-    "VESPER",
-    "KAIROS",
-    "LATTICE",
-    "OBSIDIENNE",
-    "ECHO",
-    "PYTHIE",
-    "ARIANE",
-    "CASSANDRE",
-];
-
 /// The name of a civil ship, from the shared grammar (`names.ron`), in capitals like the rest of
 /// the start screen.
 pub fn random_ship_name(h: u64) -> String {
@@ -299,7 +284,9 @@ pub fn random_registration(h: u64) -> String {
     format!("{}{}-{:04}", l(3), l(4), mix64(h ^ 5) % 10_000)
 }
 pub fn random_ai_name(h: u64) -> String {
-    AI_NAMES[(mix64(h ^ 6) % AI_NAMES.len() as u64) as usize].to_string()
+    vector_world::names::Spec::new("ai")
+        .name(mix64(h ^ 6))
+        .to_uppercase()
 }
 
 // ---- crew --------------------------------------------------------------------------------

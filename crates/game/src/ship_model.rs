@@ -172,6 +172,12 @@ struct Look {
     color: u32,
 }
 
+/// How slim the fuselage of a hull class is (half width over half length): the one table of the
+/// proportions of the classes, read by the 3D model and by the wireframe of the codex.
+pub fn class_aspect(class: &str) -> f32 {
+    look(class).aspect
+}
+
 fn look(class: &str) -> Look {
     const ROUND: &[(f32, f32, f32)] = &[
         (-1.0, 0.55, 0.55),

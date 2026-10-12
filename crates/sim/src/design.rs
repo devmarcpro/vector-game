@@ -220,8 +220,6 @@ pub struct Systems {
     pub supply_kw: f64,
     pub demand_kw: f64,
     pub overheating: bool,
-    /// Radiation the crew has received in all (Gy), after plating and shields.
-    pub dose_gy: f64,
     /// Current shield charge (damage points) and the time of the last hit.
     pub shield_pts: f64,
     pub last_hit: f64,
@@ -238,7 +236,6 @@ impl Systems {
             supply_kw: 0.0,
             demand_kw: 0.0,
             overheating: false,
-            dose_gy: 0.0,
             shield_pts: 0.0,
             last_hit: -1.0e9,
         }

@@ -14,31 +14,6 @@ pub const P_INCIDENT: f64 = 0.003;
 /// How long incidents last at most, in weeks (for the look-back).
 const LOOKBACK_WEEKS: i64 = 5;
 
-/// (effect on the share price at full strength, what happened). `{c}` the company, `{p}` the place.
-pub const KINDS: [(f64, &str); 6] = [
-    (
-        -0.12,
-        "Le convoi de {c} a ete capture par des pirates pres de {p}.",
-    ),
-    (
-        -0.07,
-        "Greve generale chez {c} a {p} : les chaines de production sont a l'arret.",
-    ),
-    (
-        0.09,
-        "{c} annonce des benefices records pour son comptoir de {p}.",
-    ),
-    (
-        -0.15,
-        "Scandale comptable chez {c} a {p} : le directeur local demissionne.",
-    ),
-    (0.10, "{c} decroche un contrat militaire majeur a {p}."),
-    (
-        -0.06,
-        "Un entrepot de {c} a {p} est detruit par un incendie.",
-    ),
-];
-
 #[derive(Clone, Debug, PartialEq)]
 pub struct Incident {
     pub company: usize,
@@ -63,9 +38,9 @@ impl Incident {
         .profile(t)
     }
 
-    /// Effect on the company's share price at time `t`.
-    pub fn effect(&self, t: f64) -> f64 {
-        KINDS[self.kind].0 * self.strength * self.profile(t)
+    /// Effect on the company's share price at time `t` (the kinds are in `data/incidents.ron`).
+    pub fn effect(&self, data: &GameData, t: f64) -> f64 {
+        data.incidents[self.kind].share * self.strength * self.profile(t)
     }
 }
 
@@ -95,7 +70,7 @@ pub fn incidents_in_cell(data: &GameData, seed: u64, c: Cell, t0: f64, t1: f64) 
                 out.push(Incident {
                     company,
                     cell: c,
-                    kind: (h(3) % KINDS.len() as u64) as usize,
+                    kind: (h(3) % data.incidents.len() as u64) as usize,
                     start,
                     end,
                     strength: 0.6 + 0.7 * unit(h(4)),
@@ -113,7 +88,7 @@ pub fn share_factor(data: &GameData, seed: u64, company: usize, hq: [f64; 3], t:
     for c in cells_around(cell_of(hq), 1) {
         for inc in incidents_in_cell(data, seed, c, t, t) {
             if inc.company == company {
-                f *= 1.0 + inc.effect(t);
+                f *= 1.0 + inc.effect(data, t);
             }
         }
     }
@@ -126,7 +101,7 @@ pub fn goods_factors(data: &GameData, seed: u64, pos: [f64; 3], t: f64) -> Vec<f
     let mut f = vec![1.0; data.resources.len()];
     for inc in incidents_in_cell(data, seed, cell_of(pos), t, t) {
         let k = &data.companies[inc.company];
-        let e = inc.effect(t);
+        let e = inc.effect(data, t);
         for (res, w) in &k.goods {
             if let Some(r) = data.resource_index(res) {
                 f[r] *= 1.0 - 0.8 * e * w;
@@ -180,7 +155,7 @@ mod tests {
         let f = goods_factors(&d, 7, pos, mid);
         let k = &d.companies[inc.company];
         let r = d.resource_index(&k.goods[0].0).unwrap();
-        if KINDS[inc.kind].0 < 0.0 {
+        if d.incidents[inc.kind].share < 0.0 {
             assert!(f[r] > 1.0, "scarcity after a blow: {}", f[r]);
         } else {
             assert!(f[r] < 1.0, "plenty in a boom: {}", f[r]);

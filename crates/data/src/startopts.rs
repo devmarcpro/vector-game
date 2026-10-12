@@ -88,9 +88,11 @@ pub struct StartData {
 }
 
 impl GameData {
+    /// Index of an AI personality in `start.ai_traits` by id (the start screen stores indices).
     pub fn ai_trait_index(&self, id: &str) -> Option<usize> {
         self.start.ai_traits.iter().position(|t| t.id == id)
     }
+    /// Index of a background in `start.backgrounds` by id.
     pub fn background_index(&self, id: &str) -> Option<usize> {
         self.start.backgrounds.iter().position(|t| t.id == id)
     }

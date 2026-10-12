@@ -676,7 +676,7 @@ fn snapshot(path: &str, scene: &str, data: Arc<GameData>) {
                 let data = Arc::clone(&g.data);
                 g.sim.ship.sys.temp_k = 700.0;
                 g.sim.ship.sys.overheating = true;
-                g.sim.ship.sys.dose_gy = 1.5;
+                g.sim.set_dosimeter_gy(1.5);
                 g.sim.ship.hull *= 0.4;
                 g.sim.ship.fuel *= 0.08;
                 g.sim.crew.unpaid = true;
@@ -798,7 +798,8 @@ fn snapshot(path: &str, scene: &str, data: Arc<GameData>) {
             g.sim.spawn_near(st, g.sim.bodies[st].radius + 200.0);
             g.sim.try_dock().expect("dock");
             g.sim.time = 120.0 * 86_400.0;
-            g.screen = Screen::Trading;
+            g.screen = Screen::Station;
+            g.market_tab = crate::game::MarketTab::Brokerage;
             g.trade_ui.tab = 0;
         }
         "assurance" | "titres" | "ventes" | "lignes" | "economie" => {
@@ -813,7 +814,8 @@ fn snapshot(path: &str, scene: &str, data: Arc<GameData>) {
                     g.sim.ship.cargo.add(&data, r, kg);
                 }
             }
-            g.screen = Screen::Trading;
+            g.screen = Screen::Station;
+            g.market_tab = crate::game::MarketTab::Brokerage;
             g.trade_ui.tab = match scene {
                 "assurance" => 4,
                 "titres" => 5,
@@ -1578,7 +1580,7 @@ fn snapshot(path: &str, scene: &str, data: Arc<GameData>) {
                 g.fleet_focus = 1;
             }
         }
-        "contracts" | "bank" | "market" => {
+        "contracts" | "bank" | "market" | "black" | "exchange" => {
             let (st, _) = g.sim.nearest_station().expect("station");
             g.sim.spawn_near(st, g.sim.bodies[st].radius + 200.0);
             g.key(KeyCode::KeyD, None, true);
@@ -1594,6 +1596,11 @@ fn snapshot(path: &str, scene: &str, data: Arc<GameData>) {
                     g.screen = Screen::Contracts;
                 }
                 "bank" => g.screen = Screen::Bank,
+                "black" => {
+                    g.sim.faction = g.data.factions.iter().position(|f| f.id == "verdant");
+                    g.open_market_tab(crate::game::MarketTab::Black);
+                }
+                "exchange" => g.open_market_tab(crate::game::MarketTab::Exchange),
                 _ => g.screen = Screen::Station,
             }
         }
@@ -1666,11 +1673,20 @@ fn snapshot(path: &str, scene: &str, data: Arc<GameData>) {
             }
             g.sim.advance(days * 86_400.0, &ShipInput::default());
             g.screen = match scene {
-                "crew" | "crewnet" | "medicine" | "cryo" => {
-                    g.crew_net = scene == "crewnet";
-                    g.med_mode = scene == "medicine";
-                    g.cryo_mode = scene == "cryo";
-                    if g.med_mode {
+                "crew" | "crewnet" | "medicine" | "cryo" | "family" | "recruit" => {
+                    use crate::game::CrewTab;
+                    g.crew_tab = match scene {
+                        "crewnet" => CrewTab::Network,
+                        "medicine" => CrewTab::Medicine,
+                        "cryo" => CrewTab::Cryo,
+                        "family" => CrewTab::Family,
+                        "recruit" => CrewTab::Recruit,
+                        _ => CrewTab::List,
+                    };
+                    if g.crew_tab == CrewTab::Family {
+                        g.refresh_family();
+                    }
+                    if g.crew_tab == CrewTab::Medicine {
                         // A few injuries to look at.
                         let d = Arc::clone(&g.data);
                         let b = &mut g.sim.crew.members[0].body;
@@ -1683,7 +1699,6 @@ fn snapshot(path: &str, scene: &str, data: Arc<GameData>) {
                     }
                     Screen::Crew
                 }
-                "recruit" => Screen::Recruit,
                 _ => Screen::Journal,
             };
         }

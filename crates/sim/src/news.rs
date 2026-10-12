@@ -7,7 +7,7 @@
 //! it arrives. Each item says how far away it happened.
 use crate::bourse::DAY;
 use crate::epidemic;
-use crate::incidents::{self, KINDS};
+use crate::incidents;
 use crate::politics::{self, cell_center, cell_of, cells_around, EndKind, PolKind, SECTOR_LY};
 use crate::Sim;
 use serde::{Deserialize, Serialize};
@@ -238,8 +238,8 @@ impl Sim {
             for inc in incidents::incidents_in_cell(&data, seed, c, e0, e1) {
                 if inc.start > e0 && inc.start <= e1 {
                     let place = self.place_name(incidents::place(&inc));
-                    let text = KINDS[inc.kind]
-                        .1
+                    let text = data.incidents[inc.kind]
+                        .text
                         .replace("{c}", &data.companies[inc.company].name)
                         .replace("{p}", &place);
                     self.news_push(inc.start + delay, 2, d, text);

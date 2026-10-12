@@ -71,10 +71,8 @@ pub fn place_of(s: Screen) -> Place {
         Flight | Dialogue | Cosmos => Place::Space(PILOTAGE),
         Galaxy | Surface | NavAuto => Place::Space(NAVIGATION),
         Ship | Inventory | Shipyard => Place::Space(VAISSEAU),
-        Crew | Recruit | Family => Place::Space(EQUIPAGE),
-        Station | Contracts | Bank | Trading | Bourse | Livestock | Casino => {
-            Place::Space(COMMERCE)
-        }
+        Crew => Place::Space(EQUIPAGE),
+        Station | Contracts | Bank | Livestock | Casino => Place::Space(COMMERCE),
         Rogue | Expedition => Place::Space(EXPLORATION),
         Empire | Colony | Fleet | Factions => Place::Space(COLONIES),
         Journal | Codex | Tech | Proto => Place::Space(CODEX),
@@ -85,7 +83,7 @@ pub fn place_of(s: Screen) -> Place {
 }
 
 /// Every screen of the game (the menu's test walks it; the help of a screen is found by its place).
-pub const ALL_SCREENS: [Screen; 38] = [
+pub const ALL_SCREENS: [Screen; 34] = [
     Screen::Dashboard,
     Screen::Designer,
     Screen::MainMenu,
@@ -98,14 +96,12 @@ pub const ALL_SCREENS: [Screen; 38] = [
     Screen::Ship,
     Screen::Shipyard,
     Screen::Crew,
-    Screen::Recruit,
     Screen::Journal,
     Screen::Galaxy,
     Screen::Contracts,
     Screen::Bank,
     Screen::Livestock,
     Screen::Casino,
-    Screen::Trading,
     Screen::Cosmos,
     Screen::Rogue,
     Screen::Empire,
@@ -117,8 +113,6 @@ pub const ALL_SCREENS: [Screen; 38] = [
     Screen::Options,
     Screen::Codex,
     Screen::Surface,
-    Screen::Bourse,
-    Screen::Family,
     Screen::Factions,
     Screen::Proto,
     Screen::Dialogue,
@@ -178,7 +172,7 @@ pub static SPACES: [Space; 8] = [
                 false,
                 |g| {
                     if g.sim.docked.is_some() {
-                        g.station_key(KeyCode::KeyU);
+                        g.dock_key(KeyCode::KeyU);
                     } else {
                         g.screen = Screen::Flight;
                         g.map = false;
@@ -291,7 +285,7 @@ pub static SPACES: [Space; 8] = [
                 Some(Screen::Shipyard),
                 Need::Docked,
                 false,
-                |g| g.station_key(KeyCode::KeyY),
+                |g| g.dock_key(KeyCode::KeyY),
             ),
         ],
     },
@@ -302,32 +296,11 @@ pub static SPACES: [Space; 8] = [
             entry(
                 "EQUIPAGE",
                 "K",
-                "Postes, quarts, besoins, equipement, organes, relations.",
+                "Un seul ecran a onglets : liste et fiche, medecine, cryo, organes, equipement, reseau, arbre familial, recrutement (a quai).",
                 Some(Screen::Crew),
                 Need::Any,
                 true,
-                |g| g.screen = Screen::Crew,
-            ),
-            entry(
-                "ARBRE FAMILIAL",
-                "G DANS K",
-                "La famille de la personne choisie : parents, fratrie, genes.",
-                Some(Screen::Family),
-                Need::Any,
-                true,
-                |g| {
-                    g.screen = Screen::Crew;
-                    g.crew_key(KeyCode::KeyG);
-                },
-            ),
-            entry(
-                "RECRUTEMENT",
-                "N A QUAI",
-                "Embaucher des candidats de la station.",
-                Some(Screen::Recruit),
-                Need::Docked,
-                false,
-                |g| g.station_key(KeyCode::KeyN),
+                |g| g.open_crew_tab(crate::game::CrewTab::List),
             ),
         ],
     },
@@ -338,29 +311,14 @@ pub static SPACES: [Space; 8] = [
             entry(
                 "MARCHE",
                 "AMARRER",
-                "Vendre la soute, acheter, faire le plein, reparer.",
+                "Un seul ecran a onglets : marche (vendre, acheter, plein, reparer), marche noir, bourse (T) et courtage (D : rumeurs, arbitrage, cartels, appels d'offres, assurance, titres, ventes, lignes, economie).",
                 Some(Screen::Station),
                 Need::Docked,
                 false,
-                |g| g.screen = g.dock_screen(),
-            ),
-            entry(
-                "BOURSE",
-                "T A QUAI",
-                "Courbes de prix, contrats a terme, actions des entreprises.",
-                Some(Screen::Bourse),
-                Need::Docked,
-                false,
-                |g| g.station_key(KeyCode::KeyT),
-            ),
-            entry(
-                "COURTAGE",
-                "D A QUAI",
-                "Rumeurs, arbitrage, cartels, appels d'offres, assurance.",
-                Some(Screen::Trading),
-                Need::Docked,
-                false,
-                |g| g.station_key(KeyCode::KeyD),
+                |g| {
+                    g.screen = g.dock_screen();
+                    g.market_tab = crate::game::MarketTab::Open;
+                },
             ),
             entry(
                 "CONTRATS",
@@ -369,7 +327,7 @@ pub static SPACES: [Space; 8] = [
                 Some(Screen::Contracts),
                 Need::Docked,
                 false,
-                |g| g.station_key(KeyCode::KeyC),
+                |g| g.dock_key(KeyCode::KeyC),
             ),
             entry(
                 "BANQUE",
@@ -378,7 +336,7 @@ pub static SPACES: [Space; 8] = [
                 Some(Screen::Bank),
                 Need::Docked,
                 false,
-                |g| g.station_key(KeyCode::KeyE),
+                |g| g.dock_key(KeyCode::KeyE),
             ),
             entry(
                 "ELEVAGE",
@@ -387,7 +345,7 @@ pub static SPACES: [Space; 8] = [
                 Some(Screen::Livestock),
                 Need::Docked,
                 false,
-                |g| g.station_key(KeyCode::KeyL),
+                |g| g.dock_key(KeyCode::KeyL),
             ),
             entry(
                 "CASINO",
@@ -396,7 +354,7 @@ pub static SPACES: [Space; 8] = [
                 Some(Screen::Casino),
                 Need::Docked,
                 false,
-                |g| g.station_key(KeyCode::KeyA),
+                |g| g.dock_key(KeyCode::KeyA),
             ),
         ],
     },
@@ -830,7 +788,9 @@ impl Game {
         }
         self.hub_origin = Some(space);
         (e.go)(self);
-        if matches!(self.screen, Screen::Hub | Screen::Flight | Screen::Station) {
+        if matches!(self.screen, Screen::Hub | Screen::Flight)
+            || (self.screen == Screen::Station && self.market_tab == crate::game::MarketTab::Open)
+        {
             // An action, or a refusal: nothing to come back from.
             self.hub_origin = None;
         }

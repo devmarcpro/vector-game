@@ -408,6 +408,18 @@ impl Ecosystem {
         taken
     }
 
+    /// Put `kg` of a species back in a biome (animals released from the pens): added to what
+    /// lives there, never above the capacity of the biome. False when the species cannot live
+    /// in this biome or the world has no life.
+    pub fn restock(&mut self, s: usize, b: usize, kg: f64) -> bool {
+        if !self.life || !self.live[s * self.nb + b] {
+            return false;
+        }
+        let at = s * self.nb + b;
+        self.bio[at] = (self.bio[at] + kg.max(0.0)).min(self.cap[b]);
+        true
+    }
+
     /// Introduce a species in a biome with a small founding population (kg). Returns false if
     /// it cannot live there or is already established.
     pub fn introduce(&mut self, s: usize, b: usize, kg: f64) -> bool {
@@ -927,6 +939,33 @@ mod tests {
             .iter()
             .filter(|(_, l)| l.starts_with("Espèce introduite"))
             .count()
+    }
+
+    #[test]
+    fn released_animals_join_the_local_population_up_to_the_capacity() {
+        // Audit B16: a release is an addition to the food web of the territory, a capture a
+        // subtraction (`harvest`); both read the same biomass table.
+        let (mut s, _, b) = two_colonies();
+        let key = s.colonies[b].id;
+        let eco = s.ecologies.get_mut(&key).expect("eco");
+        let sp = (0..eco.ns)
+            .find(|&i| eco.live[i] && !eco.producer[i])
+            .expect("an animal that lives here");
+        eco.bio[sp] = 10.0;
+        assert!(eco.restock(sp, 0, 5.0));
+        assert!((eco.at(sp, 0) - 15.0).abs() < 1e-9);
+        let taken = eco.harvest(sp, 0, 5.0);
+        assert!((taken - 5.0).abs() < 1e-9 && (eco.at(sp, 0) - 10.0).abs() < 1e-9);
+        assert!(eco.restock(sp, 0, 1.0e30));
+        assert!(
+            eco.at(sp, 0) <= eco.cap[0] + 1e-6,
+            "never above the capacity"
+        );
+        let dead = (0..eco.ns)
+            .find(|&i| !eco.live[i])
+            .expect("a species that cannot live here");
+        assert!(!eco.restock(dead, 0, 5.0), "it cannot live in this biome");
+        assert_eq!(eco.at(dead, 0), 0.0);
     }
 
     #[test]

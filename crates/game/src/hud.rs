@@ -1169,7 +1169,7 @@ fn draw_physics_panel(fb: &mut Framebuffer, v: &View, rows: usize) {
         &format!(
             "DOSE {:.2} MGY/H  CUMULEE {:.1} MGY  SIGNATURE IR {:.0} KW",
             rate * 1e3,
-            ship.sys.dose_gy * 1e3,
+            sim.dosimeter_gy() * 1e3,
             sim.ir_signature_kw()
         ),
         if rate > 0.05 { RED } else { DIM },

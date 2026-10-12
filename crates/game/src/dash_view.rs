@@ -77,6 +77,19 @@ const fn link(label: &'static str, screen: Screen) -> Link {
     }
 }
 
+fn open_exchange(g: &mut Game) {
+    g.open_market_tab(crate::game::MarketTab::Exchange);
+}
+
+fn open_brokerage(g: &mut Game) {
+    g.open_market_tab(crate::game::MarketTab::Brokerage);
+}
+
+fn open_insurance(g: &mut Game) {
+    g.open_market_tab(crate::game::MarketTab::Brokerage);
+    g.click_trade_tab(4);
+}
+
 fn open_mind(g: &mut Game) {
     g.open_tech();
     g.tech_mind = true;
@@ -90,15 +103,19 @@ pub fn links(panel: usize) -> &'static [Link] {
         link("CHANTIER NAVAL", Screen::Shipyard),
         link("GALAXIE ET SAUT FTL", Screen::Galaxy),
     ];
-    const CREW: [Link; 3] = [
-        link("EQUIPAGE", Screen::Crew),
-        link("ARBRE FAMILIAL", Screen::Family),
-        link("RECRUTEMENT", Screen::Recruit),
-    ];
+    const CREW: [Link; 1] = [link("EQUIPAGE", Screen::Crew)];
     const MONEY: [Link; 3] = [
         link("BANQUE", Screen::Bank),
-        link("BOURSE", Screen::Bourse),
-        link("COURTAGE ET ASSURANCE", Screen::Trading),
+        Link {
+            label: "BOURSE",
+            screen: Screen::Station,
+            go: Some(open_exchange),
+        },
+        Link {
+            label: "COURTAGE ET ASSURANCE",
+            screen: Screen::Station,
+            go: Some(open_brokerage),
+        },
     ];
     const WORLD: [Link; 3] = [
         link("JOURNAL ET NOUVELLES", Screen::Journal),
@@ -139,23 +156,23 @@ pub fn links(panel: usize) -> &'static [Link] {
     }
 }
 
-/// The screen that deals with an alert, and whether it is the page of the mind.
-pub fn topic_screen(t: Topic) -> (Screen, bool) {
+/// The screen that deals with an alert, and the page of it to open (the mind, the insurance).
+pub fn topic_screen(t: Topic) -> (Screen, Option<fn(&mut Game)>) {
     use Topic::*;
     match t {
-        Hull | Modules | Heat | Power | Radiation | Structure | Antimatter => (Screen::Ship, false),
-        Fuel => (Screen::Inventory, false),
-        Collision | Weather => (Screen::Flight, false),
-        Health | Disease | Wounds | Needs | Pay | Cryo => (Screen::Crew, false),
-        Debt => (Screen::Bank, false),
-        Insurance => (Screen::Trading, false),
-        Law | War => (Screen::Factions, false),
-        Tribute => (Screen::Flight, false),
-        Surprise => (Screen::Journal, false),
-        Contract => (Screen::Contracts, false),
-        Colony | Epidemic => (Screen::Empire, false),
-        Malware | Mind => (Screen::Tech, true),
-        Yard => (Screen::Shipyard, false),
+        Hull | Modules | Heat | Power | Radiation | Structure | Antimatter => (Screen::Ship, None),
+        Fuel => (Screen::Inventory, None),
+        Collision | Weather => (Screen::Flight, None),
+        Health | Disease | Wounds | Needs | Pay | Cryo => (Screen::Crew, None),
+        Debt => (Screen::Bank, None),
+        Insurance => (Screen::Station, Some(open_insurance as fn(&mut Game))),
+        Law | War => (Screen::Factions, None),
+        Tribute => (Screen::Flight, None),
+        Surprise => (Screen::Journal, None),
+        Contract => (Screen::Contracts, None),
+        Colony | Epidemic => (Screen::Empire, None),
+        Malware | Mind => (Screen::Tech, Some(open_mind as fn(&mut Game))),
+        Yard => (Screen::Shipyard, None),
     }
 }
 
@@ -237,10 +254,9 @@ impl Game {
         self.hub_origin = None;
         self.dash_origin = true;
         (go.unwrap_or(e.go))(self);
-        if matches!(
-            self.screen,
-            Screen::Dashboard | Screen::Flight | Screen::Station
-        ) {
+        if matches!(self.screen, Screen::Dashboard | Screen::Flight)
+            || (self.screen == Screen::Station && self.market_tab == crate::game::MarketTab::Open)
+        {
             // An action, or a refusal: nothing to come back from.
             self.dash_origin = false;
         }
@@ -253,11 +269,11 @@ impl Game {
         if panel == ALERTES {
             let list = self.alerts();
             if let Some(a) = list.get(idx) {
-                let (screen, mind) = topic_screen(a.topic);
+                let (screen, go) = topic_screen(a.topic);
                 if screen == Screen::Flight {
                     self.say(a.text.clone());
                 } else {
-                    self.dash_open(screen, mind.then_some(open_mind as fn(&mut Game)));
+                    self.dash_open(screen, go);
                 }
             }
             return;
@@ -704,7 +720,7 @@ fn draw_ship(fb: &mut Framebuffer, g: &Game, (x, y, w, h): Rect) {
         &format!(
             "DOSE {:.1} MGY/H (CUMULEE {:.2} GY)  CHARGE {:.1} G",
             rate * 1e3,
-            sys.dose_gy,
+            s.dosimeter_gy(),
             s.structural_load_g()
         ),
         if rate >= vector_sim::alerts::DOSE_RATE_WARNING {
@@ -1979,7 +1995,7 @@ mod game_tests {
                         // A crisis: heat, illness, radiation, an empty tank, malware.
                         g.sim.ship.sys.temp_k = 700.0;
                         g.sim.ship.sys.overheating = true;
-                        g.sim.ship.sys.dose_gy = 2.0;
+                        g.sim.set_dosimeter_gy(2.0);
                         g.sim.ship.fuel = 0.0;
                         g.sim.mind.malware = 0.7;
                         g.sim.crew.unpaid = true;

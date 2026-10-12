@@ -3007,16 +3007,16 @@ impl Game {
                 Err(e) => self.say(e.to_uppercase()),
             },
             KeyCode::KeyO => self.found_colony_at_target(),
-            KeyCode::Digit1 => match self.sim.launch_decoy() {
+            KeyCode::Comma => match self.sim.launch_decoy() {
                 Ok(()) => self.say("LEURRE THERMIQUE LANCE"),
                 Err(e) => self.say(e.to_uppercase()),
             },
-            KeyCode::Digit2 => match self.sim.toggle_active_sensors() {
+            KeyCode::Period => match self.sim.toggle_active_sensors() {
                 Ok(true) => self.say("RADAR ACTIF : VOUS VOYEZ LOIN, ET ON VOUS VOIT DE TRES LOIN"),
                 Ok(false) => self.say("RADAR COUPE : DETECTION PASSIVE SEULE"),
                 Err(e) => self.say(e.to_uppercase()),
             },
-            KeyCode::Digit3 => match self.sim.board_on_foot() {
+            KeyCode::Slash => match self.sim.board_on_foot() {
                 Ok(()) => {
                     self.rogue_from_surface = false;
                     self.screen = Screen::Rogue;
@@ -4713,14 +4713,14 @@ mod tests {
     fn flight_keys_for_flares_radar_and_boarding_answer_with_a_reason() {
         let mut g = Game::new(data(), 1);
         g.key(KeyCode::Enter, None, true);
-        g.key(KeyCode::Digit1, None, true);
+        g.key(KeyCode::Comma, None, true);
         assert!(g
             .messages
             .last()
             .is_some_and(|m| m.contains("LANCE-LEURRES")));
-        g.key(KeyCode::Digit2, None, true);
+        g.key(KeyCode::Period, None, true);
         assert!(g.messages.last().is_some_and(|m| m.contains("RADAR")));
-        g.key(KeyCode::Digit3, None, true);
+        g.key(KeyCode::Slash, None, true);
         assert!(g.messages.last().is_some_and(|m| m.contains("CIBLE")));
         assert_eq!(g.screen, Screen::Flight);
     }

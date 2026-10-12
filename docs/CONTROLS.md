@@ -201,9 +201,9 @@ Barre d'onglets en haut du chantier : COQUES, CONCEPTION, EQUIPEMENT, PLANS ET C
 ## Militaire
 | Touche | Action |
 |---|---|
-| 1 (en vol) | Lancer un leurre thermique (lance-leurres + ressource leurres) |
-| 2 (en vol) | Radar actif ON/OFF : voir plus loin, mais etre vu de tres loin |
-| 3 (en vol) | Aborder a pied la cible neutralisee ; U reste le pillage abstrait |
+| , (en vol) | Lancer un leurre thermique (lance-leurres + ressource leurres) |
+| . (en vol) | Radar actif ON/OFF : voir plus loin, mais etre vu de tres loin |
+| / (en vol) | Aborder a pied la cible neutralisee ; U reste le pillage abstrait |
 | X puis G | Page GUERRE : fronts, blocus, batteries, paix (P), contrats de mercenaires (M), agents : R recruter, A agent suivant, C secteur vise, I infiltrer, 1-4 sabotage / vol de plans / ecoutes / rumeur, W rappeler, D drone ; Gauche/Droite change de peuple ; G ou Echap revient |
 | F3 (flotte) | O ordre du vaisseau choisi (commerce, suivre, attaquer, defendre, patrouiller), R ravitailler l'escadre, V reparer (a quai), 1-4 sort des prisonniers d'une prise (enroler, liberer, rancon, executer) |
 | Exploration : T / E / G | Tirer (armes a feu), recharger depuis la soute, lancer une grenade |

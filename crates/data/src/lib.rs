@@ -3692,6 +3692,46 @@ mod tests {
     }
 
     #[test]
+    fn start_options_are_validated() {
+        let ok = GameData::load(&dir()).expect("data loads");
+        assert!(ok.start.ai_traits.len() >= 5 && ok.start.presets.len() >= 3);
+        assert!(ok.ai_trait_index("prudente").is_some());
+        let mut d = ok.clone();
+        d.start.ai_traits[1].bias[0] = 0.9;
+        assert!(d.validate().is_err(), "bias too strong");
+        let mut d = ok.clone();
+        d.start.ai_traits[1].alloc.pop();
+        assert!(d.validate().is_err(), "five tasks");
+        let mut d = ok.clone();
+        d.start.ai_traits[0].bias[2] = 0.1;
+        assert!(d.validate().is_err(), "the first personality is neutral");
+        let mut d = ok.clone();
+        d.start.backgrounds[1].skills[0].0 = "magie".into();
+        assert!(d.validate().is_err(), "unknown skill");
+        let mut d = ok.clone();
+        d.start.backgrounds[1]
+            .reputation
+            .push(("nulle_part".into(), 1.0));
+        assert!(d.validate().is_err(), "unknown faction");
+        let mut d = ok.clone();
+        d.start.presets[0].settings.push(("inconnu".into(), 1.0));
+        assert!(d.validate().is_err(), "unknown preset key");
+        let mut d = ok.clone();
+        let dup = d.start.presets[0].clone();
+        d.start.presets.push(dup);
+        assert!(d.validate().is_err(), "duplicate preset");
+        let mut d = ok.clone();
+        d.start.systems.pop();
+        assert!(d.validate().is_err(), "the kinds are the code's");
+        let mut d = ok.clone();
+        d.start.ai_cores[0].cost = 1;
+        assert!(d.validate().is_err(), "the first core is free");
+        let mut d = ok;
+        d.start.ai_cores[1].power = f64::NAN;
+        assert!(d.validate().is_err(), "finite numbers");
+    }
+
+    #[test]
     fn cartels_are_validated() {
         let ok = GameData::load(&dir()).expect("data loads");
         assert!(ok.cartels.len() >= 4);

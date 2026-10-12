@@ -98,11 +98,11 @@ pub fn hint_line(g: &Game) -> String {
         Screen::MainMenu => "HAUT/BAS CHOISIR  ENTREE VALIDER  TAPER UNE GRAINE POUR LA PARTIE RAPIDE",
         Screen::NewGame => match g.ng.step {
             0 => "ENTREE SUIVANT  ECHAP MENU PRINCIPAL  F1 AIDE",
-            1 | 2 => "HAUT/BAS CHOISIR  ENTREE SUIVANT  ECHAP PRECEDENT  F1 AIDE",
-            3 => "HAUT/BAS PERSONNE  ESPACE PRENDRE/LAISSER  GAUCHE/DROITE POSTE  ENTREE SUIVANT  ECHAP PRECEDENT",
-            4 => "TAPER UNE GRAINE  TAB ALEATOIRE  SUPPR PAR DEFAUT  ENTREE SUIVANT  ECHAP PRECEDENT",
-            5 => "HAUT/BAS CHOISIR  GAUCHE/DROITE CHANGER  ENTREE SUIVANT  ECHAP PRECEDENT",
-            _ => "ENTREE LANCER LA PARTIE  ECHAP PRECEDENT  F1 AIDE",
+            1 => "HAUT/BAS CHOISIR  ENTREE SUIVANT  ECHAP PRECEDENT  F1 AIDE",
+            3 => "HAUT/BAS PERSONNE  ESPACE PRENDRE  GAUCHE/DROITE POSTE  F3 LISTE/EDITION  TAB ALEA  ENTREE SUIVANT",
+            5 => "TAPER UNE GRAINE  TAB ALEATOIRE  SUPPR PAR DEFAUT  ENTREE SUIVANT  ECHAP PRECEDENT",
+            2 | 4 | 6 | 7 => "HAUT/BAS LIGNE  GAUCHE/DROITE CHANGER  TAB ALEA  ESPACE ACTION  TAPER POUR ECRIRE  ENTREE SUIVANT",
+            _ => "HAUT/BAS LIGNE  GAUCHE/DROITE CHANGER  TAB ALEA  ENTREE ACTION OU LANCER  ECHAP PRECEDENT  F1 AIDE",
         },
         Screen::Dashboard => {
             "TAB/GAUCHE/DROITE PANNEAU  HAUT/BAS LIGNE  ENTREE OUVRIR L'ECRAN DETAILLE  1-9 PANNEAU  ECHAP OU \\ FERMER  F1 AIDE"
@@ -431,7 +431,10 @@ pub fn help_lines(screen: Screen) -> &'static [&'static str] {
             "Nouvelle partie : scenario, vaisseau, equipage, galaxie, options",
         ],
         Screen::NewGame => &[
-            "Sept etapes : explications, scenario, vaisseau, equipage, galaxie, options, recapitulatif",
+            "Neuf etapes : explications, scenario, vaisseau, equipage, IA, galaxie, monde, options, recapitulatif",
+            "Vaisseau : modele du scenario, coque du catalogue + equipement libre, ou conception complete (budget)",
+            "Chaque ligne : < > change, [ALEA] tire au hasard (Tab), taper ecrit un nom ; TOUT ALEATOIRE en haut",
+            "Recapitulatif : cout, difficulte 1-5, avertissements ; sauver/charger une configuration, code a partager",
             "Entree : etape suivante   Echap : precedente (la premiere revient au menu)",
             "Chaque etape est cliquable en haut ; chaque choix change l'etat de depart",
             "Equipage : Espace prend ou laisse, Gauche/Droite change le poste, budget de points",

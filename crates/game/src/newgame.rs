@@ -5,27 +5,28 @@ use crate::game::{parse_seed, Game, Screen, DEFAULT_SEED};
 use crate::hub::{button, wrap, HOVER};
 use crate::hud::{AMBER, DIM, GREEN, RED};
 use crate::mouse::Act;
+use std::cell::RefCell;
 use std::path::PathBuf;
 use vector_render::Framebuffer;
 use vector_sim::crew::Person;
+use vector_sim::shipwright::{Blueprint, Report};
 use vector_sim::start::{self, CrewPick, HomePreview, StartConfig};
+use vector_sim::start_custom::{CustomStart, Review};
 use winit::keyboard::KeyCode;
 
-pub const STEPS: [&str; 7] = [
+pub const STEPS: [&str; 9] = [
     "EXPLICATIONS",
     "SCENARIO",
     "VAISSEAU",
     "EQUIPAGE",
+    "IA",
     "GALAXIE",
+    "MONDE",
     "OPTIONS",
     "RECAPITULATIF",
 ];
 const LAST: usize = STEPS.len() - 1;
-const S_CREW: usize = 3;
-const S_SEED: usize = 4;
-const S_OPTIONS: usize = 5;
-/// Rows of the options step: language, keyboard, tutorial, difficulty, advanced rules.
-const OPTION_ROWS: usize = 5;
+use crate::newgame_custom::{S_AI, S_CREW, S_OPTIONS, S_RECAP, S_SEED, S_SHIP, S_WORLD};
 
 #[derive(Default)]
 pub struct NewGameUi {
@@ -38,11 +39,30 @@ pub struct NewGameUi {
     pub custom_crew: bool,
     pub cursor: usize,
     pub seed_text: String,
-    pub opt_sel: usize,
     /// What the typed seed gives at home, for the seed it was computed for.
     pub home: Option<(u64, HomePreview)>,
     /// Seeds drawn by the random button (so that two draws differ).
     pub draws: u64,
+    /// Everything chosen beyond the scenario (see `vector_sim::start_custom`).
+    pub custom: CustomStart,
+    /// The selected row of each step, and where the keys go on the crew step.
+    pub row: [usize; 9],
+    pub crew_focus: bool,
+    pub crew_tab: u8,
+    pub trait_pick: usize,
+    pub note: String,
+    pub plan_files: Vec<String>,
+    pub plan_pick: usize,
+    pub preset_idx: Option<usize>,
+    pub preset_name: String,
+    pub preset_pick: usize,
+    pub designing: bool,
+    /// (seed, salt) the pool was drawn for.
+    pub pool_key: Option<(u64, u32)>,
+    pub world_key: Option<(u64, usize)>,
+    pub world_preview: Option<(HomePreview, bool)>,
+    pub plan_cache: RefCell<Option<(String, Result<(Blueprint, Report), String>)>>,
+    pub review: RefCell<Option<(String, Review)>>,
 }
 
 impl NewGameUi {
@@ -63,13 +83,18 @@ impl Game {
     }
 
     /// The seed, scenario or ship changed: recompute what depends on them.
-    fn ng_refresh(&mut self) {
+    pub(crate) fn ng_refresh(&mut self) {
         let seed = self.ng.seed();
-        let fresh = self.ng.pool.is_empty() || self.ng.home.as_ref().map(|h| h.0) != Some(seed);
-        if fresh {
-            self.ng.pool = start::crew_pool(&self.data, seed);
-            self.ng.home = Some((seed, start::home_preview(&self.data, seed)));
+        let key = (seed, self.ng.custom.crew.salt);
+        if self.ng.pool.is_empty() || self.ng.pool_key != Some(key) {
+            self.ng.pool = start::crew_pool_for(&self.data, seed, key.1);
+            self.ng.pool_key = Some(key);
             self.ng.custom_crew = false;
+            self.ng.custom.crew.edits.clear();
+            self.ng.custom.crew.locked.clear();
+        }
+        if self.ng.home.as_ref().map(|h| h.0) != Some(seed) {
+            self.ng.home = Some((seed, start::home_preview(&self.data, seed)));
         }
         let sc = self.ng.scenario.min(self.data.scenarios.len() - 1);
         self.ng.scenario = sc;
@@ -89,11 +114,16 @@ impl Game {
             ship: self.ng.ship,
             crew: Some(self.ng.picks.clone()),
             rules: self.pending_rules.clone(),
+            custom: self.ng.custom.clone(),
         }
     }
 
     pub fn ng_goto(&mut self, step: usize) {
         self.ng.step = step.min(LAST);
+        self.ng.note.clear();
+        if self.ng.step == S_WORLD {
+            self.ng_world_refresh();
+        }
     }
 
     fn ng_next(&mut self) {
@@ -101,7 +131,7 @@ impl Game {
             let cfg = self.ng_config();
             self.start_game(&cfg);
         } else {
-            self.ng.step += 1;
+            self.ng_goto(self.ng.step + 1);
         }
     }
 
@@ -109,7 +139,7 @@ impl Game {
         if self.ng.step == 0 {
             self.screen = Screen::MainMenu;
         } else {
-            self.ng.step -= 1;
+            self.ng_goto(self.ng.step - 1);
         }
     }
 
@@ -126,13 +156,10 @@ impl Game {
         }
     }
 
-    pub fn click_ng_ship(&mut self, i: usize) {
-        self.ng.ship = i;
-    }
-
     pub fn click_ng_candidate(&mut self, i: usize) {
         self.ng.cursor = i;
-        self.ng_toggle(i);
+        self.ng.crew_focus = false;
+        self.ng_toggle_pick(i);
     }
 
     pub fn click_ng_random(&mut self, _: usize) {
@@ -144,17 +171,8 @@ impl Game {
         self.ng_refresh();
     }
 
-    pub fn click_ng_option(&mut self, code: usize) {
-        self.ng.opt_sel = code / 3;
-        match code % 3 {
-            0 => self.ng_option_adjust(false),
-            2 => self.ng_option_adjust(true),
-            _ => {
-                if self.ng.opt_sel == OPTION_ROWS - 1 {
-                    self.open_rules(Screen::NewGame);
-                }
-            }
-        }
+    pub fn click_ng_random_all(&mut self, _: usize) {
+        self.ng_random_all();
     }
 
     fn ng_random_seed(&mut self) {
@@ -175,7 +193,7 @@ impl Game {
             .sum()
     }
 
-    fn ng_toggle(&mut self, k: usize) {
+    pub(crate) fn ng_toggle_pick(&mut self, k: usize) {
         if k >= self.ng.pool.len() {
             return;
         }
@@ -215,7 +233,7 @@ impl Game {
         }
     }
 
-    fn save_settings(&self) {
+    pub(crate) fn save_settings(&self) {
         let path = if cfg!(test) {
             std::env::temp_dir().join("vector_test_settings.cfg")
         } else {
@@ -224,39 +242,50 @@ impl Game {
         self.settings.save(&path);
     }
 
-    fn ng_option_adjust(&mut self, up: bool) {
-        match self.ng.opt_sel {
-            0 => self.settings.adjust(7, up),
-            1 => self.settings.adjust(6, up),
-            2 => self.settings.adjust(4, up),
-            3 => {
-                let lvl = start::difficulty_of(&self.pending_rules).unwrap_or(1);
-                let next = if up {
-                    (lvl + 1).min(2)
-                } else {
-                    lvl.saturating_sub(1)
-                };
-                self.pending_rules = start::difficulty_rules(next);
-            }
-            _ => {}
-        }
-        self.save_settings();
-    }
-
     pub fn newgame_key(&mut self, code: KeyCode, text: Option<&str>) {
         let step = self.ng.step;
         let (up, down) = (code == KeyCode::ArrowUp, code == KeyCode::ArrowDown);
         match code {
             KeyCode::Escape => return self.ng_prev(),
             KeyCode::Enter => {
-                if step == S_OPTIONS && self.ng.opt_sel == OPTION_ROWS - 1 {
-                    self.open_rules(Screen::NewGame);
+                // On an action row, Enter does the action; elsewhere it goes on.
+                let row = self.ng.row[step];
+                let acts = matches!(
+                    self.ng_kind_selected(),
+                    Some(crate::newgame_custom::Kind::Action)
+                ) && step != S_RECAP
+                    && (step != S_CREW || self.ng.crew_focus);
+                if acts {
+                    self.click_ng_field(row * 4 + 1);
                 } else {
                     self.ng_next();
                 }
                 return;
             }
             _ => {}
+        }
+        let row_step = matches!(step, S_SHIP | S_AI | S_WORLD | S_OPTIONS | S_RECAP)
+            || (step == S_CREW && self.ng.crew_focus);
+        if step == S_CREW && code == KeyCode::F3 {
+            self.ng.crew_focus = !self.ng.crew_focus;
+            return;
+        }
+        if row_step {
+            let n = self.ng_rows().len().max(1);
+            let r = self.ng.row[step].min(n - 1);
+            match code {
+                KeyCode::Tab => self.click_ng_field(r * 4 + 3),
+                KeyCode::ArrowUp => self.ng.row[step] = (r + n - 1) % n,
+                KeyCode::ArrowDown => self.ng.row[step] = (r + 1) % n,
+                KeyCode::ArrowLeft => self.click_ng_field(r * 4),
+                KeyCode::ArrowRight => self.click_ng_field(r * 4 + 2),
+                _ => {
+                    if !self.ng_type(code, text) && code == KeyCode::Space {
+                        self.click_ng_field(r * 4 + 1);
+                    }
+                }
+            }
+            return;
         }
         match step {
             1 => {
@@ -267,20 +296,12 @@ impl Game {
                     self.click_ng_scenario((self.ng.scenario + 1) % n);
                 }
             }
-            2 => {
-                let n = self.data.scenarios[self.ng.scenario].ships.len();
-                if up {
-                    self.ng.ship = (self.ng.ship + n - 1) % n;
-                } else if down {
-                    self.ng.ship = (self.ng.ship + 1) % n;
-                }
-            }
             S_CREW => {
                 let n = self.ng.pool.len().max(1);
                 match code {
                     KeyCode::ArrowUp => self.ng.cursor = (self.ng.cursor + n - 1) % n,
                     KeyCode::ArrowDown => self.ng.cursor = (self.ng.cursor + 1) % n,
-                    KeyCode::Space => self.ng_toggle(self.ng.cursor),
+                    KeyCode::Space => self.ng_toggle_pick(self.ng.cursor),
                     KeyCode::ArrowLeft => self.ng_role_change(false),
                     KeyCode::ArrowRight => self.ng_role_change(true),
                     _ => {}
@@ -305,18 +326,6 @@ impl Game {
                     }
                 }
                 self.ng_refresh();
-                return;
-            }
-            S_OPTIONS => {
-                match code {
-                    KeyCode::ArrowUp => {
-                        self.ng.opt_sel = (self.ng.opt_sel + OPTION_ROWS - 1) % OPTION_ROWS
-                    }
-                    KeyCode::ArrowDown => self.ng.opt_sel = (self.ng.opt_sel + 1) % OPTION_ROWS,
-                    KeyCode::ArrowLeft => self.ng_option_adjust(false),
-                    KeyCode::ArrowRight => self.ng_option_adjust(true),
-                    _ => {}
-                }
                 return;
             }
             _ => {}
@@ -358,6 +367,14 @@ pub fn draw(fb: &mut Framebuffer, g: &Game) {
     let cols = fb.cols();
     let step = g.ng.step;
     fb.text(2, 1, "== NOUVELLE PARTIE ==", AMBER);
+    button(
+        fb,
+        g,
+        cols.saturating_sub(34),
+        1,
+        "TOUT ALEATOIRE (CONFIG ENTIERE)",
+        Act::Call(Game::click_ng_random_all, 0),
+    );
     // The steps, each a button.
     let mut x = 2;
     for (i, s) in STEPS.iter().enumerate() {
@@ -383,10 +400,12 @@ pub fn draw(fb: &mut Framebuffer, g: &Game) {
     match step {
         0 => draw_explain(fb, g),
         1 => draw_scenario(fb, g),
-        2 => draw_ship(fb, g),
-        3 => draw_crew(fb, g),
-        4 => draw_seed(fb, g),
-        5 => draw_options(fb, g),
+        S_SHIP => draw_ship(fb, g),
+        S_CREW => draw_crew(fb, g),
+        S_AI => crate::newgame_custom::draw_ai(fb, g),
+        S_SEED => draw_seed(fb, g),
+        S_WORLD => crate::newgame_custom::draw_world(fb, g),
+        S_OPTIONS => draw_options(fb, g),
         _ => draw_recap(fb, g),
     }
     // Footer: back and forward, plain text.
@@ -594,108 +613,10 @@ fn draw_scenario(fb: &mut Framebuffer, g: &Game) {
 }
 
 fn draw_ship(fb: &mut Framebuffer, g: &Game) {
-    let cols = fb.cols();
-    let sc = &g.data.scenarios[g.ng.scenario];
-    fb.text(2, 6, "CHOISISSEZ VOTRE VAISSEAU", AMBER);
-    fb.text(2, 7, "MODULES MONTES D'ORIGINE ;", DIM);
-    fb.text(2, 8, "CHANGEABLES AU CHANTIER NAVAL.", DIM);
-    for (i, (hid, _)) in sc.ships.iter().enumerate() {
-        let h = &g.data.hulls[g.data.hull_index(hid).unwrap_or(0)];
-        let row = 10 + i * 2;
-        let sel = i == g.ng.ship;
-        let hover = g.hit_cells(2, row, 44, 1, Act::Call(Game::click_ng_ship, i), None);
-        let c = if sel {
-            AMBER
-        } else if hover {
-            HOVER
-        } else {
-            GREEN
-        };
-        fb.text(
-            2,
-            row,
-            &format!(
-                "{} {:<26.26} {}",
-                if sel { ">" } else { " " },
-                h.name.to_uppercase(),
-                h.class.to_uppercase()
-            ),
-            c,
-        );
-    }
-    let Some((design, _)) = start::build_design(&g.data, sc, g.ng.ship) else {
-        return;
-    };
-    let Some(st) = start::ship_stats(&g.data, sc, g.ng.ship) else {
-        return;
-    };
-    let hull_idx = design.hull;
-    let h = &g.data.hulls[hull_idx];
-    let x = 56;
-    fb.text(x, 6, &h.name.to_uppercase(), AMBER);
-    let rows = [
-        format!(
-            "CLASSE {}   MASSE A VIDE {:.1} T   COQUE {:.0} PV",
-            h.class.to_uppercase(),
-            st.mass_dry / 1000.0,
-            st.hull_max
-        ),
-        format!(
-            "POUSSEE {:.0} KN   ENERGIE {:.1} MW (PIC {:.1})",
-            st.thrust / 1000.0,
-            st.power_capacity / 1000.0,
-            st.power_peak / 1000.0
-        ),
-        format!(
-            "RESERVOIR {:.1} T   SOUTE {:.1} T / {:.0} M3",
-            st.fuel_cap / 1000.0,
-            st.cargo_kg / 1000.0,
-            st.cargo_m3
-        ),
-        format!(
-            "LOGEMENTS {:.0} PERSONNE(S)   BOUCLIER {:.0}",
-            st.crew_cap, st.shield
-        ),
-        if st.jump_range > 0.0 {
-            format!("SAUT FTL {:.0} ANNEE(S)-LUMIERE", st.jump_range)
-        } else {
-            "PAS DE MOTEUR FTL : RESTE DANS LE SYSTEME TANT QU'IL N'EN A PAS".to_string()
-        },
-        if st.scan_range > 0.0 {
-            format!(
-                "PORTEE DES SCANNERS {}",
-                crate::hud::fmt_dist(st.scan_range)
-            )
-        } else {
-            "AUCUN SCANNER : LES CORPS SE RELEVENT DE PRES".to_string()
-        },
-    ];
-    for (k, l) in rows.iter().enumerate() {
-        fb.text(x, 8 + k, l, GREEN);
-    }
-    fb.text(x, 15, "MODULES MONTES", DIM);
-    for (k, (_, m)) in design.modules(&g.data).enumerate() {
-        let (col, rowk) = (x + (k / 8) * 36, 16 + k % 8);
-        fb.text(
-            col,
-            rowk,
-            &format!("{:<34.34}", m.name.to_uppercase()),
-            GREEN,
-        );
-    }
-    // The hull, turning.
-    if let Some(segs) = crate::wire_shape::shape_for(&g.data, 3, hull_idx) {
-        let _ = cols;
-        crate::wire_shape::draw(
-            fb,
-            &segs,
-            210.0,
-            330.0,
-            280.0,
-            crate::proto_view::anim_time() * 0.8,
-            GREEN,
-        );
-    }
+    fb.text(2, 6, "CONSTRUISEZ VOTRE VAISSEAU", AMBER);
+    let rows = g.ng_rows();
+    crate::newgame_custom::draw_rows(fb, g, &rows, 2, 8, true);
+    crate::newgame_custom::draw_ship_panel(fb, g, 84);
 }
 
 fn draw_crew(fb: &mut Framebuffer, g: &Game) {
@@ -822,6 +743,8 @@ fn draw_crew(fb: &mut Framebuffer, g: &Game) {
         };
         fb.text(2, 11 + g.ng.pool.len() + 1, &txt, c);
     }
+    let rows = g.ng_rows();
+    crate::newgame_custom::draw_rows(fb, g, &rows, 2, 11 + g.ng.pool.len() + 3, g.ng.crew_focus);
 }
 
 fn draw_seed(fb: &mut Framebuffer, g: &Game) {
@@ -890,129 +813,150 @@ fn draw_seed(fb: &mut Framebuffer, g: &Game) {
 }
 
 fn draw_options(fb: &mut Framebuffer, g: &Game) {
-    fb.text(2, 6, "OPTIONS", AMBER);
-    let lvl = start::difficulty_of(&g.pending_rules);
-    let rows: [(&str, String); OPTION_ROWS] = [
-        ("LANGUE", g.settings.describe()[7].1.clone()),
-        ("CLAVIER", g.settings.describe()[6].1.clone()),
-        ("TUTORIEL GUIDE", g.settings.describe()[4].1.clone()),
-        (
-            "DIFFICULTE (REGLES)",
-            lvl.map_or("PERSONNALISEE".to_string(), |l| {
-                start::DIFFICULTY_NAMES[l].to_string()
-            }),
-        ),
-        ("REGLES AVANCEES", "OUVRIR >".to_string()),
-    ];
-    for (i, (label, val)) in rows.iter().enumerate() {
-        let row = 9 + i * 2;
-        let sel = i == g.ng.opt_sel;
-        let hover = g.hit_cells(
-            4,
-            row,
-            34,
-            1,
-            Act::Call(Game::click_ng_option, i * 3 + 1),
-            None,
-        );
-        let c = if sel {
-            AMBER
-        } else if hover {
-            HOVER
-        } else {
-            GREEN
-        };
-        fb.text(
-            4,
-            row,
-            &format!("{} {label}", if sel { ">" } else { " " }),
-            c,
-        );
-        if i < OPTION_ROWS - 1 {
-            g.hit_cells(38, row, 2, 1, Act::Call(Game::click_ng_option, i * 3), None);
-            g.hit_cells(
-                41 + val.len(),
-                row,
-                2,
-                1,
-                Act::Call(Game::click_ng_option, i * 3 + 2),
-                None,
-            );
-            fb.text(38, row, "<", AMBER);
-            fb.text(40, row, val, c);
-            fb.text(41 + val.len(), row, ">", AMBER);
-        } else {
-            fb.text(40, row, val, c);
-        }
-    }
-    let sc = &g.data.scenarios[g.ng.scenario];
-    let rating = start::difficulty_rating(sc, &g.pending_rules);
+    fb.text(2, 6, "OPTIONS ET REGLES PAR CATEGORIES", AMBER);
+    let rows = g.ng_rows();
+    crate::newgame_custom::draw_rows(fb, g, &rows, 2, 8, true);
+    let rating = g.ng_review().rating;
     fb.text(
-        4,
-        21,
+        2,
+        8 + rows.len() + 1,
         &format!("DIFFICULTE INDICATIVE DE CE DEPART : {rating}/5"),
         AMBER,
-    );
-    lines(
-        fb,
-        4,
-        23,
-        100,
-        "LA DIFFICULTE REGLE LES DEGATS SUBIS, L'AGRESSIVITE DES IA, LA FREQUENCE DES EVENEMENTS ET LA CONSOMMATION DE CARBURANT ; LES REGLES AVANCEES PERMETTENT TOUT LE RESTE (MORT PERMANENTE, CARTE REVELEE, MODE CREATIF...). LES CHOIX DU CLAVIER ET DU TUTORIEL SONT SAUVEGARDES.",
-        DIM,
     );
 }
 
 fn draw_recap(fb: &mut Framebuffer, g: &Game) {
     let cols = fb.cols();
     let w = cols - 8;
-    let sc = &g.data.scenarios[g.ng.scenario];
+    let d = &g.data;
+    let sc = &d.scenarios[g.ng.scenario];
+    let c = &g.ng.custom;
     fb.text(2, 6, "RECAPITULATIF", AMBER);
-    let hull = &g.data.hulls[g.data.hull_index(&sc.ships[g.ng.ship].0).unwrap_or(0)];
+    let ship = match c.ship.mode {
+        vector_sim::start_custom::ShipMode::Scenario => d.hulls
+            [d.hull_index(&sc.ships[g.ng.ship].0).unwrap_or(0)]
+        .name
+        .to_uppercase(),
+        vector_sim::start_custom::ShipMode::Catalog => format!(
+            "{} SUR MESURE (CATALOGUE, {} MODULES)",
+            d.hulls[d.hull_index(&c.ship.hull).unwrap_or(0)]
+                .name
+                .to_uppercase(),
+            c.ship.modules.iter().filter(|m| !m.is_empty()).count()
+        ),
+        vector_sim::start_custom::ShipMode::Design => {
+            match vector_sim::start_custom::plan_report(d, &c.ship.plan) {
+                Ok((bp, r)) => format!(
+                    "CONCEPTION {} ({} CELLULES)",
+                    bp.name.to_uppercase(),
+                    r.cells
+                ),
+                Err(_) => "CONCEPTION (PLAN INVALIDE)".to_string(),
+            }
+        }
+    };
     let crew: Vec<String> =
         g.ng.picks
             .iter()
             .map(|p| {
+                let e = c.crew.edit_of(p.candidate);
+                let name = e
+                    .and_then(|e| e.name.clone())
+                    .unwrap_or_else(|| g.ng.pool[p.candidate].name.clone());
                 format!(
-                    "{} ({})",
-                    g.ng.pool[p.candidate].name.to_uppercase(),
-                    g.data.roles[p.role].name.to_uppercase()
+                    "{}{} ({})",
+                    name.to_uppercase(),
+                    if e.is_some() { "*" } else { "" },
+                    d.roles[p.role].name.to_uppercase()
                 )
             })
             .collect();
-    let (_, home) = g.ng.home.clone().unwrap_or((
-        0,
-        HomePreview {
-            system: String::new(),
-            class: "?",
-            planets: 0,
-            moons: 0,
-            asteroids: 0,
-            stations: 0,
-            faction: None,
-        },
-    ));
+    let home = g.ng.home.as_ref().map(|h| h.1.clone());
     let lvl = start::difficulty_of(&g.pending_rules);
+    let tr = &d.start.ai_traits[c.ai.personality.min(d.start.ai_traits.len() - 1)];
+    let place = c.world.place.map_or("PAR DEFAUT".to_string(), |i| {
+        d.start.places[i].name.to_uppercase()
+    });
+    let contacts: Vec<String> = c
+        .crew
+        .contacts
+        .iter()
+        .map(|k| {
+            format!(
+                "{} {}",
+                if k.friend { "AMI" } else { "RIVAL" },
+                d.factions
+                    .get(k.faction)
+                    .map_or(String::new(), |f| f.name.to_uppercase())
+            )
+        })
+        .collect();
     let items = [
         (
             "SCENARIO",
             format!(
                 "{} - DIFFICULTE {}/5",
                 sc.name.to_uppercase(),
-                start::difficulty_rating(sc, &g.pending_rules)
+                g.ng_review().rating
             ),
         ),
-        ("VAISSEAU", hull.name.to_uppercase()),
+        ("VAISSEAU", ship),
+        (
+            "IDENTITE",
+            format!(
+                "{} {} - {}",
+                if c.ship.name.is_empty() {
+                    "(NOM TIRE)"
+                } else {
+                    &c.ship.name
+                },
+                if c.ship.registration.is_empty() {
+                    ""
+                } else {
+                    &c.ship.registration
+                },
+                if c.ship.company.is_empty() {
+                    "(COMPAGNIE TIREE)"
+                } else {
+                    &c.ship.company
+                }
+            )
+            .to_uppercase(),
+        ),
         ("CREDITS", format!("{:.0}", sc.credits)),
         ("SOUTE", kg_list(g, &sc.cargo)),
         ("EQUIPAGE", crew.join(", ")),
         (
+            "CONTACTS",
+            if contacts.is_empty() {
+                "AUCUN".to_string()
+            } else {
+                contacts.join(", ")
+            },
+        ),
+        (
+            "IA",
+            format!(
+                "{} - {} - NOYAU {}",
+                if c.ai.name.is_empty() {
+                    "(NOM TIRE)".to_string()
+                } else {
+                    c.ai.name.to_uppercase()
+                },
+                tr.name.to_uppercase(),
+                d.start.ai_cores[c.ai.core.min(d.start.ai_cores.len() - 1)]
+                    .name
+                    .to_uppercase()
+            ),
+        ),
+        (
             "GALAXIE",
             format!(
-                "GRAINE {} - SYSTEME {} (CLASSE {})",
+                "GRAINE {} - SYSTEME {} (CLASSE {}) - DEPART : {place}",
                 g.ng.seed(),
-                home.system.to_uppercase(),
-                home.class
+                home.as_ref()
+                    .map_or(String::new(), |h| h.system.to_uppercase()),
+                home.as_ref().map_or("?", |h| h.class)
             ),
         ),
         (
@@ -1026,9 +970,12 @@ fn draw_recap(fb: &mut Framebuffer, g: &Game) {
         ),
         (
             "REGLES",
-            lvl.map_or("PERSONNALISEES".to_string(), |l| {
-                start::DIFFICULTY_NAMES[l].to_string()
-            }),
+            format!(
+                "{} - SAUVEGARDE : {}",
+                lvl.map_or("PERSONNALISEES".to_string(), |l| start::DIFFICULTY_NAMES[l]
+                    .to_string()),
+                vector_sim::start_custom::SAVE_MODES[usize::from(c.save_mode.min(2))]
+            ),
         ),
     ];
     let mut row = 8;
@@ -1037,23 +984,15 @@ fn draw_recap(fb: &mut Framebuffer, g: &Game) {
         row = lines(fb, 16, row, w - 16, &v, GREEN).max(row + 1);
     }
     row += 1;
-    if sc.wreck {
-        lines(
-            fb,
-            4,
-            row,
-            w,
-            "VOUS COMMENCEREZ A PIED, SUR UN MONDE NU : LE VAISSEAU EST EPAVE. PIECES DETACHEES ET CARBURANT SE TROUVENT DANS LES EPAVES, CAMPEMENTS ET RUINES ; L'INGENIEUR REPARE, PUIS VOUS DECOLLEZ.",
-            AMBER,
-        );
+    crate::newgame_custom::draw_recap_extra(fb, g, row);
+    let wreck = start::is_wreck(d, &g.ng_config());
+    let y = row + 7;
+    let msg = if wreck {
+        "VOUS COMMENCEREZ A PIED, SUR UN MONDE NU : LE VAISSEAU EST EPAVE."
     } else {
-        lines(
-            fb,
-            4,
-            row,
-            w,
-            "VOUS COMMENCEREZ EN VOL, PRES D'UNE STATION. F10 OUVRE LE MENU.",
-            AMBER,
-        );
-    }
+        "VOUS COMMENCEREZ EN VOL OU AU LIEU CHOISI. F10 OUVRE LE MENU."
+    };
+    fb.text(4, y, msg, AMBER);
+    let rows = g.ng_rows();
+    crate::newgame_custom::draw_rows(fb, g, &rows, 2, y + 2, true);
 }

@@ -29,6 +29,7 @@ mod medicine_view;
 mod mind_view;
 mod mouse;
 mod newgame;
+mod newgame_custom;
 mod power_view;
 mod project_view;
 mod proto_view;
@@ -500,12 +501,12 @@ fn snapshot(path: &str, scene: &str, data: Arc<GameData>) {
                 g.click_ng_scenario(g.data.scenario_index("marchand").expect("scenario"));
             }
             g.tut_step = None;
-            g.ng.seed_text = if step >= 4 {
+            g.ng.seed_text = if step >= 5 {
                 "ANDROMEDE".into()
             } else {
                 String::new()
             };
-            if step >= 4 {
+            if step >= 5 {
                 g.ng.cursor = 2;
             }
             g.ng_goto(step);

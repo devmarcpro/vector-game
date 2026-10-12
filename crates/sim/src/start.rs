@@ -341,11 +341,17 @@ pub struct HomePreview {
 }
 
 pub fn home_preview(data: &GameData, seed: u64) -> HomePreview {
+    home_preview_kind(data, seed, "aleatoire").0
+}
+
+/// The home of a kind of start system (see `start_custom::home_for`) and whether the galaxy had
+/// one of that kind.
+pub fn home_preview_kind(data: &GameData, seed: u64, kind: &str) -> (HomePreview, bool) {
     let galaxy = vector_world::galaxy::Galaxy::new(seed);
-    let home = crate::scene::pick_home(&galaxy);
+    let (home, exact) = crate::start_custom::home_for(&galaxy, kind);
     let sys = vector_world::generate_system(home.seed);
     let count = |f: fn(&BodyKind) -> bool| sys.bodies.iter().filter(|b| f(&b.kind)).count();
-    HomePreview {
+    let preview = HomePreview {
         system: sys.name.clone(),
         class: sys.star_class.letter(),
         planets: count(|k| matches!(k, BodyKind::Planet(_))),
@@ -355,7 +361,8 @@ pub fn home_preview(data: &GameData, seed: u64) -> HomePreview {
         faction: galaxy
             .territory(home.pos, data.factions.len())
             .map(|f| data.factions[f].name.clone()),
-    }
+    };
+    (preview, exact)
 }
 
 /// The rules a difficulty level stands for (0 gentle, 1 standard, 2 harsh): damage taken, the

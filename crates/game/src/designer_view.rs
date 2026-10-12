@@ -81,11 +81,11 @@ impl Default for DesignerUi {
     }
 }
 
-fn plans_dir() -> std::path::PathBuf {
+pub(crate) fn plans_dir() -> std::path::PathBuf {
     std::path::PathBuf::from("saves").join("plans")
 }
 
-fn list_plan_files() -> Vec<String> {
+pub(crate) fn list_plan_files() -> Vec<String> {
     let mut v: Vec<String> = std::fs::read_dir(plans_dir())
         .map(|d| {
             d.filter_map(|e| e.ok())
@@ -98,7 +98,7 @@ fn list_plan_files() -> Vec<String> {
     v
 }
 
-fn file_name_of(name: &str) -> String {
+pub(crate) fn file_name_of(name: &str) -> String {
     let s: String = name
         .chars()
         .map(|c| if c.is_ascii_alphanumeric() { c } else { '_' })
@@ -221,6 +221,7 @@ impl Game {
 
     pub fn dz_goto(&mut self, i: usize) {
         match i {
+            0 if self.ng.designing => self.ng_close_designer(),
             0 => self.screen = Screen::Shipyard,
             n => {
                 self.dz_open();
@@ -524,7 +525,11 @@ impl Game {
         }
         match code {
             KeyCode::Escape => {
-                self.screen = Screen::Shipyard;
+                if self.ng.designing {
+                    self.ng_close_designer();
+                } else {
+                    self.screen = Screen::Shipyard;
+                }
                 return;
             }
             KeyCode::Tab => {

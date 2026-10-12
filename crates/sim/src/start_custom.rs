@@ -33,6 +33,8 @@ pub const TRAIT_BUDGET: i32 = 2;
 pub const BACKGROUND_BUDGET: i32 = 1;
 pub const MAX_TRAITS: usize = 5;
 pub const MAX_CONTACTS: usize = 4;
+/// Highest weight of a task in the AI's computing budget.
+pub const AI_MAX_WEIGHT: u8 = crate::mind::MAX_WEIGHT;
 /// Points an implant costs in the trait balance.
 pub const IMPLANT_COST: i32 = 2;
 /// Credits of the reference ship below which no budget goes.
@@ -559,6 +561,57 @@ pub fn catalog_design(data: &GameData, c: &ShipCustom) -> Result<ShipDesign, Str
     Ok(d)
 }
 
+/// The modules that can go in `slot` of hull `hull` (indices into `GameData::modules`).
+pub fn slot_candidates(data: &GameData, hull: usize, slot: usize) -> Vec<usize> {
+    let probe = ShipDesign::empty(data, hull);
+    (0..data.modules.len())
+        .filter(|&mi| probe.clone().install(data, slot, mi).is_ok())
+        .collect()
+}
+
+/// A catalogue ship made of a scenario's model: its hull and its modules slot by slot.
+pub fn catalog_from_scenario(data: &GameData, sc: &Scenario, ship: usize) -> Option<ShipCustom> {
+    let (hull, _) = sc.ships.get(ship)?;
+    let (design, _) = crate::start::build_design(data, sc, ship)?;
+    Some(ShipCustom {
+        mode: ShipMode::Catalog,
+        hull: hull.clone(),
+        modules: design
+            .slots
+            .iter()
+            .map(|m| m.map_or(String::new(), |mi| data.modules[mi].id.clone()))
+            .collect(),
+        ..Default::default()
+    })
+}
+
+/// A loadout for another hull: the modules of `fit`, each in the first slot that takes it.
+pub fn catalog_fill(data: &GameData, hull: &str, fit: &[String]) -> Option<Vec<String>> {
+    let hi = data.hull_index(hull)?;
+    let mut d = ShipDesign::empty(data, hi);
+    for id in fit {
+        let _ = d.install_first_fit(data, id);
+    }
+    Some(
+        d.slots
+            .iter()
+            .map(|m| m.map_or(String::new(), |mi| data.modules[mi].id.clone()))
+            .collect(),
+    )
+}
+
+/// The plan of a ready-made design on sale at the yards (`data/ship_plans.ron`) as text.
+pub fn plan_text_of_def(data: &GameData, def: &vector_data::ShipPlanDef) -> Option<String> {
+    let mut bp = Blueprint::new(1, &def.name);
+    for (p, x, y, z) in &def.cells {
+        bp.place(data, p, *x, *y, *z).ok()?;
+    }
+    for (x, y, z, s, m) in &def.loadout {
+        bp.fit(data, *x, *y, *z, *s, m).ok()?;
+    }
+    Some(bp.to_text())
+}
+
 /// Price of a catalogue ship: the hull and its modules.
 pub fn catalog_cost(data: &GameData, c: &ShipCustom) -> Option<f64> {
     let hull = data.hull_index(&c.hull)?;
@@ -894,7 +947,7 @@ pub fn rating(data: &GameData, cfg: &StartConfig) -> u8 {
     s.round().clamp(1.0, 5.0) as u8
 }
 
-pub fn review(data: &GameData, cfg: &StartConfig) -> Review {
+pub fn review(data: &std::sync::Arc<GameData>, cfg: &StartConfig) -> Review {
     let mut warnings = Vec::new();
     let mut error = None;
     let sc = &data.scenarios[cfg.scenario.min(data.scenarios.len() - 1)];
@@ -905,7 +958,7 @@ pub fn review(data: &GameData, cfg: &StartConfig) -> Review {
         Err(e) => error = Some(e),
     }
     if error.is_none() {
-        if let Err(e) = crate::start::new_sim_with(cfg, std::sync::Arc::new(data.clone())) {
+        if let Err(e) = crate::start::new_sim_with(cfg, std::sync::Arc::clone(data)) {
             error = Some(e);
         }
     }

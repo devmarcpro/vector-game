@@ -510,7 +510,7 @@ impl Game {
             }
         };
         let seed = cfg.seed;
-        let wreck = self.data.scenarios[cfg.scenario].wreck;
+        let wreck = vector_sim::start::is_wreck(&self.data, cfg);
         self.sim = sim;
         self.help_open = false;
         self.tut_step = None;
@@ -526,6 +526,11 @@ impl Game {
         self.timescale = 1.0;
         self.keys.clear();
         self.messages = vec![format!("NOUVELLE PARTIE - GRAINE {seed}")];
+        let id = &self.sim.custom;
+        self.messages.push(format!(
+            "VAISSEAU {} ({}) - {} - IA {}",
+            id.ship_name, id.registration, id.company, id.ai_name
+        ));
         if wreck && self.sim.rogue.is_some() {
             self.messages.push(
                 "NAUFRAGE : CHERCHEZ DES PIECES DETACHEES ET DU CARBURANT (EPAVES, CAMPEMENTS, RUINES)".into(),
@@ -930,6 +935,10 @@ impl Game {
     }
 
     pub fn save_game(&mut self) {
+        if let Err(e) = self.sim.custom.may_save(self.sim.docked.is_some()) {
+            self.say(format!("SAUVEGARDE REFUSEE : {}", e.to_uppercase()));
+            return;
+        }
         let result = self
             .sim
             .save_bytes()
@@ -4758,10 +4767,10 @@ mod tests {
         g.menu_sel = 1;
         press(g, KeyCode::Enter);
         assert_eq!(g.screen, Screen::NewGame);
-        for _ in 0..6 {
+        for _ in 0..8 {
             press(g, KeyCode::Enter);
         }
-        assert_eq!(g.ng.step, 6, "the recap is the seventh step");
+        assert_eq!(g.ng.step, 8, "the recap is the ninth step");
     }
 
     #[test]
@@ -4794,7 +4803,7 @@ mod tests {
             g.save_path = std::env::temp_dir().join("vector_test_flow.sav");
             to_recap(&mut g);
             g.click_ng_scenario(i);
-            g.ng_goto(6);
+            g.ng_goto(8);
             press(&mut g, KeyCode::Enter);
             let (id, wreck, credits) = {
                 let sc = &g.data.scenarios[i];
@@ -4822,22 +4831,22 @@ mod tests {
         to_recap(&mut g);
         let trader = g.data.scenario_index("marchand").expect("sc");
         g.click_ng_scenario(trader);
-        g.click_ng_ship(1);
+        g.ng.ship = 1;
         g.ng.seed_text = "ANDROMEDE".into();
-        g.ng_goto(4);
+        g.ng_goto(5);
         press(&mut g, KeyCode::Backspace);
         assert_eq!(g.ng.seed_text, "ANDROMED");
         g.key(KeyCode::KeyX, Some("X"), true);
         assert_eq!(g.ng.seed_text, "ANDROMEDX", "typed text goes to the seed");
-        g.ng.opt_sel = 3;
-        g.ng_goto(5);
+        g.ng.row[7] = 3;
+        g.ng_goto(7);
         press(&mut g, KeyCode::ArrowRight);
         assert_eq!(
             vector_sim::start::difficulty_of(&g.pending_rules),
             Some(2),
             "the difficulty line sets the rules"
         );
-        g.ng_goto(6);
+        g.ng_goto(8);
         press(&mut g, KeyCode::Enter);
         assert_eq!(g.screen, Screen::Flight);
         let hauler = g.data.hull_index("hauler").expect("hull");
@@ -4881,7 +4890,7 @@ mod tests {
         press(&mut g, KeyCode::ArrowRight);
         assert_ne!(g.ng.picks[0].role, role);
         // The chosen crew is the crew of the game.
-        g.ng_goto(6);
+        g.ng_goto(8);
         press(&mut g, KeyCode::Enter);
         assert_eq!(g.sim.crew.alive().count(), 1);
         assert_eq!(g.sim.crew.members[0].role, g.ng.picks[0].role);
@@ -4892,7 +4901,7 @@ mod tests {
         let mut g = Game::new(data(), 1);
         to_recap(&mut g);
         g.click_ng_scenario(g.data.scenario_index("naufrage").expect("sc"));
-        g.ng_goto(6);
+        g.ng_goto(8);
         press(&mut g, KeyCode::Enter);
         assert_eq!(g.screen, Screen::Rogue);
         assert!(
@@ -5095,7 +5104,7 @@ mod tests {
             let _ = crate::hub::place_of(s);
         }
         g.open_new_game();
-        for step in 0..7 {
+        for step in 0..9 {
             g.ng.step = step;
             let line = crate::tutorial::hint_line(&g);
             assert!(line.len() <= 126, "step {step}: {} chars", line.len());

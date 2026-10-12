@@ -126,7 +126,10 @@ fn the_ai_personality_gives_real_bonuses_and_maluses() {
     // The personality's own split is used when none is asked.
     let mut c2 = StartConfig::new(4);
     c2.custom.ai.personality = pru;
-    assert_eq!(sim_of(&d, &c2).mind.alloc.to_vec(), d.start.ai_traits[pru].alloc);
+    assert_eq!(
+        sim_of(&d, &c2).mind.alloc.to_vec(),
+        d.start.ai_traits[pru].alloc
+    );
     // Mercantile: more credits. Protectrice: better morale.
     let merc = d.ai_trait_index("mercantile").expect("trait");
     let prot = d.ai_trait_index("protectrice").expect("trait");
@@ -507,17 +510,40 @@ fn crew_size_points_and_rerolls_follow_the_configuration() {
 // ---- ship ---------------------------------------------------------------------------
 
 fn catalog_of(d: &GameData, sc: usize, ship: usize) -> ShipCustom {
-    let (hull, _) = &d.scenarios[sc].ships[ship];
-    let (design, _) = start::build_design(d, &d.scenarios[sc], ship).expect("design");
-    ShipCustom {
-        mode: ShipMode::Catalog,
-        hull: hull.clone(),
-        modules: design
-            .slots
+    catalog_from_scenario(d, &d.scenarios[sc], ship).expect("catalogue ship")
+}
+
+#[test]
+fn catalogue_helpers_offer_only_what_fits() {
+    let d = data();
+    let ship = catalog_of(&d, 0, 0);
+    let hi = d.hull_index(&ship.hull).unwrap();
+    for slot in 0..d.hulls[hi].slots.len() {
+        let c = slot_candidates(&d, hi, slot);
+        assert!(!c.is_empty(), "slot {slot} has candidates");
+        let (ty, size) = d.hulls[hi].slots[slot];
+        assert!(c
             .iter()
-            .map(|m| m.map_or(String::new(), |mi| d.modules[mi].id.clone()))
-            .collect(),
-        ..Default::default()
+            .all(|&m| d.modules[m].slot == ty && d.modules[m].size <= size));
+        if !ship.modules[slot].is_empty() {
+            assert!(c.contains(&d.module_index(&ship.modules[slot]).unwrap()));
+        }
+    }
+    // Another hull gets a loadout made of the same modules, where they fit.
+    let other = d.scenarios[0].ships[1].0.clone();
+    let fit: Vec<String> = ship
+        .modules
+        .iter()
+        .filter(|m| !m.is_empty())
+        .cloned()
+        .collect();
+    let m = catalog_fill(&d, &other, &fit).expect("fill");
+    assert_eq!(m.len(), d.hulls[d.hull_index(&other).unwrap()].slots.len());
+    assert!(m.iter().any(|s| !s.is_empty()));
+    // Every plan on sale has a text that reads back.
+    for def in &d.ship_plans {
+        let t = plan_text_of_def(&d, def).expect("text");
+        assert!(plan_report(&d, &t).is_ok(), "{}", def.id);
     }
 }
 

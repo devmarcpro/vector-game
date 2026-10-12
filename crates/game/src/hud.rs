@@ -125,6 +125,7 @@ pub fn draw(fb: &mut Framebuffer, v: &View) {
     }
     draw_status(fb, v);
     crate::landing_view::draw(fb, v);
+    crate::nav_view::draw_panel(fb, v);
     draw_console(fb, v.console);
 }
 
@@ -757,6 +758,7 @@ fn draw_map(fb: &mut Framebuffer, v: &View) {
             fb.text_at(x as i32 + 6, y as i32 - 12, &cb.name, col);
         }
     }
+    crate::nav_view::draw_map_overlay(fb, v, &to_px);
     let (sx, sy) = to_px(sim.ship.pos);
     fb.line(sx - 5.0, sy, sx + 5.0, sy, RED);
     fb.line(sx, sy - 5.0, sx, sy + 5.0, RED);

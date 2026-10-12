@@ -75,6 +75,7 @@ pub fn draw(fb: &mut Framebuffer, g: &Game) {
         Screen::Dialogue => crate::dialogue_view::draw(fb, g),
         Screen::Expedition => crate::expedition_view::draw_prep(fb, g),
         Screen::Family => crate::family_view::draw(fb, g),
+        Screen::NavAuto => crate::nav_view::draw(fb, g),
         Screen::Destroyed => {
             let cols = fb.cols();
             fb.text_big((fb.w as i32 - 15 * 8 * 4) / 2, 140, "DETRUIT", 8, RED);

@@ -107,6 +107,7 @@ pub fn hint_line(g: &Game) -> String {
         Screen::Dashboard => {
             "TAB/GAUCHE/DROITE PANNEAU  HAUT/BAS LIGNE  ENTREE OUVRIR L'ECRAN DETAILLE  1-9 PANNEAU  ECHAP OU \\ FERMER  F1 AIDE"
         }
+        Screen::NavAuto => crate::nav_view::hint(g),
         Screen::Hub if g.hub.page => {
             "HAUT/BAS CHOISIR  ENTREE OUVRIR  GAUCHE/ECHAP RETOUR AUX ESPACES  1-8 ESPACE  F10 FERMER"
         }
@@ -118,6 +119,9 @@ pub fn hint_line(g: &Game) -> String {
             "SAUT EN CHARGE  RETOUR ARRIERE ANNULER  PGUP/PGDN TEMPS  F1 AIDE"
         }
         Screen::Flight if g.sim.in_transit() => "TRANSIT FTL  P PAUSE  F1 AIDE",
+        Screen::Flight if g.sim.nav_running() => {
+            "NAVIGATION AUTO EN COURS  TOUCHER AUX COMMANDES = PAUSE  PAV* ECRAN DU PLAN  PGUP/PGDN TEMPS  M CARTE  F1 AIDE"
+        }
         Screen::Flight if g.sim.autopilot.is_some() => {
             "PILOTE AUTO ACTIF  G ANNULER  PGUP/PGDN TEMPS  TAB CIBLE  M CARTE  P PAUSE  F1 AIDE"
         }
@@ -244,6 +248,7 @@ pub fn help_lines(screen: Screen) -> &'static [&'static str] {
             "Tab T Y R : cibles (proche, asteroide, station, PNJ)",
             "V : laser de minage   Ctrl : tir   B : missiles",
             "G : pilote auto   D : amarrer   M : carte systeme",
+            "Pave num. * : NAVIGATION AUTO, l'ordinateur qui execute une file d'ordres (manoeuvres, orbites, transferts, escorte, sauts FTL) ; panneau et trajectoire prevue en vol et sur la carte",
             "Anneaux = blocs de glace minables ; queue de comete = plasma qui abime l'electronique ; pulsar, trou noir : rayonnement et lentille (cible = detail)",
             "PgUp/PgDn : temps   P : pause   Echap : menu",
             "H vaisseau  K equipage  I soute  J journal  X factions",
@@ -452,6 +457,15 @@ pub fn help_lines(screen: Screen) -> &'static [&'static str] {
             "Alertes : critique (rouge), attention (ambre), info ; jamais obligatoires",
             "Touche \\ (ou Pause) ouvre et ferme ce tableau depuis n'importe ou ;",
             "le compteur ALERTES du bandeau du haut l'ouvre aussi",
+        ],
+        Screen::NavAuto => &[
+            "L'ordinateur de bord execute une FILE D'ORDRES : manoeuvres, orbites, transferts, escorte, patrouille, atterrissage, amarrage, sauts FTL.",
+            "PLAN : Haut/Bas choisit, Espace lance ou met en pause, Suppr retire, PgHaut/PgBas deplace ; Gauche/Droite choisit le type d'ordre, +/- regle ses valeurs, Entree l'ajoute.",
+            "Le corps vise (Tab) sert de cible aux ordres ; G ajoute une condition (SI CARBURANT < 20 %...).",
+            "PLANIFICATEUR : Entree calcule les options (Hohmann, aerofreinage, ligne droite, orbite) avec cout, duree et risques ; Espace adopte le plan.",
+            "SEUILS : carburant, coque, rayonnement : sous le seuil l'ordinateur rentre a la station. Collision, puits de gravite imprevu, tir, surchauffe : il rend la main.",
+            "Toucher aux commandes met le plan en pause. Le temps peut etre accelere : les allumages ne sont pas manques.",
+            "La touche * du pave numerique (ou F10, espace NAVIGATION) ouvre cet ecran depuis le cockpit ; le trace de la trajectoire s'affiche sur la carte (M) et dans le ciel.",
         ],
         Screen::Destroyed => &["Entree : continuer (selon les regles de mort permanente)"],
     }

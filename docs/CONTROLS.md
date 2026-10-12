@@ -40,6 +40,7 @@
 | F5 / F9 | Sauvegarde / chargement rapide (saves/slot1.sav) |
 | Echap | Menu pause |
 | G | Pilote auto vers la cible (brachistochrone limitee par le delta-v) |
+| Pave num. * | NAVIGATION AUTO : l'ecran de la file d'ordres de l'ordinateur de bord (manoeuvres, orbites, transferts, escorte, patrouille, sauts FTL), voir � Navigation automatique � ; aussi dans F10, espace NAVIGATION, et par le mot [ECRAN] du panneau du cockpit |
 | M | Carte systeme ; +/- zoom ; C centre etoile/vaisseau |
 | P | Pause |
 | PgUp / PgDn | Temps x0.25 .. x100000 (pas adaptatifs ; poussee manuelle coupee au-dela de x2) |
@@ -86,7 +87,7 @@ Menu de demarrage > Nouvelle partie. Entree passe a l'etape suivante, Echap revi
 ## Le menu principal (F10, huit espaces)
 F10 ou un clic sur « MENU (F10) » (en haut a droite de tous les ecrans) ouvre le menu ; il gele le vol. En haut, l'**orientation** : ou vous etes (en vol pres de..., amarre a..., pose sur..., a pied : lieu) et ce que vous pouvez faire maintenant (consignes selon l'etat : quai, vol, vaisseau au sol, a pied). Dessous, huit espaces (1 a 8, Haut/Bas, clic) :
 - 1 PILOTAGE : cockpit / decoller, radio (Entree), portail et temps (Accueil), pause et sauvegarde.
-- 2 NAVIGATION : carte du systeme (M), galaxie et saut FTL (L), surface d'un monde (F8).
+- 2 NAVIGATION : carte du systeme (M), galaxie et saut FTL (L), NAVIGATION AUTO (pave num. *), surface d'un monde (F8).
 - 3 VAISSEAU : modules et energie (H), soute (I), chantier naval (Y a quai).
 - 4 EQUIPAGE : equipage (K), arbre familial, recrutement (N a quai).
 - 5 COMMERCE / STATION : marche, bourse (T), courtage (D), contrats (C), banque (E), elevage (L), casino (A) ; a quai seulement.
@@ -96,6 +97,15 @@ F10 ou un clic sur « MENU (F10) » (en haut a droite de tous les ecrans) ouvre 
 Un espace ouvre l'ecran existant par la meme fonction que sa touche : aucun ecran n'est duplique. Une ligne grisee dit pourquoi elle est indisponible (amarrage requis, decollage requis, a pied).
 **Echap remonte d'un niveau, partout** : un ecran ouvert depuis le menu revient a la page de son espace ; la page revient a la liste des espaces ; la liste ferme le menu, qui rend l'ecran d'ou il a ete ouvert (cockpit, quai ou marche a pied). Le clic droit fait de meme.
 A pied (equipe sur le terrain), seuls les ecrans d'information s'ouvrent (vaisseau, soute, equipage, journal, codex, technologies) et Echap revient a la marche.
+
+## Navigation automatique (pave num. * ou F10 > NAVIGATION)
+L'ordinateur de bord execute une FILE D'ORDRES ; l'automatisme est une option, toujours debrayable : toucher a la poussee, a la translation, au frein ou faire tourner franchement le vaisseau met le plan en PAUSE. Un jeu charge ne repart jamais seul.
+Dans le cockpit, un panneau NAVIGATION AUTO (au centre droit) apparait des qu'un plan existe : etat, ordre en cours, heure d'allumage, evenements prevus (periapsis, apoapsis, changement de sphere, rencontre, impact) ; mots cliquables [LANCER]/[PAUSE], [ECRAN], [TRAJ.] (affiche la trajectoire prevue sans plan). La trajectoire prevue (n corps, avec les poussees du plan) est tracee sur la carte (M) et dans le ciel du cockpit, relative au corps qui tient le vaisseau.
+Ecran, quatre pages (Tab ou clic) : PLAN, PLANIFICATEUR, SEUILS, JOURNAL.
+- PLAN : Haut/Bas choisit un ordre ; Espace lance ou met en pause ; Suppr retire ; PgHaut/PgBas deplace ; C vide les ordres faits ; Gauche/Droite choisit le TYPE du nouvel ordre ; 1 a 5 ou clic choisit un parametre, +/- le regle ; G ajoute une CONDITION (SI CARBURANT < x %, SI COQUE, SI DOSE, SI AMARRE...) : fausse a son tour, l'ordre est ignore ; Entree ajoute l'ordre. Le corps vise (Tab, T, Y) est la cible des ordres ; le corps de reference est celui des ordres d'orbite. Types : ORBITE (altitudes du periapsis et de l'apoapsis), TRANSFERT (altitude d'orbite, aerofreinage), MANOEUVRE (quand : dans N min, au periapsis, a l'apoapsis, noeuds ; prograde, normal, radial), APPROCHER, ATTERRIR, DECOLLER VERS L'ORBITE, AMARRER, QUITTER LE QUAI, MAINTENIR L'ORBITE, ESCORTER (vaisseau vise avec R), PATROUILLE (corps ajoutes un a un), ATTENDRE, ATTENDRE QUE, RETOUR A LA STATION, SAUT FTL et ROUTE FTL (etoile choisie dans la galaxie, L), SUSPENDRE LE PLAN.
+- PLANIFICATEUR : Entree calcule les options vers le corps vise (Hohmann, aerofreinage, ligne droite, assistance gravitationnelle indicative) et l'orbite autour du corps de reference (deux poussees, ou bi-elliptique au-dela d'un rapport de rayons de 11,94) avec delta-v, carburant, duree, attente de fenetre et risques (rayonnement, ceinture d'asteroides, puits traverses, collision) ; Haut/Bas choisit, Espace ADOPTE (les etapes entrent dans la file), +/- change l'altitude ; R calcule la route FTL vers l'etoile choisie dans la galaxie (la plus sure ; portee, carburant, antimatiere, danger par etape).
+- SEUILS : carburant, coque et dose sous lesquels l'ordinateur ramene le vaisseau a la station la plus proche (retour d'urgence actif ou non), reserve de carburant d'un plan ; bouton RENTRER A LA STATION MAINTENANT. Toujours actifs : collision prevue, puits de gravite non prevu, tir, surchauffe, charge structurelle, reservoir vide : l'ordinateur s'arrete, rend la main avec un message et remet le temps a x1.
+- Un ordre qui a echoue (carburant, hostiles...) est repris par [LANCER] quand la cause a disparu. Le temps peut etre accelere pendant l'execution : les allumages ne sont pas manques.
 
 ## Le tableau de bord (\ ou Pause)
 La barre oblique inverse (a gauche de Entree sur un clavier ISO) ou Pause ouvre, depuis n'importe quel ecran de jeu, le tableau de bord ; aussi : un clic sur le compteur ALERTES du bandeau du haut, le bouton TABLEAU DE BORD de l'orientation du menu F10, ou 0 dans ce menu. Il gele le vol.

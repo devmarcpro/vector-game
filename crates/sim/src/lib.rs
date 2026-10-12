@@ -46,6 +46,9 @@ pub mod market;
 pub mod megastructure;
 pub mod mind;
 pub mod multiverse;
+pub mod nav_auto;
+pub mod nav_plan;
+pub mod nav_predict;
 pub mod navigation;
 pub mod news;
 pub mod npc;
@@ -272,6 +275,8 @@ pub enum Event {
     ContractExpired,
     /// Something unexpected happened (see `surprises`): the words to show.
     Surprise(String),
+    /// A message of the navigation computer (see `nav_auto`).
+    Nav(String),
     BankSeizure {
         amount: f64,
     },
@@ -329,6 +334,8 @@ pub struct Sim {
     pub time: f64,
     pub events: Vec<Event>,
     pub autopilot: Option<Autopilot>,
+    /// The navigation computer's queue of orders (see `nav_auto`).
+    pub nav: nav_auto::NavPlan,
     /// A jump the ship first flies out to (away from every gravity well) and then starts.
     pub jump_run: Option<vector_world::galaxy::StarEntry>,
     /// Held in place next to a body (index, offset) until the player thrusts or sets a new course.
@@ -532,6 +539,7 @@ impl Sim {
             time: 0.0,
             events: Vec::new(),
             autopilot: None,
+            nav: nav_auto::NavPlan::default(),
             jump_run: None,
             parked: None,
             sas: landing::Sas::Off,
@@ -826,8 +834,12 @@ impl Sim {
         let longest = if self.autopilot.is_some() {
             1_800.0
         } else {
-            120.0
+            self.nav_longest_dt()
         };
+        // The navigation queue keeps its appointments (ignition times, alignments).
+        if let Some(cap) = self.nav_dt_cap() {
+            dt = dt.min(cap);
+        }
         dt.clamp(MIN_DT, longest)
     }
 
@@ -1007,6 +1019,7 @@ impl Sim {
             self.ship.vel = b.vel;
             self.ship.ang = Vec3::ZERO;
             self.update_ref();
+            self.nav_docked_tick();
             return;
         }
         if self.in_transit() {
@@ -1054,6 +1067,7 @@ impl Sim {
         } else {
             input
         };
+        let input = self.nav_layer(manual, input, dt);
         let sas_on = self.sas != landing::Sas::Off || self.pilot.is_some();
         let clamp = |v: f64| v.clamp(-1.0, 1.0);
 
@@ -1212,6 +1226,7 @@ impl Sim {
         let env = &mut self.crew.env;
         env.accel_g += (felt - env.accel_g) * (dt / 20.0).min(1.0);
         self.time += dt;
+        self.nav_post_step(dt);
         self.refresh_bodies();
         self.atmosphere_drag(dt);
         self.corrode(dt);

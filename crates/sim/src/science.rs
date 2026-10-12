@@ -10,7 +10,7 @@ use vector_world::{AnomalyKind, BodyKind, StarClass};
 /// Research points per day from one point of lab `science` at baseline staffing.
 pub const LAB_POINTS_PER_DAY: f64 = 6.0;
 pub const FLARE_WARNING_S: f64 = 300.0;
-const METEOR_MEAN_INTERVAL: f64 = 6.0 * 3600.0;
+pub(crate) const METEOR_MEAN_INTERVAL: f64 = 6.0 * 3600.0;
 
 /// Combined environmental effects at a point.
 #[derive(Clone, Debug, Default)]

@@ -102,6 +102,8 @@ pub struct SaveGame {
     pub last_livestock_day: i64,
     pub shares: Vec<(usize, f64)>,
     pub last_dividend_month: i64,
+    /// The queue of the navigation computer.
+    pub navplan: crate::nav_auto::NavPlan,
 }
 
 impl Sim {
@@ -172,6 +174,7 @@ impl Sim {
             last_livestock_day: self.last_livestock_day,
             shares: self.shares.clone(),
             last_dividend_month: self.last_dividend_month,
+            navplan: self.nav.clone(),
             ecologies: self
                 .ecologies
                 .iter()
@@ -270,6 +273,11 @@ impl Sim {
         sim.last_livestock_day = save.last_livestock_day;
         sim.shares = save.shares;
         sim.last_dividend_month = save.last_dividend_month;
+        sim.nav = save.navplan;
+        // A loaded game never flies by itself: the plan that was running waits for the pilot.
+        if sim.nav.run == crate::nav_auto::Run::Running {
+            sim.nav.run = crate::nav_auto::Run::Paused;
+        }
         for (id, time, bio, native) in save.ecologies {
             let Some(ci) = sim.colonies.iter().position(|c| c.id == id) else {
                 continue;

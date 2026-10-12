@@ -78,6 +78,8 @@ pub enum Screen {
     Hub,
     /// The dashboard: the whole state of the game in nine panels (see `dash_view`).
     Dashboard,
+    /// The navigation computer: the queue of orders, the planner, the thresholds (see `nav_view`).
+    NavAuto,
 }
 
 /// Route being composed in the fleet screen.
@@ -133,6 +135,8 @@ pub struct Game {
     /// Nebulae, clusters and remnants within reach of the galactic map (see `vector_world::cosmos`).
     pub gal_features: Vec<vector_world::cosmos::Feature>,
     pub gal_sel: usize,
+    /// The screen of the navigation computer and the editor of its orders.
+    pub nav_ui: crate::nav_view::NavUi,
     pub gal_zoom: f64,
     pub offers: Vec<vector_sim::economy::Contract>,
     pub contract_sel: usize,
@@ -361,6 +365,7 @@ impl Game {
             gal_cache: Vec::new(),
             gal_features: Vec::new(),
             gal_sel: 0,
+            nav_ui: Default::default(),
             gal_zoom: 14.0,
             offers: Vec::new(),
             contract_sel: 0,
@@ -776,6 +781,16 @@ impl Game {
                     self.note(t.clone());
                     self.say(t.to_uppercase())
                 }
+                Event::Nav(t) => {
+                    // The computer gave the ship back (or finished): time goes back to normal.
+                    if t.starts_with("NAVIGATION AUTO") || t.starts_with("RETOUR D'URGENCE") {
+                        if !t.contains("ENGAGE") {
+                            self.timescale = 1.0;
+                        }
+                        self.note(t.to_lowercase());
+                    }
+                    self.say(t.to_uppercase())
+                }
                 Event::ColonyNews(t) | Event::MarketNews(t) => {
                     if t.starts_with("INTRUSION") || t.starts_with("Contrat a terme") {
                         self.note(t.clone());
@@ -1087,6 +1102,7 @@ impl Game {
             Screen::NewGame => self.newgame_key(code, text),
             Screen::Hub => self.hub_key(code),
             Screen::Dashboard => self.dash_key(code),
+            Screen::NavAuto => self.nav_key(code),
             Screen::Pause => self.pause_key(code),
             Screen::Station => self.station_key(code),
             Screen::Inventory => self.inventory_key(code),
@@ -2986,6 +3002,7 @@ impl Game {
                     "F2:EMPIRE F3:FLOTTE O:COLONISER LA CIBLE L:GALAXIE K:EQUIPAGE H:VAISSEAU",
                 );
             }
+            KeyCode::NumpadMultiply => self.open_nav_auto(),
             KeyCode::KeyL => self.open_galaxy(),
             KeyCode::F2 => self.open_empire(),
             KeyCode::F3 => self.open_fleet(),
@@ -3082,6 +3099,7 @@ mod tests {
             (KeyCode::KeyX, Screen::Factions),
             (KeyCode::KeyH, Screen::Ship),
             (KeyCode::KeyI, Screen::Inventory),
+            (KeyCode::NumpadMultiply, Screen::NavAuto),
             (KeyCode::Escape, Screen::Pause),
         ];
         for (key, expected) in cases {
@@ -3176,6 +3194,7 @@ mod tests {
             Screen::Proto,
             Screen::Dialogue,
             Screen::Expedition,
+            Screen::NavAuto,
         ] {
             g.screen = s;
             let line = crate::tutorial::hint_line(&g);

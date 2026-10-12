@@ -28,6 +28,7 @@ mod landing_view;
 mod medicine_view;
 mod mind_view;
 mod mouse;
+mod nav_view;
 mod newgame;
 mod power_view;
 mod project_view;
@@ -358,6 +359,85 @@ fn snapshot(path: &str, scene: &str, data: Arc<GameData>) {
         "map" => {
             g.map = true;
             g.cycle_target(|_| true);
+        }
+        s if s.starts_with("nav_") => {
+            // The navigation computer: the ship on a circular orbit around the world of the station,
+            // a plan of burns and orbit changes, and another world as the destination.
+            use vector_sim::nav_auto::{Cond, Order};
+            use vector_sim::nav_predict::{ManeuverNode, NodeWhen};
+            let c = g.sim.nav_center();
+            let b = g.sim.bodies[c].clone();
+            let r = b.radius * 1.6;
+            g.sim.ship.pos = b.pos + vector_core::Vec3::new(r, 0.0, 0.0);
+            g.sim.ship.vel = b.vel + vector_core::Vec3::new(0.0, 0.0, (b.gm / r).sqrt());
+            g.sim.ship.rot = vector_core::Mat3::look_at(
+                vector_core::Vec3::new(-1.0, 0.0, 0.2),
+                vector_core::Vec3::new(0.0, 1.0, 0.0),
+            );
+            g.sim.update_ref_pub();
+            g.sim.reveal_all();
+            // The planet of the widest orbit that is not the one the ship circles.
+            let other = (1..g.sim.bodies.len())
+                .filter(|&i| {
+                    i != c && matches!(g.sim.bodies[i].kind, vector_world::BodyKind::Planet(_))
+                })
+                .max_by(|&a, &b| {
+                    let ra = g.sim.system.bodies[a].orbit.as_ref().map_or(0.0, |o| o.a);
+                    let rb = g.sim.system.bodies[b].orbit.as_ref().map_or(0.0, |o| o.a);
+                    ra.total_cmp(&rb)
+                })
+                .unwrap_or(1);
+            g.sim.target = Some(other);
+            let km = 1000.0;
+            let _ = g.sim.nav_add(Order::Burn(ManeuverNode::new(
+                NodeWhen::Periapsis,
+                Some(c),
+                180.0,
+                0.0,
+                0.0,
+            )));
+            let _ = g.sim.nav_add(Order::Orbit {
+                body: c,
+                peri_alt: 1200.0 * km,
+                apo_alt: 3000.0 * km,
+                stage: 0,
+            });
+            let _ = g
+                .sim
+                .nav_add_guarded(Order::Wait(600.0), Some(Cond::FuelAbove(0.5)));
+            let _ = g.sim.nav_add(Order::Transfer {
+                target: other,
+                alt: 400.0 * km,
+                aero: false,
+            });
+            let _ = g.sim.nav_add(Order::ReturnStation);
+            g.nav_ui.preview = true;
+            match scene {
+                "nav_map" => {
+                    g.map = true;
+                    g.map_on_ship = true;
+                    g.map_scale = r * 6.0 / 250.0;
+                }
+                "nav_plan" => g.open_nav_auto(),
+                "nav_run" => {
+                    // The plan under way: the burn is lit.
+                    g.nav_ui.kind = 8;
+                    let _ = g.sim.nav_start();
+                    for _ in 0..40 {
+                        g.sim.advance(1.0, &ShipInput::default());
+                    }
+                }
+                "nav_planner" => {
+                    g.open_nav_auto();
+                    g.nav_ui.page = 1;
+                    g.nav_click(60);
+                }
+                "nav_limits" => {
+                    g.open_nav_auto();
+                    g.nav_ui.page = 2;
+                }
+                _ => {}
+            }
         }
         "dialogue" => {
             g.sim.spawn_traffic();

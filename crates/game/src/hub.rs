@@ -72,7 +72,7 @@ pub fn place_of(s: Screen) -> Place {
     use Screen::*;
     match s {
         Flight | Dialogue | Cosmos => Place::Space(PILOTAGE),
-        Galaxy | Surface => Place::Space(NAVIGATION),
+        Galaxy | Surface | NavAuto => Place::Space(NAVIGATION),
         Ship | Inventory | Shipyard => Place::Space(VAISSEAU),
         Crew | Recruit | Family => Place::Space(EQUIPAGE),
         Station | Contracts | Bank | Trading | Bourse | Livestock | Casino => {
@@ -89,7 +89,7 @@ pub fn place_of(s: Screen) -> Place {
 
 /// Every screen of the game (the menu's test walks it).
 #[cfg(test)]
-pub const ALL_SCREENS: [Screen; 37] = [
+pub const ALL_SCREENS: [Screen; 38] = [
     Screen::Dashboard,
     Screen::Designer,
     Screen::MainMenu,
@@ -127,6 +127,7 @@ pub const ALL_SCREENS: [Screen; 37] = [
     Screen::Proto,
     Screen::Dialogue,
     Screen::Expedition,
+    Screen::NavAuto,
 ];
 
 const fn entry(
@@ -226,6 +227,15 @@ pub static SPACES: [Space; 8] = [
                 Need::Any,
                 false,
                 |g| g.open_galaxy(),
+            ),
+            entry(
+                "NAVIGATION AUTO",
+                "PAVE NUM. *",
+                "L'ordinateur de bord : file d'ordres, manoeuvres, transferts, orbites, escorte, sauts FTL.",
+                Some(Screen::NavAuto),
+                Need::Any,
+                false,
+                |g| g.open_nav_auto(),
             ),
             entry(
                 "SURFACE D'UN MONDE",

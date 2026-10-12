@@ -2,7 +2,7 @@
 //! weapon, faction, anomaly and condition, generated from the real data (no hand-written numbers).
 use vector_data::GameData;
 
-pub const CATEGORIES: [&str; 65] = [
+pub const CATEGORIES: [&str; 66] = [
     "RESSOURCES",
     "MODULES",
     "ARMES",
@@ -68,6 +68,7 @@ pub const CATEGORIES: [&str; 65] = [
     "CAPACITES",
     "DECOUVERTES",
     "PILOTAGE",
+    "NAVIGATION AUTO",
 ];
 
 /// The cards of the military codex: doctrines, secret operations and orders to the squadron,
@@ -159,6 +160,114 @@ fn finding_label(data: &GameData, key: &str) -> (String, String) {
         ),
         _ => (key.to_string(), String::new()),
     }
+}
+
+/// The navigation computer: its orders, its thresholds and its guards, written from the
+/// constants of `vector_sim::nav_auto`, `nav_plan` and `nav_predict`, so that the codex cannot
+/// disagree with the rules.
+fn nav_topics() -> Vec<(String, Vec<String>)> {
+    use vector_sim::nav_auto as a;
+    use vector_sim::nav_plan as p;
+    use vector_sim::nav_predict as q;
+    let lim = a::Limits::default();
+    let t = |s: &str| s.to_string();
+    vec![
+        (
+            t("FILE D'ORDRES"),
+            vec![
+                format!("FILE D'ORDRES  (jusqu'a {} ordres)", a::MAX_ORDERS),
+                t("L'ordinateur de bord execute les ordres dans l'ordre : chaque ordre est une petite machine a etats, les ordres macro (orbite, transfert, patrouille, route FTL) se remplacent par leurs etapes au moment de leur tour, a partir de l'etat reel du vaisseau."),
+                t("On peut ajouter, retirer, reordonner, mettre en pause ; un ordre garde une condition (SI CARBURANT < 20 %) : fausse, il est ignore. Le plan est sauvegarde avec la partie."),
+                t("Toucher aux commandes (poussee, translation, rotation franche, frein) met le plan en pause : le pilote a toujours le dernier mot."),
+            ],
+        ),
+        (
+            t("MANOEUVRE (NOEUD)"),
+            vec![
+                t("MANOEUVRE (NOEUD)  prograde, normale, radiale"),
+                format!(
+                    "Un noeud est une poussee de dv m/s dans le repere de l'orbite, a une date, au periapsis, a l'apoapsis ou aux noeuds ascendant et descendant. L'ordinateur oriente le vaisseau (tolerance {:.0} milliradians), allume {} avant le noeud pour en centrer la combustion, coupe quand le dv mesure sur la vitesse atteint la valeur demandee.",
+                    a::ALIGN_TOL * 1000.0,
+                    "la moitie du temps de combustion"
+                ),
+                t("Duree d'une combustion : v_e m0 / F (1 - exp(-dv / v_e)) avec v_e = Isp g0 et la poussee reelle ; le carburant brule est reel (equation de Tsiolkovski). Surchauffe, panne ou reservoir vide : la combustion s'arrete et reste reprenable."),
+            ],
+        ),
+        (
+            t("TRAJECTOIRE PREVUE"),
+            vec![
+                t("TRAJECTOIRE PREVUE  (carte M et ciel du cockpit)"),
+                format!(
+                    "Le vaisseau est integre vers l'avant sous l'attraction de tous les corps massifs (n corps, saute-mouton), en pas d'au plus {:.0} milliradians d'orbite ; les poussees du plan y sont des impulsions a leur date.",
+                    q::STEP_ANGLE * 1000.0
+                ),
+                t("Evenements annonces : periapsis et apoapsis, entrees et sorties de spheres d'influence, meilleure approche de la cible, impact, manoeuvres. Les dates relatives (au periapsis...) sont resolues par l'integration elle-meme."),
+                t("L'atmosphere n'est pas dans la prediction : un periapsis dans l'air freinerait plus que prevu."),
+            ],
+        ),
+        (
+            t("ORBITE ET MAINTIEN"),
+            vec![
+                t("ORBITE ET MAINTIEN D'ORBITE"),
+                t("Mise en orbite circulaire ou elliptique a des altitudes choisies, depuis n'importe quelle orbite du corps : une poussee a un apside change l'autre apside, la suivante corrige le premier ; le plan recalcule la seconde poussee sur l'orbite que la premiere a vraiment faite."),
+                t("Jamais de poussee a un periapsis dans l'air ou sous le sol : l'orbite est d'abord relevee depuis l'apoapsis. Erreur toleree : 1 % du rayon + 1 km ; 6 corrections au plus."),
+                t("Maintien d'orbite : toutes les 60 s l'ordinateur compare les apsides au but et relance l'ordre d'orbite quand la derive depasse la tolerance choisie (trainee de l'air, perturbations)."),
+            ],
+        ),
+        (
+            t("TRANSFERT ENTRE MONDES"),
+            vec![
+                format!("TRANSFERT  Hohmann et recherche n-corps  (bi-elliptique au-dela d'un rapport de rayons de {:.2})", p::BIELLIPTIC_RATIO),
+                t("L'ordinateur part d'une estimation de Hohmann (fenetre de lancement, angle d'avance), puis cherche sur la prediction n-corps l'instant et la poussee qui font passer le vaisseau a l'altitude voulue de la cible. Depuis l'orbite d'un monde, il calcule le point de la rampe d'evasion qui oriente l'asymptote."),
+                t("Ensuite : corrections de trajectoire a mi-chemin et peu avant l'arrivee, derive jusqu'a la sphere d'influence de la cible, poussee de capture au periapsis, puis orbite circulaire. Aerofreinage : si la cible a une atmosphere, le passage dans l'air remplace la poussee de capture (chaleur et coque a surveiller)."),
+                t("Assistance gravitationnelle : estimee (gain en m/s) quand un monde massif est sur la route, mais l'automate ne la vole pas : c'est a la main."),
+                t("Les options sont chiffrees avant le choix : dv, carburant, duree, attente de fenetre, risques (rayonnement, ceinture d'asteroides, puits de gravite traverses, collision)."),
+            ],
+        ),
+        (
+            t("APPROCHE, ESCORTE, PATROUILLE"),
+            vec![
+                t("APPROCHE, ESCORTE, PATROUILLE"),
+                t("Approche : le pilote automatique ligne droite (G) amene le vaisseau au repos pres du corps ; il refuse les puits de gravite trop profonds."),
+                t("Escorte : le vaisseau suit un autre vaisseau a la distance choisie en collant a sa vitesse (poussee pilotee, nez tourne vers l'acceleration voulue) pendant une duree ou sans fin."),
+                t("Patrouille : une liste de corps visites tour a tour, un nombre de tours ou sans fin. Amarrage : l'ordinateur contourne la station pour se placer en face du port (a 250 m) puis laisse le pilote d'amarrage finir."),
+            ],
+        ),
+        (
+            t("SEUILS ET RETOUR D'URGENCE"),
+            vec![
+                format!(
+                    "SEUILS  carburant {:.0} %, coque {:.0} %, dose {:.2} Gy/h, reserve {:.0} %",
+                    lim.fuel_return * 100.0,
+                    lim.hull_return * 100.0,
+                    lim.dose_return,
+                    lim.reserve * 100.0
+                ),
+                t("Sous un seuil, l'ordinateur remplace le plan par un retour a la station la plus proche (approche, amarrage, suspension) s'il y est autorise ; sinon il s'arrete et previent. Les valeurs ci-dessus sont les reglages de depart ; chacun se regle dans l'ecran NAVIGATION AUTO."),
+                t("La reserve est la part de reservoir qu'un plan doit laisser : le planificateur refuse un transfert qui l'entame."),
+            ],
+        ),
+        (
+            t("SECURITE : LA MAIN RENDUE"),
+            vec![
+                format!(
+                    "SECURITE  prediction toutes les {:.0} s au moins, alerte {:.0} min avant un impact",
+                    a::SAFETY_PERIOD,
+                    a::IMPACT_WARN / 60.0
+                ),
+                t("L'automatisme ne vole jamais en aveugle : il s'interrompt et rend la main avec un message devant une collision prevue, un puits de gravite non prevu, un tir ou un combat, une surchauffe, une charge structurelle excessive, un reservoir vide."),
+                t("Le temps accelere reste sur : les allumages et les alignements decoupent les pas de temps, une combustion n'est jamais sautee ; a la moindre alerte le temps revient a x1."),
+            ],
+        ),
+        (
+            t("SAUTS FTL ASSISTES"),
+            vec![
+                t("SAUTS FTL ASSISTES  route multi-sauts"),
+                t("La route est la plus sure parmi les etoiles connues a portee les unes des autres : cout d'un saut = sa longueur en annees-lumiere + une penalite pour les etoiles dangereuses (trou noir 8, neutrons 4, classes O et B 2 et 1,5, naine blanche 0,5) et pour un territoire hostile (3)."),
+                t("Chaque etape verifie la portee, le carburant et l'antimatiere de la bulle ; le vaisseau s'eloigne des puits de gravite avant de charger. A chaque arrivee : balayage, decompte des hostiles ; si le saut suivant est dans la file, l'ordinateur fuit, sinon il rend la main. Un saut interrompu se reprend."),
+            ],
+        ),
+    ]
 }
 
 /// Piloting and landing: the attitude holds and the rules of the touchdown, written from the
@@ -431,6 +540,7 @@ fn entries(data: &GameData, cat: usize) -> Vec<usize> {
         62 => (0..CAPACITY_TEXT.len()).collect(),
         63 => (0..finding_keys(data).len()).collect(),
         64 => (0..pilot_topics().len()).collect(),
+        65 => (0..nav_topics().len()).collect(),
         _ => Vec::new(),
     }
 }
@@ -505,6 +615,7 @@ pub fn names(data: &GameData, cat: usize) -> Vec<String> {
             62 => CAPACITY_TEXT[i].1.to_string(),
             63 => finding_label(data, &finding_keys(data)[i]).0,
             64 => pilot_topics()[i].0.clone(),
+            65 => nav_topics()[i].0.clone(),
             18 => format!(
                 "Appeler : {}",
                 vector_data::dialogue::ROLES[i].to_lowercase()
@@ -2615,6 +2726,7 @@ pub fn entry(data: &GameData, cat: usize, k: usize) -> Vec<String> {
             ));
         }
         64 => out.extend(pilot_topics()[i].1.iter().cloned()),
+        65 => out.extend(nav_topics()[i].1.iter().cloned()),
         _ => {
             let n = &data.industries[i];
             out.push(n.name.clone());

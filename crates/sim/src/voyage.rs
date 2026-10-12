@@ -17,7 +17,7 @@ pub const FUEL_PER_LY_PER_KG: f64 = 1.5e-3;
 /// Base sensor reach of any ship (m); scanner modules add to it.
 pub const BASE_SENSOR_RANGE: f64 = 3.0e7;
 /// A star is "seen" on the galactic map when this close to a visited system (ly).
-pub const SEEN_RADIUS_LY: f64 = 15.0;
+pub const SEEN_RADIUS_LY: f64 = crate::reach::SEEN_LY;
 
 pub const SCAN_UNKNOWN: u8 = 0;
 pub const SCAN_DETECTED: u8 = 1;
@@ -438,10 +438,7 @@ mod tests {
     use vector_world::galaxy::Galaxy;
 
     fn data() -> Arc<GameData> {
-        Arc::new(
-            GameData::load(&std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../data"))
-                .expect("data"),
-        )
+        crate::test_support::data()
     }
 
     fn home() -> (Sim, Galaxy) {

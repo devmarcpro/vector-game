@@ -32,6 +32,13 @@ pub mod units {
     pub const R_SUN: f64 = 6.957e8;
     pub const M_EARTH: f64 = 5.972e24;
     pub const R_EARTH: f64 = 6.371e6;
+
+    /// Equilibrium temperature (K) of a rotating grey body lit by `flux` (W/m^2, at the substellar
+    /// distance) with a Bond `albedo`: the one law behind the planets, the terraformer and the
+    /// ship's heat (audit B7).
+    pub fn equilibrium_temperature(flux: f64, albedo: f64) -> f64 {
+        (flux.max(0.0) * (1.0 - albedo) / (4.0 * SIGMA)).powf(0.25)
+    }
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]

@@ -1044,10 +1044,7 @@ mod tests {
     use vector_world::galaxy::Galaxy;
 
     fn data() -> Arc<GameData> {
-        Arc::new(
-            GameData::load(&std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../data"))
-                .expect("data"),
-        )
+        crate::test_support::data()
     }
 
     /// A docked ship at the first station of a system that has neighbours with stations.

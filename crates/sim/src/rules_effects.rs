@@ -10,10 +10,7 @@ use vector_world::galaxy::Galaxy;
 use vector_world::{generate_system, BodyKind};
 
 fn data() -> Arc<GameData> {
-    Arc::new(
-        GameData::load(&std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../data"))
-            .expect("data"),
-    )
+    crate::test_support::data()
 }
 
 fn sim() -> Sim {

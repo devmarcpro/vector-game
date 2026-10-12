@@ -15,7 +15,7 @@ const LOOKBACK_WEEKS: i64 = 14;
 const P_REGION: f64 = 0.55;
 const P_GLOBAL: f64 = 0.18;
 /// Side of a region of space, ly (same as the faction territories).
-const REGION_LY: f64 = 60.0;
+pub const REGION_LY: f64 = crate::reach::REGION_LY;
 
 /// An event on the calendar of a place: index into `GameData::world_events`.
 #[derive(Clone, Debug, PartialEq)]
@@ -234,10 +234,7 @@ mod tests {
     use std::sync::Arc;
 
     fn data() -> Arc<GameData> {
-        Arc::new(
-            GameData::load(&std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../data"))
-                .expect("data"),
-        )
+        crate::test_support::data()
     }
 
     fn all_events(d: &GameData, pos: [f64; 3], years: f64) -> Vec<ActiveEvent> {

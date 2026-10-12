@@ -24,6 +24,6 @@
  (id:"pre_allergie", name:"Terrain allergique", kind:"predisposition", effects:[], disease:"allergie"),
  (id:"pre_depression", name:"Fragilité dépressive", kind:"predisposition", effects:[], disease:"depression"),
  (id:"pre_addiction", name:"Prédisposition à l'addiction", kind:"predisposition", effects:[], disease:"addiction"),
- (id:"pre_os", name:"Fragilité osseuse", kind:"predisposition", effects:[], disease:"fracture"),
+ (id:"pre_os", name:"Fragilité osseuse", kind:"predisposition", effects:[], disease:"fracture_os"),
  (id:"pre_sommeil", name:"Troubles du sommeil", kind:"predisposition", effects:[], disease:"insomnie_chronique"),
 ]

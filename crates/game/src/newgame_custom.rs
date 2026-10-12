@@ -2195,14 +2195,17 @@ pub fn draw_ship_panel(fb: &mut Framebuffer, g: &Game, x: usize) {
                         );
                     }
                     if r.errors.is_empty() {
-                        let solids = crate::ship_preview::solids_of(d, bp);
-                        crate::ship_preview::draw_solids(
+                        let hull = vector_sim::shipwright::hull_of(d, bp, r);
+                        let design = crate::ship_model::blueprint_design(d, bp);
+                        crate::ship_model::blueprint_view(
                             fb,
-                            &solids,
+                            d,
+                            &hull,
+                            &design,
                             (x as i32 * 8, 270, x as i32 * 8 + 380, 640),
-                            0.6 + crate::proto_view::anim_time() * 0.5,
+                            0.6 + f64::from(crate::proto_view::anim_time()) * 0.5,
                             0.5,
-                            None,
+                            f64::from(crate::proto_view::anim_time()),
                         );
                     }
                 }

@@ -141,7 +141,7 @@ fn slot_label(t: SlotType) -> &'static str {
 }
 
 fn kind_color(kind: &str) -> u32 {
-    ship_preview::solid_of(kind, "", [0.0; 3]).color
+    ship_preview::part_color(kind)
 }
 
 fn frame(fb: &mut Framebuffer, x: i32, y: i32, w: i32, h: i32, c: u32) {
@@ -692,7 +692,7 @@ pub fn draw(fb: &mut Framebuffer, g: &Game) {
                 draw_slots(fb, g, bp, data);
             }
             draw_grid(fb, g, bp, data);
-            draw_preview(fb, g, bp, data);
+            draw_preview(fb, g, bp, data, &report);
             draw_report(fb, g, bp, &report);
         }
         _ => draw_plans(fb, g, bp, &report),
@@ -988,7 +988,7 @@ fn draw_grid(fb: &mut Framebuffer, g: &Game, bp: &Blueprint, data: &GameData) {
     }
 }
 
-fn draw_preview(fb: &mut Framebuffer, g: &Game, bp: &Blueprint, data: &GameData) {
+fn draw_preview(fb: &mut Framebuffer, g: &Game, bp: &Blueprint, data: &GameData, r: &Report) {
     frame(
         fb,
         PREVIEW.0 - 1,
@@ -1003,19 +1003,21 @@ fn draw_preview(fb: &mut Framebuffer, g: &Game, bp: &Blueprint, data: &GameData)
         "APERCU (GLISSER : TOURNER)",
         DIM,
     );
-    let solids = ship_preview::solids_of(data, bp);
-    let mark = {
-        let (x, y) = g.dz.cursor;
-        let z = g.dz.layer;
-        bp.cell_at(x, y, z)
-    };
-    ship_preview::draw_solids(
+    if bp.cells.is_empty() {
+        return;
+    }
+    // The ship the plan makes, drawn by the same model as the outside view (audit B5).
+    let hull = vector_sim::shipwright::hull_of(data, bp, r);
+    let design = crate::ship_model::blueprint_design(data, bp);
+    crate::ship_model::blueprint_view(
         fb,
-        &solids,
+        data,
+        &hull,
+        &design,
         (PREVIEW.0, PREVIEW.1 + 12, PREVIEW.2, PREVIEW.3),
-        g.dz.yaw,
-        g.dz.pitch,
-        mark,
+        f64::from(g.dz.yaw),
+        f64::from(g.dz.pitch),
+        f64::from(crate::proto_view::anim_time()),
     );
 }
 

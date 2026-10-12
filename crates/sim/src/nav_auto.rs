@@ -1791,8 +1791,7 @@ mod tests {
     use vector_data::GameData;
 
     fn data() -> Arc<GameData> {
-        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../data");
-        Arc::new(GameData::load(&dir).expect("data"))
+        crate::test_support::data()
     }
 
     /// The ship on a circular orbit of `radii` radii of body `i` (seed `seed`), with the limits

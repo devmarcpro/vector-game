@@ -25,13 +25,7 @@ pub struct EcoUi {
 }
 
 fn money(v: f64) -> String {
-    if v.abs() >= 1.0e6 {
-        format!("{:.2}M", v / 1.0e6)
-    } else if v.abs() >= 1.0e4 {
-        format!("{:.1}K", v / 1.0e3)
-    } else {
-        format!("{v:.0}")
-    }
+    crate::fmt::amount(v)
 }
 
 /// A clickable text; returns the column after it.

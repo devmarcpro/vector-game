@@ -20,6 +20,7 @@ mod farm_view;
 mod fleet_map_view;
 mod flight_menu;
 mod flow_view;
+mod fmt;
 mod fpv_view;
 mod game;
 mod globe;

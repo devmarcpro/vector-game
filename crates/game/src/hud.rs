@@ -114,13 +114,7 @@ pub fn fmt_dist(m: f64) -> String {
 }
 
 pub fn fmt_time(s: f64) -> String {
-    if s < 3600.0 {
-        format!("{:.0}s", s)
-    } else if s < 86400.0 {
-        format!("{:.1}h", s / 3600.0)
-    } else {
-        format!("{:.1}j", s / 86400.0)
-    }
+    crate::fmt::duration(s)
 }
 
 pub fn draw(fb: &mut Framebuffer, v: &View) {

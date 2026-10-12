@@ -261,37 +261,6 @@ impl Runtime {
 
 // ---- names -------------------------------------------------------------------------------
 
-const SHIP_WORDS: [&str; 16] = [
-    "AURORE",
-    "HORIZON",
-    "VAGABOND",
-    "LIBELLULE",
-    "SENTINELLE",
-    "COMETE",
-    "ODYSSEE",
-    "TEMPETE",
-    "MIRAGE",
-    "BOREALE",
-    "CORSAIRE",
-    "PELERIN",
-    "ECLIPSE",
-    "FARANDOLE",
-    "PERSEVERANCE",
-    "ALBATROS",
-];
-const COMPANY_WORDS: [&str; 10] = [
-    "TRANSIT",
-    "CERES",
-    "ORBITAL",
-    "BELTWAY",
-    "HELIOS",
-    "MERIDIEN",
-    "VECTORIEL",
-    "ASTRAL",
-    "PIONNIERS",
-    "KUIPER",
-];
-const COMPANY_KINDS: [&str; 5] = ["SARL", "ET FILS", "& CIE", "COOPERATIVE", "SA"];
 const AI_NAMES: [&str; 12] = [
     "ORACLE",
     "MNEMOSYNE",
@@ -307,15 +276,23 @@ const AI_NAMES: [&str; 12] = [
     "CASSANDRE",
 ];
 
+/// The name of a civil ship, from the shared grammar (`names.ron`), in capitals like the rest of
+/// the start screen.
 pub fn random_ship_name(h: u64) -> String {
-    SHIP_WORDS[(mix64(h) % SHIP_WORDS.len() as u64) as usize].to_string()
+    let kind = if mix64(h) & 1 == 0 {
+        "ship_civil_m"
+    } else {
+        "ship_civil_f"
+    };
+    vector_world::names::Spec::new(kind)
+        .name(mix64(h ^ 7))
+        .to_uppercase()
 }
+/// The name of a company, from the shared grammar.
 pub fn random_company(h: u64) -> String {
-    format!(
-        "{} {}",
-        COMPANY_WORDS[(mix64(h ^ 1) % COMPANY_WORDS.len() as u64) as usize],
-        COMPANY_KINDS[(mix64(h ^ 2) % COMPANY_KINDS.len() as u64) as usize]
-    )
+    vector_world::names::Spec::new("company")
+        .name(mix64(h ^ 1))
+        .to_uppercase()
 }
 pub fn random_registration(h: u64) -> String {
     let l = |k: u64| (b'A' + (mix64(h ^ k) % 26) as u8) as char;

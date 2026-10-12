@@ -269,9 +269,7 @@ pub struct CrewOut {
     pub repair: f64,
 }
 
-fn sat(v: f32) -> f32 {
-    v.clamp(0.0, 1.0)
-}
+use crate::body::sat;
 
 /// Pick a template for `key` deterministically and fill placeholders.
 pub fn render(
@@ -950,8 +948,20 @@ impl Crew {
                 }
                 // Old age wears every organ down a little.
                 p.organs[oi] = sat(p.organs[oi] - body::aging_wear(p.age) * days as f32);
-                let hit = organ_hit.filter(|(d, _)| o.afflicted_by.contains(&data.diseases[*d].id));
-                if let Some((_, sev)) = hit {
+                let hit = organ_hit
+                    .filter(|(d, _)| o.afflicted_by.contains(&data.diseases[*d].id))
+                    .map(|(_, sev)| sev)
+                    .into_iter()
+                    .chain(
+                        // The wounds of the body wear the organs they name as well (audit B2).
+                        p.body
+                            .wounds
+                            .iter()
+                            .filter(|w| o.afflicted_by.contains(&data.wounds[w.kind as usize].id))
+                            .map(|w| w.sev * 0.04 / 24.0),
+                    )
+                    .reduce(f32::max);
+                if let Some(sev) = hit {
                     p.organs[oi] = sat(p.organs[oi] - 0.5 * sev * hours);
                 } else if p.organs[oi] > 0.0 {
                     // A dead organ does not mend by itself.
@@ -1189,7 +1199,10 @@ impl Crew {
                 let risk: f64 = e
                     .effects
                     .iter()
-                    .filter_map(|(k, _)| k.strip_prefix("disease:"))
+                    .filter_map(|(k, _)| {
+                        k.strip_prefix("disease:")
+                            .or_else(|| k.strip_prefix("wound:"))
+                    })
                     .map(|d| self.members[ai].disease_risk(data, d))
                     .product();
                 pool.push((ei, e.weight * bias.max(0.1) * risk));
@@ -1368,6 +1381,24 @@ impl Crew {
                     p.skills[i] = (p.skills[i] + vf).clamp(0.0, 10.0);
                 }
             }
+            f if f.starts_with("wound:") => {
+                // An injury is a wound of the body (audit B2): the value is its severity, the
+                // place is drawn among the parts the wound can strike.
+                if let Some(k) = data.wound_index(&f["wound:".len()..]) {
+                    let parts: Vec<usize> = data.wounds[k]
+                        .parts
+                        .iter()
+                        .filter_map(|n| data.part_index(n))
+                        .collect();
+                    let h = hash_coord(p.id as u64, k as i64, now as i64, 31);
+                    let part = if parts.is_empty() {
+                        (mix64(h) % data.body_parts.len() as u64) as usize
+                    } else {
+                        parts[(mix64(h) % parts.len() as u64) as usize]
+                    };
+                    p.body.add_wound(data, &data.wounds[k].id, part, vf);
+                }
+            }
             f if f.starts_with("disease:") => {
                 if let Some(d) = data.disease_index(&f["disease:".len()..]) {
                     if p.disease.is_none() {
@@ -1430,10 +1461,9 @@ pub fn hire_cost(p: &Person) -> f64 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::path::Path;
 
     fn data() -> GameData {
-        GameData::load(&Path::new(env!("CARGO_MANIFEST_DIR")).join("../../data")).expect("data")
+        crate::test_support::load()
     }
 
     fn cargo_with(d: &GameData, items: &[(&str, f64)]) -> Cargo {
@@ -1444,6 +1474,41 @@ mod tests {
             c.add(d, d.resource_index(id).expect("res"), *kg);
         }
         c
+    }
+
+    #[test]
+    fn an_injury_event_lays_a_real_wound_on_the_body() {
+        // Audit B2: injuries are wounds of the body, not diseases with a frozen effect.
+        let d = data();
+        for gone in [
+            "fracture",
+            "entorse",
+            "commotion",
+            "brulure",
+            "blessure_arme",
+        ] {
+            assert!(d.disease_index(gone).is_none(), "{gone} is a wound now");
+        }
+        let mut c = crew_of(&d, 2);
+        let (mut credits, mut quits) = (0.0, Vec::new());
+        for (field, wound) in [
+            ("wound:fracture_os", "fracture_os"),
+            ("wound:entorse", "entorse"),
+        ] {
+            c.apply_effect(&d, field, 0.5, 0, None, &mut credits, &mut quits, 1000.0);
+            let k = d.wound_index(wound).expect("wound");
+            assert!(c.members[0]
+                .body
+                .wounds
+                .iter()
+                .any(|w| w.kind as usize == k));
+        }
+        assert!(c.members[0].disease.is_none());
+        // Every event that hurts uses a wound, and the data validates.
+        assert!(d
+            .events
+            .iter()
+            .any(|e| e.effects.iter().any(|(k, _)| k.starts_with("wound:"))));
     }
 
     fn crew_of(d: &GameData, n: usize) -> Crew {

@@ -4,7 +4,6 @@
 //! the present (the people that holds the sector today, see `politics`), and the recent years are
 //! told by `politics` itself (leaders, wars), so there is one chronology, not two. Ruins, wrecks and
 //! stations get their provenance from it (who built them, when, why they fell): see `provenance`.
-use crate::bourse::DAY;
 use crate::genealogy::{self, Kin};
 use crate::planet::unit;
 use crate::politics::{self, Cell};
@@ -16,7 +15,7 @@ use vector_world::galaxy::Galaxy;
 pub const EPOCH_YEAR: i32 = 2400;
 pub const AGE_YEARS: i32 = 400;
 pub const AGES: usize = 8;
-pub const YEAR: f64 = 365.0 * DAY;
+pub const YEAR: f64 = vector_core::units::YEAR;
 
 /// The calendar year at game time `t` (seconds).
 pub fn year_at(t: f64) -> f64 {
@@ -345,10 +344,7 @@ mod tests {
     use std::sync::Arc;
 
     fn data() -> Arc<GameData> {
-        Arc::new(
-            GameData::load(&std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../data"))
-                .expect("data"),
-        )
+        crate::test_support::data()
     }
 
     #[test]

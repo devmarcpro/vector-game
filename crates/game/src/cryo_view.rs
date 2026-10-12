@@ -17,13 +17,7 @@ pub const ROTATIONS: [f32; 4] = [0.0, 7.0, 30.0, 90.0];
 
 /// A span of days as text.
 pub fn span(days: f64) -> String {
-    if days < 1.0 {
-        format!("{:.0} H", days * 24.0)
-    } else if days < 400.0 {
-        format!("{days:.0} J")
-    } else {
-        format!("{:.1} ANS", days / 365.25)
-    }
+    crate::fmt::days(days)
 }
 
 fn order_text(g: &Game, o: &vector_sim::cryo::WakeOrder) -> String {

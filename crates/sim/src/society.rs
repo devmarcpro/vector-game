@@ -773,18 +773,9 @@ impl Sim {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::scene::new_sim;
-    use std::sync::Arc;
-    use vector_data::GameData;
 
     fn docked() -> Sim {
-        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../data");
-        let mut s = new_sim(5, Arc::new(GameData::load(&dir).expect("data loads")));
-        let (st, _) = s.nearest_station().expect("station");
-        s.spawn_near(st, s.bodies[st].radius + 200.0);
-        s.try_dock().expect("dock");
-        s.credits = 1.0e6;
-        s
+        crate::test_support::docked_sim()
     }
 
     /// A language that nobody aboard has as a mother tongue and that is not of their families.

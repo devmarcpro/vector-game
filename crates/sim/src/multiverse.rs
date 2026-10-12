@@ -714,10 +714,7 @@ mod tests {
     use vector_world::{AnomalyKind, BodyKind};
 
     fn data() -> Arc<GameData> {
-        Arc::new(
-            GameData::load(&std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../data"))
-                .expect("data"),
-        )
+        crate::test_support::data()
     }
 
     /// A sim whose system holds a portal, with the ship next to it and a full tank.

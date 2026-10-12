@@ -261,8 +261,7 @@ fn spow(x: f32, p: f32) -> f32 {
 }
 
 impl Hull {
-    fn new(data: &GameData, hull: usize) -> (Hull, Look) {
-        let h = &data.hulls[hull];
+    fn new(h: &vector_data::Hull) -> (Hull, Look) {
         let l = look(&h.class);
         let length = 7.0 * ((h.mass / 1000.0) as f32).powf(0.4);
         let lh = length * 0.5;
@@ -482,7 +481,19 @@ pub fn hull_length(data: &GameData, hull: usize) -> f64 {
 
 /// Build the model of `design` in state `st`.
 pub fn build(data: &GameData, design: &ShipDesign, st: &State) -> Model {
-    let (hull, lk) = Hull::new(data, design.hull);
+    build_hull(data, &data.hulls[design.hull], design, st)
+}
+
+/// The model of `design` on the given hull: the catalogue's hulls and the one a blueprint makes
+/// (`shipwright::hull_of`) go through the same builder, so the designer shows the same ship as the
+/// outside view.
+pub fn build_hull(
+    data: &GameData,
+    h: &vector_data::Hull,
+    design: &ShipDesign,
+    st: &State,
+) -> Model {
+    let (hull, lk) = Hull::new(h);
     let lh = hull.lh;
     let u = (lh / 7.0).powf(0.55);
     let mut b = B {
@@ -543,7 +554,7 @@ pub fn build(data: &GameData, design: &ShipDesign, st: &State) -> Model {
     }
     // Wings and class details.
     let (mx, my) = hull.max_dim();
-    match look_name(data, design.hull) {
+    match look_name(&h.class) {
         "combat" | "rapide" | "leger" => {
             for s in [-1.0f32, 1.0] {
                 let root = -0.15 * lh;
@@ -964,8 +975,8 @@ pub fn build(data: &GameData, design: &ShipDesign, st: &State) -> Model {
     }
 }
 
-fn look_name(data: &GameData, hull: usize) -> &'static str {
-    match data.hulls[hull].class.as_str() {
+fn look_name(class: &str) -> &'static str {
+    match class {
         "combat" => "combat",
         "rapide" => "rapide",
         "leger" => "leger",
@@ -1743,6 +1754,73 @@ pub fn turntable(
             let p = tmp.px[y * size + x];
             if p != 0 {
                 fb.px_set(cx - half + x as i32, cy - half + y as i32, p);
+            }
+        }
+    }
+}
+
+/// The loadout of a blueprint as a design (slot by slot, in the order of its hull's slots).
+pub fn blueprint_design(data: &GameData, bp: &vector_sim::shipwright::Blueprint) -> ShipDesign {
+    let slots = bp.slots(data);
+    ShipDesign {
+        hull: 0,
+        slots: slots
+            .iter()
+            .map(|s| {
+                bp.fit_at(s.x, s.y, s.z, s.slot)
+                    .and_then(|f| data.module_index(&f.module))
+            })
+            .collect(),
+    }
+}
+
+/// Draw the ship a blueprint makes (its own hull, its fitted modules) in `rect`, turned by `yaw`
+/// about the vertical and `pitch` (the camera going up): the same model as the outside view.
+#[allow(clippy::too_many_arguments)]
+pub fn blueprint_view(
+    fb: &mut Framebuffer,
+    data: &GameData,
+    hull: &vector_data::Hull,
+    design: &ShipDesign,
+    rect: (i32, i32, i32, i32),
+    yaw: f64,
+    pitch: f64,
+    t: f64,
+) {
+    let (w, h) = (
+        (rect.2 - rect.0).max(8) as usize,
+        (rect.3 - rect.1).max(8) as usize,
+    );
+    let mut st = State::idle(design);
+    st.time = t;
+    let m = build_hull(data, hull, design, &st);
+    let mut tmp = Framebuffer::new(w, h);
+    let mut zb = Zbuf::new(w, h);
+    let fov = 0.6f64;
+    let focal = w.min(h) as f64 * 0.5 / (fov * 0.5).tan();
+    let d = f64::from(m.radius) * focal / (w.min(h) as f64 * 0.46);
+    let eye = Vec3::new(0.0, d * 0.28, -d);
+    let cam = Camera {
+        pos: eye,
+        rot: Mat3::look_at(eye * -1.0, Vec3::new(0.0, 1.0, 0.0)).transpose(),
+        fov_y: fov,
+    };
+    let pose = Pose {
+        pos: Vec3::ZERO,
+        rot: Mat3::rot_x(-pitch).mul(&Mat3::rot_y(yaw)),
+        scale: 1.0,
+    };
+    let light = Light {
+        sun: Vec3::new(-0.5, 0.7, -0.6),
+        ambient: 0.22,
+        intensity: 1.0,
+    };
+    draw(&mut tmp, &mut zb, &cam, &m, &pose, &light);
+    for y in 0..h {
+        for x in 0..w {
+            let p = tmp.px[y * w + x];
+            if p != 0 {
+                fb.px_set(rect.0 + x as i32, rect.1 + y as i32, p);
             }
         }
     }

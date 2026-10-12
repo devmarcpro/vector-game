@@ -184,7 +184,8 @@ pub struct StepOut {
     pub notes: Vec<String>,
 }
 
-fn sat(v: f32) -> f32 {
+/// Clamp a 0..1 level (shared by the body, the crew and the cryo module).
+pub(crate) fn sat(v: f32) -> f32 {
     v.clamp(0.0, 1.0)
 }
 
@@ -957,8 +958,7 @@ mod tests {
     use super::*;
 
     fn data() -> GameData {
-        GameData::load(&std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../data"))
-            .expect("data loads")
+        crate::test_support::load()
     }
 
     fn run(

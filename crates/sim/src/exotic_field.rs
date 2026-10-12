@@ -11,7 +11,7 @@ use vector_world::BodyKind;
 /// Game-scale factor between the physical energy of a bubble and what the hold must pay.
 pub const WARP_SCALE: f64 = 1.0e-9;
 /// Range (light years) inside which the quantum link is instantaneous.
-pub const QCOMM_RANGE_LY: f64 = 60.0;
+pub const QCOMM_RANGE_LY: f64 = crate::reach::REGION_LY;
 /// Time (s) in which a strangelet seed eats a whole world (e-folding of the population).
 pub const STRANGELET_TAU_S: f64 = 60.0 * 86_400.0;
 /// Nanites (kg) and credits needed to grow a copy of a crew member.

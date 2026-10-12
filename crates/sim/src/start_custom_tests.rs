@@ -3,13 +3,10 @@
 use super::*;
 use crate::start::{self, new_sim_with};
 use crate::ShipInput;
-use std::path::Path;
 use std::sync::Arc;
 
 fn data() -> Arc<GameData> {
-    Arc::new(
-        GameData::load(&Path::new(env!("CARGO_MANIFEST_DIR")).join("../../data")).expect("data"),
-    )
+    crate::test_support::data()
 }
 
 fn plan_text(d: &GameData, id: &str) -> String {
@@ -933,4 +930,17 @@ fn cryosleep_at_the_start_refuses_what_cannot_be_done() {
     c2.custom.cryo.members = vec![99];
     let s = sim_of(&d, &c2);
     assert!(s.crew.members.iter().all(|p| !p.body.cryo));
+}
+
+#[test]
+fn start_names_come_from_the_shared_name_grammar() {
+    // Audit B9: no private word lists; the same grammar as the NPC ships and companies.
+    for h in 0..40u64 {
+        let ship = random_ship_name(h);
+        assert!(!ship.is_empty() && ship == ship.to_uppercase(), "{ship}");
+        assert_eq!(ship, random_ship_name(h), "deterministic");
+        assert!(!random_company(h).is_empty());
+    }
+    let distinct: std::collections::HashSet<String> = (0..40u64).map(random_ship_name).collect();
+    assert!(distinct.len() > 15, "{}", distinct.len());
 }

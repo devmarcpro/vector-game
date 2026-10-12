@@ -851,10 +851,9 @@ pub fn design_of(data: &GameData, bp: &Blueprint, hull: usize) -> crate::design:
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::path::Path;
 
     fn data() -> GameData {
-        GameData::load(&Path::new(env!("CARGO_MANIFEST_DIR")).join("../../data")).expect("data")
+        crate::test_support::load()
     }
 
     fn plan_of(d: &GameData, id: &str) -> Blueprint {

@@ -179,10 +179,7 @@ mod tests {
     use vector_data::GameData;
 
     fn data() -> Arc<GameData> {
-        Arc::new(
-            GameData::load(&std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../data"))
-                .expect("data"),
-        )
+        crate::test_support::data()
     }
 
     /// A sim with a fond, unrelated, adult couple aboard; returns (father id, mother id).

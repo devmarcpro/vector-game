@@ -13,7 +13,7 @@ use vector_data::GameData;
 use vector_world::galaxy::Galaxy;
 
 /// Side of a sector of power, ly.
-pub const SECTOR_LY: f64 = 240.0;
+pub const SECTOR_LY: f64 = crate::reach::SECTOR_LY;
 /// A sector, by integer coordinates.
 pub type Cell = [i64; 3];
 
@@ -394,10 +394,7 @@ mod tests {
     use std::sync::Arc;
 
     fn data() -> Arc<GameData> {
-        Arc::new(
-            GameData::load(&std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../data"))
-                .expect("data"),
-        )
+        crate::test_support::data()
     }
 
     #[test]

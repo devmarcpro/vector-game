@@ -34,6 +34,8 @@ pub const STELLAR_GY_H_1AU: f64 = 5.0e-5;
 pub const BELT_GY_H: f64 = 0.05;
 /// Share of the outside dose that reaches a crew docked at a station (its radiation shelters).
 pub const DOCKED_COVER: f64 = 0.005;
+/// Share of an outside dose that gets through while the shield is up.
+pub const SHIELDED_COVER: f64 = 0.12;
 /// Armour rating at which plating cuts the dose by a factor e.
 pub const SHIELD_E_FOLD: f64 = 6.0;
 /// The frame holds up to this many g (thrust, drag or tide) before it starts to tear.
@@ -175,7 +177,7 @@ pub fn light_delay(d: f64) -> f64 {
 
 /// Equilibrium temperature (K) of a rotating grey body in a flux `kw_m2` with `albedo`.
 pub fn equilibrium_k(kw_m2: f64, albedo: f64) -> f64 {
-    (kw_m2 * (1.0 - albedo) / (4.0 * SIGMA_KW)).powf(0.25)
+    vector_core::units::equilibrium_temperature(kw_m2 * 1000.0, albedo)
 }
 
 /// Tidal acceleration (m/s^2) across a body of `length` m at distance `r` of a mass of parameter `mu`.
@@ -243,7 +245,7 @@ pub fn cross_section(mass: f64) -> f64 {
 
 /// Dose (Gy/h, unshielded) of the particles of a star of the given class at `d` metres.
 pub fn stellar_dose(class: StarClass, d: f64) -> f64 {
-    let activity = crate::science::flare_probability_per_day(class) / 0.012;
+    let activity = crate::science::flare_activity(class);
     let d_au = (d / AU).max(1e-4);
     STELLAR_GY_H_1AU * activity / (d_au * d_au)
 }
@@ -440,8 +442,7 @@ impl Sim {
         // Under an atmosphere the column of air above stops the radiation (the Earth's is about
         // 1000 g/cm^2 against a stopping length near 150): a world with air is safe to stand on.
         if let Some((_, air, alt)) = self.in_air_at(p) {
-            let column = air.pressure(alt) * 1.0e5 / air.gravity.max(0.05) * 0.1;
-            let through = (-column / 150.0).exp();
+            let through = crate::biosphere::radiation_through_air(air.pressure(alt), air.gravity);
             d.cosmic *= through;
             d.stellar *= through;
             d.belt *= through;
@@ -460,7 +461,7 @@ impl Sim {
         let cover = if self.docked.is_some() {
             DOCKED_COVER
         } else if self.ship.sys.shield_pts > 0.0 {
-            0.12
+            SHIELDED_COVER
         } else {
             1.0
         };
@@ -534,6 +535,26 @@ impl Sim {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn one_law_of_cover_and_of_air_for_every_dose() {
+        // Audit B6: the ground dose, the biosphere and the flight under an atmosphere share the
+        // air law, and a flare is stopped by the same cover as any other dose.
+        for p in [0.0, 0.01, 0.3, 1.0, 3.0] {
+            let a = crate::biosphere::surface_radiation(p);
+            let b = crate::biosphere::radiation_through_air(p, vector_core::units::G0);
+            assert_eq!(a, b);
+            assert!(crate::biosphere::radiation_through_air(p, 3.0) <= b + 1e-12);
+        }
+        assert!(
+            (crate::biosphere::surface_radiation(1.0) - (-6.8f64).exp()).abs()
+                < 0.05 * (-6.8f64).exp()
+        );
+        const {
+            assert!(SHIELDED_COVER > DOCKED_COVER && SHIELDED_COVER < 1.0);
+        }
+        assert!(crate::science::flare_activity(StarClass::M) > 1.0);
+    }
+
     use super::*;
     use crate::scene::new_sim;
     use std::sync::Arc;

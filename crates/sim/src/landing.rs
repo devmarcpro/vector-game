@@ -900,8 +900,7 @@ mod tests {
     use vector_data::GameData;
 
     fn data() -> Arc<GameData> {
-        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../data");
-        Arc::new(GameData::load(&dir).expect("data"))
+        crate::test_support::data()
     }
 
     /// A solid airless world, the ship put `alt` metres above its ground, at rest on it.

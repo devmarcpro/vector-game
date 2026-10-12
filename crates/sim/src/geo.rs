@@ -129,10 +129,7 @@ mod tests {
     use vector_world::{generate_system, BodyKind, PlanetKind};
 
     fn data() -> Arc<GameData> {
-        Arc::new(
-            GameData::load(&std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../data"))
-                .expect("data"),
-        )
+        crate::test_support::data()
     }
 
     /// A temperate world with plates, from the first seeds that have one.

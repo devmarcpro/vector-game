@@ -22,9 +22,9 @@ pub const CATCH_UP_DAYS: i64 = 10;
 /// Pending choices kept at once.
 pub const PENDING_MAX: usize = 3;
 /// How far a price shock reaches, ly.
-pub const SHOCK_RADIUS_LY: f64 = 60.0;
+pub const SHOCK_RADIUS_LY: f64 = crate::reach::REGION_LY;
 /// Reach of "your colonies" in conditions that do not say, ly.
-pub const COLONY_REACH_LY: f64 = 30.0;
+pub const COLONY_REACH_LY: f64 = crate::reach::LOCAL_LY;
 /// Contracts offered by surprises last this many days.
 pub const OFFER_DAYS: f64 = 20.0;
 

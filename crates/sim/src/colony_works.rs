@@ -192,6 +192,11 @@ pub struct Works {
     pub harsh: f64,
     /// Local price of food relative to its base value, set by the sim.
     pub food_price: f64,
+    /// Harvest of the year in the sector (1 = a normal one, see `macroeco::harvest`), set by the
+    /// sim: the open fields suffer the drought that makes bread dear in the markets. Derived,
+    /// not saved.
+    #[serde(skip, default = "one_year")]
+    pub harvest: f64,
     /// Credits earned selling surplus food, spent on imports, since the founding.
     pub sold: f64,
     pub bought: f64,
@@ -238,6 +243,7 @@ impl Default for Works {
             rain: 0.0,
             harsh: 0.0,
             food_price: 1.0,
+            harvest: 1.0,
             sold: 0.0,
             bought: 0.0,
             hist_day: i64::MIN,
@@ -246,6 +252,10 @@ impl Default for Works {
             told: [i64::MIN; 4],
         }
     }
+}
+
+fn one_year() -> f64 {
+    1.0
 }
 
 /// Days of history kept for the charts.
@@ -616,8 +626,11 @@ impl Colony {
             } else {
                 1.0
             };
+            // The sector's year of drought or plenty reaches the open fields only.
+            let year = 1.0 + (self.works.harvest - 1.0) * (1.0 - shelter.clamp(0.0, 1.0));
             per_day += ha
                 * base
+                * year
                 * f_t
                 * w
                 * s
@@ -1256,6 +1269,8 @@ impl crate::Sim {
         c.works.harsh = harsh;
         c.works.siege = if turmoil.besieged { 1.0 } else { 0.0 };
         c.works.food_price = food.map_or(1.0, |f| factors[f]);
+        c.works.harvest =
+            crate::macroeco::harvest(self.galaxy.seed, crate::politics::cell_of(pos), now);
     }
 
     /// Send `kg` of resource `res` from colony `from` to colony `to` by convoy: roads on the same
@@ -1590,6 +1605,36 @@ mod tests {
         assert_eq!(airless, 0.0, "no open fields without air");
         assert!(hall > 20.0, "a greenhouse grows without air: {hall}");
         assert!(hall_frozen > 0.0, "a greenhouse softens the frost");
+    }
+
+    #[test]
+    fn link_harvest_to_fields_a_bad_year_of_the_sector_hits_the_open_fields_only() {
+        let yield_of = |harvest: f64, building: &str| {
+            let (data, mut c) = colony(ALL, env(0.8, 0.6, 288.0, true));
+            c.works.harvest = harvest;
+            put(&mut c, &data, building, 2);
+            run(&mut c, &data, 6.0);
+            c.works.farm.yield_day
+        };
+        let (normal, drought, bumper) = (
+            yield_of(1.0, "farmland"),
+            yield_of(0.6, "farmland"),
+            yield_of(1.3, "farmland"),
+        );
+        assert!(normal > 100.0, "{normal}");
+        assert!(
+            (drought / normal - 0.6).abs() < 0.05,
+            "{drought} vs {normal}"
+        );
+        assert!(bumper > normal * 1.2, "{bumper} vs {normal}");
+        let (hall, hall_dry) = (
+            yield_of(1.0, "greenhouse_hall"),
+            yield_of(0.6, "greenhouse_hall"),
+        );
+        assert!(
+            hall_dry / hall > 0.9 && hall_dry / hall > drought / normal + 0.25,
+            "a greenhouse barely feels the drought: {hall_dry} vs {hall}"
+        );
     }
 
     #[test]

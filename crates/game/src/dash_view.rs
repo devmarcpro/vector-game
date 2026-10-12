@@ -154,7 +154,7 @@ pub fn topic_screen(t: Topic) -> (Screen, bool) {
         Surprise => (Screen::Journal, false),
         Contract => (Screen::Contracts, false),
         Colony | Epidemic => (Screen::Empire, false),
-        Malware => (Screen::Tech, true),
+        Malware | Mind => (Screen::Tech, true),
         Yard => (Screen::Shipyard, false),
     }
 }

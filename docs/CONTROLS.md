@@ -40,7 +40,7 @@
 | F5 / F9 | Sauvegarde / chargement rapide (saves/slot1.sav) |
 | Echap | Menu pause |
 | G | Pilote auto vers la cible (brachistochrone limitee par le delta-v) |
-| Pave num. * | NAVIGATION AUTO : l'ecran de la file d'ordres de l'ordinateur de bord (manoeuvres, orbites, transferts, escorte, patrouille, sauts FTL), voir « Navigation automatique » ; aussi dans F10, espace NAVIGATION, et par le mot [ECRAN] du panneau du cockpit |
+| Pave num. * | NAVIGATION AUTO : l'ecran de la file d'ordres de l'ordinateur de bord (manoeuvres, orbites, transferts, escorte, patrouille, sauts FTL), voir Â« Navigation automatique Â» ; aussi dans F10, espace NAVIGATION, et par le mot [ECRAN] du panneau du cockpit |
 | M | Carte systeme ; +/- zoom ; C centre etoile/vaisseau |
 | P | Pause |
 | PgUp / PgDn | Temps x0.25 .. x100000 (pas adaptatifs ; poussee manuelle coupee au-dela de x2) |
@@ -51,7 +51,7 @@
 | F10 | Ignorer le tutoriel |
 | F6 | Codex (Gauche/Droite categorie, Haut/Bas entree) |
 | F10 | Menu principal : les huit espaces qui regroupent tous les ecrans (voir Â« Le menu principal Â») ; re-appuyer ferme |
-| \ ou Pause | Tableau de bord (neuf panneaux, depuis n'importe quel ecran de jeu) ; re-appuyer ferme (voir « Le tableau de bord ») |
+| \ ou Pause | Tableau de bord (neuf panneaux, depuis n'importe quel ecran de jeu) ; re-appuyer ferme (voir Â« Le tableau de bord Â») |
 | Suppr | Ignorer le tutoriel |
 
 Options de ligne de commande : `--snapshot fichier.png [scene]` (rendu headless), `--bench`, `--script fichier.txt` (jeu scripte sans fenetre, voir `crates/game/src/script.rs`).
@@ -75,7 +75,7 @@ Ecran flotte : Tab liste, N nouvelle route (Gauche/Droite valeur, Tab champ, Ent
 Menu de demarrage : Partie rapide (voyageur standard, graine tapee ou par defaut) / Nouvelle partie (le flux en sept etapes ci-dessous) / Continuer / Regles de partie / Options / Codex-Aide / Quitter. Menu pause : Reprendre / Sauvegarder / Charger / Regles / Options / Codex-Aide / Menu principal / Quitter.
 
 ## Nouvelle partie (neuf etapes)
-Menu de demarrage > Nouvelle partie. Entree passe a l'etape suivante (sur une ligne d'action, elle fait l'action), Echap revient a la precedente (la premiere revient au menu), un clic sur le nom d'une etape (en haut) y va directement, clic droit sur une zone vide = Echap. Le bouton « TOUT ALEATOIRE » (en haut a droite) tire une configuration entiere et valide, graine comprise.
+Menu de demarrage > Nouvelle partie. Entree passe a l'etape suivante (sur une ligne d'action, elle fait l'action), Echap revient a la precedente (la premiere revient au menu), un clic sur le nom d'une etape (en haut) y va directement, clic droit sur une zone vide = Echap. Le bouton Â« TOUT ALEATOIRE Â» (en haut a droite) tire une configuration entiere et valide, graine comprise.
 **Lignes** (etapes 3, 4, 5, 7, 8, 9) : Haut/Bas change de ligne, Gauche/Droite (ou les boutons `<` `>`) change la valeur, Tab (ou `[ALEA]`) la tire au hasard, Espace (ou clic sur le nom) active une action, **taper** ecrit dans une ligne de texte (Retour arriere efface, Suppr vide). Chaque ligne affiche sa consequence en bas de l'ecran ; un refus de budget est dit en rouge.
 1. **Explications** : ce qu'est le jeu (bac a sable, vous etes l'IA du vaisseau) et les touches a connaitre.
 2. **Scenario** (Haut/Bas) : Voyageur, Marchand, Explorateur, Hors-la-loi, Colon, Naufrage : credits, soute, vaisseau, points d'equipage, technologies, relations.
@@ -114,7 +114,7 @@ Ecran, quatre pages (Tab ou clic) : PLAN, PLANIFICATEUR, SEUILS, JOURNAL.
 La barre oblique inverse (a gauche de Entree sur un clavier ISO) ou Pause ouvre, depuis n'importe quel ecran de jeu, le tableau de bord ; aussi : un clic sur le compteur ALERTES du bandeau du haut, le bouton TABLEAU DE BORD de l'orientation du menu F10, ou 0 dans ce menu. Il gele le vol.
 Neuf panneaux (1 VAISSEAU, 2 EQUIPAGE, 3 FINANCES, 4 MONDE LOCAL, 5 CONTRATS ET MISSIONS, 6 ALERTES, 7 COLONIES ET PROJETS, 8 EXPLORATION A PIED, 9 ESPRIT DE L'IA) ; jauges vertes au-dessus de 50 %, ambre au-dessus de 25 %, rouges dessous ; sparkline de la valeur nette.
 Tab / Fleche droite : panneau suivant ; Maj+Tab / Fleche gauche : precedent ; 1 a 9 : aller au panneau ; Haut/Bas : ligne du panneau ; Entree, Espace ou clic : ouvre l'ecran detaille de la ligne (vaisseau, equipage, banque, journal...) ; **Echap** revient ici depuis cet ecran, puis ferme le tableau et rend l'ecran d'ou il a ete ouvert ; le clic droit fait de meme. Une ligne grisee dit pourquoi elle est indisponible (amarrage, vol).
-Le panneau ALERTES liste tout ce qui demande attention, du plus grave au plus benin (CRIT rouge, ATT ambre, INFO) : Entree sur une alerte ouvre l'ecran qui la traite. Les alertes ne sont jamais obligatoires. Le compteur « ALERTES n CRIT m ATT » du bandeau du haut est visible sur tous les ecrans.
+Le panneau ALERTES liste tout ce qui demande attention, du plus grave au plus benin (CRIT rouge, ATT ambre, INFO) : Entree sur une alerte ouvre l'ecran qui la traite. Les alertes ne sont jamais obligatoires. Le compteur Â« ALERTES n CRIT m ATT Â» du bandeau du haut est visible sur tous les ecrans.
 
 ## Naufrage (scenario)
 Le vaisseau est un epave : moteur a 0 %, reservoirs vides, aucun credit, un ingenieur seul, a pied sur un monde choisi pour son air. Les epaves, campements, ruines et grottes de la surface (touche Fin / carte de surface) donnent des pieces detachees et du carburant ; le butin va en soute au retour (Entree sur < ou R) ; l'ingenieur de quart repare avec les pieces detachees (ses reparations ordinaires, le module le plus abime d'abord) ; **I puis F** verse le carburant de la soute dans le reservoir ; le menu (F10) dit moteur, energie, pieces et carburant. Le vaisseau peut decoller (Espace) quand la poussee depasse son poids sur ce monde. Rien n'est impose : on peut aussi rester vivre sur place.

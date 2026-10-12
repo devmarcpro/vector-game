@@ -55,6 +55,7 @@ pub enum Topic {
     Malware,
     Yard,
     Cryo,
+    Mind,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -113,6 +114,13 @@ pub const EPIDEMIC_WARNING: f64 = 0.05;
 /// Malware share that warns and that is critical.
 pub const MALWARE_WARNING: f64 = 0.3;
 pub const MALWARE_CRITICAL: f64 = 0.6;
+/// Share of its computing power under which the mind (heat, starved bus) warns.
+pub const MIND_THROTTLE_WARNING: f64 = 0.7;
+/// Production lost to pests in a colony that warns, and acute dose of a person (Sv) that warns
+/// and that is critical (asleep or awake: the rays do not care).
+pub const COLONY_PEST: f64 = 0.15;
+pub const PERSON_DOSE_WARNING: f32 = 1.0;
+pub const PERSON_DOSE_CRITICAL: f32 = 4.0;
 
 fn al(sev: Severity, topic: Topic, text: impl Into<String>) -> Alert {
     Alert {
@@ -353,6 +361,29 @@ impl Sim {
                 ));
             }
         }
+        // The dose of each person, the sleepers included: it adds up asleep and nothing mends it.
+        let worst = self
+            .crew
+            .alive()
+            .map(|p| (p.body.acute_dose, p.body.cryo, p.name.as_str()))
+            .max_by(|a, b| a.0.total_cmp(&b.0));
+        if let Some((dose, asleep, name)) = worst {
+            if dose >= PERSON_DOSE_WARNING {
+                out.push(al(
+                    if dose >= PERSON_DOSE_CRITICAL {
+                        Critical
+                    } else {
+                        Warning
+                    },
+                    Topic::Radiation,
+                    format!(
+                        "{}{} : DOSE AIGUE {dose:.1} SV",
+                        name.to_uppercase(),
+                        if asleep { " (EN CRYO)" } else { "" }
+                    ),
+                ));
+            }
+        }
         if sick > 0 {
             out.push(al(
                 Warning,
@@ -441,6 +472,23 @@ impl Sim {
                     ),
                 ));
             }
+            // What the customs of the place would seize at the docks (see `customs_check`).
+            let held: Vec<String> = self
+                .banned_goods(f)
+                .into_iter()
+                .filter(|&r| self.ship.cargo.kg[r] > 0.0)
+                .map(|r| d.resources[r].name.to_uppercase())
+                .collect();
+            if !held.is_empty() {
+                out.push(al(
+                    Warning,
+                    Topic::Law,
+                    format!(
+                        "MARCHANDISES INTERDITES CHEZ {name} : {} (SAISIE ET AMENDE AU CONTROLE)",
+                        held.join(", ")
+                    ),
+                ));
+            }
             let owed = self.fines_owed(f);
             if owed > 0.0 {
                 out.push(al(
@@ -504,6 +552,16 @@ impl Sim {
                     ),
                 ));
             }
+            if col.pest >= COLONY_PEST {
+                out.push(al(
+                    Warning,
+                    Topic::Colony,
+                    format!(
+                        "{n} : RAVAGEURS, {:.0} % DE LA PRODUCTION PERDUE",
+                        col.pest * 100.0
+                    ),
+                ));
+            }
             if col.debt_days > 0.0 {
                 out.push(al(
                     Warning,
@@ -547,6 +605,16 @@ impl Sim {
                 format!(
                     "LOGICIEL MALVEILLANT : {:.0} % DE L'ESPRIT",
                     self.mind.malware * 100.0
+                ),
+            ));
+        }
+        if self.mind_throttle() < MIND_THROTTLE_WARNING {
+            out.push(al(
+                Warning,
+                Topic::Mind,
+                format!(
+                    "ESPRIT RALENTI : {:.0} % DE LA PUISSANCE DE CALCUL (CHALEUR OU ENERGIE)",
+                    self.mind_throttle() * 100.0
                 ),
             ));
         }

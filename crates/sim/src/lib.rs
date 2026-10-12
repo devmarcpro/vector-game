@@ -750,7 +750,13 @@ impl Sim {
             return SIM_DT;
         }
         let mut dt = f64::MAX;
-        for b in &self.bodies {
+        // Under the autopilot the ship rides an analytic plan: only the destination limits the
+        // step (a transfer that crosses another world must not crawl at the smallest step).
+        let ap_target = self.autopilot.as_ref().map(|a| a.target);
+        for (i, b) in self.bodies.iter().enumerate() {
+            if ap_target.is_some_and(|t| t != i) {
+                continue;
+            }
             let d = (self.ship.pos - b.pos).length();
             let alt = (d - b.radius).max(1.0);
             if b.gm > 1e6 && !matches!(b.kind, BodyKind::Asteroid(_)) {
@@ -1680,6 +1686,20 @@ mod tests {
             GameData::load(&std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../data"))
                 .expect("data"),
         )
+    }
+
+    #[test]
+    fn autopilot_crossing_another_world_keeps_long_steps() {
+        let mut s = crate::scene::new_sim(3, data());
+        let planets: Vec<usize> = (0..s.bodies.len())
+            .filter(|&i| matches!(s.bodies[i].kind, BodyKind::Planet(_)))
+            .collect();
+        let (a, b) = (planets[0], planets[1]);
+        s.ship.pos = s.bodies[a].pos + Vec3::new(s.bodies[a].radius * 0.5, 0.0, 0.0);
+        s.ship.vel = s.bodies[a].vel;
+        s.autopilot = Some(autopilot::Autopilot::new(&s, b).expect("plan"));
+        s.ship.vel = s.bodies[a].vel + Vec3::new(0.0, 2.0e4, 0.0);
+        assert!(s.safe_dt() > 10.0, "crawls at {} s", s.safe_dt());
     }
 
     /// A system with a single, nearly massless star: gravity-free flight.

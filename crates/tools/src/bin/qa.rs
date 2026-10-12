@@ -554,6 +554,9 @@ fn play(
             if let Ok(mut g) = CURRENT.lock() {
                 *g = format!("jour {day} action {name} (seed {seed})");
             }
+            if trace {
+                eprintln!("  act jour {day} {name}");
+            }
             let ta = Instant::now();
             let r = catch_unwind(AssertUnwindSafe(|| f(&mut s, &mut rng)));
             let ms = ta.elapsed().as_secs_f64() * 1000.0;
@@ -570,7 +573,6 @@ fn play(
         if let Ok(mut g) = CURRENT.lock() {
             *g = format!("jour {day} advance");
         }
-        let tadv = Instant::now();
         let mut left = DAY;
         let mut input = ShipInput::default();
         let mut k = 0;
@@ -593,14 +595,32 @@ fn play(
                     s.time
                 );
             }
-            let r = catch_unwind(AssertUnwindSafe(|| s.advance(chunk, &input)));
+            let mut capped = false;
+            let r = catch_unwind(AssertUnwindSafe(|| {
+                let mut left = chunk;
+                let mut g = 0;
+                while left > 1e-9 {
+                    if g >= 30_000 {
+                        capped = true;
+                        break;
+                    }
+                    g += 1;
+                    let dt = if s.docked.is_some() {
+                        left.min(3600.0)
+                    } else {
+                        left.min(s.safe_dt())
+                    };
+                    s.step_dt(&input, dt);
+                    left -= dt;
+                }
+            }));
             if r.is_err() {
                 let msg = LAST_PANIC.lock().map(|g| g.clone()).unwrap_or_default();
                 note(&mut out, "panique(advance)", msg, day);
                 break;
             }
             left -= chunk;
-            if tadv.elapsed().as_secs_f64() > 5.0 {
+            if capped {
                 let near = s
                     .bodies
                     .iter()
@@ -610,7 +630,7 @@ fn play(
                     &mut out,
                     "lenteur",
                     format!(
-                        "un jour simule prend plus de 5 s (safe_dt {:.4} s, vitesse {:.0} m/s, corps le plus proche {} a {:.0} m, rayon {:.0}, autopilote {}, derniere action {})",
+                        "pas plafonnes: 30000 pas par heure simulee sans finir (safe_dt {:.4} s, vitesse {:.0} m/s, corps le plus proche {} a {:.0} m, rayon {:.0}, autopilote {}, derniere action {})",
                         s.safe_dt(),
                         s.ship.vel.length(),
                         near.1,
@@ -622,6 +642,9 @@ fn play(
                     day,
                 );
                 s.autopilot = None;
+                if let Some(st) = s.bodies.iter().position(|b| b.kind == vector_world::BodyKind::Station) {
+                    s.spawn_near(st, s.bodies[st].radius + 500.0);
+                }
                 break;
             }
         }

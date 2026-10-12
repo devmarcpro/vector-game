@@ -135,6 +135,12 @@ pub struct Game {
     pub fac_sel: usize,
     /// Factions screen: the registry of relations (every entity) instead of the ring.
     pub rel_page: bool,
+    /// Factions screen: the society page (S).
+    pub soc_page: bool,
+    pub soc_who: usize,
+    pub soc_study: usize,
+    pub soc_art: usize,
+    pub soc_sport: usize,
     pub rel_sel: usize,
     /// Crew screen: relations network instead of the table.
     pub crew_net: bool,
@@ -314,6 +320,11 @@ impl Game {
             col_health: false,
             fac_sel: 0,
             rel_page: false,
+            soc_page: false,
+            soc_who: 0,
+            soc_study: 0,
+            soc_art: 0,
+            soc_sport: 0,
             rel_sel: 0,
             crew_net: false,
             organ_mode: false,
@@ -1855,7 +1866,33 @@ impl Game {
             }
             return;
         }
+        if code == KeyCode::KeyS {
+            self.soc_page = !self.soc_page;
+            return;
+        }
         let n = self.data.factions.len().max(1);
+        if self.soc_page {
+            let crew = self.sim.crew.count().max(1);
+            let studies = self.data.society.studies.len();
+            match code {
+                KeyCode::ArrowRight => self.fac_sel = (self.fac_sel + 1) % n,
+                KeyCode::ArrowLeft => self.fac_sel = (self.fac_sel + n - 1) % n,
+                KeyCode::ArrowDown => self.soc_who = (self.soc_who + 1) % crew,
+                KeyCode::ArrowUp => self.soc_who = (self.soc_who + crew - 1) % crew,
+                KeyCode::PageDown => self.soc_study = (self.soc_study + 1) % studies,
+                KeyCode::PageUp => self.soc_study = (self.soc_study + studies - 1) % studies,
+                KeyCode::KeyE => self.click_society(crate::society_view::ENROLL),
+                KeyCode::KeyC => self.click_society(crate::society_view::COMPOSE),
+                KeyCode::KeyV => self.click_society(crate::society_view::SELL),
+                KeyCode::KeyD => self.click_society(crate::society_view::DONATE),
+                KeyCode::KeyP => self.click_society(crate::society_view::BET),
+                KeyCode::KeyA => self.click_society(crate::society_view::NEXT_ART),
+                KeyCode::KeyJ => self.click_society(crate::society_view::NEXT_SPORT),
+                KeyCode::Escape | KeyCode::KeyX => self.screen = Screen::Flight,
+                _ => {}
+            }
+            return;
+        }
         match code {
             KeyCode::ArrowRight | KeyCode::ArrowDown => self.fac_sel = (self.fac_sel + 1) % n,
             KeyCode::ArrowLeft | KeyCode::ArrowUp => self.fac_sel = (self.fac_sel + n - 1) % n,
@@ -3164,6 +3201,29 @@ mod tests {
         assert_eq!(g.fac_sel, 0, "the selection wraps around");
         g.key(KeyCode::Escape, None, true);
         assert_eq!(g.screen, Screen::Flight);
+    }
+
+    #[test]
+    fn s_opens_the_society_page_and_its_buttons_act() {
+        let mut g = Game::new(data(), 1);
+        g.key(KeyCode::Enter, None, true);
+        g.key(KeyCode::KeyX, None, true);
+        assert!(!g.soc_page);
+        g.key(KeyCode::KeyS, None, true);
+        assert!(g.soc_page, "S shows the society page");
+        frame(&g);
+        // Not docked: the school, the gallery and the bets refuse.
+        g.sim.docked = None;
+        g.key(KeyCode::KeyP, None, true);
+        assert!(g.sim.society.rounds == 0);
+        // Composing works anywhere on the ship.
+        g.key(KeyCode::KeyC, None, true);
+        assert_eq!(g.sim.society.works.len(), 1);
+        frame(&g);
+        g.key(KeyCode::KeyA, None, true);
+        assert_eq!(g.soc_art, 1);
+        g.key(KeyCode::KeyS, None, true);
+        assert!(!g.soc_page);
     }
 
     #[test]

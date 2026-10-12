@@ -471,6 +471,82 @@ impl Law {
     }
 }
 
+/// Society tables (see `data/society.ron`): languages, festivals, cuisine, arts, sports, schools.
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+pub struct SocietyData {
+    pub languages: Vec<Language>,
+    pub festivals: Vec<Festival>,
+    pub dishes: Vec<Dish>,
+    pub arts: Vec<ArtForm>,
+    pub sports: Vec<Sport>,
+    pub studies: Vec<Study>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct Language {
+    pub id: String,
+    pub name: String,
+    pub family: String,
+    pub civs: Vec<String>,
+    pub cultures: Vec<String>,
+    pub era_years: f64,
+    pub words: Vec<String>,
+    pub text: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct Festival {
+    pub id: String,
+    pub name: String,
+    pub text: String,
+    pub at: f64,
+    pub days: f64,
+    pub morale: f32,
+    pub when: Vec<(String, String, f64)>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct Dish {
+    pub id: String,
+    pub name: String,
+    pub text: String,
+    pub morale: f32,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct ArtForm {
+    pub id: String,
+    pub name: String,
+    pub medium: String,
+    pub base: f64,
+    pub taste: (String, f64),
+    pub text: String,
+    pub stems: Vec<String>,
+    pub epithets: Vec<String>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct Sport {
+    pub id: String,
+    pub name: String,
+    pub runners: usize,
+    pub margin: f64,
+    pub text: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct Study {
+    pub id: String,
+    pub name: String,
+    /// skill | langue | art
+    pub kind: String,
+    pub target: String,
+    pub days: f64,
+    pub fee: f64,
+    pub gain: f64,
+    pub text: String,
+}
+
 /// Customs and morals of the factions, and what they do to trade.
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct Ethos {
@@ -930,6 +1006,7 @@ pub struct GameData {
     pub materials: Vec<Material>,
     pub companies: Vec<Company>,
     pub laws: Vec<Law>,
+    pub society: SocietyData,
     pub chemistry: chemistry::Chemistry,
     pub reactions: Vec<chemistry::Reaction>,
     pub surprises: Vec<surprise::Surprise>,
@@ -1129,6 +1206,7 @@ impl GameData {
             materials: read(&dir.join("materials.ron"))?,
             companies: read(&dir.join("companies.ron"))?,
             laws: read(&dir.join("laws.ron"))?,
+            society: read(&dir.join("society.ron"))?,
             chemistry: read(&dir.join("chemistry.ron"))?,
             reactions: read(&dir.join("reactions.ron"))?,
             surprises: read(&dir.join("surprises.ron"))?,
@@ -1240,6 +1318,9 @@ impl GameData {
         self.laws.iter().position(|l| l.id == id)
     }
 
+    pub fn art_index(&self, id: &str) -> Option<usize> {
+        self.society.arts.iter().position(|a| a.id == id)
+    }
     pub fn faction_index(&self, id: &str) -> Option<usize> {
         self.factions.iter().position(|f| f.id == id)
     }
@@ -1645,6 +1726,7 @@ impl GameData {
         self.validate_gear()?;
         self.validate_religions()?;
         self.validate_laws()?;
+        self.validate_society()?;
         self.validate_cartels()?;
         self.validate_dimensions()?;
         self.validate_exotics()?;
@@ -2004,6 +2086,84 @@ impl GameData {
                 .count();
             if places == 0 {
                 return bad(format!("loi {}: en vigueur nulle part", l.id));
+            }
+        }
+        Ok(())
+    }
+
+    /// Society: unique ids, every civilisation and culture speaks exactly one language, known
+    /// axes, skills and arts, sane numbers.
+    fn validate_society(&self) -> Result<(), DataError> {
+        let bad = |s: String| Err(DataError::Invalid(s));
+        let so = &self.society;
+        let mut ids = std::collections::HashSet::new();
+        let mut spoken: Vec<(&str, bool)> = Vec::new();
+        for l in &so.languages {
+            if !ids.insert(l.id.as_str()) {
+                return bad(format!("langue {} en double", l.id));
+            }
+            if l.words.len() != 3 || l.era_years <= 0.0 || l.family.is_empty() {
+                return bad(format!("langue {}: valeurs invalides", l.id));
+            }
+            spoken.extend(l.civs.iter().map(|c| (c.as_str(), true)));
+            spoken.extend(l.cultures.iter().map(|c| (c.as_str(), false)));
+        }
+        for c in &self.civilisations {
+            if spoken.iter().filter(|(k, civ)| *civ && *k == c.id).count() != 1 {
+                return bad(format!("peuple {}: il faut exactement une langue", c.id));
+            }
+        }
+        for c in &self.cultures {
+            if spoken.iter().filter(|(k, civ)| !*civ && *k == c.id).count() != 1 {
+                return bad(format!("culture {}: il faut exactement une langue", c.id));
+            }
+        }
+        for (k, civ) in &spoken {
+            let known = if *civ {
+                self.civilisations.iter().any(|c| c.id == *k)
+            } else {
+                self.cultures.iter().any(|c| c.id == *k)
+            };
+            if !known {
+                return bad(format!("langue: {k} inconnu"));
+            }
+        }
+        let cond_ok = |w: &[(String, String, f64)]| {
+            w.iter().all(|(a, op, v)| {
+                self.ethos.axis(a).is_some() && ["<", ">"].contains(&op.as_str()) && v.abs() <= 1.0
+            })
+        };
+        for f in &so.festivals {
+            if !(0.0..1.0).contains(&f.at) || f.days <= 0.0 || !cond_ok(&f.when) {
+                return bad(format!("fete {}: valeurs invalides", f.id));
+            }
+        }
+        if so.dishes.is_empty() || so.sports.is_empty() {
+            return bad("societe: plats ou sports manquants".into());
+        }
+        for a in &so.arts {
+            if a.base <= 0.0
+                || self.ethos.axis(&a.taste.0).is_none()
+                || a.stems.is_empty()
+                || a.epithets.is_empty()
+            {
+                return bad(format!("art {}: valeurs invalides", a.id));
+            }
+        }
+        for s in &so.sports {
+            if s.runners < 2 || !(0.0..0.5).contains(&s.margin) {
+                return bad(format!("sport {}: valeurs invalides", s.id));
+            }
+        }
+        for s in &so.studies {
+            let target_ok = match s.kind.as_str() {
+                "skill" => self.skill_index(&s.target).is_some(),
+                "art" => so.arts.iter().any(|a| a.id == s.target),
+                "langue" => s.target.is_empty(),
+                _ => false,
+            };
+            if !target_ok || s.days <= 0.0 || s.fee < 0.0 || s.gain <= 0.0 {
+                return bad(format!("etude {}: valeurs invalides", s.id));
             }
         }
         Ok(())

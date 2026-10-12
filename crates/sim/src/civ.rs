@@ -85,6 +85,11 @@ impl Sim {
 
     /// Change the goodwill of the people of `body`; the territory it lies in feels it a little.
     pub fn change_civ_reputation(&mut self, body: usize, delta: f32) {
+        // A favour is worth less when it is not understood (see `society`).
+        let delta = match (delta > 0.0).then(|| self.civilisation(body)).flatten() {
+            Some(c) => delta * (0.5 + 0.5 * self.understanding(self.language_of_civ(c.kind))),
+            None => delta,
+        };
         let e = Entity::civ(self.civ_key(body));
         if !self.relations.labels.iter().any(|(k, _)| *k == e) {
             if let Some(c) = self.civilisation(body) {

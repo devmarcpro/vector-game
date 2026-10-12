@@ -2,7 +2,7 @@
 //! weapon, faction, anomaly and condition, generated from the real data (no hand-written numbers).
 use vector_data::GameData;
 
-pub const CATEGORIES: [&str; 47] = [
+pub const CATEGORIES: [&str; 53] = [
     "RESSOURCES",
     "MODULES",
     "ARMES",
@@ -50,6 +50,12 @@ pub const CATEGORIES: [&str; 47] = [
     "PARTIES DU CORPS",
     "BLESSURES",
     "MEDICAMENTS",
+    "LANGUES",
+    "FETES",
+    "PLATS",
+    "ARTS",
+    "SPORTS",
+    "ETUDES",
 ];
 
 /// The category of the reactions: the laboratory.
@@ -122,6 +128,12 @@ fn entries(data: &GameData, cat: usize) -> Vec<usize> {
         44 => (0..data.body_parts.len()).collect(),
         45 => (0..data.wounds.len()).collect(),
         46 => (0..data.drugs.len()).collect(),
+        47 => (0..data.society.languages.len()).collect(),
+        48 => (0..data.society.festivals.len()).collect(),
+        49 => (0..data.society.dishes.len()).collect(),
+        50 => (0..data.society.arts.len()).collect(),
+        51 => (0..data.society.sports.len()).collect(),
+        52 => (0..data.society.studies.len()).collect(),
         _ => Vec::new(),
     }
 }
@@ -174,6 +186,12 @@ pub fn names(data: &GameData, cat: usize) -> Vec<String> {
             44 => data.body_parts[i].name.clone(),
             45 => data.wounds[i].name.clone(),
             46 => data.drugs[i].name.clone(),
+            47 => data.society.languages[i].name.clone(),
+            48 => data.society.festivals[i].name.clone(),
+            49 => data.society.dishes[i].name.clone(),
+            50 => data.society.arts[i].name.clone(),
+            51 => data.society.sports[i].name.clone(),
+            52 => data.society.studies[i].name.clone(),
             18 => format!(
                 "Appeler : {}",
                 vector_data::dialogue::ROLES[i].to_lowercase()
@@ -1684,6 +1702,133 @@ pub fn entry(data: &GameData, cat: usize, k: usize) -> Vec<String> {
                 .collect();
             out.push(format!("Peut toucher : {}", places.join(", ")));
         }
+        47 => {
+            let l = &data.society.languages[i];
+            out.push(format!("{}  (famille {})", l.name, l.family));
+            out.push(l.text.clone());
+            out.push(format!(
+                "Mots : {}  (bonjour, merci, marche conclu)",
+                l.words.join(" / ")
+            ));
+            out.push(format!(
+                "Derive tous les {:.0} ans : les mots changent et ce qu'on en savait s'efface sans pratique",
+                l.era_years
+            ));
+            let mut who: Vec<String> = l
+                .cultures
+                .iter()
+                .filter_map(|c| data.cultures.iter().find(|x| x.id == *c))
+                .map(|c| c.name.clone())
+                .collect();
+            who.extend(
+                l.civs
+                    .iter()
+                    .filter_map(|c| data.civilisations.iter().find(|x| x.id == *c))
+                    .map(|c| c.name.clone()),
+            );
+            out.push(format!("Parle par : {}", who.join(", ")));
+            out.push(
+                "Une langue de la meme famille est comprise a moitie ; l'IA traduit avec le budget de traduction, jamais comme une personne."
+                    .to_string(),
+            );
+        }
+        48 => {
+            let f = &data.society.festivals[i];
+            out.push(f.name.clone());
+            out.push(f.text.clone());
+            out.push(format!(
+                "Date : {:.0} % de l'annee locale, {:.0} jours ; moral de l'equipage a quai : +{:.0} %",
+                f.at * 100.0,
+                f.days,
+                f.morale * 100.0
+            ));
+            let places: Vec<String> = data
+                .factions
+                .iter()
+                .filter(|x| {
+                    f.when.is_empty()
+                        || f.when.iter().any(|(axis, op, lim)| {
+                            let p = data.ethos.profile(Some(&x.id));
+                            let v = data
+                                .ethos
+                                .axis(axis)
+                                .and_then(|a| p.get(a))
+                                .copied()
+                                .unwrap_or(0.0);
+                            if op == "<" {
+                                v < *lim
+                            } else {
+                                v > *lim
+                            }
+                        })
+                })
+                .map(|x| x.name.clone())
+                .collect();
+            out.push(format!("Fetee chez : {}", places.join(", ")));
+        }
+        49 => {
+            let d = &data.society.dishes[i];
+            out.push(d.name.clone());
+            out.push(d.text.clone());
+            out.push(format!("Moral a quai : +{:.0} %", d.morale * 100.0));
+            let by: Vec<String> = data
+                .factions
+                .iter()
+                .filter(|f| {
+                    let h = f.id.bytes().fold(0xcbf2_9ce4_8422_2325u64, |h, b| {
+                        (h ^ u64::from(b)).wrapping_mul(0x0100_0000_01b3)
+                    });
+                    (h % data.society.dishes.len() as u64) as usize == i
+                })
+                .map(|f| f.name.clone())
+                .collect();
+            out.push(format!(
+                "Specialite de : {}",
+                if by.is_empty() {
+                    "aucun peuple".to_string()
+                } else {
+                    by.join(", ")
+                }
+            ));
+        }
+        50 => {
+            let a = &data.society.arts[i];
+            out.push(format!("{}  ({})", a.name, a.medium));
+            out.push(a.text.clone());
+            out.push(format!("Prix d'une oeuvre moyenne : {:.0} CR ; la qualite compte au carre, le renom de l'artiste et le gout local aussi", a.base));
+            if let Some(k) = data.ethos.axis(&a.taste.0) {
+                let (lo, hi) = (&data.ethos.axes[k].low, &data.ethos.axes[k].high);
+                out.push(format!(
+                    "Gout : paye plus cher chez les peuples {}",
+                    if a.taste.1 > 0.0 { hi } else { lo }
+                ));
+            }
+            out.push(
+                "A vendre a la galerie ou a donner au musee de la station (reputation)".to_string(),
+            );
+        }
+        51 => {
+            let s = &data.society.sports[i];
+            out.push(s.name.clone());
+            out.push(s.text.clone());
+            out.push(format!(
+                "{} concurrents ; la maison garde {:.0} % ; mises de 10 a 5000 CR a quai",
+                s.runners,
+                s.margin * 100.0
+            ));
+        }
+        52 => {
+            let s = &data.society.studies[i];
+            out.push(s.name.clone());
+            out.push(s.text.clone());
+            out.push(format!(
+                "{} de {} : {:.0} jours, {:.0} CR (moins cher chez les ouverts), brevet a la fin ; un mentor accelere de moitie",
+                s.kind,
+                if s.target.is_empty() { "la langue locale" } else { s.target.as_str() },
+                s.days,
+                s.fee
+            ));
+        }
         46 => {
             let d = &data.drugs[i];
             out.push(format!("{}  ({})", d.name, d.text));
@@ -2101,8 +2246,8 @@ mod tests {
         assert!(entry(&d, 13, k)
             .join("\n")
             .contains("Silicones thermophiles"));
-        assert_eq!(count(&d, 29), d.chemistries.len());
-        let chem = entry(&d, 29, 0).join("\n");
+        assert_eq!(count(&d, 38), d.chemistries.len());
+        let chem = entry(&d, 38, 0).join("\n");
         assert!(
             chem.contains("Serpent de scorie") && chem.contains("K"),
             "{chem}"

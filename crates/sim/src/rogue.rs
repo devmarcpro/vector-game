@@ -2285,7 +2285,7 @@ impl Sim {
     pub fn blast_damage(&self, reaction: &str, kg: f64) -> Option<f64> {
         let r = self.data.reactions.iter().find(|r| r.id == reaction)?;
         let mj_per_kg = -crate::chemistry::energy_density(&self.data, r);
-        (mj_per_kg > 0.0).then(|| mj_per_kg * kg * BLAST_DMG_PER_MJ)
+        (mj_per_kg > 0.0).then_some(mj_per_kg * kg * BLAST_DMG_PER_MJ)
     }
 
     /// Throw a grenade at the nearest hostile in view: the blast follows the chemistry of the

@@ -182,3 +182,13 @@ Barre d'onglets en haut du chantier : COQUES, CONCEPTION, EQUIPEMENT, PLANS ET C
 - CONCEPTION : clic sur une piece de la liste (ou PgUp/PgDn), clic sur la grille pour la poser (outils POSER, RETIRER, CHOISIR ; fleches = curseur, Entree pose, X retire) ; couche (etage) Debut/Fin ou boutons - et + ; M ou bouton SYMETRIE pour poser aussi le miroir (babord/tribord) ; N nomme le plan. Glisser la souris sur l'apercu le fait tourner. Les pieces cerclees de rouge ne sont pas reliees au noyau.
 - EQUIPEMENT : clic sur une case de la grille, puis sur un emplacement, puis sur un module (double clic ou Entree installe, X retire) ; Espace change de zone (grille, emplacements, modules), fleches pour naviguer.
 - PLANS ET COMMANDES : colonnes MES PLANS (clic choisit, double clic modifie ; boutons NOUVEAU, COPIER, SUPPRIMER, NOM, MODIFIER, EXPORTER ; fichiers de `saves/plans` a importer d'un clic), PLANS EN VENTE (double clic ou Entree achete), CONSTRUIRE (boutons - + equipes, COMMANDER LA CONSTRUCTION ; O au clavier ; PgUp/PgDn equipes) et MA FLOTTE (EMBARQUER, DEMONTER, REFONDRE AVEC LE PLAN CHOISI ; au clavier Entree, D, R). Gauche/Droite change de colonne, F nouveau plan, C copier, X supprimer, E exporter, I importer.
+
+## Militaire
+| Touche | Action |
+|---|---|
+| 1 (en vol) | Lancer un leurre thermique (lance-leurres + ressource leurres) |
+| 2 (en vol) | Radar actif ON/OFF : voir plus loin, mais etre vu de tres loin |
+| 3 (en vol) | Aborder a pied la cible neutralisee ; U reste le pillage abstrait |
+| X puis G | Page GUERRE : fronts, blocus, batteries, paix (P), contrats de mercenaires (M), agents : R recruter, A agent suivant, C secteur vise, I infiltrer, 1-4 sabotage / vol de plans / ecoutes / rumeur, W rappeler, D drone ; Gauche/Droite change de peuple ; G ou Echap revient |
+| F3 (flotte) | O ordre du vaisseau choisi (commerce, suivre, attaquer, defendre, patrouiller), R ravitailler l'escadre, V reparer (a quai), 1-4 sort des prisonniers d'une prise (enroler, liberer, rancon, executer) |
+| Exploration : T / E / G | Tirer (armes a feu), recharger depuis la soute, lancer une grenade |

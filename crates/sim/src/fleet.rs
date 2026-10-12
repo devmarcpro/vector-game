@@ -655,10 +655,9 @@ impl Sim {
             self.docked_station()?;
         }
         let s = &mut self.fleet[idx];
-        if order != FleetOrder::Trade {
-            if s.route.is_some() || !matches!(s.state, FleetState::Idle) {
-                return Err("le vaisseau est en mission de commerce");
-            }
+        if order != FleetOrder::Trade && (s.route.is_some() || !matches!(s.state, FleetState::Idle))
+        {
+            return Err("le vaisseau est en mission de commerce");
         }
         s.order = order;
         Ok(())

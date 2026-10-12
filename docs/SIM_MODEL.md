@@ -364,3 +364,12 @@ Repere : x vers l'etrave, y a tribord, z vers le haut ; cellule de 6 m, centre d
 - Kardashev (Sagan) : K = (log10 P - 6) / 10 ; la Terre (2e13 W) donne 0,73.
 - Raids : probabilite/jour = 0,002 x exposition (1 + 0,5 ln(1 + unites) par ouvrage) x (1 + 2 agitation) x (3 en guerre) / (1 + defense) ; tirage = hash(graine, colonie, jour).
 - Energie abondante : productivite x (1 + 0,1 log10 (offre / demande)), plafonnee a +33 %.
+
+- Zones : pen = 1 - exp(-E / 3 MJ), E = 10 kJ x points restants ; equipage = 20 % x pen x reste ; reste coque 60 % / modules 40 %. Reactif : reduit les coups cinetiques de 0,5 x reactif x taille (plafond 75 %). Ablatif : un faisceau perd 50 % x part ablative ; l'ablation retire de la structure des plaques.
+- Leurre : irradiance = kW / d^2 ; un missile vise la source la plus brillante ; un leurre dure 14 s et refroidit de 2 %/s. Radar : emission x 8 de la puissance du capteur.
+- Embuscade : cible non alertee, non provoquee, hors de la portee passive de la chaleur du vaisseau : x3.
+- Doctrine : force x1,2 / 0,95 (agressive att./def.), 0,85 / 1,25 (defensive), 1 (harcelement, usure du ravitaillement divisee par 2) ; fuite sous 12 / 30 / 50 % de coque.
+- Espionnage : `spy_mission` avec talent x (0,4 + 0,6 couverture) ; couverture perdue par operation et par jour (0,02 + 0,05 contre-espionnage - 0,03 talent).
+- Mercenaires : les coques ajoutent leur cote (`warship_rating`) au secteur ; paie 800 CR x coques ennemies par jour, x1,5 victoire, x0,5 defaite ; pertes (1 - restant) x 0,8 en victoire, 65 % en defaite.
+- Paix : reparations = 0,6 x valeur des vaisseaux detruits + 8000 par crime + amendes ; refus a 3 crimes ; cessez-le-feu 120 jours.
+- Grenade : degats = (-enthalpie par kg de reactifs, en MJ) x masse de la charge (0,4 kg) x 14 ; rayon 2 cases, 1 / (1 + d^2).

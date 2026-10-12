@@ -2,7 +2,7 @@
 //! weapon, faction, anomaly and condition, generated from the real data (no hand-written numbers).
 use vector_data::GameData;
 
-pub const CATEGORIES: [&str; 57] = [
+pub const CATEGORIES: [&str; 56] = [
     "RESSOURCES",
     "MODULES",
     "ARMES",
@@ -128,12 +128,12 @@ fn entries(data: &GameData, cat: usize) -> Vec<usize> {
         44 => (0..data.body_parts.len()).collect(),
         45 => (0..data.wounds.len()).collect(),
         46 => (0..data.drugs.len()).collect(),
-        51 => (0..data.society.languages.len()).collect(),
-        52 => (0..data.society.festivals.len()).collect(),
-        53 => (0..data.society.dishes.len()).collect(),
-        54 => (0..data.society.arts.len()).collect(),
-        55 => (0..data.society.sports.len()).collect(),
-        56 => (0..data.society.studies.len()).collect(),
+        50 => (0..data.society.languages.len()).collect(),
+        51 => (0..data.society.festivals.len()).collect(),
+        52 => (0..data.society.dishes.len()).collect(),
+        53 => (0..data.society.arts.len()).collect(),
+        54 => (0..data.society.sports.len()).collect(),
+        55 => (0..data.society.studies.len()).collect(),
         _ => Vec::new(),
     }
 }
@@ -186,12 +186,12 @@ pub fn names(data: &GameData, cat: usize) -> Vec<String> {
             44 => data.body_parts[i].name.clone(),
             45 => data.wounds[i].name.clone(),
             46 => data.drugs[i].name.clone(),
-            51 => data.society.languages[i].name.clone(),
-            52 => data.society.festivals[i].name.clone(),
-            53 => data.society.dishes[i].name.clone(),
-            54 => data.society.arts[i].name.clone(),
-            55 => data.society.sports[i].name.clone(),
-            56 => data.society.studies[i].name.clone(),
+            50 => data.society.languages[i].name.clone(),
+            51 => data.society.festivals[i].name.clone(),
+            52 => data.society.dishes[i].name.clone(),
+            53 => data.society.arts[i].name.clone(),
+            54 => data.society.sports[i].name.clone(),
+            55 => data.society.studies[i].name.clone(),
             18 => format!(
                 "Appeler : {}",
                 vector_data::dialogue::ROLES[i].to_lowercase()
@@ -1702,7 +1702,7 @@ pub fn entry(data: &GameData, cat: usize, k: usize) -> Vec<String> {
                 .collect();
             out.push(format!("Peut toucher : {}", places.join(", ")));
         }
-        51 => {
+        50 => {
             let l = &data.society.languages[i];
             out.push(format!("{}  (famille {})", l.name, l.family));
             out.push(l.text.clone());
@@ -1732,7 +1732,7 @@ pub fn entry(data: &GameData, cat: usize, k: usize) -> Vec<String> {
                     .to_string(),
             );
         }
-        52 => {
+        51 => {
             let f = &data.society.festivals[i];
             out.push(f.name.clone());
             out.push(f.text.clone());
@@ -1766,7 +1766,7 @@ pub fn entry(data: &GameData, cat: usize, k: usize) -> Vec<String> {
                 .collect();
             out.push(format!("Fetee chez : {}", places.join(", ")));
         }
-        53 => {
+        52 => {
             let d = &data.society.dishes[i];
             out.push(d.name.clone());
             out.push(d.text.clone());
@@ -1791,7 +1791,7 @@ pub fn entry(data: &GameData, cat: usize, k: usize) -> Vec<String> {
                 }
             ));
         }
-        54 => {
+        53 => {
             let a = &data.society.arts[i];
             out.push(format!("{}  ({})", a.name, a.medium));
             out.push(a.text.clone());
@@ -1807,7 +1807,7 @@ pub fn entry(data: &GameData, cat: usize, k: usize) -> Vec<String> {
                 "A vendre a la galerie ou a donner au musee de la station (reputation)".to_string(),
             );
         }
-        55 => {
+        54 => {
             let s = &data.society.sports[i];
             out.push(s.name.clone());
             out.push(s.text.clone());
@@ -1817,7 +1817,7 @@ pub fn entry(data: &GameData, cat: usize, k: usize) -> Vec<String> {
                 s.margin * 100.0
             ));
         }
-        56 => {
+        55 => {
             let s = &data.society.studies[i];
             out.push(s.name.clone());
             out.push(s.text.clone());

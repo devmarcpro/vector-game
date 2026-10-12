@@ -427,7 +427,6 @@ pub fn key_of_word(screen: Screen, word: &str) -> Option<KeyCode> {
         "F8" => KeyCode::F8,
         "F9" => KeyCode::F9,
         "F10" => KeyCode::F10,
-        "SUPPR" => KeyCode::Delete,
         l if l.len() == 1 && l.as_bytes()[0].is_ascii_uppercase() => crate::script::key_code(l)?,
         _ => return None,
     };

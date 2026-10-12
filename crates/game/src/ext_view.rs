@@ -437,6 +437,7 @@ mod tests {
         let data = Arc::new(GameData::load(&dir).expect("data"));
         let mut g = Game::new(data, 5);
         g.new_game(5);
+        g.tut_step = None;
         g
     }
 

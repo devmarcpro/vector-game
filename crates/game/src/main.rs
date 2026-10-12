@@ -25,6 +25,7 @@ mod mind_view;
 mod mouse;
 mod newgame;
 mod power_view;
+mod project_view;
 mod proto_view;
 mod rogue_view;
 mod scene;
@@ -900,7 +901,7 @@ fn snapshot(path: &str, scene: &str, data: Arc<GameData>) {
                 g.advance(1.0 / 30.0);
             }
         }
-        "empire" | "colony" | "fleet" | "fleetmap" | "flow" => {
+        "empire" | "colony" | "fleet" | "fleetmap" | "flow" | "projects" => {
             let data = Arc::clone(&g.data);
             let planet = g
                 .sim
@@ -981,6 +982,35 @@ fn snapshot(path: &str, scene: &str, data: Arc<GameData>) {
             g.screen = Screen::Colony;
             if scene == "flow" {
                 g.col_flow = true;
+            }
+            if scene == "projects" {
+                g.sim.researched.iter_mut().for_each(|r| *r = true);
+                for (id, units) in [("miroirs_orbitaux", 40u32), ("comete_eau", 2)] {
+                    let def = data.project_index(id).expect("project");
+                    g.sim
+                        .colony_project_start(ci, def, units, 0)
+                        .expect("project");
+                }
+                let seed = data.project_index("ensemencement").expect("project");
+                let producer = (0..data.species.len())
+                    .find(|&i| data.species[i].is_producer())
+                    .expect("producer");
+                g.sim
+                    .colony_project_start(ci, seed, 1, producer)
+                    .expect("seeding");
+                for (id, kg) in [("aluminium", 4.0e6), ("polymers", 2.0e6), ("fuel", 3.0e6)] {
+                    g.sim.colonies[ci].storage[data.resource_index(id).expect("res")] += kg;
+                }
+                let swarm = data.project_index("essaim_dyson").expect("project");
+                let mut done = vector_sim::megastructure::ProjectInst::new(swarm, 0, 3000, 1.0);
+                done.units = 3000;
+                g.sim.colonies[ci].treasury = 5.0e6;
+                g.sim.colonies[ci].projects.push(done);
+                g.sim.time += 60.0 * 86_400.0;
+                g.sim.update_colonies_pub();
+                g.col_proj = true;
+                g.proj_focus = 1;
+                g.cat_sel = 0;
             }
             if scene == "empire" {
                 g.screen = Screen::Empire;

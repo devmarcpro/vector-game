@@ -75,4 +75,9 @@
  (id:"trade_networks", name:"Réseaux commerciaux", field:"structure", cost:450.0, requires:["basics"], unlocks:[], start:false),
  (id:"hardened_electronics", name:"Électronique durcie", field:"energie", cost:700.0, requires:["quantum_computing"], unlocks:[], start:false),
  (id:"autonomous_fleets", name:"Flottes autonomes", field:"structure", cost:1100.0, requires:["advanced_robotics"], unlocks:[], start:false),
+ (id:"orbital_engineering", name:"Ingénierie orbitale", field:"structure", cost:1800.0, requires:["materials_science", "advanced_robotics"], unlocks:[("project","anneau_orbital"), ("project","ascenseur_kevlar"), ("project","station_geante"), ("project","chantier_orbital"), ("project","foreuse_asteroides"), ("project","usine_orbitale")], start:false),
+ (id:"carbon_nanostructures", name:"Nanostructures de carbone", field:"structure", cost:2400.0, requires:["orbital_engineering", "quantum_computing"], unlocks:[("project","ascenseur_nanotubes")], start:false),
+ (id:"dyson_engineering", name:"Ingénierie stellaire", field:"energie", cost:3500.0, requires:["plasma_physics", "orbital_engineering"], unlocks:[("project","essaim_dyson")], start:false),
+ (id:"planetary_engineering", name:"Ingénierie planétaire", field:"sciences_vie", cost:2200.0, requires:["closed_ecology", "orbital_engineering"], unlocks:[("project","miroirs_orbitaux"), ("project","nuage_de_suie"), ("project","comete_eau"), ("project","comete_co2"), ("project","comete_ammoniac")], start:false),
+ (id:"terraforming_biology", name:"Biologie de terraformation", field:"sciences_vie", cost:1500.0, requires:["closed_ecology"], unlocks:[("project","ensemencement")], start:false),
 ]

@@ -4,6 +4,7 @@ pub mod dialogue;
 pub mod medical;
 pub mod surprise;
 pub use medical::{BodyPart, Drug, WoundKind};
+pub mod projects;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
@@ -967,6 +968,7 @@ pub struct GameData {
     pub surprises: Vec<surprise::Surprise>,
     pub mind: MindData,
     pub history: HistoryData,
+    pub projects: Vec<projects::ProjectDef>,
 }
 
 /// The tasks the ship's AI splits its computing power between (fixed ids, in this order).
@@ -1167,6 +1169,7 @@ impl GameData {
             surprises: read(&dir.join("surprises.ron"))?,
             mind: read(&dir.join("mind.ron"))?,
             history: read(&dir.join("history.ron"))?,
+            projects: read(&dir.join("projects.ron"))?,
         };
         // Generated extension files (tools/gen_scale.py) extend the hand-written tables.
         let mut extra_resources: Vec<Resource> = read(&dir.join("resources_organs.ron"))?;
@@ -1610,6 +1613,7 @@ impl GameData {
                     "module" => self.module_index(id).is_some(),
                     "hull" => self.hull_index(id).is_some(),
                     "building" => self.building_index(id).is_some(),
+                    "project" => self.project_index(id).is_some(),
                     _ => false,
                 };
                 if !ok {
@@ -1686,6 +1690,7 @@ impl GameData {
         self.validate_rogue()?;
         self.validate_chemistry()?;
         self.validate_pathogens()?;
+        self.validate_projects()?;
         self.validate_companies()
     }
 

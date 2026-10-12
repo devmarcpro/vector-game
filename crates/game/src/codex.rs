@@ -2,7 +2,7 @@
 //! weapon, faction, anomaly and condition, generated from the real data (no hand-written numbers).
 use vector_data::GameData;
 
-pub const CATEGORIES: [&str; 48] = [
+pub const CATEGORIES: [&str; 49] = [
     "RESSOURCES",
     "MODULES",
     "ARMES",
@@ -51,6 +51,7 @@ pub const CATEGORIES: [&str; 48] = [
     "BLESSURES",
     "MEDICAMENTS",
     "SCENARIOS",
+    "PROJETS",
 ];
 
 /// The category of the reactions: the laboratory.
@@ -124,6 +125,7 @@ fn entries(data: &GameData, cat: usize) -> Vec<usize> {
         45 => (0..data.wounds.len()).collect(),
         46 => (0..data.drugs.len()).collect(),
         47 => (0..data.scenarios.len()).collect(),
+        48 => (0..data.projects.len()).collect(),
         _ => Vec::new(),
     }
 }
@@ -177,6 +179,7 @@ pub fn names(data: &GameData, cat: usize) -> Vec<String> {
             45 => data.wounds[i].name.clone(),
             46 => data.drugs[i].name.clone(),
             47 => data.scenarios[i].name.clone(),
+            48 => data.projects[i].name.clone(),
             18 => format!(
                 "Appeler : {}",
                 vector_data::dialogue::ROLES[i].to_lowercase()
@@ -1158,6 +1161,7 @@ pub fn entry(data: &GameData, cat: usize, k: usize) -> Vec<String> {
             }
             out.push("Se choisit au menu principal : Nouvelle partie.".to_string());
         }
+        48 => project_entry(data, i, &mut out),
         28 => {
             let m = &data.materials[i];
             out.push(format!(
@@ -2068,6 +2072,92 @@ pub fn variant_card(
         out.extend(entry(data, cat, k));
     }
     out
+}
+
+/// The codex entry of project `i` (terraforming works and megastructures).
+fn project_entry(data: &GameData, i: usize, out: &mut Vec<String>) {
+    let p = &data.projects[i];
+    out.push(format!("{}  [{}, {}]", p.name, p.category, p.kind));
+    out.push(p.text.clone());
+    for (n, s) in p.stages.iter().enumerate() {
+        out.push(format!(
+            "Etape {} : {} - {:.0} jours, equipe de {:.0}, {:.0} kW, {}{}",
+            n + 1,
+            s.name,
+            s.days,
+            s.crew,
+            s.power,
+            fmt_list(data, &s.cost),
+            match s.scale.as_str() {
+                "taper" => " (fois la section du cable a sa base)",
+                "radius" => " (fois le rayon du monde relatif a la Terre)",
+                _ => "",
+            }
+        ));
+    }
+    out.push(format!(
+        "Cout d'une unite : {}   duree {:.1} ans",
+        fmt_list(data, &p.total_cost()),
+        p.total_days() / 365.25
+    ));
+    let size = match p.kind.as_str() {
+        "mirror" => format!("Surface reflechissante d'une unite : {:.1e} m2", p.param),
+        "soot" => format!("Suie epandue par unite : {:.1e} kg", p.param),
+        "comet" => format!(
+            "Masse d'une comete : {:.1e} kg, faite de {}",
+            p.param,
+            p.volatile
+                .iter()
+                .map(|(g, f)| format!("{g} {:.0} %", f * 100.0))
+                .collect::<Vec<_>>()
+                .join(", ")
+        ),
+        "seeding" => format!("Biomasse fondatrice par unite : {:.1e} kg", p.param),
+        "elevator" => format!(
+            "Resistance specifique du cable : {:.1e} J/kg (la section a la base vient de la gravite et de la rotation du monde)",
+            p.param
+        ),
+        "dyson" => format!(
+            "Surface de collecteurs par unite : {:.1e} m2 (puissance = luminosite de l'etoile x part du ciel couverte x 30 %)",
+            p.param
+        ),
+        _ => format!("Taille : {:.1e}", p.param),
+    };
+    out.push(size);
+    let mut gives: Vec<String> = Vec::new();
+    for (label, v) in [
+        ("logements", p.housing),
+        ("stockage (kg)", p.storage),
+        ("recherche par jour", p.research),
+        ("defense", p.defense),
+        ("tonnes lancees par jour", p.payload),
+        ("productivite", p.prod),
+    ] {
+        if v > 0.0 {
+            gives.push(format!("{label} {v:.2e}"));
+        }
+    }
+    if p.port > 0.0 {
+        gives.push("astroport".into());
+    }
+    if !p.yields.is_empty() {
+        gives.push(format!("produit par jour : {}", fmt_list(data, &p.yields)));
+    }
+    if !p.inputs.is_empty() {
+        gives.push(format!("consomme par jour : {}", fmt_list(data, &p.inputs)));
+    }
+    if !gives.is_empty() {
+        out.push(format!("Par unite : {}", gives.join(", ")));
+    }
+    out.push(format!(
+        "Entretien {:.0} cr/jour par unite   usure {:.1} %/an   sites : {}",
+        p.upkeep,
+        p.decay * 100.0,
+        p.sites.join(", ")
+    ));
+    if let Some(t) = data.unlocking_tech("project", &p.id) {
+        out.push(format!("Debloque par : {}", data.techs[t].name));
+    }
 }
 
 #[cfg(test)]

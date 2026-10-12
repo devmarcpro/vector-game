@@ -299,6 +299,42 @@ pub fn diff_fields(x: &[u8], y: &[u8]) -> Vec<&'static str> {
         if enc(&a.last_livestock_day) != enc(&b.last_livestock_day) {
             out.push("last_livestock_day");
         }
+    if enc(&a.ship.pos) != enc(&b.ship.pos) {
+        out.push("ship.pos");
+    }
+    if enc(&a.ship.vel) != enc(&b.ship.vel) {
+        out.push("ship.vel");
+    }
+    if enc(&a.ship.rot) != enc(&b.ship.rot) {
+        out.push("ship.rot");
+    }
+    if enc(&a.ship.ang) != enc(&b.ship.ang) {
+        out.push("ship.ang");
+    }
+    if enc(&a.ship.fuel) != enc(&b.ship.fuel) {
+        out.push("ship.fuel");
+    }
+    if enc(&a.ship.hull) != enc(&b.ship.hull) {
+        out.push("ship.hull");
+    }
+    if enc(&a.ship.assist) != enc(&b.ship.assist) {
+        out.push("ship.assist");
+    }
+    if enc(&a.ship.biosphere) != enc(&b.ship.biosphere) {
+        out.push("ship.biosphere");
+    }
+    if enc(&a.ship.cargo) != enc(&b.ship.cargo) {
+        out.push("ship.cargo");
+    }
+    if enc(&a.ship.design) != enc(&b.ship.design) {
+        out.push("ship.design");
+    }
+    if enc(&a.ship.sys) != enc(&b.ship.sys) {
+        out.push("ship.sys");
+    }
+    if enc(&a.ship.stats) != enc(&b.ship.stats) {
+        out.push("ship.stats");
+    }
     out
 }
 

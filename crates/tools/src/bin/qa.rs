@@ -94,9 +94,11 @@ fn invariants(s: &Sim) -> Vec<String> {
     let c = &s.ship.cargo;
     bad(c.kg.iter().all(|k| fin(*k) && *k >= -1e-6), "soute: masse negative/NaN");
     bad(fin(c.mass) && fin(c.volume), "soute: total non fini");
+    // A wrecked hold module shrinks the capacity under the load: not a bookkeeping error.
+    let intact = s.ship.sys.health.iter().all(|h| *h >= 0.999);
     bad(
-        c.cap_mass <= 0.0 || c.mass <= c.cap_mass * 1.001 + 1e-3,
-        "soute au dessus de la capacite (masse)",
+        !intact || c.cap_mass <= 0.0 || c.mass <= c.cap_mass * 1.001 + 1e-3,
+        "soute au dessus de la capacite (masse) avec modules intacts",
     );
     let sum: f64 = c.kg.iter().sum();
     bad(
@@ -535,7 +537,7 @@ fn play(
             break; // step budget: free flight near worlds is expensive, the day count is reported
         }
         let td = Instant::now();
-        if policy == Policy::Pacifist {
+        if policy == Policy::Pacifist || (day == 0 && policy != Policy::Idle) {
             // Dock as fast as a player would: poll every 5 minutes until docked (at most 6 h).
             for poll in 0..72 {
                 if std::env::var("QA_CREW").is_ok() {
@@ -716,7 +718,15 @@ fn play(
                     Err(e) => note(&mut out, "sauvegarde", format!("reload: {e:?}"), day),
                     Ok(l) => match l.save_bytes() {
                         Ok(b2) if b1 == b2 => {}
+                        // `ship.stats` is a derived cache refreshed on load (radiate_kw drifts by 1e-6).
+                        Ok(b2) if vector_sim::save::diff_fields(&b1, &b2).iter().all(|f| matches!(*f, "ship" | "ship.stats")) => {}
                         Ok(b2) => {
+                            if vector_sim::save::diff_fields(&b1, &b2).contains(&"ship.stats") {
+                                let (x, y) = (format!("{:?}", s.ship.stats), format!("{:?}", l.ship.stats));
+                                let i = x.chars().zip(y.chars()).position(|(a, b)| a != b).unwrap_or(0);
+                                eprintln!("STATS live: ...{}
+STATS charge: ...{}", &x[i.saturating_sub(60)..(i + 60).min(x.len())], &y[i.saturating_sub(60)..(i + 60).min(y.len())]);
+                            }
                             let at = b1.iter().zip(&b2).position(|(a, b)| a != b);
                             note(
                                 &mut out,

@@ -2,7 +2,7 @@
 //! weapon, faction, anomaly and condition, generated from the real data (no hand-written numbers).
 use vector_data::GameData;
 
-pub const CATEGORIES: [&str; 47] = [
+pub const CATEGORIES: [&str; 48] = [
     "RESSOURCES",
     "MODULES",
     "ARMES",
@@ -50,7 +50,30 @@ pub const CATEGORIES: [&str; 47] = [
     "PARTIES DU CORPS",
     "BLESSURES",
     "MEDICAMENTS",
+    "DOCTRINES ET OPERATIONS",
 ];
+
+/// The cards of the military codex: doctrines, secret operations and orders to the squadron,
+/// as (name, text) generated from the very constants the game plays with.
+pub fn military_cards() -> Vec<(String, String)> {
+    use vector_sim::arms::{Doctrine, SPY_OPS};
+    use vector_sim::fleet::ORDERS;
+    let mut v = Vec::new();
+    for d in [
+        Doctrine::Aggressive,
+        Doctrine::Defensive,
+        Doctrine::Harassment,
+    ] {
+        v.push((format!("Doctrine {}", d.label().to_lowercase()), d.text()));
+    }
+    for op in SPY_OPS {
+        v.push((format!("Operation {}", op.label().to_lowercase()), op.text()));
+    }
+    for o in ORDERS {
+        v.push((format!("Ordre {}", o.label().to_lowercase()), o.text()));
+    }
+    v
+}
 
 /// The category of the reactions: the laboratory.
 pub const LAB_CATEGORY: usize = 34;
@@ -122,6 +145,7 @@ fn entries(data: &GameData, cat: usize) -> Vec<usize> {
         44 => (0..data.body_parts.len()).collect(),
         45 => (0..data.wounds.len()).collect(),
         46 => (0..data.drugs.len()).collect(),
+        47 => (0..military_cards().len()).collect(),
         _ => Vec::new(),
     }
 }
@@ -174,6 +198,7 @@ pub fn names(data: &GameData, cat: usize) -> Vec<String> {
             44 => data.body_parts[i].name.clone(),
             45 => data.wounds[i].name.clone(),
             46 => data.drugs[i].name.clone(),
+            47 => military_cards()[i].0.clone(),
             18 => format!(
                 "Appeler : {}",
                 vector_data::dialogue::ROLES[i].to_lowercase()
@@ -498,6 +523,10 @@ pub fn entry(data: &GameData, cat: usize, k: usize) -> Vec<String> {
             stat("Portee de saut", m.jump_range, "al");
             stat("Bouclier", m.shield, "MJ");
             stat("Blindage", m.armor, "");
+            stat("Part ablative", m.ablative * 100.0, "% (brule et emporte la chaleur des faisceaux)");
+            stat("Plaques reactives", m.reactive * 100.0, "% (annulent une part des coups cinetiques)");
+            stat("Chaleur de leurre", m.decoy, "kW (les missiles a tete chercheuse la preferent a un vaisseau froid)");
+            stat("Radar actif", m.sensor, "kW (voit plus loin, mais le vaisseau devient visible de tres loin)");
             stat("Agilite", m.agility, "");
             stat(
                 "Degats",
@@ -1408,6 +1437,15 @@ pub fn entry(data: &GameData, cat: usize, k: usize) -> Vec<String> {
             };
             out.push(format!("{}  ({slot})", g.name));
             out.push(g.text.clone());
+            if g.mag > 0 {
+                out.push(format!(
+                    "Arme a feu : chargeur de {} coups, munitions : {}, recul {:.0} % par coup, portee {} cases",
+                    g.mag,
+                    res_name(data, &g.ammo).unwrap_or_else(|| g.ammo.clone()),
+                    g.recoil * 100.0,
+                    g.range
+                ));
+            }
             if g.attack > 0.0 {
                 out.push(format!("Attaque : +{:.1} de degats par coup", g.attack));
             }
@@ -1683,6 +1721,11 @@ pub fn entry(data: &GameData, cat: usize, k: usize) -> Vec<String> {
                 .map(|p| p.name.clone())
                 .collect();
             out.push(format!("Peut toucher : {}", places.join(", ")));
+        }
+        47 => {
+            let (name, text) = military_cards().swap_remove(i);
+            out.push(name);
+            out.push(text);
         }
         46 => {
             let d = &data.drugs[i];

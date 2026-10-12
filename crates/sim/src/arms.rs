@@ -487,6 +487,21 @@ impl Doctrine {
         }
     }
 
+    /// What the doctrine means, with its numbers.
+    pub fn text(self) -> String {
+        format!(
+            "Force attaquant {:.2} / defendant {:.2} ; lignes de ravitaillement {} ; rompt le combat sous {:.0} % de coque.",
+            self.strength_mult(false),
+            self.strength_mult(true),
+            if self == Doctrine::Harassment {
+                "deux fois plus longues"
+            } else {
+                "normales"
+            },
+            self.flee_below() * 100.0
+        )
+    }
+
     /// Hull fraction under which a ship of this doctrine breaks off.
     pub fn flee_below(self) -> f64 {
         match self {
@@ -652,6 +667,21 @@ impl SpyOp {
             SpyOp::Rumor => "RUMEUR",
         }
     }
+    /// What the operation does, with its price and the cover it burns.
+    pub fn text(self) -> String {
+        let what = match self {
+            SpyOp::Sabotage => "affaiblit la flotte du secteur pour la periode de guerre (jusqu'a -30 %)",
+            SpyOp::StealPlans => "copie les plans des arsenaux : de 150 a 500 points de recherche",
+            SpyOp::Wiretap => "ecoute les etats-majors : revele forces et doctrines des fronts pendant 30 jours",
+            SpyOp::Rumor => "repand une fausse nouvelle de defaite, entendue comme n'importe quelle autre",
+        };
+        format!(
+            "Un agent infiltre {what}. Cout {:.0} CR ; use {:.0} % de sa couverture ; echec ou capture selon son talent et la contre-espionnage du secteur.",
+            self.cost(),
+            self.cover_loss() * 100.0
+        )
+    }
+
     pub fn cost(self) -> f64 {
         match self {
             SpyOp::Sabotage => 5000.0,
@@ -1230,6 +1260,20 @@ impl Sim {
             }
         };
         Ok(msg)
+    }
+
+    /// The sectors within reach of the networks that are at war, nearest first.
+    pub fn war_cells(&self) -> Vec<Cell> {
+        let here = self.current_cell();
+        let mut v: Vec<Cell> = politics::cells_around(here, SPY_REACH)
+            .into_iter()
+            .filter(|c| {
+                !fronts_with(&self.data, &self.galaxy, self.galaxy.seed, *c, self.time, &self.military.effects)
+                    .is_empty()
+            })
+            .collect();
+        v.sort_by_key(|c| (c[0] - here[0]).abs() + (c[1] - here[1]).abs() + (c[2] - here[2]).abs());
+        v
     }
 
     /// Put the real fronts of `cell` in the journal; returns how many there are.
@@ -2530,11 +2574,12 @@ mod tests {
         // Judging the crew: each way works once and has its price.
         let pid = prize.id;
         let credits = s.credits;
-        let sum = s.prize_ransom(pid, None).unwrap();
+        let sum = s.prize_ransom(pid).unwrap();
         assert!(sum > 0.0 && s.credits == credits + sum);
-        assert!(s.prize_ransom(pid, None).is_err(), "no prisoners left");
+        assert!(s.prize_ransom(pid).is_err(), "no prisoners left");
         s.fleet[0].prisoners = 4;
-        s.prize_execute(pid, Some(1)).unwrap();
+        s.fleet[0].origin = Some(1);
+        s.prize_execute(pid).unwrap();
         assert_eq!(s.military.crimes_against(1), 1);
         s.fleet[0].prisoners = 4;
         let l = s.fleet[0].loyalty;

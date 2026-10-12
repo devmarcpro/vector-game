@@ -139,7 +139,10 @@ pub fn hint_line(g: &Game) -> String {
         Screen::Expedition => "HAUT/BAS CHOISIR  ESPACE COCHER  ENTREE PARTIR  ECHAP RETOUR",
         Screen::Dialogue => "1-6 OU CLIC REPONDRE  HAUT/BAS + ENTREE  ECHAP COUPER LA COMMUNICATION",
         Screen::Proto => "CLIC SUR LES ELEMENTS  GAUCHE/DROITE OU 1-2 PROTOTYPE  F12/ECHAP RETOUR",
-        Screen::Factions => "GAUCHE/DROITE FACTION  P AMENDES  B POT-DE-VIN  L AVOCAT  TAB RELATIONS  X/ECHAP RETOUR",
+        Screen::Factions if g.war_page => {
+            "R RECRUTER  A AGENT  C SECTEUR  I INFILTRER  1-4 OPERATION  W RAPPELER  D DRONE  P PAIX  M CONTRAT  G RETOUR"
+        }
+        Screen::Factions => "GAUCHE/DROITE FACTION  P AMENDES  B POT-DE-VIN  L AVOCAT  TAB RELATIONS  G GUERRE  X/ECHAP RETOUR",
         Screen::Galaxy => {
             "HAUT/BAS ETOILE  +/- ZOOM  ENTREE SAUT FTL  L/ECHAP RETOUR  (RETOUR ARRIERE ANNULE UNE CHARGE)"
         }
@@ -167,7 +170,7 @@ pub fn hint_line(g: &Game) -> String {
             "TAB ZONE  ESP ON/OFF  R RECETTE  X DEMOL  D DEPOT  W RETRAIT  </> POLIT.  ENT BATIR  T CAISSE  U DECOLLER  F CHAINES  H SANTE"
         }
         Screen::Fleet => {
-            "TAB LISTE  N ROUTE  A AFFECTER  U RETIRER  X SUPPRIMER  B ACHETER  M CARTE  ECHAP RETOUR"
+            "TAB LISTE  N ROUTE  A AFFECTER  U RETIRER  X SUPPRIMER  B ACHETER  O ORDRE  R RAVITAILLER  V REPARER  1-4 PRISONNIERS  ECHAP RETOUR"
         }
         Screen::Destroyed => "ENTREE CONTINUER",
         Screen::Tech => "FLECHES GRAPHE (GAUCHE PREREQUIS, DROITE SUITE)  TAB RECHERCHE OU SUIVANTE  ENTREE RECHERCHER  E ESPRIT (CALCUL)  ECHAP RETOUR",
@@ -204,7 +207,9 @@ pub fn help_lines(screen: Screen) -> &'static [&'static str] {
             "PgUp/PgDn : temps   P : pause   Echap : menu",
             "H vaisseau  K equipage  I soute  J journal  X factions",
             "L galaxie  F2 empire  F3 flotte  F4 techno  F6 codex  Entree : appeler le vaisseau cible",
-            "O : fonder une colonie   Z tribut   N epave   U abordage",
+            "O : fonder une colonie   Z tribut   N epave   U piller une epave neutralisee (abstrait)",
+            "1 : lancer un leurre thermique (detourne les missiles)   2 : radar actif ON/OFF (voit loin, mais on vous voit de tres loin)",
+            "3 : aborder a pied la cible neutralisee (combat dans ses coursives ; garnison tuee puis < = vaisseau capture)",
             "F8 : surface de la planete ou lune ciblee (releve niveau 2) ; Tab y change de couche (BIOSPHERE : V espece, Entree fiche de la variante)",
             "Souris : clic = cibler un objet, double clic = y aller ; molette = temps ; clic droit = retour",
         ],
@@ -256,6 +261,8 @@ pub fn help_lines(screen: Screen) -> &'static [&'static str] {
             "Lois en vigueur chez eux seulement ; ma situation juridique (casier, amendes)",
             "P payer les amendes   B pot-de-vin (peut echouer)   L avocat (moitie)",
             "Tab : registre des relations (factions, peuples, cartels, contacts, entreprises)",
+            "G : guerre et renseignement (fronts, blocus, paix, mercenaires, agents secrets)",
+            "Page guerre : R recruter  A agent  C secteur vise  I infiltrer  1-4 sabotage/plans/ecoutes/rumeur  W rappeler  D drone  P paix  M contrat",
             "Ce que vous faites a l'un se repercute, attenue, sur ses allies et ses rivaux",
             "X ou Echap : retour",
         ],
@@ -286,6 +293,7 @@ pub fn help_lines(screen: Screen) -> &'static [&'static str] {
             "V : lance un drone (robotique) qui ramasse a proximite ; R : rappelle l'equipe depuis la surface",
             "X : creuse ou casse la case devant (outil et durete = temps ; la matiere donne ses ressources)",
             "B : construit un mur, N : pose un sol (tole, pont sur l'eau) avec ce que porte l'equipe : ces cases sont a vous",
+            "T : tirer avec les armes a feu (chargeur, recul, portee, bruit)   E : recharger depuis la soute   G : lancer une grenade (charge chimique, rayon 2)",
         ],
         Screen::Cosmos => &[
             "Entree : franchir le portail   A : poser une ancre temporelle   R : remonter",
@@ -303,6 +311,8 @@ pub fn help_lines(screen: Screen) -> &'static [&'static str] {
             "Tab : liste   N : nouvelle route   A : affecter",
             "U : retirer   X : supprimer   B : acheter un navire",
             "M : carte des colonies et des routes",
+            "O : ordre du vaisseau choisi (commerce, suivre, attaquer, defendre, patrouiller)   R : ravitailler en munitions   V : reparer l'escadre (a quai)",
+            "1-4 : sort de l'equipage d'une prise (enroler, liberer, rancon, executer = crime de guerre)",
         ],
         Screen::Tech => &[
             "Graphe : une case par technologie, colonnes = profondeur des prerequis",

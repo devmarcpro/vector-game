@@ -219,6 +219,9 @@ impl Game {
                 res
             }
             KeyCode::KeyR => self.sim.rogue_recall(),
+            KeyCode::KeyT => self.sim.rogue_fire(),
+            KeyCode::KeyE => self.sim.rogue_reload(),
+            KeyCode::KeyG => self.sim.rogue_grenade(),
             KeyCode::KeyC => self.sim.rogue_capture(),
             KeyCode::KeyV => self
                 .sim
@@ -577,6 +580,14 @@ fn draw_run(fb: &mut Framebuffer, g: &Game, r: &Rogue) {
             fb.text(sx, 12, &format!("AIR {p:.2} BAR  {t:.0} K"), DIM);
         }
     }
+    if let Some((rounds, cap)) = s.rogue_ammo_status(r) {
+        fb.text(
+            sx,
+            13,
+            &format!("CHARGEURS {rounds}/{cap}   RECUL {:.0} %", r.recoil * 100.0),
+            if rounds == 0 { 0x00FF_3030 } else { AMBER },
+        );
+    }
     let up_n = r
         .party
         .iter()
@@ -617,6 +628,15 @@ fn draw_run(fb: &mut Framebuffer, g: &Game, r: &Rogue) {
         ("[X] CREUSER / CASSER DEVANT", KeyCode::KeyX),
         ("[B] BATIR UN MUR  [N] UN SOL", KeyCode::KeyB),
     ];
+    if s.rogue_ammo_status(r).is_some() {
+        cmds.push(("[T] TIRER  [E] RECHARGER", KeyCode::KeyT));
+    }
+    if s.data
+        .resource_index(vector_sim::rogue::GRENADE_RESOURCE)
+        .is_some_and(|i| s.ship.cargo.kg[i] >= 1.0)
+    {
+        cmds.push(("[G] LANCER UNE GRENADE", KeyCode::KeyG));
+    }
     if r.on_surface() && r.parent.is_none() {
         cmds.push(("[R] RAPPELER L'EQUIPE", KeyCode::KeyR));
         if g.rogue_from_surface {

@@ -136,6 +136,11 @@ pub struct Game {
     /// Factions screen: the registry of relations (every entity) instead of the ring.
     pub rel_page: bool,
     pub rel_sel: usize,
+    /// Factions screen: the war page (fronts, sieges, peace, mercenaries, spies).
+    pub war_page: bool,
+    pub war_agent: usize,
+    pub war_target: usize,
+    pub war_cells: Vec<vector_sim::politics::Cell>,
     /// Crew screen: relations network instead of the table.
     pub crew_net: bool,
     /// Crew screen: the organ list of the selected person has the keys.
@@ -315,6 +320,10 @@ impl Game {
             fac_sel: 0,
             rel_page: false,
             rel_sel: 0,
+            war_page: false,
+            war_agent: 0,
+            war_target: 0,
+            war_cells: Vec::new(),
             crew_net: false,
             organ_mode: false,
             med_mode: false,
@@ -1839,6 +1848,20 @@ impl Game {
     }
 
     fn factions_key(&mut self, code: KeyCode) {
+        if self.war_page {
+            match code {
+                KeyCode::KeyG | KeyCode::Escape => self.war_page = false,
+                KeyCode::KeyX => self.screen = Screen::Flight,
+                c => {
+                    self.war_key(c);
+                }
+            }
+            return;
+        }
+        if code == KeyCode::KeyG {
+            self.open_war_page();
+            return;
+        }
         if code == KeyCode::Tab {
             self.rel_page = !self.rel_page;
             return;
@@ -2162,6 +2185,13 @@ impl Game {
                 Err(e) => self.say(e.to_uppercase()),
             },
             KeyCode::KeyU if ns > 0 => self.sim.unassign_ship(self.ship_sel2.min(ns - 1)),
+            KeyCode::KeyO if ns > 0 => self.squad_click(0),
+            KeyCode::KeyR if ns > 0 => self.squad_click(1),
+            KeyCode::KeyV if ns > 0 => self.squad_click(2),
+            KeyCode::Digit1 if ns > 0 => self.squad_click(3),
+            KeyCode::Digit2 if ns > 0 => self.squad_click(4),
+            KeyCode::Digit3 if ns > 0 => self.squad_click(5),
+            KeyCode::Digit4 if ns > 0 => self.squad_click(6),
             KeyCode::KeyX => {
                 if self.fleet_focus == 1 && nr > 0 {
                     match self.sim.delete_route(self.route_sel.min(nr - 1)) {
@@ -2640,6 +2670,22 @@ impl Game {
                 Err(e) => self.say(e.to_uppercase()),
             },
             KeyCode::KeyO => self.found_colony_at_target(),
+            KeyCode::Digit1 => match self.sim.launch_decoy() {
+                Ok(()) => self.say("LEURRE THERMIQUE LANCE"),
+                Err(e) => self.say(e.to_uppercase()),
+            },
+            KeyCode::Digit2 => match self.sim.toggle_active_sensors() {
+                Ok(true) => self.say("RADAR ACTIF : VOUS VOYEZ LOIN, ET ON VOUS VOIT DE TRES LOIN"),
+                Ok(false) => self.say("RADAR COUPE : DETECTION PASSIVE SEULE"),
+                Err(e) => self.say(e.to_uppercase()),
+            },
+            KeyCode::Digit3 => match self.sim.board_on_foot() {
+                Ok(()) => {
+                    self.rogue_from_surface = false;
+                    self.screen = Screen::Rogue;
+                }
+                Err(e) => self.say(e.to_uppercase()),
+            },
             KeyCode::F4 => self.open_tech(),
             KeyCode::F8 => self.open_surface(),
             KeyCode::F6 => self.open_codex(Screen::Flight),
@@ -4200,5 +4246,73 @@ mod tests {
         assert!(g.sim.credits > c0);
         g.key(KeyCode::KeyU, None, true);
         assert_eq!(g.screen, Screen::Flight);
+    }
+
+    #[test]
+    fn the_war_page_hires_spies_and_answers_every_button() {
+        use crate::war_view::{W_AGENT, W_CELL, W_PEACE, W_RECRUIT};
+        let mut g = Game::new(data(), 1);
+        g.key(KeyCode::Enter, None, true);
+        assert_eq!(g.screen, Screen::Flight);
+        g.key(KeyCode::KeyX, None, true);
+        assert_eq!(g.screen, Screen::Factions);
+        assert!(!g.war_page);
+        g.key(KeyCode::KeyG, None, true);
+        assert!(g.war_page, "G opens the war page");
+        // Hiring needs a quay.
+        g.click_war(W_RECRUIT);
+        assert!(g.sim.military.agents.is_empty());
+        let (st, _) = g.sim.nearest_station().expect("station");
+        g.sim.docked = Some(st);
+        g.sim.credits = 100_000.0;
+        g.key(KeyCode::KeyR, None, true);
+        assert_eq!(g.sim.military.agents.len(), 1, "R recruits");
+        assert!(g.sim.credits < 100_000.0);
+        g.click_war(W_AGENT);
+        g.click_war(W_CELL);
+        // No war with the people selected: peace is refused with a reason.
+        g.click_war(W_PEACE);
+        assert!(g.messages.last().is_some_and(|m| m.contains("GUERRE")));
+        // Escape leaves the page, X leaves the screen.
+        g.key(KeyCode::Escape, None, true);
+        assert!(!g.war_page && g.screen == Screen::Factions);
+        g.key(KeyCode::KeyX, None, true);
+        assert_eq!(g.screen, Screen::Flight);
+    }
+
+    #[test]
+    fn flight_keys_for_flares_radar_and_boarding_answer_with_a_reason() {
+        let mut g = Game::new(data(), 1);
+        g.key(KeyCode::Enter, None, true);
+        g.key(KeyCode::Digit1, None, true);
+        assert!(g.messages.last().is_some_and(|m| m.contains("LANCE-LEURRES")));
+        g.key(KeyCode::Digit2, None, true);
+        assert!(g.messages.last().is_some_and(|m| m.contains("RADAR")));
+        g.key(KeyCode::Digit3, None, true);
+        assert!(g.messages.last().is_some_and(|m| m.contains("CIBLE")));
+        assert_eq!(g.screen, Screen::Flight);
+    }
+
+    #[test]
+    fn the_fleet_screen_gives_orders_and_judges_prizes() {
+        let mut g = Game::new(data(), 1);
+        g.key(KeyCode::Enter, None, true);
+        let (st, _) = g.sim.nearest_station().expect("station");
+        g.sim.docked = Some(st);
+        let frigate = g.data.hull_index("frigate").expect("hull");
+        g.sim.buy_fleet_ship_free_pub(frigate);
+        g.screen = Screen::Fleet;
+        assert_eq!(g.sim.fleet[0].order, vector_sim::fleet::FleetOrder::Trade);
+        g.key(KeyCode::KeyO, None, true);
+        assert_eq!(g.sim.fleet[0].order, vector_sim::fleet::FleetOrder::Follow);
+        g.key(KeyCode::KeyO, None, true);
+        assert_eq!(g.sim.fleet[0].order, vector_sim::fleet::FleetOrder::Attack);
+        // A prize with prisoners: key 1 enlists them.
+        g.sim.fleet[0].prize = true;
+        g.sim.fleet[0].prisoners = 5;
+        g.key(KeyCode::Digit1, None, true);
+        assert_eq!(g.sim.fleet[0].prisoners, 0);
+        g.key(KeyCode::Digit1, None, true);
+        assert!(g.messages.last().is_some_and(|m| m.contains("PRISONNIERS")));
     }
 }

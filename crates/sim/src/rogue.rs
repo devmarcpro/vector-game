@@ -1903,6 +1903,24 @@ impl Sim {
             .map_or(full, |m| m.1.min(full))
     }
 
+    /// Rounds in the magazines of the squad and their capacity, if anyone carries a firearm.
+    pub fn rogue_ammo_status(&self, r: &Rogue) -> Option<(u32, u32)> {
+        let guns: Vec<usize> = self
+            .party_up(r)
+            .into_iter()
+            .filter(|&w| self.firearm(w).is_some())
+            .collect();
+        if guns.is_empty() {
+            return None;
+        }
+        let rounds = guns.iter().map(|&w| self.rogue_rounds(r, w)).sum();
+        let cap = guns
+            .iter()
+            .filter_map(|&w| self.firearm(w).map(|g| g.mag))
+            .sum();
+        Some((rounds, cap))
+    }
+
     fn set_rounds(r: &mut Rogue, who: usize, n: u32) {
         match r.mags.iter_mut().find(|m| m.0 == who) {
             Some(m) => m.1 = n,

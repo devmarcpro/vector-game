@@ -938,6 +938,30 @@ fn draw_status(fb: &mut Framebuffer, v: &View) {
     if sim.is_wanted() {
         fb.text(1, 11, "RECHERCHE DANS CE TERRITOIRE !", RED);
     }
+    // The war around the ship: a siege, the radar, the flares, the squadron.
+    {
+        let mut war: Vec<String> = Vec::new();
+        if sim.here_besieged().is_some() {
+            war.push("BLOCUS DU SECTEUR".to_string());
+        }
+        if sim.active_sensors {
+            war.push("RADAR ACTIF".to_string());
+        }
+        if !sim.decoys.is_empty() {
+            war.push(format!("LEURRES {}", sim.decoys.len()));
+        }
+        let escorts = sim
+            .fleet
+            .iter()
+            .filter(|f| f.order != vector_sim::fleet::FleetOrder::Trade)
+            .count();
+        if escorts > 0 {
+            war.push(format!("ESCADRE {escorts}"));
+        }
+        if !war.is_empty() {
+            fb.text(1, 10, &war.join("  "), AMBER);
+        }
+    }
     let ammo = |id: &str| {
         sim.data
             .resource_index(id)

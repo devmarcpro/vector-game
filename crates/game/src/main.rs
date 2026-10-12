@@ -34,6 +34,7 @@ mod terrain;
 mod trade_view;
 mod tutorial;
 mod ui;
+mod war_view;
 mod wire_shape;
 
 use game::{Game, Screen, DEFAULT_SEED};
@@ -477,6 +478,141 @@ fn snapshot(path: &str, scene: &str, data: Arc<GameData>) {
                 g.key(KeyCode::Enter, None, true);
                 g.key(KeyCode::Enter, None, true);
             }
+        }
+        "war" | "squad" | "blocus" => {
+            use vector_sim::{arms, politics};
+            let d = Arc::clone(&g.data);
+            g.sim.credits = 900_000.0;
+            g.sim.researched.iter_mut().for_each(|r| *r = true);
+            // A sector at war (or besieged) near the origin, with the ship in it.
+            let mut found = None;
+            'o: for c in politics::cells_around([0, 0, 0], 2) {
+                for m in 1..400 {
+                    let t = m as f64 * politics::WAR_PERIOD + 1.0;
+                    let ok = if scene == "blocus" {
+                        arms::is_besieged(&d, &g.sim.galaxy, g.sim.galaxy.seed, c, t)
+                    } else {
+                        !arms::fronts(&d, &g.sim.galaxy, g.sim.galaxy.seed, c, t).is_empty()
+                    };
+                    if ok {
+                        found = Some((c, t));
+                        break 'o;
+                    }
+                }
+            }
+            let (c, t) = found.expect("a war near the origin");
+            g.sim.here_pos = politics::cell_center(c);
+            g.sim.time = t;
+            let (st, _) = g.sim.nearest_station().expect("station");
+            g.sim.docked = Some(st);
+            g.sim.refresh_sieges();
+            if scene == "blocus" {
+                g.sim.docked = None;
+                g.key(KeyCode::KeyL, None, true);
+                g.gal_zoom = 0.5;
+            } else if scene == "war" {
+                for _ in 0..14 {
+                    let _ = g.sim.recruit_agent();
+                }
+                let ids: Vec<u32> = g.sim.military.agents.iter().map(|a| a.id).collect();
+                for id in ids {
+                    let _ = g.sim.infiltrate(id, c);
+                }
+                let spies: Vec<u32> = g
+                    .sim
+                    .military
+                    .agents
+                    .iter()
+                    .filter(|a| a.state == arms::AgentState::Infiltrated)
+                    .map(|a| a.id)
+                    .collect();
+                if let Some(&id) = spies.first() {
+                    let _ = g.sim.spy_op(id, arms::SPY_OPS[2]);
+                }
+                g.sim.military.agents.truncate(5);
+                g.sim.military.destroyed.push((4, 80_000.0));
+                g.sim.military.crimes.push(arms::WarCrime {
+                    time: t,
+                    faction: Some(4),
+                    what: "un vaisseau neutralise a ete acheve".into(),
+                });
+                g.sim.set_reputation(4, -80.0);
+                g.fac_sel = 4;
+                let hull = d.hull_index("frigate").expect("hull");
+                g.sim.credits = 9_000_000.0;
+                g.sim.buy_fleet_ship(hull).expect("ship");
+                g.screen = Screen::Factions;
+                g.open_war_page();
+            } else {
+                // The squadron: a defender, an attacker, a patrol and a prize with prisoners.
+                let hull = d.hull_index("frigate").expect("hull");
+                g.sim.credits = 9_000_000.0;
+                for _ in 0..4 {
+                    g.sim.buy_fleet_ship(hull).expect("ship");
+                }
+                use vector_sim::fleet::FleetOrder;
+                g.sim.set_order(0, FleetOrder::Defend).expect("order");
+                g.sim.set_order(1, FleetOrder::Attack).expect("order");
+                g.sim.set_order(2, FleetOrder::Patrol).expect("order");
+                g.sim.fleet[1].ammo = 0.45;
+                g.sim.fleet[0].condition = 0.7;
+                let p = &mut g.sim.fleet[3];
+                p.prize = true;
+                p.prisoners = 7;
+                p.crew = 9;
+                p.loyalty = 0.3;
+                p.condition = 0.5;
+                g.ship_sel2 = 3;
+                g.endpoints = g.sim.known_endpoints();
+                g.screen = Screen::Fleet;
+            }
+        }
+        "abordage" => {
+            use vector_sim::npc::NpcRole;
+            g.sim.spawn_traffic();
+            for p in &mut g.sim.crew.members {
+                p.health = 1.0;
+            }
+            g.sim.ship.cargo.cap_mass = 1.0e7;
+            let k = g
+                .sim
+                .npcs
+                .iter()
+                .position(|n| n.role == NpcRole::Pirate)
+                .or(if g.sim.npcs.is_empty() { None } else { Some(0) })
+                .expect("a ship");
+            let (pos, vel) = (g.sim.ship.pos, g.sim.ship.vel);
+            let n = &mut g.sim.npcs[k];
+            n.disabled = true;
+            n.pos = pos + vector_core::Vec3::new(0.0, 0.0, 200.0);
+            n.vel = vel;
+            g.sim.target_npc = Some(k);
+            g.sim.board_on_foot().expect("board");
+            // Fight through the first corridors.
+            for _ in 0..6 {
+                let target = {
+                    let r = g.sim.rogue.as_ref().expect("a run");
+                    let mut best = (r.x, r.y);
+                    let mut dd = 0;
+                    for y in 0..r.h as i32 {
+                        for x in 0..r.w as i32 {
+                            if r.floor().seen[r.idx(x, y)] && r.tile(x, y) != 0 {
+                                let d = (x - r.x).abs().max((y - r.y).abs());
+                                if d > dd {
+                                    dd = d;
+                                    best = (x, y);
+                                }
+                            }
+                        }
+                    }
+                    best
+                };
+                let _ = g.sim.rogue_travel(target.0, target.1, 30);
+                if g.sim.rogue.as_ref().is_some_and(|r| r.over) {
+                    break;
+                }
+            }
+            g.screen = Screen::Rogue;
         }
         "proto0" | "proto1" => {
             g.proto = if scene == "proto0" { 0 } else { 1 };

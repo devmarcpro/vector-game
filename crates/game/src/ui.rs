@@ -1433,6 +1433,55 @@ fn draw_galaxy(fb: &mut Framebuffer, g: &Game) {
     fb.line(cx - 6.0, cy, cx + 6.0, cy, RED);
     fb.line(cx, cy - 6.0, cx, cy + 6.0, RED);
     fb.text_at(cx as i32 + 8, cy as i32 + 6, "ICI", RED);
+    if let Some(sg) = s.here_besieged() {
+        fb.text(
+            1,
+            3,
+            &format!(
+                "BLOCUS EN COURS DANS CE SECTEUR PAR {} : LES ROUTES SONT COUPEES, LES PRIX MONTENT",
+                sg.besieger
+                    .map_or("UNE FLOTTE SANS DRAPEAU".to_string(), |f| g.data.factions[f]
+                        .name
+                        .to_uppercase())
+            ),
+            RED,
+        );
+    } else if !s.military.sieges.is_empty() {
+        fb.text(
+            1,
+            3,
+            &format!(
+                "{} SECTEUR(S) ASSIEGE(S) A PORTEE (CADRES ROUGES, DEZOOMEZ : -)  GUERRE ET PAIX : X PUIS G",
+                s.military.sieges.len()
+            ),
+            RED,
+        );
+    }
+    // Sectors under siege: a red frame the size of the sector (240 ly), with the besieger.
+    let mut drawn: Vec<vector_sim::politics::Cell> = Vec::new();
+    for sg in &s.military.sieges {
+        if drawn.contains(&sg.cell) {
+            continue;
+        }
+        drawn.push(sg.cell);
+        let c = vector_sim::politics::cell_center(sg.cell);
+        let half = (vector_sim::politics::SECTOR_LY / 2.0) as f32 * zoom;
+        let (x, y) = proj(c);
+        let (l, t, r, b) = (x - half, y - half, x + half, y + half);
+        for (a, bb, cc, d) in [(l, t, r, t), (r, t, r, b), (r, b, l, b), (l, b, l, t)] {
+            fb.line(a, bb, cc, d, RED);
+        }
+        fb.text_at(
+            l as i32 + 3,
+            t as i32 + 3,
+            &format!(
+                "BLOCUS {}",
+                sg.besieger
+                    .map_or(String::new(), |f| g.data.factions[f].name.to_uppercase())
+            ),
+            RED,
+        );
+    }
     for (k, e) in g.gal_cache.iter().enumerate() {
         let (x, y) = proj(e.pos);
         let h = (e.pos[1] - s.here_pos[1]) as f32 * zoom * 0.5;
@@ -2256,7 +2305,11 @@ fn draw_fleet(fb: &mut Framebuffer, g: &Game) {
                 format!("RETOUR (J{:.0})", t1 / 86_400.0)
             }
         };
-        let route = f.route.map_or("-".to_string(), |r| format!("ROUTE {r}"));
+        let route = if f.order != vector_sim::fleet::FleetOrder::Trade {
+            f.order.label().to_string()
+        } else {
+            f.route.map_or("-".to_string(), |r| format!("ROUTE {r}"))
+        };
         fb.text(
             1,
             top + 1 + i,
@@ -2333,8 +2386,11 @@ fn draw_fleet(fb: &mut Framebuffer, g: &Game) {
             );
         }
     }
+    if g.editor.is_none() && g.hull_pick.is_none() {
+        crate::war_view::draw_squad(fb, g, ry + 3 + s.routes.len().max(1));
+    }
     let b = fb.rows() - 4;
-    fb.text(1, b, "TAB:LISTE  N:NOUVELLE ROUTE  A:AFFECTER  U:RETIRER  X:SUPPRIMER/VENDRE  B:ACHETER (A QUAI)  F2:EMPIRE  ECHAP:RETOUR", DIM);
+    fb.text(1, b, "TAB:LISTE  N:NOUVELLE ROUTE  A:AFFECTER  U:RETIRER  X:SUPPRIMER/VENDRE  B:ACHETER (A QUAI)  O:ORDRE  R:RAVITAILLER  V:REPARER  F2:EMPIRE  ECHAP:RETOUR", DIM);
     msgs(fb, g, b + 1);
 }
 

@@ -80,6 +80,8 @@ pub struct FleetShip {
     pub loyalty: f64,
     pub crew: u32,
     pub prisoners: u32,
+    /// The people a prize belonged to (who hears of what is done to its crew).
+    pub origin: Option<usize>,
 }
 
 impl FleetShip {
@@ -103,6 +105,7 @@ impl FleetShip {
             loyalty: 1.0,
             crew: 0,
             prisoners: 0,
+            origin: None,
         }
     }
 }
@@ -591,6 +594,31 @@ impl FleetOrder {
             FleetOrder::Mercenary => "MERCENAIRE",
         }
     }
+    /// What the order means, with its numbers.
+    pub fn text(self) -> String {
+        match self {
+            FleetOrder::Trade => "Le vaisseau suit ses routes de commerce (entretien x1 ; un vaisseau de guerre coute x2).".to_string(),
+            FleetOrder::Follow => format!(
+                "Reste en formation : prend {:.0} % des coups visant votre vaisseau, ne tire sur personne.",
+                FOLLOW_SHARE * 100.0
+            ),
+            FleetOrder::Attack => format!(
+                "Tire sur la cible que vous avez designee, avec {:.0} % des armes de ses points d'emport ; les munitions s'epuisent.",
+                ESCORT_FIRE * 100.0
+            ),
+            FleetOrder::Defend => format!(
+                "Se place devant vous : prend {:.0} % des coups visant votre vaisseau (plafond {:.0} % pour l'escadre) et peut etre perdu.",
+                DEFEND_SHARE * 100.0,
+                SCREEN_CAP * 100.0
+            ),
+            FleetOrder::Patrol => format!(
+                "Engage seul les hostiles a moins de {:.0} km, a demi-cadence.",
+                PATROL_RANGE / 1000.0
+            ),
+            FleetOrder::Mercenary => format!("Loue a un secteur en guerre pour {:.0} jours : ses coques comptent dans sa ligne de front, paie a la fin (x1,5 si victoire, x0,5 sinon).", crate::arms::MERC_DAYS),
+        }
+    }
+
     /// Warships on a war footing cost twice the upkeep of a freighter.
     pub fn upkeep_mult(self) -> f64 {
         if self == FleetOrder::Trade {
@@ -808,6 +836,7 @@ impl Sim {
             hd.cost * PURCHASE_FACTOR * UPKEEP_RATE,
         );
         s.prize = true;
+        s.origin = b.faction;
         s.loyalty = PRIZE_LOYALTY;
         s.crew = 3 + 2 * u32::from(b.level);
         s.prisoners = s.crew;
@@ -837,16 +866,18 @@ impl Sim {
     }
 
     /// Let the prisoners go: the people they belong to remembers it.
-    pub fn prize_release(&mut self, id: u32, faction: Option<usize>) -> Result<(), &'static str> {
+    pub fn prize_release(&mut self, id: u32) -> Result<(), &'static str> {
         let i = self.prize_index(id)?;
         self.fleet[i].prisoners = 0;
+        let faction = self.fleet[i].origin;
         self.change_reputation(faction, 4.0);
         Ok(())
     }
 
     /// Sell the prisoners back: credits, and the displeasure of their people.
-    pub fn prize_ransom(&mut self, id: u32, faction: Option<usize>) -> Result<f64, &'static str> {
+    pub fn prize_ransom(&mut self, id: u32) -> Result<f64, &'static str> {
         let i = self.prize_index(id)?;
+        let faction = self.fleet[i].origin;
         let n = self.fleet[i].prisoners;
         self.fleet[i].prisoners = 0;
         let sum = 600.0 * f64::from(n);
@@ -856,9 +887,10 @@ impl Sim {
     }
 
     /// Kill the prisoners: a crime of war, recorded and punished.
-    pub fn prize_execute(&mut self, id: u32, faction: Option<usize>) -> Result<(), &'static str> {
+    pub fn prize_execute(&mut self, id: u32) -> Result<(), &'static str> {
         let i = self.prize_index(id)?;
         self.fleet[i].prisoners = 0;
+        let faction = self.fleet[i].origin;
         self.record_war_crime(faction, "execution de prisonniers apres un abordage");
         Ok(())
     }
@@ -888,8 +920,12 @@ impl Sim {
 }
 
 impl Sim {
+    /// Add a ship to the fleet without paying (tests and scripted scenes).
+    pub fn buy_fleet_ship_free_pub(&mut self, hull: usize) {
+        self.buy_fleet_ship_free(hull);
+    }
+
     /// Test helper: add a freighter without paying.
-    #[cfg(test)]
     pub(crate) fn buy_fleet_ship_free(&mut self, hull: usize) {
         let id = self.next_fleet;
         self.next_fleet += 1;

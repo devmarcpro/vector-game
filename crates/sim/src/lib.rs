@@ -1482,6 +1482,18 @@ impl Sim {
         let (seed, time) = (self.system.seed, self.time);
         let data = Arc::clone(&self.data);
         let industry = self.station_industry(i);
+        // The convoys of the regular lines since the market was last looked at: they load and
+        // unload the real stock of the station.
+        let flows = match self.markets.get(&i) {
+            Some(m) if time > m.updated => crate::lanes::flows_between(
+                &data,
+                &self.galaxy,
+                self.here_pos,
+                m.updated.max(time - 30.0 * bourse::DAY),
+                time,
+            ),
+            _ => Vec::new(),
+        };
         let day = (time / bourse::DAY).floor() as i64;
         // What the world does to prices changes slowly: refresh it once a day.
         let stale = self.markets.get(&i).is_none_or(|m| m.world_day != day);
@@ -1495,6 +1507,10 @@ impl Sim {
         let m = self.markets.entry(i).or_insert_with(|| {
             Market::new(hash_coord(seed, i as i64, 0, 0), i, &data, time, industry)
         });
+        for f in flows {
+            m.relax_to(f.t);
+            m.apply_flow(f.res, f.kg);
+        }
         m.relax_to(time);
         if let Some(w) = world {
             m.world = w;

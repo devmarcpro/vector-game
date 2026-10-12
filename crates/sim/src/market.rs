@@ -83,6 +83,14 @@ impl Market {
         self.updated = time;
     }
 
+    /// A delivery (`kg` > 0) or a departure (`kg` < 0) of a convoy of a regular line, counted
+    /// in the kilograms of the line's system, taken in proportion to this market's size: the
+    /// one way the lines act on the stock (and so on the price) of a station.
+    pub fn apply_flow(&mut self, res: usize, kg: f64) {
+        let scale = self.reference[res] / crate::lanes::MARKET_KG;
+        self.stock[res] = (self.stock[res] + kg * scale).max(0.0);
+    }
+
     /// Price multiplier of the scarcity of `res` when the stock stands at `stock`: the one law
     /// of the stock-driven price (the market and the exchange's reference curve both use it).
     pub fn scarcity_at(&self, res: usize, stock: f64) -> f64 {

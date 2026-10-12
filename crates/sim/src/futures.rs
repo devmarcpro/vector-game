@@ -27,11 +27,15 @@ pub struct Future {
 }
 
 impl Sim {
-    /// Reference price of a good in the region around `pos` at time `t`, credits per kg.
+    /// Reference price of a good in the region around `pos` at time `t`, credits per kg: the
+    /// usual level of the place, with the effect of the timetable of the regular lines (the
+    /// stock-free reading of the convoys; the live price of a station reads its real stock,
+    /// on which the convoys act through `lanes::flows_between`).
     pub fn reference_price(&self, pos: [f64; 3], t: f64, res: usize) -> f64 {
         self.data.resources[res].value
             * world_factors(&self.data, self.galaxy.seed, pos, t)[res]
             * self.shock_factor(pos, t, res)
+            * crate::lanes::good_factor(&self.data, &self.galaxy, pos, t, res)
     }
 
     /// What closing the contract now would pay out (margin plus gain or loss, never below 0).

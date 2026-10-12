@@ -6,6 +6,7 @@ mod codex_sky;
 mod console;
 mod cosmos_view;
 mod crew_net_view;
+mod dash_view;
 mod designer_view;
 mod dialogue_view;
 mod eco_view;
@@ -476,6 +477,89 @@ fn snapshot(path: &str, scene: &str, data: Arc<GameData>) {
             }
             if scene == "hub_dock" {
                 g.hub_select(4);
+            }
+        }
+        // The dashboard: in flight, docked (with contracts, a loan, an insurance and shares),
+        // on foot, the three scenarios of the start, and a crisis (heat, illness, radiation,
+        // low fuel, a falling ship).
+        "dash" | "dash_dock" | "dash_foot" | "dash_naufrage" | "dash_marchand"
+        | "dash_voyageur" | "dash_crise" | "dash_crise_vol" => {
+            g.tut_step = None;
+            if scene == "dash_naufrage" || scene == "dash_marchand" || scene == "dash_voyageur" {
+                let mut cfg = vector_sim::start::StartConfig::new(DEFAULT_SEED);
+                let id = &scene[5..];
+                cfg.scenario = g.data.scenario_index(id).expect("scenario");
+                g.start_game(&cfg);
+                g.tut_step = None;
+            }
+            if scene == "dash_dock" || scene.starts_with("dash_crise") {
+                let (st, _) = g.sim.nearest_station().expect("station");
+                g.sim.spawn_near(st, g.sim.bodies[st].radius + 200.0);
+                g.key(KeyCode::KeyD, None, true);
+                g.sim.credits = 30_000.0;
+                g.sim.borrow(4000.0).expect("loan");
+                let offers = g.sim.offered_contracts();
+                for c in offers.into_iter().take(3) {
+                    let _ = g.sim.accept_contract(c);
+                }
+                if let Some(c) = g.sim.contracts.first_mut() {
+                    c.expires = g.sim.time + 2.0 * 86_400.0;
+                }
+                let _ = g.sim.buy_insurance(false);
+                let _ = g.sim.buy_shares(0, 5.0);
+                for _ in 0..16 {
+                    g.sim.advance(2.5 * 86_400.0, &ShipInput::default());
+                    for p in &mut g.sim.crew.members {
+                        (p.hunger, p.thirst, p.health) = (0.1, 0.1, 1.0);
+                    }
+                }
+            }
+            if scene == "dash_foot" {
+                for p in &mut g.sim.crew.members {
+                    p.health = 1.0;
+                }
+                g.sim.ship.cargo.cap_mass = 1.0e7;
+                let theme = g.data.rogue_theme_index("epave").unwrap_or(0);
+                let party = g.sim.rogue_squad();
+                g.sim.rogue_begin(theme, 12345, party);
+            }
+            if scene.starts_with("dash_crise") {
+                // Undock and then let things go wrong.
+                g.key(KeyCode::KeyU, None, true);
+                let data = Arc::clone(&g.data);
+                g.sim.ship.sys.temp_k = 700.0;
+                g.sim.ship.sys.overheating = true;
+                g.sim.ship.sys.dose_gy = 1.5;
+                g.sim.ship.hull *= 0.4;
+                g.sim.ship.fuel *= 0.08;
+                g.sim.crew.unpaid = true;
+                if let Some(p) = g.sim.crew.members.get_mut(0) {
+                    p.disease = Some((0, 5.0));
+                    p.health = 0.25;
+                    let _ = p.body.add_wound(&data, "fracture_os", 0, 0.7);
+                }
+                g.sim.mind.malware = 0.4;
+                g.sim.ship.sys.health[0] = 0.1;
+                // Falling toward the nearest planet.
+                let b = g
+                    .sim
+                    .bodies
+                    .iter()
+                    .position(|b| matches!(b.kind, vector_world::BodyKind::Planet(_)))
+                    .expect("planet");
+                let dir = vector_core::Vec3::new(1.0, 0.0, 0.0);
+                g.sim.ship.pos = g.sim.bodies[b].pos + dir * (g.sim.bodies[b].radius + 20_000.0);
+                g.sim.ship.vel = g.sim.bodies[b].vel - dir * 300.0;
+                g.sim.parked = None;
+                g.sim.update_ref_pub();
+            }
+            g.screen = if scene == "dash_foot" {
+                Screen::Rogue
+            } else {
+                Screen::Flight
+            };
+            if scene != "dash_crise_vol" {
+                g.open_dashboard();
             }
         }
         // A castaway on foot, right after the start.
@@ -1065,7 +1149,7 @@ fn snapshot(path: &str, scene: &str, data: Arc<GameData>) {
                 g.advance(1.0 / 30.0);
             }
         }
-        "empire" | "colony" | "fleet" | "fleetmap" | "flow" | "projects" => {
+        "empire" | "colony" | "fleet" | "fleetmap" | "flow" | "projects" | "dash_colonie" => {
             let data = Arc::clone(&g.data);
             let planet = g
                 .sim
@@ -1147,7 +1231,7 @@ fn snapshot(path: &str, scene: &str, data: Arc<GameData>) {
             if scene == "flow" {
                 g.col_flow = true;
             }
-            if scene == "projects" {
+            if scene == "projects" || scene == "dash_colonie" {
                 g.sim.researched.iter_mut().for_each(|r| *r = true);
                 for (id, units) in [("miroirs_orbitaux", 40u32), ("comete_eau", 2)] {
                     let def = data.project_index(id).expect("project");
@@ -1178,6 +1262,11 @@ fn snapshot(path: &str, scene: &str, data: Arc<GameData>) {
             }
             if scene == "empire" {
                 g.screen = Screen::Empire;
+            }
+            if scene == "dash_colonie" {
+                g.tut_step = None;
+                g.screen = Screen::Flight;
+                g.open_dashboard();
             }
             if scene == "fleet" || scene == "fleetmap" {
                 let (st, _) = g.sim.nearest_station().expect("station");

@@ -1,5 +1,6 @@
 //! Deterministic simulation: flight model, modular ships, gravity, collisions, autopilot, mining, trade, saves.
 //! Units: SI (m, s, kg, N). See docs/SIM_MODEL.md.
+pub mod alerts;
 pub mod archive;
 pub mod arms;
 pub mod astro;

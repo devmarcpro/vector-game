@@ -42,6 +42,7 @@
 | F10 | Ignorer le tutoriel |
 | F6 | Codex (Gauche/Droite categorie, Haut/Bas entree) |
 | F10 | Menu principal : les huit espaces qui regroupent tous les ecrans (voir Â« Le menu principal Â») ; re-appuyer ferme |
+| \ ou Pause | Tableau de bord (neuf panneaux, depuis n'importe quel ecran de jeu) ; re-appuyer ferme (voir « Le tableau de bord ») |
 | Suppr | Ignorer le tutoriel |
 
 Options de ligne de commande : `--snapshot fichier.png [scene]` (rendu headless), `--bench`, `--script fichier.txt` (jeu scripte sans fenetre, voir `crates/game/src/script.rs`).
@@ -87,6 +88,12 @@ F10 ou un clic sur Â« MENU (F10) Â» (en haut a droite de tous les ecrans) ouvre 
 Un espace ouvre l'ecran existant par la meme fonction que sa touche : aucun ecran n'est duplique. Une ligne grisee dit pourquoi elle est indisponible (amarrage requis, decollage requis, a pied).
 **Echap remonte d'un niveau, partout** : un ecran ouvert depuis le menu revient a la page de son espace ; la page revient a la liste des espaces ; la liste ferme le menu, qui rend l'ecran d'ou il a ete ouvert (cockpit, quai ou marche a pied). Le clic droit fait de meme.
 A pied (equipe sur le terrain), seuls les ecrans d'information s'ouvrent (vaisseau, soute, equipage, journal, codex, technologies) et Echap revient a la marche.
+
+## Le tableau de bord (\ ou Pause)
+La barre oblique inverse (a gauche de Entree sur un clavier ISO) ou Pause ouvre, depuis n'importe quel ecran de jeu, le tableau de bord ; aussi : un clic sur le compteur ALERTES du bandeau du haut, le bouton TABLEAU DE BORD de l'orientation du menu F10, ou 0 dans ce menu. Il gele le vol.
+Neuf panneaux (1 VAISSEAU, 2 EQUIPAGE, 3 FINANCES, 4 MONDE LOCAL, 5 CONTRATS ET MISSIONS, 6 ALERTES, 7 COLONIES ET PROJETS, 8 EXPLORATION A PIED, 9 ESPRIT DE L'IA) ; jauges vertes au-dessus de 50 %, ambre au-dessus de 25 %, rouges dessous ; sparkline de la valeur nette.
+Tab / Fleche droite : panneau suivant ; Maj+Tab / Fleche gauche : precedent ; 1 a 9 : aller au panneau ; Haut/Bas : ligne du panneau ; Entree, Espace ou clic : ouvre l'ecran detaille de la ligne (vaisseau, equipage, banque, journal...) ; **Echap** revient ici depuis cet ecran, puis ferme le tableau et rend l'ecran d'ou il a ete ouvert ; le clic droit fait de meme. Une ligne grisee dit pourquoi elle est indisponible (amarrage, vol).
+Le panneau ALERTES liste tout ce qui demande attention, du plus grave au plus benin (CRIT rouge, ATT ambre, INFO) : Entree sur une alerte ouvre l'ecran qui la traite. Les alertes ne sont jamais obligatoires. Le compteur « ALERTES n CRIT m ATT » du bandeau du haut est visible sur tous les ecrans.
 
 ## Naufrage (scenario)
 Le vaisseau est un epave : moteur a 0 %, reservoirs vides, aucun credit, un ingenieur seul, a pied sur un monde choisi pour son air. Les epaves, campements, ruines et grottes de la surface (touche Fin / carte de surface) donnent des pieces detachees et du carburant ; le butin va en soute au retour (Entree sur < ou R) ; l'ingenieur de quart repare avec les pieces detachees (ses reparations ordinaires, le module le plus abime d'abord) ; **I puis F** verse le carburant de la soute dans le reservoir ; le menu (F10) dit moteur, energie, pieces et carburant. Le vaisseau peut decoller (Espace) quand la poussee depasse son poids sur ce monde. Rien n'est impose : on peut aussi rester vivre sur place.

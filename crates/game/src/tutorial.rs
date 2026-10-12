@@ -104,6 +104,9 @@ pub fn hint_line(g: &Game) -> String {
             5 => "HAUT/BAS CHOISIR  GAUCHE/DROITE CHANGER  ENTREE SUIVANT  ECHAP PRECEDENT",
             _ => "ENTREE LANCER LA PARTIE  ECHAP PRECEDENT  F1 AIDE",
         },
+        Screen::Dashboard => {
+            "TAB/GAUCHE/DROITE PANNEAU  HAUT/BAS LIGNE  ENTREE OUVRIR L'ECRAN DETAILLE  1-9 PANNEAU  ECHAP OU \\ FERMER  F1 AIDE"
+        }
         Screen::Hub if g.hub.page => {
             "HAUT/BAS CHOISIR  ENTREE OUVRIR  GAUCHE/ECHAP RETOUR AUX ESPACES  1-8 ESPACE  F10 FERMER"
         }
@@ -410,6 +413,15 @@ pub fn help_lines(screen: Screen) -> &'static [&'static str] {
             "En haut : ou vous etes et ce que vous pouvez faire maintenant",
             "Une ligne grisee dit pourquoi elle est indisponible (amarrage, a pied...)",
             "Echap dans un ecran ouvert d'ici revient a la page de son espace",
+        ],
+        Screen::Dashboard => &[
+            "Neuf panneaux : vaisseau, equipage, finances, monde local, contrats,",
+            "alertes, colonies et projets, exploration a pied, esprit de l'IA",
+            "Tab ou Gauche/Droite : panneau   Haut/Bas : ligne   1-9 : aller au panneau",
+            "Entree ou clic sur une ligne : ouvre l'ecran detaille (Echap y revient ici)",
+            "Alertes : critique (rouge), attention (ambre), info ; jamais obligatoires",
+            "Touche \\ (ou Pause) ouvre et ferme ce tableau depuis n'importe ou ;",
+            "le compteur ALERTES du bandeau du haut l'ouvre aussi",
         ],
         Screen::Destroyed => &["Entree : continuer (selon les regles de mort permanente)"],
     }

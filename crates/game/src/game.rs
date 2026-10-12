@@ -76,6 +76,8 @@ pub enum Screen {
     NewGame,
     /// The one menu: the eight spaces that gather the screens.
     Hub,
+    /// The dashboard: the whole state of the game in nine panels (see `dash_view`).
+    Dashboard,
 }
 
 /// Route being composed in the fleet screen.
@@ -286,6 +288,9 @@ pub struct Game {
     pub hub: crate::hub::HubUi,
     /// The space whose screen is open (Escape goes back to its page).
     pub hub_origin: Option<usize>,
+    /// The dashboard: its selection, and whether the open screen came from it (Escape goes back).
+    pub dash: crate::dash_view::DashUi,
+    pub dash_origin: bool,
 }
 
 /// Ranges of the exchange charts, days.
@@ -458,6 +463,8 @@ impl Game {
             ng: Default::default(),
             hub: Default::default(),
             hub_origin: None,
+            dash: Default::default(),
+            dash_origin: false,
         };
         g.fit_map();
         g
@@ -486,6 +493,7 @@ impl Game {
         self.help_open = false;
         self.tut_step = None;
         self.hub_origin = None;
+        self.dash_origin = false;
         self.rogue_visit = false;
         self.rogue_from_surface = false;
         // The guided tutorial teaches the cockpit: a castaway has no cockpit yet.
@@ -962,6 +970,21 @@ impl Game {
                 }
             }
         }
+        // Escape from a screen the dashboard opened comes back to the dashboard.
+        if self.dash_origin {
+            let root = matches!(self.screen, Screen::Flight | Screen::Station);
+            if self.screen == Screen::Dashboard {
+                self.dash_origin = false;
+            } else if root {
+                if pressed
+                    && code == KeyCode::Escape
+                    && !matches!(at, Screen::Flight | Screen::Station | Screen::Dashboard)
+                {
+                    self.screen = Screen::Dashboard;
+                }
+                self.dash_origin = false;
+            }
+        }
         if self.rogue_visit {
             if self.sim.rogue.is_none() {
                 self.rogue_visit = false;
@@ -1015,11 +1038,24 @@ impl Game {
             self.open_hub();
             return;
         }
+        // The dashboard is one key away from every screen (backslash, or Pause).
+        if matches!(
+            code,
+            KeyCode::Backslash | KeyCode::IntlBackslash | KeyCode::Pause
+        ) && !matches!(
+            self.screen,
+            Screen::MainMenu | Screen::NewGame | Screen::Destroyed | Screen::Designer
+        ) {
+            self.help_open = false;
+            self.open_dashboard();
+            return;
+        }
         self.keys.insert(code);
         match self.screen {
             Screen::MainMenu => self.main_menu_key(code, text),
             Screen::NewGame => self.newgame_key(code, text),
             Screen::Hub => self.hub_key(code),
+            Screen::Dashboard => self.dash_key(code),
             Screen::Pause => self.pause_key(code),
             Screen::Station => self.station_key(code),
             Screen::Inventory => self.inventory_key(code),

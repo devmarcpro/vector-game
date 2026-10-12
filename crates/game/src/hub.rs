@@ -13,6 +13,16 @@ use winit::keyboard::KeyCode;
 /// Colour of a line or button under the pointer.
 pub const HOVER: u32 = 0x00D0_FFD0;
 
+/// The first entry of the menu that opens `screen` (space, line).
+pub fn find_entry(screen: Screen) -> Option<(usize, usize)> {
+    SPACES.iter().enumerate().find_map(|(s, sp)| {
+        sp.entries
+            .iter()
+            .position(|e| e.target == Some(screen))
+            .map(|i| (s, i))
+    })
+}
+
 /// What the ship must be doing for an entry to work.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Need {
@@ -71,13 +81,16 @@ pub fn place_of(s: Screen) -> Place {
         Rogue | Expedition => Place::Space(EXPLORATION),
         Empire | Colony | Fleet | Factions => Place::Space(COLONIES),
         Journal | Codex | Tech | Proto => Place::Space(CODEX),
-        MainMenu | NewGame | Hub | Pause | Options | Rules | Destroyed | Designer => Place::System,
+        MainMenu | NewGame | Hub | Dashboard | Pause | Options | Rules | Destroyed | Designer => {
+            Place::System
+        }
     }
 }
 
 /// Every screen of the game (the menu's test walks it).
 #[cfg(test)]
-pub const ALL_SCREENS: [Screen; 36] = [
+pub const ALL_SCREENS: [Screen; 37] = [
+    Screen::Dashboard,
     Screen::Designer,
     Screen::MainMenu,
     Screen::NewGame,
@@ -652,7 +665,7 @@ pub fn orientation(g: &Game) -> Orientation {
         todo.push("L : GALAXIE ET SAUT FTL ; END : EXPLORER A PIED ; F2 : EMPIRE.".into());
     }
     todo.push(
-        "1 A 8 : OUVRIR UN ESPACE ; ECHAP : REMONTER D'UN NIVEAU ; F1 : AIDE DE L'ECRAN.".into(),
+        "1 A 8 : OUVRIR UN ESPACE ; 0 OU \\ : TABLEAU DE BORD ; ECHAP : REMONTER D'UN NIVEAU ; F1 : AIDE.".into(),
     );
     Orientation {
         place,
@@ -788,6 +801,15 @@ impl Game {
         }
     }
 
+    /// The dashboard, from the menu: the menu closes into it, and Escape goes back to the screen
+    /// the menu was opened from.
+    pub fn click_hub_dashboard(&mut self, _: usize) {
+        let from = self.hub.from;
+        self.screen = from;
+        self.hub_origin = None;
+        self.open_dashboard();
+    }
+
     pub fn click_hub_space(&mut self, i: usize) {
         self.hub_select(i);
     }
@@ -811,6 +833,10 @@ impl Game {
         };
         if let Some(d) = digit {
             self.hub_select(d);
+            return;
+        }
+        if matches!(code, KeyCode::Digit0 | KeyCode::Numpad0) {
+            self.click_hub_dashboard(0);
             return;
         }
         let m = SPACES[self.hub.sel].entries.len();
@@ -921,6 +947,15 @@ pub fn draw(fb: &mut Framebuffer, g: &Game) {
             None => fb.text(x + 2, r + 1, e.desc, DIM),
         }
     }
+    // Last, so that the zones of the spaces and of their entries keep their order.
+    button(
+        fb,
+        g,
+        cols - 40,
+        3,
+        "TABLEAU DE BORD (0 OU \\)",
+        Act::Call(Game::click_hub_dashboard, 0),
+    );
 }
 
 /// The "MENU (F10)" button at the top right of every screen but the main menus.

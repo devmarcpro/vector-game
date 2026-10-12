@@ -2,7 +2,7 @@
 //! weapon, faction, anomaly and condition, generated from the real data (no hand-written numbers).
 use vector_data::GameData;
 
-pub const CATEGORIES: [&str; 48] = [
+pub const CATEGORIES: [&str; 57] = [
     "RESSOURCES",
     "MODULES",
     "ARMES",
@@ -214,7 +214,7 @@ fn entries(data: &GameData, cat: usize) -> Vec<usize> {
         44 => (0..data.body_parts.len()).collect(),
         45 => (0..data.wounds.len()).collect(),
         46 => (0..data.drugs.len()).collect(),
-        47 => (0..finance_catalogue().len()).collect(),
+        56 => (0..finance_catalogue().len()).collect(),
         _ => Vec::new(),
     }
 }
@@ -267,7 +267,7 @@ pub fn names(data: &GameData, cat: usize) -> Vec<String> {
             44 => data.body_parts[i].name.clone(),
             45 => data.wounds[i].name.clone(),
             46 => data.drugs[i].name.clone(),
-            47 => finance_catalogue()[i].0.clone(),
+            56 => finance_catalogue()[i].0.clone(),
             18 => format!(
                 "Appeler : {}",
                 vector_data::dialogue::ROLES[i].to_lowercase()
@@ -481,7 +481,7 @@ pub fn entry(data: &GameData, cat: usize, k: usize) -> Vec<String> {
     };
     let mut out = Vec::new();
     match cat {
-        47 => out = finance_catalogue()[i].1.clone(),
+        56 => out = finance_catalogue()[i].1.clone(),
         0 => {
             let r = &data.resources[i];
             out.push(format!("{}  [{}]", r.name, r.category));

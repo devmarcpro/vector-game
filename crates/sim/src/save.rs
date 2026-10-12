@@ -106,199 +106,202 @@ pub struct SaveGame {
 
 /// QA tool: names of the top-level fields whose encoding differs between two saves.
 pub fn diff_fields(x: &[u8], y: &[u8]) -> Vec<&'static str> {
-    let (Ok(a), Ok(b)) = (postcard::from_bytes::<SaveGame>(&x[8..]), postcard::from_bytes::<SaveGame>(&y[8..])) else {
+    let (Ok(a), Ok(b)) = (
+        postcard::from_bytes::<SaveGame>(&x[8..]),
+        postcard::from_bytes::<SaveGame>(&y[8..]),
+    ) else {
         return vec!["(illisible)"];
     };
     fn enc<T: Serialize>(v: &T) -> Vec<u8> {
         postcard::to_allocvec(v).unwrap_or_default()
     }
     let mut out = Vec::new();
-        if enc(&a.system_seed) != enc(&b.system_seed) {
-            out.push("system_seed");
-        }
-        if enc(&a.time) != enc(&b.time) {
-            out.push("time");
-        }
-        if enc(&a.ship) != enc(&b.ship) {
-            out.push("ship");
-        }
-        if enc(&a.credits) != enc(&b.credits) {
-            out.push("credits");
-        }
-        if enc(&a.mined) != enc(&b.mined) {
-            out.push("mined");
-        }
-        if enc(&a.markets) != enc(&b.markets) {
-            out.push("markets");
-        }
-        if enc(&a.docked) != enc(&b.docked) {
-            out.push("docked");
-        }
-        if enc(&a.target) != enc(&b.target) {
-            out.push("target");
-        }
-        if enc(&a.module_stock) != enc(&b.module_stock) {
-            out.push("module_stock");
-        }
-        if enc(&a.blueprints) != enc(&b.blueprints) {
-            out.push("blueprints");
-        }
-        if enc(&a.next_blueprint) != enc(&b.next_blueprint) {
-            out.push("next_blueprint");
-        }
-        if enc(&a.custom_ships) != enc(&b.custom_ships) {
-            out.push("custom_ships");
-        }
-        if enc(&a.yard_orders) != enc(&b.yard_orders) {
-            out.push("yard_orders");
-        }
-        if enc(&a.next_order) != enc(&b.next_order) {
-            out.push("next_order");
-        }
-        if enc(&a.bought_plans) != enc(&b.bought_plans) {
-            out.push("bought_plans");
-        }
-        if enc(&a.crew) != enc(&b.crew) {
-            out.push("crew");
-        }
-        if enc(&a.galaxy_seed) != enc(&b.galaxy_seed) {
-            out.push("galaxy_seed");
-        }
-        if enc(&a.here) != enc(&b.here) {
-            out.push("here");
-        }
-        if enc(&a.here_pos) != enc(&b.here_pos) {
-            out.push("here_pos");
-        }
-        if enc(&a.visited) != enc(&b.visited) {
-            out.push("visited");
-        }
-        if enc(&a.deltas) != enc(&b.deltas) {
-            out.push("deltas");
-        }
-        if enc(&a.scan) != enc(&b.scan) {
-            out.push("scan");
-        }
-        if enc(&a.scan_progress) != enc(&b.scan_progress) {
-            out.push("scan_progress");
-        }
-        if enc(&a.jump) != enc(&b.jump) {
-            out.push("jump");
-        }
-        if enc(&a.contracts) != enc(&b.contracts) {
-            out.push("contracts");
-        }
-        if enc(&a.done_contracts) != enc(&b.done_contracts) {
-            out.push("done_contracts");
-        }
-        if enc(&a.bank) != enc(&b.bank) {
-            out.push("bank");
-        }
-        if enc(&a.npcs) != enc(&b.npcs) {
-            out.push("npcs");
-        }
-        if enc(&a.next_npc) != enc(&b.next_npc) {
-            out.push("next_npc");
-        }
-        if enc(&a.colonies) != enc(&b.colonies) {
-            out.push("colonies");
-        }
-        if enc(&a.next_colony) != enc(&b.next_colony) {
-            out.push("next_colony");
-        }
-        if enc(&a.fleet) != enc(&b.fleet) {
-            out.push("fleet");
-        }
-        if enc(&a.routes) != enc(&b.routes) {
-            out.push("routes");
-        }
-        if enc(&a.next_fleet) != enc(&b.next_fleet) {
-            out.push("next_fleet");
-        }
-        if enc(&a.next_route) != enc(&b.next_route) {
-            out.push("next_route");
-        }
-        if enc(&a.fleet_paid_day) != enc(&b.fleet_paid_day) {
-            out.push("fleet_paid_day");
-        }
-        if enc(&a.wrecks) != enc(&b.wrecks) {
-            out.push("wrecks");
-        }
-        if enc(&a.next_wreck) != enc(&b.next_wreck) {
-            out.push("next_wreck");
-        }
-        if enc(&a.wanted_until) != enc(&b.wanted_until) {
-            out.push("wanted_until");
-        }
-        if enc(&a.researched) != enc(&b.researched) {
-            out.push("researched");
-        }
-        if enc(&a.research_pool) != enc(&b.research_pool) {
-            out.push("research_pool");
-        }
-        if enc(&a.current_research) != enc(&b.current_research) {
-            out.push("current_research");
-        }
-        if enc(&a.research_progress) != enc(&b.research_progress) {
-            out.push("research_progress");
-        }
-        if enc(&a.explored) != enc(&b.explored) {
-            out.push("explored");
-        }
-        if enc(&a.rules) != enc(&b.rules) {
-            out.push("rules");
-        }
-        if enc(&a.ecologies) != enc(&b.ecologies) {
-            out.push("ecologies");
-        }
-        if enc(&a.relations) != enc(&b.relations) {
-            out.push("relations");
-        }
-        if enc(&a.surprises) != enc(&b.surprises) {
-            out.push("surprises");
-        }
-        if enc(&a.futures) != enc(&b.futures) {
-            out.push("futures");
-        }
-        if enc(&a.next_future) != enc(&b.next_future) {
-            out.push("next_future");
-        }
-        if enc(&a.herd) != enc(&b.herd) {
-            out.push("herd");
-        }
-        if enc(&a.herd_counter) != enc(&b.herd_counter) {
-            out.push("herd_counter");
-        }
-        if enc(&a.casino_round) != enc(&b.casino_round) {
-            out.push("casino_round");
-        }
-        if enc(&a.trade) != enc(&b.trade) {
-            out.push("trade");
-        }
-        if enc(&a.multiverse) != enc(&b.multiverse) {
-            out.push("multiverse");
-        }
-        if enc(&a.rogue) != enc(&b.rogue) {
-            out.push("rogue");
-        }
-        if enc(&a.rogue_visits) != enc(&b.rogue_visits) {
-            out.push("rogue_visits");
-        }
-        if enc(&a.births_day) != enc(&b.births_day) {
-            out.push("births_day");
-        }
-        if enc(&a.society) != enc(&b.society) {
-            out.push("society");
-        }
-        if enc(&a.news) != enc(&b.news) {
-            out.push("news");
-        }
-        if enc(&a.news_scanned_to) != enc(&b.news_scanned_to) {
-            out.push("news_scanned_to");
-        }
-        if enc(&a.last_livestock_day) != enc(&b.last_livestock_day) {
-            out.push("last_livestock_day");
-        }
+    if enc(&a.system_seed) != enc(&b.system_seed) {
+        out.push("system_seed");
+    }
+    if enc(&a.time) != enc(&b.time) {
+        out.push("time");
+    }
+    if enc(&a.ship) != enc(&b.ship) {
+        out.push("ship");
+    }
+    if enc(&a.credits) != enc(&b.credits) {
+        out.push("credits");
+    }
+    if enc(&a.mined) != enc(&b.mined) {
+        out.push("mined");
+    }
+    if enc(&a.markets) != enc(&b.markets) {
+        out.push("markets");
+    }
+    if enc(&a.docked) != enc(&b.docked) {
+        out.push("docked");
+    }
+    if enc(&a.target) != enc(&b.target) {
+        out.push("target");
+    }
+    if enc(&a.module_stock) != enc(&b.module_stock) {
+        out.push("module_stock");
+    }
+    if enc(&a.blueprints) != enc(&b.blueprints) {
+        out.push("blueprints");
+    }
+    if enc(&a.next_blueprint) != enc(&b.next_blueprint) {
+        out.push("next_blueprint");
+    }
+    if enc(&a.custom_ships) != enc(&b.custom_ships) {
+        out.push("custom_ships");
+    }
+    if enc(&a.yard_orders) != enc(&b.yard_orders) {
+        out.push("yard_orders");
+    }
+    if enc(&a.next_order) != enc(&b.next_order) {
+        out.push("next_order");
+    }
+    if enc(&a.bought_plans) != enc(&b.bought_plans) {
+        out.push("bought_plans");
+    }
+    if enc(&a.crew) != enc(&b.crew) {
+        out.push("crew");
+    }
+    if enc(&a.galaxy_seed) != enc(&b.galaxy_seed) {
+        out.push("galaxy_seed");
+    }
+    if enc(&a.here) != enc(&b.here) {
+        out.push("here");
+    }
+    if enc(&a.here_pos) != enc(&b.here_pos) {
+        out.push("here_pos");
+    }
+    if enc(&a.visited) != enc(&b.visited) {
+        out.push("visited");
+    }
+    if enc(&a.deltas) != enc(&b.deltas) {
+        out.push("deltas");
+    }
+    if enc(&a.scan) != enc(&b.scan) {
+        out.push("scan");
+    }
+    if enc(&a.scan_progress) != enc(&b.scan_progress) {
+        out.push("scan_progress");
+    }
+    if enc(&a.jump) != enc(&b.jump) {
+        out.push("jump");
+    }
+    if enc(&a.contracts) != enc(&b.contracts) {
+        out.push("contracts");
+    }
+    if enc(&a.done_contracts) != enc(&b.done_contracts) {
+        out.push("done_contracts");
+    }
+    if enc(&a.bank) != enc(&b.bank) {
+        out.push("bank");
+    }
+    if enc(&a.npcs) != enc(&b.npcs) {
+        out.push("npcs");
+    }
+    if enc(&a.next_npc) != enc(&b.next_npc) {
+        out.push("next_npc");
+    }
+    if enc(&a.colonies) != enc(&b.colonies) {
+        out.push("colonies");
+    }
+    if enc(&a.next_colony) != enc(&b.next_colony) {
+        out.push("next_colony");
+    }
+    if enc(&a.fleet) != enc(&b.fleet) {
+        out.push("fleet");
+    }
+    if enc(&a.routes) != enc(&b.routes) {
+        out.push("routes");
+    }
+    if enc(&a.next_fleet) != enc(&b.next_fleet) {
+        out.push("next_fleet");
+    }
+    if enc(&a.next_route) != enc(&b.next_route) {
+        out.push("next_route");
+    }
+    if enc(&a.fleet_paid_day) != enc(&b.fleet_paid_day) {
+        out.push("fleet_paid_day");
+    }
+    if enc(&a.wrecks) != enc(&b.wrecks) {
+        out.push("wrecks");
+    }
+    if enc(&a.next_wreck) != enc(&b.next_wreck) {
+        out.push("next_wreck");
+    }
+    if enc(&a.wanted_until) != enc(&b.wanted_until) {
+        out.push("wanted_until");
+    }
+    if enc(&a.researched) != enc(&b.researched) {
+        out.push("researched");
+    }
+    if enc(&a.research_pool) != enc(&b.research_pool) {
+        out.push("research_pool");
+    }
+    if enc(&a.current_research) != enc(&b.current_research) {
+        out.push("current_research");
+    }
+    if enc(&a.research_progress) != enc(&b.research_progress) {
+        out.push("research_progress");
+    }
+    if enc(&a.explored) != enc(&b.explored) {
+        out.push("explored");
+    }
+    if enc(&a.rules) != enc(&b.rules) {
+        out.push("rules");
+    }
+    if enc(&a.ecologies) != enc(&b.ecologies) {
+        out.push("ecologies");
+    }
+    if enc(&a.relations) != enc(&b.relations) {
+        out.push("relations");
+    }
+    if enc(&a.surprises) != enc(&b.surprises) {
+        out.push("surprises");
+    }
+    if enc(&a.futures) != enc(&b.futures) {
+        out.push("futures");
+    }
+    if enc(&a.next_future) != enc(&b.next_future) {
+        out.push("next_future");
+    }
+    if enc(&a.herd) != enc(&b.herd) {
+        out.push("herd");
+    }
+    if enc(&a.herd_counter) != enc(&b.herd_counter) {
+        out.push("herd_counter");
+    }
+    if enc(&a.casino_round) != enc(&b.casino_round) {
+        out.push("casino_round");
+    }
+    if enc(&a.trade) != enc(&b.trade) {
+        out.push("trade");
+    }
+    if enc(&a.multiverse) != enc(&b.multiverse) {
+        out.push("multiverse");
+    }
+    if enc(&a.rogue) != enc(&b.rogue) {
+        out.push("rogue");
+    }
+    if enc(&a.rogue_visits) != enc(&b.rogue_visits) {
+        out.push("rogue_visits");
+    }
+    if enc(&a.births_day) != enc(&b.births_day) {
+        out.push("births_day");
+    }
+    if enc(&a.society) != enc(&b.society) {
+        out.push("society");
+    }
+    if enc(&a.news) != enc(&b.news) {
+        out.push("news");
+    }
+    if enc(&a.news_scanned_to) != enc(&b.news_scanned_to) {
+        out.push("news_scanned_to");
+    }
+    if enc(&a.last_livestock_day) != enc(&b.last_livestock_day) {
+        out.push("last_livestock_day");
+    }
     if enc(&a.ship.pos) != enc(&b.ship.pos) {
         out.push("ship.pos");
     }

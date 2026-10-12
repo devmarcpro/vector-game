@@ -11,7 +11,7 @@ use vector_data::{find_data_dir, GameData};
 use vector_sim::casino::Game;
 use vector_sim::crew::DAY;
 use vector_sim::start::{new_sim_with, StartConfig};
-use vector_sim::{Sim, ShipInput};
+use vector_sim::{ShipInput, Sim};
 
 static CURRENT: Mutex<String> = Mutex::new(String::new());
 static LAST_PANIC: Mutex<String> = Mutex::new(String::new());
@@ -71,28 +71,43 @@ fn invariants(s: &Sim) -> Vec<String> {
         s.ship.rot.0.iter().flatten().all(|x| fin(*x)),
         "rotation non finie",
     );
-    bad(fin(s.ship.fuel) && s.ship.fuel >= -1e-6, "carburant NaN ou negatif");
+    bad(
+        fin(s.ship.fuel) && s.ship.fuel >= -1e-6,
+        "carburant NaN ou negatif",
+    );
     bad(
         s.ship.fuel <= s.ship.stats.fuel_cap * 1.001 + 1e-6,
         "carburant au dessus du reservoir",
     );
-    bad(fin(s.ship.hull) && s.ship.hull >= -1e-6, "coque NaN ou negative");
+    bad(
+        fin(s.ship.hull) && s.ship.hull >= -1e-6,
+        "coque NaN ou negative",
+    );
     bad(
         s.ship.hull <= s.ship.stats.hull_max * 1.001 + 1e-6,
         "coque au dessus du max",
     );
-    bad(fin(s.ship.sys.battery_mj) && s.ship.sys.battery_mj >= -1e-6, "batterie invalide");
+    bad(
+        fin(s.ship.sys.battery_mj) && s.ship.sys.battery_mj >= -1e-6,
+        "batterie invalide",
+    );
     bad(
         fin(s.ship.sys.temp_k) && s.ship.sys.temp_k >= 0.0,
         "temperature invalide",
     );
-    bad(fin(s.ship.sys.dose_gy) && s.ship.sys.dose_gy >= 0.0, "dose invalide");
+    bad(
+        fin(s.ship.sys.dose_gy) && s.ship.sys.dose_gy >= 0.0,
+        "dose invalide",
+    );
     bad(
         s.ship.sys.health.iter().all(|h| fin(*h) && *h >= -1e-9),
         "sante de module invalide",
     );
     let c = &s.ship.cargo;
-    bad(c.kg.iter().all(|k| fin(*k) && *k >= -1e-6), "soute: masse negative/NaN");
+    bad(
+        c.kg.iter().all(|k| fin(*k) && *k >= -1e-6),
+        "soute: masse negative/NaN",
+    );
     bad(fin(c.mass) && fin(c.volume), "soute: total non fini");
     // A wrecked hold module shrinks the capacity under the load: not a bookkeeping error.
     let intact = s.ship.sys.health.iter().all(|h| *h >= 0.999);
@@ -120,8 +135,7 @@ fn invariants(s: &Sim) -> Vec<String> {
     }
     for (i, p) in s.crew.members.iter().enumerate() {
         let vals = [
-            p.health, p.fatigue, p.hunger, p.thirst, p.social, p.stress, p.morale, p.loyalty,
-            p.age,
+            p.health, p.fatigue, p.hunger, p.thirst, p.social, p.stress, p.morale, p.loyalty, p.age,
         ];
         if !vals.iter().all(|v| v.is_finite()) {
             o.push(format!("equipage {i}: valeur non finie"));
@@ -171,7 +185,14 @@ fn actions() -> Vec<(&'static str, Act)> {
         }),
         ("sell", |s, r| {
             let x = pick_res(s, r);
-            let _ = s.sell(x, if r.below(2) == 0 { None } else { Some(r.unit() * 500.0) });
+            let _ = s.sell(
+                x,
+                if r.below(2) == 0 {
+                    None
+                } else {
+                    Some(r.unit() * 500.0)
+                },
+            );
         }),
         ("refuel", |s, _| {
             let _ = s.refuel();
@@ -316,7 +337,11 @@ fn actions() -> Vec<(&'static str, Act)> {
             let _ = s.inject_mutagen(m);
         }),
         ("society", |s, r| {
-            let id = s.crew.members.get(r.below(s.crew.members.len().max(1))).map_or(0, |p| p.id);
+            let id = s
+                .crew
+                .members
+                .get(r.below(s.crew.members.len().max(1)))
+                .map_or(0, |p| p.id);
             let _ = s.enroll(id, r.below(6));
             let _ = s.compose(id, r.below(4));
             let _ = s.bet(r.below(3), r.below(6), r.unit() * 300.0);
@@ -523,7 +548,11 @@ fn play(
     };
     let pacify = |s: &mut Sim| {
         if s.docked.is_none() && s.try_dock().is_err() {
-            if let Some(st) = s.bodies.iter().position(|b| b.kind == vector_world::BodyKind::Station) {
+            if let Some(st) = s
+                .bodies
+                .iter()
+                .position(|b| b.kind == vector_world::BodyKind::Station)
+            {
                 if s.autopilot.is_none() {
                     let _ = s.engage_autopilot(st);
                 }
@@ -560,7 +589,12 @@ fn play(
                 Ok(Err(_)) => {}
                 Err(_) => {
                     let msg = LAST_PANIC.lock().map(|g| g.clone()).unwrap_or_default();
-                    note(&mut out, "panique(action)", format!("found_colony: {msg}"), 0);
+                    note(
+                        &mut out,
+                        "panique(action)",
+                        format!("found_colony: {msg}"),
+                        0,
+                    );
                 }
             }
         }
@@ -574,11 +608,20 @@ fn play(
             break; // step budget: free flight near worlds is expensive, the day count is reported
         }
         let td = Instant::now();
-        if policy == Policy::Pacifist || (day == 0 && !matches!(policy, Policy::Idle | Policy::Builder)) {
+        if policy == Policy::Pacifist
+            || (day == 0 && !matches!(policy, Policy::Idle | Policy::Builder))
+        {
             // Dock as fast as a player would: poll every 5 minutes until docked (at most 6 h).
             for poll in 0..72 {
                 if std::env::var("QA_CREW").is_ok() {
-                    eprintln!("  poll {poll} coque {:.0} vitesse {:.1} auto {} docked {:?}", s.ship.hull, (s.ship.vel - s.bodies[s.nearest_station().map_or(0, |x| x.0)].vel).length(), s.autopilot.is_some(), s.docked);
+                    eprintln!(
+                        "  poll {poll} coque {:.0} vitesse {:.1} auto {} docked {:?}",
+                        s.ship.hull,
+                        (s.ship.vel - s.bodies[s.nearest_station().map_or(0, |x| x.0)].vel)
+                            .length(),
+                        s.autopilot.is_some(),
+                        s.docked
+                    );
                 }
                 pacify(&mut s);
                 if s.docked.is_some() {
@@ -606,28 +649,50 @@ fn play(
             let (name, f): (&'static str, Act) = match policy {
                 Policy::Trader => {
                     const T: [&str; 9] = [
-                        "dock", "sell", "buy", "refuel", "repair", "contract", "autopilot",
-                        "loan", "undock",
+                        "dock",
+                        "sell",
+                        "buy",
+                        "refuel",
+                        "repair",
+                        "contract",
+                        "autopilot",
+                        "loan",
+                        "undock",
                     ];
                     let n = T[rng.below(T.len())];
                     table.iter().find(|(a, _)| *a == n).copied().unwrap()
                 }
                 Policy::Builder => {
                     const T: [&str; 9] = [
-                        "colony", "terraform", "fleet", "yard", "securities", "society", "shares",
-                        "loan", "colony",
+                        "colony",
+                        "terraform",
+                        "fleet",
+                        "yard",
+                        "securities",
+                        "society",
+                        "shares",
+                        "loan",
+                        "colony",
                     ];
                     let n = T[rng.below(T.len())];
                     table.iter().find(|(a, _)| *a == n).copied().unwrap()
                 }
                 Policy::Explorer => {
-                    const T: [&str; 6] = ["jump", "autopilot", "rogue", "archive", "refuel", "dock"];
+                    const T: [&str; 6] =
+                        ["jump", "autopilot", "rogue", "archive", "refuel", "dock"];
                     let n = T[rng.below(T.len())];
                     table.iter().find(|(a, _)| *a == n).copied().unwrap()
                 }
                 Policy::Random => {
                     const T: [&str; 8] = [
-                        "dock", "undock", "buy", "sell", "refuel", "repair", "hire", "autopilot",
+                        "dock",
+                        "undock",
+                        "buy",
+                        "sell",
+                        "refuel",
+                        "repair",
+                        "hire",
+                        "autopilot",
                     ];
                     let n = T[rng.below(T.len())];
                     table.iter().find(|(a, _)| *a == n).copied().unwrap()
@@ -704,14 +769,24 @@ fn play(
             }
             left -= chunk;
             if std::env::var("QA_CREW").is_ok() && day < 2 {
-                eprintln!("  h{k} j{day} coque {:.0} sante_min {:.2} flare {:?} evts {:?} dose {:.3}", s.ship.hull, s.ship.sys.health.iter().cloned().fold(9.0, f64::min), s.pending_flare, s.events, s.ship.sys.dose_gy);
+                eprintln!(
+                    "  h{k} j{day} coque {:.0} sante_min {:.2} flare {:?} evts {:?} dose {:.3}",
+                    s.ship.hull,
+                    s.ship.sys.health.iter().cloned().fold(9.0, f64::min),
+                    s.pending_flare,
+                    s.events,
+                    s.ship.sys.dose_gy
+                );
             }
             if capped {
                 let near = s
                     .bodies
                     .iter()
                     .map(|b| ((s.ship.pos - b.pos).length() - b.radius, b.name.clone()))
-                    .fold((f64::MAX, String::new()), |a, b| if b.0 < a.0 { b } else { a });
+                    .fold(
+                        (f64::MAX, String::new()),
+                        |a, b| if b.0 < a.0 { b } else { a },
+                    );
                 note(
                     &mut out,
                     "lenteur",
@@ -728,7 +803,11 @@ fn play(
                     day,
                 );
                 s.autopilot = None;
-                if let Some(st) = s.bodies.iter().position(|b| b.kind == vector_world::BodyKind::Station) {
+                if let Some(st) = s
+                    .bodies
+                    .iter()
+                    .position(|b| b.kind == vector_world::BodyKind::Station)
+                {
                     s.spawn_near(st, s.bodies[st].radius + 500.0);
                 }
                 break;
@@ -768,13 +847,25 @@ fn play(
                     Ok(l) => match l.save_bytes() {
                         Ok(b2) if b1 == b2 => {}
                         // `ship.stats` is a derived cache refreshed on load (radiate_kw drifts by 1e-6).
-                        Ok(b2) if vector_sim::save::diff_fields(&b1, &b2).iter().all(|f| matches!(*f, "ship" | "ship.stats")) => {}
+                        Ok(b2)
+                            if vector_sim::save::diff_fields(&b1, &b2)
+                                .iter()
+                                .all(|f| matches!(*f, "ship" | "ship.stats")) => {}
                         Ok(b2) => {
                             if vector_sim::save::diff_fields(&b1, &b2).contains(&"ship.stats") {
-                                let (x, y) = (format!("{:?}", s.ship.stats), format!("{:?}", l.ship.stats));
-                                let i = x.chars().zip(y.chars()).position(|(a, b)| a != b).unwrap_or(0);
-                                eprintln!("STATS live: ...{}
-STATS charge: ...{}", &x[i.saturating_sub(60)..(i + 60).min(x.len())], &y[i.saturating_sub(60)..(i + 60).min(y.len())]);
+                                let (x, y) =
+                                    (format!("{:?}", s.ship.stats), format!("{:?}", l.ship.stats));
+                                let i = x
+                                    .chars()
+                                    .zip(y.chars())
+                                    .position(|(a, b)| a != b)
+                                    .unwrap_or(0);
+                                eprintln!(
+                                    "STATS live: ...{}
+STATS charge: ...{}",
+                                    &x[i.saturating_sub(60)..(i + 60).min(x.len())],
+                                    &y[i.saturating_sub(60)..(i + 60).min(y.len())]
+                                );
                             }
                             let at = b1.iter().zip(&b2).position(|(a, b)| a != b);
                             note(
@@ -824,7 +915,10 @@ STATS charge: ...{}", &x[i.saturating_sub(60)..(i + 60).min(x.len())], &y[i.satu
             note(
                 &mut out,
                 "equilibrage",
-                format!("equipage entierement mort au jour {day} ({} morts)", s.crew.members.len()),
+                format!(
+                    "equipage entierement mort au jour {day} ({} morts)",
+                    s.crew.members.len()
+                ),
                 day,
             );
         }
@@ -950,7 +1044,10 @@ fn main() {
                     match rx.recv_timeout(Duration::from_secs(timeout)) {
                         Ok(o) => outs.push(o),
                         Err(_) => {
-                            println!("BLOCAGE {label}: pas fini apres {timeout} s ({})", CURRENT.lock().map(|g| g.clone()).unwrap_or_default());
+                            println!(
+                                "BLOCAGE {label}: pas fini apres {timeout} s ({})",
+                                CURRENT.lock().map(|g| g.clone()).unwrap_or_default()
+                            );
                             std::process::exit(2);
                         }
                     }
@@ -991,7 +1088,10 @@ fn main() {
     perf.sort_by(|a, b| b.1.total_cmp(&a.1));
     println!("--- performance: 5 pires (ms/jour moyen, pire jour, us/pas)");
     for p in perf.iter().take(5) {
-        println!("  {}: {:.1} ms/j, pire jour {:.0} ms, {:.1} us/pas", p.0, p.1, p.2, p.3);
+        println!(
+            "  {}: {:.1} ms/j, pire jour {:.0} ms, {:.1} us/pas",
+            p.0, p.1, p.2, p.3
+        );
     }
     let mut aw: Vec<_> = act_worst.into_iter().collect();
     aw.sort_by(|a, b| b.1.total_cmp(&a.1));

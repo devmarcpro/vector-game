@@ -2,7 +2,7 @@
 //! weapon, faction, anomaly and condition, generated from the real data (no hand-written numbers).
 use vector_data::GameData;
 
-pub const CATEGORIES: [&str; 48] = [
+pub const CATEGORIES: [&str; 50] = [
     "RESSOURCES",
     "MODULES",
     "ARMES",
@@ -51,6 +51,8 @@ pub const CATEGORIES: [&str; 48] = [
     "BLESSURES",
     "MEDICAMENTS",
     "SCENARIOS",
+    "GEOLOGIE",
+    "ASTRONOMIE",
 ];
 
 /// The category of the reactions: the laboratory.
@@ -124,6 +126,8 @@ fn entries(data: &GameData, cat: usize) -> Vec<usize> {
         45 => (0..data.wounds.len()).collect(),
         46 => (0..data.drugs.len()).collect(),
         47 => (0..data.scenarios.len()).collect(),
+        48 => (0..data.geology.len()).collect(),
+        49 => (0..data.cosmos.len()).collect(),
         _ => Vec::new(),
     }
 }
@@ -177,6 +181,8 @@ pub fn names(data: &GameData, cat: usize) -> Vec<String> {
             45 => data.wounds[i].name.clone(),
             46 => data.drugs[i].name.clone(),
             47 => data.scenarios[i].name.clone(),
+            48 => data.geology[i].name.clone(),
+            49 => data.cosmos[i].name.clone(),
             18 => format!(
                 "Appeler : {}",
                 vector_data::dialogue::ROLES[i].to_lowercase()
@@ -1158,6 +1164,8 @@ pub fn entry(data: &GameData, cat: usize, k: usize) -> Vec<String> {
             }
             out.push("Se choisit au menu principal : Nouvelle partie.".to_string());
         }
+        48 => out = crate::codex_sky::geology_entry(data, i),
+        49 => out = crate::codex_sky::cosmos_entry(data, i),
         28 => {
             let m = &data.materials[i];
             out.push(format!(

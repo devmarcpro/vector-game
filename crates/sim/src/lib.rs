@@ -2,6 +2,7 @@
 //! Units: SI (m, s, kg, N). See docs/SIM_MODEL.md.
 pub mod archive;
 pub mod arms;
+pub mod astro;
 pub mod atmosphere;
 pub mod autopilot;
 pub mod biosphere;
@@ -28,6 +29,7 @@ pub mod fleet;
 pub mod futures;
 pub mod gear;
 pub mod genealogy;
+pub mod geo;
 pub mod history;
 pub mod incidents;
 pub mod intrusion;
@@ -380,6 +382,13 @@ pub struct Sim {
     pub(crate) last_news_day: i64,
     /// Day number of the last epidemic travel check (not saved).
     pub(crate) epi_day: i64,
+    /// Effects of the interstellar medium at the system where the ship is (not saved).
+    pub(crate) cosmic_cache: Option<(
+        vector_world::galaxy::StarRef,
+        vector_world::cosmos::CosmicEffects,
+    )>,
+    /// Day number of the last listen for gravitational waves (not saved).
+    pub(crate) last_cosmic_day: i64,
     /// Surface maps of colonised worlds and city sites (derived data, never saved).
     pub(crate) world_cache: std::collections::HashMap<(u64, usize), Option<Arc<planet::PlanetMap>>>,
     pub(crate) city_cache: std::collections::HashMap<u32, (usize, usize)>,
@@ -512,6 +521,8 @@ impl Sim {
             steps: 0,
             last_news_day: i64::MIN,
             epi_day: i64::MIN,
+            cosmic_cache: None,
+            last_cosmic_day: i64::MIN,
             world_cache: std::collections::HashMap::new(),
             city_cache: std::collections::HashMap::new(),
             ecologies: BTreeMap::new(),
@@ -683,8 +694,17 @@ impl Sim {
 
     /// Stellar flux at the ship relative to 1 AU (for solar panels).
     pub fn solar_flux(&self) -> f64 {
-        let d_au = self.ship.pos.length() / vector_world::orbit::AU;
-        self.system.luminosity / (d_au * d_au).max(1e-6) * self.sunlight_at(self.ship.pos)
+        use vector_world::orbit::AU;
+        let d_au = self.ship.pos.length() / AU;
+        // The star (its light waxes and wanes if it is a variable) and the suns of its companions.
+        let mut flux = self.system.luminosity_at(self.time) / (d_au * d_au).max(1e-6);
+        for (i, b) in self.system.bodies.iter().enumerate().skip(1) {
+            if matches!(b.kind, BodyKind::Star(_)) {
+                let d = (self.bodies[i].pos - self.ship.pos).length() / AU;
+                flux += b.star_luminosity() / (d * d).max(1e-6);
+            }
+        }
+        flux * self.sunlight_at(self.ship.pos)
     }
 
     /// Largest step that keeps integration accurate near attractors and surfaces.

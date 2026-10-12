@@ -2,6 +2,7 @@ mod archive_view;
 mod audio;
 mod bourse_view;
 mod codex;
+mod codex_sky;
 mod console;
 mod cosmos_view;
 mod crew_net_view;
@@ -29,6 +30,7 @@ mod rogue_view;
 mod scene;
 mod script;
 mod settings;
+mod sky_view;
 mod sprites;
 mod surface_view;
 mod tech_view;
@@ -632,8 +634,66 @@ fn snapshot(path: &str, scene: &str, data: Arc<GameData>) {
             g.sim.target = Some(i);
             g.sim.update_ref_pub();
         }
-        "surface" | "biosphere" | "biosphere_card" | "globe" | "walk" | "walk_fpv"
-        | "expedition" => {
+        "sky_ring" | "sky_bh" | "sky_pulsar" | "sky_comet" => {
+            // A system chosen for what it holds (rings, a black hole, a pulsar, a comet), the
+            // ship parked in front of it with the object targeted.
+            use vector_world::stellar::StarStage;
+            let hit = |s: &vector_world::System| match scene {
+                "sky_ring" => !s.rings().is_empty(),
+                "sky_bh" => s.stage == StarStage::BlackHole && s.accreting(),
+                "sky_pulsar" => s.stage == StarStage::NeutronStar,
+                _ => s.bodies.iter().any(|b| {
+                    b.kind == vector_world::BodyKind::Anomaly(vector_world::AnomalyKind::Comet)
+                }),
+            };
+            let sys = (0..60_000u64)
+                .map(|k| k.wrapping_mul(0x9E37_79B9))
+                .map(vector_world::generate_system)
+                .find(|s| hit(s))
+                .expect("such a system");
+            let (i, back) = match scene {
+                "sky_ring" => {
+                    let r = sys.rings()[0];
+                    (r.planet, sys.bodies[r.planet].radius * 7.0)
+                }
+                "sky_bh" | "sky_pulsar" => (0, 4.0e7),
+                _ => (
+                    sys.bodies
+                        .iter()
+                        .position(|b| {
+                            b.kind
+                                == vector_world::BodyKind::Anomaly(vector_world::AnomalyKind::Comet)
+                        })
+                        .expect("a comet"),
+                    6.0e5,
+                ),
+            };
+            let data = Arc::clone(&g.data);
+            let mut sim = vector_sim::Sim::new(sys, data);
+            if scene == "sky_comet" {
+                let o = sim.system.bodies[i].orbit.clone().expect("orbit");
+                sim.time = (0..2000)
+                    .map(|k| f64::from(k) * o.period() / 2000.0)
+                    .rfind(|&t| sim.system.comet_tail(i, t).is_some())
+                    .expect("a tail");
+                sim.refresh_bodies();
+            }
+            sim.reveal_all();
+            let b = &sim.bodies[i];
+            // Seen from a little above the plane of the orbits, so that rings open into ellipses.
+            let lift = if scene == "sky_ring" {
+                back * 0.45
+            } else {
+                0.0
+            };
+            sim.ship.pos = b.pos + vector_core::Vec3::new(0.0, lift, -back);
+            sim.ship.vel = b.vel;
+            sim.target = Some(i);
+            sim.update_ref_pub();
+            g.sim = sim;
+        }
+        "surface" | "surface_geo" | "biosphere" | "biosphere_card" | "globe" | "walk"
+        | "walk_fpv" | "expedition" => {
             g.sim.reveal_all();
             let i = g
                 .sim
@@ -662,6 +722,8 @@ fn snapshot(path: &str, scene: &str, data: Arc<GameData>) {
             if scene.starts_with("biosphere") {
                 g.surf_layer = surface_view::BIOSPHERE;
                 g.surf_card = scene == "biosphere_card";
+            } else if scene == "surface_geo" {
+                g.surf_layer = surface_view::GEOLOGIE;
             }
             g.surf_spin = 0.9;
             if scene.starts_with("walk") || scene == "expedition" {
@@ -731,6 +793,25 @@ fn snapshot(path: &str, scene: &str, data: Arc<GameData>) {
             g.codex_cat = 1;
             g.codex_sel = 5;
             g.screen = Screen::Codex;
+        }
+        "codex_geo" | "codex_sky" => {
+            g.codex_cat = if scene == "codex_geo" { 29 } else { 30 };
+            g.codex_sel = 4;
+            g.screen = Screen::Codex;
+        }
+        "galaxy_ism" => {
+            // Inside a supernova remnant or a nebula: circles of the medium on the galactic map.
+            use vector_world::cosmos::FeatureKind;
+            let galaxy = g.sim.galaxy;
+            let f = (-60..60)
+                .flat_map(|x| (-60..60).map(move |z| (x, z)))
+                .flat_map(|(x, z)| galaxy.features_in_cell((x, 0, z)))
+                .find(|f| f.kind == FeatureKind::SupernovaRemnant)
+                .expect("a remnant");
+            g.sim.here_pos = f.pos;
+            g.sim.reveal_all();
+            g.open_galaxy();
+            g.gal_zoom = 6.0;
         }
         "help" => {
             g.help_open = true;

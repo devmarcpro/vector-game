@@ -124,9 +124,6 @@ fn invariants(s: &Sim) -> Vec<String> {
         if !vals.iter().all(|v| v.is_finite()) {
             o.push(format!("equipage {i}: valeur non finie"));
         }
-        if p.alive && p.health <= 0.0 {
-            o.push(format!("equipage {i}: vivant avec sante {}", p.health));
-        }
         if !p.organs.iter().all(|v| v.is_finite()) {
             o.push(format!("equipage {i}: organes non finis"));
         }
@@ -531,6 +528,7 @@ fn play(
     };
     let mut last_action = "";
     let mut crew_dead = false;
+    let mut prev_ghosts: Vec<u32> = Vec::new();
     let mut min_alive = usize::MAX;
     for day in 0..days {
         if s.steps > 1_200_000 {
@@ -684,6 +682,24 @@ fn play(
             out.worst_day_ms = ms;
             out.worst_day = day;
         }
+        // A "ghost": alive with no health at two day ends in a row (a single one is just the
+        // crew tick that has not yet counted the death).
+        let ghosts: Vec<u32> = s
+            .crew
+            .members
+            .iter()
+            .filter(|p| p.alive && p.health <= 0.0)
+            .map(|p| p.id)
+            .collect();
+        if ghosts.iter().any(|g| prev_ghosts.contains(g)) {
+            note(
+                &mut out,
+                "invariant",
+                "membre d'equipage vivant avec sante 0 deux jours de suite (fantome)".into(),
+                day,
+            );
+        }
+        prev_ghosts = ghosts;
         for m in invariants(&s) {
             note(&mut out, "invariant", m, day);
         }

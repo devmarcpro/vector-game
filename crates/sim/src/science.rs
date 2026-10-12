@@ -215,7 +215,8 @@ impl Sim {
         for p in self.crew.members.iter_mut().filter(|p| p.alive) {
             p.body.pending_dose += dose as f32;
             p.health = (p.health - (dose * 0.04) as f32).max(0.0);
-            if dose > 0.3 && p.disease.is_none() && rng.f64() < dose.min(1.0) {
+            // Radiation sickness needs about a gray at once; below, only the dose is booked.
+            if dose > 1.0 && p.disease.is_none() && rng.f64() < (dose - 0.5).min(1.0) {
                 if let Some(d) = sick {
                     p.disease = Some((d, self.data.diseases[d].duration_days as f32));
                 }
@@ -823,5 +824,31 @@ mod tests {
             focused > even && even > starved,
             "{starved} < {even} < {focused}"
         );
+    }
+    #[test]
+    fn a_moderate_dose_does_not_give_radiation_sickness_but_a_big_one_can() {
+        let mut s = crate::scene::new_sim(5, data());
+        assert!(s.crew.alive().count() >= 1);
+        let sick = s.data.disease_index("radiation").expect("disease");
+        let mut big = 0;
+        for k in 0..60 {
+            s.time = f64::from(k) * 17.3;
+            for p in s.crew.members.iter_mut() {
+                p.disease = None;
+            }
+            s.irradiate(0.5);
+            assert!(
+                s.crew.members.iter().all(|p| p.disease.is_none()),
+                "0.5 Gy must not make anyone sick"
+            );
+            s.irradiate(3.0);
+            big += s
+                .crew
+                .members
+                .iter()
+                .filter(|p| p.disease.is_some_and(|d| d.0 == sick))
+                .count();
+        }
+        assert!(big > 0, "3 Gy must be able to make the crew sick");
     }
 }

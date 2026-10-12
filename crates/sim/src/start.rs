@@ -737,8 +737,17 @@ mod tests {
         );
         // The engineer works shift after shift; the parts are consumed.
         let before = sim.readiness().parts_kg;
+        // He forages for food and water between shifts (the hold is topped up to its start).
+        let (food, water) = (
+            sim.data.resource_index("food").unwrap(),
+            sim.data.resource_index("water").unwrap(),
+        );
         for _ in 0..120 {
-            sim.advance(8.0 * 3600.0, &ShipInput::default());
+            sim.ship.cargo.kg[food] = sim.ship.cargo.kg[food].max(25.0);
+            sim.ship.cargo.kg[water] = sim.ship.cargo.kg[water].max(60.0);
+            for _ in 0..16 {
+                sim.advance(1800.0, &ShipInput::default());
+            }
             if sim.readiness().can_fly() {
                 break;
             }

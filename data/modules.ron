@@ -116,4 +116,8 @@
  (id:"exo_photon_sail", name:"Voile photonique", category:"solar", slot:External, size:3, mass:200.0, hp:40.0, cost:700000.0, power:900.0, priority:0),
  (id:"exo_orion_pusher", name:"Plaque de poussee Orion", category:"engine", slot:Core, size:4, mass:30000.0, hp:2500.0, cost:400000.0, thrust:30000000.0, isp:40000.0, power:-200.0, priority:1),
  (id:"exo_qcomm", name:"Intrication quantique (liaison instantanee)", category:"scanner", slot:Internal, size:1, mass:300.0, hp:100.0, cost:2500000.0, science:2.0, scan_range:500000000.0, power:-800.0, priority:2),
+ (id:"cryo_pod_mk1", name:"Caisson cryo Mk1", category:"cryo", slot:Internal, size:1, mass:450.0, hp:70.0, cost:18000.0, cryo:1.0, cryo_temp:-80.0, reliability:0.90, cryo_upkeep:0.002, power:-40.0, priority:0),
+ (id:"cryo_pod_mk2", name:"Caisson cryo Mk2", category:"cryo", slot:Internal, size:2, mass:1700.0, hp:110.0, cost:72000.0, cryo:4.0, cryo_temp:-130.0, reliability:0.97, cryo_upkeep:0.0015, power:-150.0, priority:0),
+ (id:"cryo_pod_mk3", name:"Caisson cryo Mk3", category:"cryo", slot:Internal, size:3, mass:5200.0, hp:170.0, cost:270000.0, cryo:12.0, cryo_temp:-196.0, reliability:0.995, cryo_upkeep:0.001, power:-420.0, priority:0),
+ (id:"cryo_vault", name:"Chambre cryo de groupe", category:"cryo", slot:Internal, size:4, mass:26000.0, hp:300.0, cost:880000.0, cryo:48.0, cryo_temp:-150.0, reliability:0.985, cryo_upkeep:0.0012, power:-1500.0, priority:0),
 ]

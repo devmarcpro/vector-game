@@ -26,6 +26,7 @@ impl Sim {
     fn can_parent(p: &Person) -> bool {
         p.alive
             && p.health > 0.5
+            && !p.body.cryo
             && p.morale >= MIN_MORALE
             && p.age >= PARENT_AGE.0
             && p.age <= PARENT_AGE.1
@@ -69,6 +70,19 @@ impl Sim {
         self.births_day = day;
         if last == i64::MIN || day <= last {
             return;
+        }
+        // Gestation stands still while the mother sleeps in a caisson.
+        let frozen: Vec<u32> = self
+            .crew
+            .members
+            .iter()
+            .filter(|p| p.alive && p.body.cryo)
+            .map(|p| p.id)
+            .collect();
+        for p in &mut self.crew.pregnancies {
+            if frozen.contains(&p.0) {
+                p.2 += (day - last) as f64 * DAY;
+            }
         }
         // Births first.
         let due: Vec<(u32, u32, f64)> = self

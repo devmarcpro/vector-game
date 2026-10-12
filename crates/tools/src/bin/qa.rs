@@ -417,6 +417,7 @@ fn actions() -> Vec<(&'static str, Act)> {
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum Policy {
     Idle,
+    Pacifist,
     Random,
     Trader,
     Explorer,
@@ -427,6 +428,7 @@ impl Policy {
     fn name(self) -> &'static str {
         match self {
             Policy::Idle => "idle",
+            Policy::Pacifist => "pacifiste",
             Policy::Random => "random",
             Policy::Trader => "trader",
             Policy::Explorer => "explorer",
@@ -518,6 +520,15 @@ fn play(
             });
         }
     };
+    let pacify = |s: &mut Sim| {
+        if s.docked.is_none() && s.try_dock().is_err() {
+            if let Some(st) = s.bodies.iter().position(|b| b.kind == vector_world::BodyKind::Station) {
+                if s.autopilot.is_none() {
+                    let _ = s.engage_autopilot(st);
+                }
+            }
+        }
+    };
     let mut last_action = "";
     let mut crew_dead = false;
     let mut min_alive = usize::MAX;
@@ -526,9 +537,22 @@ fn play(
             break; // step budget: free flight near worlds is expensive, the day count is reported
         }
         let td = Instant::now();
+        if policy == Policy::Pacifist {
+            // Dock as fast as a player would: poll every 5 minutes until docked (at most 6 h).
+            for poll in 0..72 {
+                pacify(&mut s);
+                if s.docked.is_some() {
+                    if std::env::var("QA_CREW").is_ok() {
+                        eprintln!("  amarre apres {poll} sondages de 5 min");
+                    }
+                    break;
+                }
+                s.advance(300.0, &ShipInput::default());
+            }
+        }
         // Actions of the day.
         let n_actions = match policy {
-            Policy::Idle => 0,
+            Policy::Idle | Policy::Pacifist => 0,
             Policy::Random => 2,
             Policy::Trader => 3,
             Policy::Explorer => 2,
@@ -584,7 +608,7 @@ fn play(
         let mut input = ShipInput::default();
         let mut k = 0;
         while left > 1e-9 {
-            if k % 6 == 0 && !matches!(policy, Policy::Idle | Policy::Trader) {
+            if k % 6 == 0 && !matches!(policy, Policy::Idle | Policy::Pacifist | Policy::Trader) {
                 input = rand_input(&mut rng);
             }
             k += 1;
@@ -690,13 +714,35 @@ fn play(
                 },
             }
         }
+        if std::env::var("QA_CREW").is_ok() {
+            for p in &s.crew.members {
+                eprintln!(
+                    "  crew j{day} {} alive {} sante {:.2} faim {:.2} soif {:.2} fatigue {:.2} stress {:.2} moral {:.2} maladie {:?} air {:.2} dose {:.3} t {:.0}K",
+                    p.name, p.alive, p.health, p.hunger, p.thirst, p.fatigue, p.stress, p.morale, p.disease, s.crew.air, s.ship.sys.dose_gy, s.ship.sys.temp_k
+                );
+            }
+        }
+        if std::env::var("QA_CREW").is_ok() {
+            eprintln!(
+                "  sys j{day} log {:?} | surchauffe {} sante_min {:.2} offre {:.1} demande {:.1} batterie {:.1} life_ok {} solaire {:.1}kW docked {:?}",
+                s.crew.log.iter().rev().take(3).map(|l| l.text.clone()).collect::<Vec<_>>(),
+                s.ship.sys.overheating,
+                s.ship.sys.health.iter().cloned().fold(9.0, f64::min),
+                s.ship.sys.supply_kw,
+                s.ship.sys.demand_kw,
+                s.ship.sys.battery_mj,
+                s.effective.life_ok,
+                s.solar_heat_kw(),
+                s.docked
+            );
+        }
         let alive = s.crew.members.iter().filter(|p| p.alive).count();
-        if alive == 0 && !crew_dead {
+        if alive == 0 && !s.crew.members.is_empty() && !crew_dead && day < 40 {
             crew_dead = true;
             note(
                 &mut out,
                 "equilibrage",
-                format!("equipage entierement mort au jour {day}"),
+                format!("equipage entierement mort au jour {day} ({} morts)", s.crew.members.len()),
                 day,
             );
         }
@@ -757,12 +803,37 @@ fn main() {
         .unwrap_or_else(|| vec![1, 2, 3]);
     let only_sc = get("--scenario");
     let only_pol = get("--policy");
+    if args.iter().any(|a| a == "--probe") {
+        let dir = find_data_dir().expect("data/ not found");
+        let data = Arc::new(GameData::load(&dir).expect("data"));
+        for (si, sc) in data.scenarios.iter().enumerate() {
+            for seed in 1..=8u64 {
+                let mut cfg = StartConfig::new(seed);
+                cfg.scenario = si;
+                if let Ok(s) = new_sim_with(&cfg, Arc::clone(&data)) {
+                    let d = s.natural_dose_at(s.ship.pos);
+                    println!(
+                        "{}/seed{seed}: dose a bord {:.4} Gy/h ({:.1} jours pour 6 Gy), cosmique {:.4} stellaire {:.4} ceinture {:.4}, amarre {:?}",
+                        sc.id,
+                        s.dose_rate_aboard(),
+                        6.0 / (s.dose_rate_aboard() * 24.0).max(1e-9),
+                        d.cosmic,
+                        d.stellar,
+                        d.belt,
+                        s.docked
+                    );
+                }
+            }
+        }
+        return;
+    }
     let timeout: u64 = get("--timeout").and_then(|v| v.parse().ok()).unwrap_or(600);
     let det = !args.iter().any(|a| a == "--no-det");
     let dir = find_data_dir().expect("data/ not found");
     let data = Arc::new(GameData::load(&dir).expect("data"));
     let policies = [
         Policy::Idle,
+        Policy::Pacifist,
         Policy::Random,
         Policy::Trader,
         Policy::Explorer,

@@ -32,6 +32,8 @@ pub const COSMIC_GY_H: f64 = 2.0e-5;
 pub const STELLAR_GY_H_1AU: f64 = 5.0e-5;
 /// Dose rate at the peak of the belt of an Earth-strength magnetic field (Gy/h).
 pub const BELT_GY_H: f64 = 0.05;
+/// Share of the outside dose that reaches a crew docked at a station (its radiation shelters).
+pub const DOCKED_COVER: f64 = 0.005;
 /// Armour rating at which plating cuts the dose by a factor e.
 pub const SHIELD_E_FOLD: f64 = 6.0;
 /// The frame holds up to this many g (thrust, drag or tide) before it starts to tear.
@@ -458,7 +460,7 @@ impl Sim {
     /// How much of an outside dose reaches the crew (docked, behind shields, behind plating).
     pub fn dose_protection(&self) -> f64 {
         let cover = if self.docked.is_some() {
-            0.05
+            DOCKED_COVER
         } else if self.ship.sys.shield_pts > 0.0 {
             0.12
         } else {

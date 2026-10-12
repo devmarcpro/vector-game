@@ -394,6 +394,14 @@ pub struct Sim {
     pub beams: Vec<(Vec3, Vec3, bool)>,
     pub enemy_beams: Vec<(Vec3, Vec3)>,
     pub ecm_range: f64,
+    /// Thermal flares burning in space (not saved).
+    pub decoys: Vec<arms::Decoy>,
+    /// Active sensors on: the ship sees further and shouts its position (not saved).
+    pub active_sensors: bool,
+    /// Where the energy of the last hit on the ship went (not saved).
+    pub last_zones: arms::HitZones,
+    /// Spies, hired fleets, ceasefires, crimes of war, sieges.
+    pub military: arms::Military,
     pub destroyed: bool,
     /// Outstanding pirate demand: (npc id, credits).
     pub tribute_due: Option<(u32, f64)>,
@@ -522,6 +530,10 @@ impl Sim {
             beams: Vec::new(),
             enemy_beams: Vec::new(),
             ecm_range: 0.0,
+            decoys: Vec::new(),
+            active_sensors: false,
+            last_zones: arms::HitZones::default(),
+            military: arms::Military::default(),
             destroyed: false,
             tribute_due: None,
             wanted_until: BTreeMap::new(),
@@ -791,6 +803,7 @@ impl Sim {
         self.update_colonies();
         self.epidemic_tick();
         self.update_fleet();
+        self.military_tick();
         self.tick_research(dt);
         self.tick_antimatter(dt);
     }

@@ -64,6 +64,7 @@ pub struct SaveGame {
     pub next_fleet: u32,
     pub next_route: u32,
     pub fleet_paid_day: i64,
+    pub military: crate::arms::Military,
     pub wrecks: Vec<crate::combat::Wreck>,
     pub next_wreck: u32,
     pub wanted_until: Vec<(usize, f64)>,
@@ -128,6 +129,7 @@ impl Sim {
             next_fleet: self.next_fleet,
             next_route: self.next_route,
             fleet_paid_day: self.fleet_paid_day,
+            military: self.military.clone(),
             wrecks: self.wrecks.clone(),
             next_wreck: self.next_wreck,
             wanted_until: self.wanted_until.iter().map(|(k, v)| (*k, *v)).collect(),
@@ -219,6 +221,7 @@ impl Sim {
         sim.next_fleet = save.next_fleet;
         sim.next_route = save.next_route;
         sim.fleet_paid_day = save.fleet_paid_day;
+        sim.military = save.military;
         sim.wrecks = save.wrecks;
         sim.next_wreck = save.next_wreck;
         sim.wanted_until = save.wanted_until.into_iter().collect();

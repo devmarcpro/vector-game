@@ -1186,6 +1186,84 @@ impl Sim {
         Ok(())
     }
 
+    /// Board the crippled target on foot: the squad crosses the airlock and fights through the
+    /// corridors of the enemy ship (a floor of the theme `abordage`, its walls and decks of the
+    /// materials of that hull). Clearing the garrison and walking back out takes the ship.
+    pub fn board_on_foot(&mut self) -> Result<(), &'static str> {
+        if self.rogue.is_some() {
+            return Err("une exploration est deja en cours");
+        }
+        let k = self.target_npc.ok_or("aucune cible")?;
+        let n = self.npcs.get(k).ok_or("cible inconnue")?;
+        if !n.disabled {
+            return Err("la cible n'est pas neutralisee");
+        }
+        if (n.pos - self.ship.pos).length() > crate::combat::BOARD_RANGE
+            || (n.vel - self.ship.vel).length() > 60.0
+        {
+            return Err("trop loin ou trop rapide pour un abordage");
+        }
+        let theme = self
+            .data
+            .rogue_theme_index("abordage")
+            .ok_or("pas de theme d'abordage")?;
+        let party = self.able(self.rogue_squad());
+        if party.is_empty() {
+            return Err("personne n'est en etat de partir");
+        }
+        let b = crate::arms::Boarding {
+            npc_id: n.id,
+            name: n.name.clone(),
+            role: n.role,
+            faction: n.faction,
+            level: n.level,
+            hull_max: n.hull_max,
+            cargo: n.cargo,
+        };
+        let seed = hash_coord(self.system.seed, i64::from(b.npc_id), 0xAB02, 7);
+        let mut r = self.new_run(theme, seed, party);
+        // The walls and the decks of the ship are what its builders used.
+        let (wall, deck) = match b.role {
+            crate::npc::NpcRole::Patrol => ("coque_blindee", "pont_blinde"),
+            crate::npc::NpcRole::Pirate => ("coque_rouillee", "caillebotis"),
+            _ => ("cloison", "tole"),
+        };
+        if let (Some(w), Some(d)) = (self.data.material_index(wall), self.data.material_index(deck))
+        {
+            let f = &mut r.floors[0];
+            for i in 0..f.tiles.len().min(f.mats.len()) {
+                match f.tiles[i] {
+                    T_WALL => f.mats[i] = w as u8,
+                    T_FLOOR => f.mats[i] = d as u8,
+                    _ => {}
+                }
+            }
+        }
+        r.place = format!("ABORDAGE : {}", b.name);
+        r.reveal();
+        self.military.boarding = Some(b);
+        self.rogue = Some(r);
+        Ok(())
+    }
+
+    /// The ship the squad leaves, once the boarding walk is over: taken if the garrison is
+    /// dead, otherwise the squad falls back and the ship drifts on, crippled.
+    fn boarding_outcome(&mut self, r: &Rogue) -> Option<String> {
+        let b = self.military.boarding.take()?;
+        let cleared = r.floors[0].monsters.iter().all(|m| m.friendly || m.hp <= 0.0);
+        if !cleared {
+            return Some(format!("{} N'EST PAS PRIS : LA GARNISON TIENT ENCORE", b.name));
+        }
+        let k = self.npcs.iter().position(|n| n.id == b.npc_id)?;
+        if !b.faction.is_none() && b.role != crate::npc::NpcRole::Pirate {
+            self.change_reputation(b.faction, -20.0);
+            self.mark_wanted_pub(b.faction, 10.0);
+        }
+        self.remove_npc_silent(k);
+        self.capture_prize(&b);
+        Some(format!("{} EST A VOUS : DECIDEZ DU SORT DES PRISONNIERS (F3)", b.name))
+    }
+
     /// The terminals the ship's modules give it: the bridge, the crew's quarters and the time
     /// anchors always, the rest from what is installed.
     pub fn ship_terminals(&self) -> Vec<usize> {
@@ -2774,7 +2852,11 @@ impl Sim {
             }
         }
         r.over = true;
+        let taken = self.boarding_outcome(r);
         let mut msg = format!("RETOUR AU VAISSEAU : {kg_total:.0} KG RAPPORTES");
+        if let Some(t) = taken {
+            msg = format!("{msg} - {t}");
+        }
         if !left.is_empty() {
             msg = format!("{msg} (SOUTE PLEINE : {} LAISSE)", left.join(", "));
         }
@@ -2802,6 +2884,8 @@ impl Sim {
     pub fn rogue_close(&mut self) {
         if self.rogue.as_ref().is_some_and(|r| r.over) {
             self.rogue = None;
+            // A squad lost aboard takes no ship.
+            self.military.boarding = None;
         }
     }
 

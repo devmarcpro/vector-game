@@ -113,6 +113,14 @@ pub struct Module {
     pub aperture: f64,
     /// Heat radiated while firing (kW): a firing ship is seen by passive sensors.
     pub flash: f64,
+    /// Armour that burns away: the share (0..1) of what it absorbs that eats its own structure.
+    pub ablative: f64,
+    /// Reactive armour: the share (0..1) of a kinetic or missile hit it cancels by exploding.
+    pub reactive: f64,
+    /// Decoy launcher: heat (kW) of each flare, which a seeker prefers to a colder ship.
+    pub decoy: f64,
+    /// Active sensor: radiated power (kW) that lights up the ship for any passive sensor.
+    pub sensor: f64,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -1344,15 +1352,19 @@ impl GameData {
                 return bad(format!("module invalide: {}", m.id));
             }
             if !m.weapon.is_empty() {
-                if !["beam", "kinetic", "missile", "mine", "pd", "ecm"].contains(&m.weapon.as_str())
+                if !["beam", "kinetic", "missile", "mine", "pd", "ecm", "decoy"]
+                    .contains(&m.weapon.as_str())
                 {
                     return bad(format!("arme {}: type inconnu {}", m.id, m.weapon));
                 }
                 if !m.ammo.is_empty() && self.resource_index(&m.ammo).is_none() {
                     return bad(format!("arme {}: munition inconnue {}", m.id, m.ammo));
                 }
-                if m.weapon != "ecm" && m.range <= 0.0 {
+                if !matches!(m.weapon.as_str(), "ecm" | "decoy") && m.range <= 0.0 {
                     return bad(format!("arme {}: portee nulle", m.id));
+                }
+                if m.weapon == "decoy" && m.decoy <= 0.0 {
+                    return bad(format!("leurre {}: chaleur nulle", m.id));
                 }
                 if m.weapon == "kinetic" && (m.proj_mass <= 0.0 || m.speed <= 0.0) {
                     return bad(format!(
@@ -1362,6 +1374,12 @@ impl GameData {
                 }
                 if m.weapon == "beam" && (m.wavelength <= 0.0 || m.aperture <= 0.0) {
                     return bad(format!("arme {}: longueur d'onde ou ouverture nulle", m.id));
+                }
+                if !(0.0..=1.0).contains(&m.ablative) || !(0.0..=1.0).contains(&m.reactive) {
+                    return bad(format!("blindage {}: part ablative ou reactive hors de 0..1", m.id));
+                }
+                if m.decoy < 0.0 || m.sensor < 0.0 {
+                    return bad(format!("module {}: leurre ou capteur negatif", m.id));
                 }
                 if m.spread < 0.0 || m.flash < 0.0 {
                     return bad(format!("arme {}: dispersion ou chaleur negative", m.id));

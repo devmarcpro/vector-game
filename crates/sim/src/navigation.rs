@@ -34,6 +34,14 @@ pub const STELLAR_GY_H_1AU: f64 = 5.0e-5;
 pub const BELT_GY_H: f64 = 0.05;
 /// Share of the outside dose that reaches a crew docked at a station (its radiation shelters).
 pub const DOCKED_COVER: f64 = 0.005;
+/// Radius (m) around a station inside which its deflector shelters the natural background, and
+/// the share that gets through.
+pub const STATION_UMBRELLA_M: f64 = 50_000.0;
+pub const STATION_UMBRELLA: f64 = 0.05;
+/// Share of the natural background (cosmic rays, stellar particles, the belts of a magnetised
+/// world) that gets through the hull, the tanks and the cargo of any ship: a station sitting
+/// in the belt of a big planet gives 30 mGy/h outside, a tenth of it inside.
+pub const NATURAL_HULL_COVER: f64 = 0.1;
 /// Share of an outside dose that gets through while the shield is up.
 pub const SHIELDED_COVER: f64 = 0.12;
 /// Armour rating at which plating cuts the dose by a factor e.
@@ -404,6 +412,15 @@ impl Sim {
             let magnetic = self.system.physics(i, 0.0).magnetic;
             d.belt += belt_dose(magnetic, l);
         }
+        // Near a station: its deflector shelters the ships that wait around it (otherwise the
+        // stations built in the belt of a big world would be lethal to approach).
+        if self.bodies.iter().any(|b| {
+            matches!(b.kind, BodyKind::Station) && (p - b.pos).length() < STATION_UMBRELLA_M
+        }) {
+            d.cosmic *= STATION_UMBRELLA;
+            d.stellar *= STATION_UMBRELLA;
+            d.belt *= STATION_UMBRELLA;
+        }
         // Under an atmosphere the column of air above stops the radiation (the Earth's is about
         // 1000 g/cm^2 against a stopping length near 150): a world with air is safe to stand on.
         if let Some((_, air, alt)) = self.in_air_at(p) {
@@ -418,7 +435,8 @@ impl Sim {
     /// Dose the crew gets now (Gy/h): the natural and hazard doses through the plating.
     pub fn dose_rate_aboard(&self) -> f64 {
         let env = self.environment_at(self.ship.pos);
-        (self.natural_dose_at(self.ship.pos).total() + env.radiation) * self.dose_protection()
+        (self.natural_dose_at(self.ship.pos).total() * NATURAL_HULL_COVER + env.radiation)
+            * self.dose_protection()
     }
 
     /// How much of an outside dose reaches the crew (docked, behind shields, behind plating).
@@ -462,7 +480,7 @@ impl Sim {
     pub(crate) fn radiation_tick(&mut self, dt: f64) {
         let p = self.ship.pos;
         let natural = self.natural_dose_at(p).total();
-        let rate = natural * self.dose_protection();
+        let rate = natural * self.dose_protection() * NATURAL_HULL_COVER;
         let hazard = self.environment_at(p).radiation * self.dose_protection();
         self.ship.sys.dose_gy += (rate + hazard) * dt / 3600.0;
         // Ordinary background hurts no one: only a real belt, or a star close by, makes the crew ill.

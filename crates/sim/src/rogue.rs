@@ -1326,6 +1326,24 @@ impl Sim {
         cells.first().copied()
     }
 
+    /// The land cell of `body` whose temperature is closest to a comfortable 290 K, with a
+    /// preference for the middle of the map (where a castaway has most to walk to).
+    pub fn comfortable_landing(&self, body: usize) -> Option<(usize, usize)> {
+        let map = self.planet_map(body)?;
+        let (mx, my) = (SURF_W as i32 / 2, SURF_H as i32 / 2);
+        (0..SURF_H)
+            .step_by(2)
+            .flat_map(|y| (0..SURF_W).step_by(2).map(move |x| (x, y)))
+            .filter(|&(x, y)| !map.surface.is_sea(x, y))
+            .map(|(x, y)| {
+                let dev = (self.temp_now(&map, x, y) - 290.0).abs();
+                let off = f64::from((x as i32 - mx).abs() + (y as i32 - my).abs()) * 0.05;
+                (dev + off, (x, y))
+            })
+            .min_by(|a, b| a.0.total_cmp(&b.0))
+            .map(|(_, c)| c)
+    }
+
     fn next_visit_seed(&mut self, base: u64) -> u64 {
         let visits = self
             .rogue_visits
@@ -3252,7 +3270,28 @@ impl Sim {
         } else if r.active >= up.len() {
             r.active = 0;
         }
+        self.warn_if_hurt(r);
         r.reveal();
+    }
+
+    /// Whatever the cause (air, climate, a beast), the first time somebody is down a tenth of
+    /// their health the place is said to be dangerous and the way back is named.
+    fn warn_if_hurt(&self, r: &mut Rogue) {
+        if !r.on_surface() || r.log.iter().any(|l| l.starts_with("ATTENTION")) {
+            return;
+        }
+        let hurt = self
+            .party_up(r)
+            .into_iter()
+            .find(|&w| self.crew.members[w].health < 0.9);
+        if let Some(w) = hurt {
+            let m = &self.crew.members[w];
+            r.say(format!(
+                "ATTENTION : {} est a {:.0} % de sante. Si l'air, le froid ou la chaleur y sont pour quelque chose, retournez au vaisseau (ENTREE sur <) pour vous soigner.",
+                m.name,
+                m.health * 100.0
+            ));
+        }
     }
 
     /// Catch alive the tame animal next to the squad for the pens of the ship (the livestock):

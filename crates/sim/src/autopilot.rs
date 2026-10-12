@@ -53,6 +53,10 @@ impl Autopilot {
     }
 
     pub fn new(sim: &Sim, target: usize) -> Result<Self, &'static str> {
+        Self::new_paced(sim, target, Pace::Fast)
+    }
+
+    pub fn new_paced(sim: &Sim, target: usize, pace: Pace) -> Result<Self, &'static str> {
         let b = sim.bodies.get(target).ok_or("cible inconnue")?;
         let stop_alt = match b.kind {
             BodyKind::Station => 300.0,
@@ -82,10 +86,16 @@ impl Autopilot {
         if dv_eff < 0.3 * dv {
             return Err("carburant insuffisant pour rattraper la cible");
         }
+        // Economy: a trip that asks for a twentieth of what the fast one does, ten times slower.
+        let dv_plan = match pace {
+            Pace::Fast => dv_plan,
+            Pace::Economy => dv_plan * ECONOMY_DV_SHARE,
+        };
         let a_cruise = (dv_plan * dv_plan / (16.0 * len)).min(0.5 * a_main);
-        if a_cruise < 1.0e-3 {
+        if a_cruise < 1.0e-3 && pace == Pace::Fast {
             return Err("carburant insuffisant");
         }
+        let a_cruise = a_cruise.max(1.0e-4);
         let u = r0 * (-1.0 / dist);
         Ok(Autopilot {
             target,
@@ -141,7 +151,77 @@ impl Autopilot {
     }
 }
 
+/// How the autopilot spends the tank.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Pace {
+    /// Half of the delta-v budget for the shortest trip.
+    Fast,
+    /// A tenth of that delta-v: the trip takes ten times longer (or more).
+    Economy,
+}
+
+/// Share of the fast plan's delta-v that the economy plan spends.
+pub const ECONOMY_DV_SHARE: f64 = 0.1;
+
+/// What a trip would cost: shown before engaging.
+#[derive(Clone, Copy, Debug)]
+pub struct TripPlan {
+    pub eta_s: f64,
+    pub dv: f64,
+    pub fuel_kg: f64,
+    /// Share of the tank the trip burns (0..1).
+    pub fuel_frac: f64,
+    /// Value of the fuel at its base price, credits.
+    pub credits: f64,
+    /// Whether the fuel left would pay for the same trip back.
+    pub can_return: bool,
+}
+
 impl Sim {
+    /// The trip to `target` at `pace`, without engaging.
+    pub fn autopilot_plan(&self, target: usize, pace: Pace) -> Result<TripPlan, &'static str> {
+        let ap = Autopilot::new_paced(self, target, pace)?;
+        let rel = (self.ship.vel - self.bodies[target].vel).length();
+        let dv = ap.a_cruise * ap.total + rel;
+        let isp = self.ship.stats.isp.max(1.0);
+        let fuel_kg = crate::navigation::propellant_for(dv, isp, self.ship.mass());
+        let price = self
+            .data
+            .resource_index("fuel")
+            .map_or(1.0, |r| self.data.resources[r].value);
+        Ok(TripPlan {
+            eta_s: ap.total,
+            dv,
+            fuel_kg,
+            fuel_frac: fuel_kg / self.ship.stats.fuel_cap.max(1.0),
+            credits: fuel_kg * price,
+            can_return: self.ship.fuel >= 2.0 * fuel_kg,
+        })
+    }
+
+    /// Engage the autopilot towards `target` at the given pace.
+    pub fn engage_autopilot_paced(
+        &mut self,
+        target: usize,
+        pace: Pace,
+    ) -> Result<(), &'static str> {
+        let ap = Autopilot::new_paced(self, target, pace)?;
+        let rel = self.ship.vel - self.bodies[target].vel;
+        let burn = crate::navigation::propellant_for(
+            rel.length(),
+            self.ship.stats.isp.max(1.0),
+            self.ship.mass(),
+        );
+        if burn > self.ship.fuel {
+            return Err("carburant insuffisant pour rattraper la cible");
+        }
+        self.ship.fuel -= burn;
+        self.ship.vel = self.bodies[target].vel;
+        self.autopilot = Some(ap);
+        self.parked = None;
+        Ok(())
+    }
+
     /// Engage the autopilot towards `target`. The speed relative to the target is cancelled at
     /// once and paid for with fuel (rocket equation); the transfer then follows its plan.
     pub fn engage_autopilot(&mut self, target: usize) -> Result<(), &'static str> {
@@ -171,6 +251,37 @@ mod tests {
     fn sim_seed(seed: u64) -> Sim {
         let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../data");
         new_sim(seed, Arc::new(GameData::load(&dir).expect("data loads")))
+    }
+
+    #[test]
+    fn the_economy_plan_burns_a_fraction_of_the_fast_one_and_takes_longer() {
+        let mut checked = 0;
+        for seed in [7u64, 31, 41] {
+            let s = sim_seed(seed);
+            for p in 0..s.bodies.len() {
+                if !matches!(s.bodies[p].kind, BodyKind::Planet(_) | BodyKind::Moon(_)) {
+                    continue;
+                }
+                let (Ok(fast), Ok(eco)) = (
+                    s.autopilot_plan(p, Pace::Fast),
+                    s.autopilot_plan(p, Pace::Economy),
+                ) else {
+                    continue;
+                };
+                if fast.fuel_frac < 0.05 {
+                    continue;
+                }
+                checked += 1;
+                assert!(
+                    eco.fuel_kg < fast.fuel_kg * 0.75,
+                    "economy {} kg vs fast {} kg",
+                    eco.fuel_kg,
+                    fast.fuel_kg
+                );
+                assert!(eco.eta_s > fast.eta_s * 1.5);
+            }
+        }
+        assert!(checked > 0, "some trip is costly enough to compare");
     }
 
     #[test]

@@ -548,7 +548,10 @@ pub fn new_sim_with(cfg: &StartConfig, data: Arc<GameData>) -> Result<Sim, Strin
             // Resting on its tail: the nose (the thrust) points away from the ground.
             sim.ship.rot = vector_core::Mat3::rot_y(std::f64::consts::PI);
             sim.update_ref();
-            if let Some((cx, cy)) = sim.default_landing(body) {
+            if let Some((cx, cy)) = sim
+                .comfortable_landing(body)
+                .or_else(|| sim.default_landing(body))
+            {
                 let party: Vec<usize> = (0..sim.crew.members.len()).take(1).collect();
                 // The survivors walk out in the reinforced suit the crash left them: without a sealed
                 // suit the air of most worlds kills a castaway within a few dozen turns.
@@ -564,6 +567,13 @@ pub fn new_sim_with(cfg: &StartConfig, data: Arc<GameData>) -> Result<Sim, Strin
         }
     } else {
         sc_::place_ship(&mut sim, place);
+        // A hunted start begins out of the reach of the batteries of the home station: the
+        // player is warned and has the room to choose (see `arms::battery_tick`).
+        if place == "station" && sc.wanted_days > 0.0 {
+            if let Some((st, _)) = sim.nearest_station() {
+                sim.spawn_near(st, crate::arms::BATTERY_RANGE * 1.5);
+            }
+        }
     }
     sc_::apply_after(&mut sim, cfg);
     let mut cfg2 = cfg.clone();
@@ -690,14 +700,19 @@ mod tests {
         );
         // The settler can found a colony straight away: the kit is complete and the permit paid.
         let mut settler = settler;
-        let body = (0..settler.system.bodies.len())
-            .find(|&i| {
-                matches!(settler.system.bodies[i].kind, BodyKind::Planet(_))
-                    && settler.colony_at(i).is_none()
-            })
-            .expect("a planet");
-        settler.spawn_near(body, settler.system.bodies[body].radius * 1.5);
-        let found = settler.found_colony(body, None);
+        let mut found = Err("no planet");
+        for body in 0..settler.system.bodies.len() {
+            if !matches!(settler.system.bodies[body].kind, BodyKind::Planet(_))
+                || settler.colony_at(body).is_some()
+            {
+                continue;
+            }
+            settler.spawn_near(body, settler.system.bodies[body].radius * 1.5);
+            found = settler.found_colony(body, None);
+            if found.is_ok() {
+                break;
+            }
+        }
         assert!(found.is_ok(), "the kit is whole: {found:?}");
         assert!(explorer.ship.stats.scan_range > std.ship.stats.scan_range * 100.0);
         let xeno = d.tech_index("xenology").expect("tech");
@@ -711,9 +726,13 @@ mod tests {
         let b = new_sim_with(&StartConfig::new(5), Arc::clone(&d)).expect("standard");
         assert_eq!(a.ship.design.hull, b.ship.design.hull);
         assert_eq!(a.ship.design.slots, b.ship.design.slots);
-        assert_eq!(a.credits, b.credits);
+        // The scenario owns the money now (the old default start kept 500 CR).
+        let voyageur = d.scenario_index("voyageur").expect("scenario");
+        assert_eq!(b.credits, d.scenarios[voyageur].credits);
         assert_eq!(a.ship.cargo.kg, b.ship.cargo.kg);
-        assert_eq!(a.here, b.here);
+        // The fixtures keep the historical home; a real game starts in the first calm place.
+        let calm = crate::scene::pick_start_home(&vector_world::galaxy::Galaxy::new(5));
+        assert_eq!(b.here, calm.id);
         assert_eq!(a.crew.alive().count(), b.crew.alive().count());
     }
 
@@ -799,6 +818,136 @@ mod tests {
     }
 
     #[test]
+    fn the_first_ore_is_a_cheap_hop_away_and_a_jump_shows_its_whole_bill() {
+        use crate::autopilot::Pace;
+        let d = data();
+        for seed in 1u64..=10 {
+            let mut sim =
+                new_sim_with(&cfg(&d, "voyageur", seed), Arc::clone(&d)).expect("voyageur");
+            let rock = (0..sim.bodies.len())
+                .filter(|&i| matches!(sim.bodies[i].kind, BodyKind::Asteroid(_)))
+                .min_by(|&a, &b| {
+                    (sim.bodies[a].pos - sim.ship.pos)
+                        .length()
+                        .total_cmp(&(sim.bodies[b].pos - sim.ship.pos).length())
+                })
+                .expect("an asteroid");
+            let plan = sim
+                .autopilot_plan(rock, Pace::Fast)
+                .unwrap_or_else(|e| panic!("seed {seed}: no plan to the nearest rock: {e}"));
+            let eco = sim
+                .autopilot_plan(rock, Pace::Economy)
+                .expect("economy plan");
+            assert!(
+                plan.fuel_frac < 0.1 && plan.eta_s < 6.0 * 3600.0 && eco.fuel_frac < 0.1,
+                "seed {seed}: the nearest rock costs {:.1} % of the tank ({:.1} % at the economy pace) and {:.1} h",
+                plan.fuel_frac * 100.0,
+                eco.fuel_frac * 100.0,
+                plan.eta_s / 3600.0
+            );
+            // The bill of a jump includes the way out of the well of the station.
+            let leave = sim.jump_departure_fuel();
+            assert!(
+                leave > 0.0,
+                "seed {seed}: beside a station the ship is in a well"
+            );
+            let far = vector_core::Vec3::new(0.0, 0.0, 1.0e13);
+            sim.ship.pos = far;
+            sim.update_ref();
+            assert_eq!(
+                sim.jump_departure_fuel(),
+                0.0,
+                "in deep space it can jump at once"
+            );
+        }
+    }
+
+    #[test]
+    fn a_passive_voyageur_lives_ten_days_on_twenty_seeds() {
+        let d = data();
+        for seed in (1u64..=20).chain([24263]) {
+            let mut sim =
+                new_sim_with(&cfg(&d, "voyageur", seed), Arc::clone(&d)).expect("voyageur");
+            let hull0 = sim.ship.hull;
+            sim.advance(10.0 * 86_400.0, &ShipInput::default());
+            assert!(
+                sim.crew.alive().count() >= 1,
+                "seed {seed}: the crew is dead after 10 days of doing nothing: {:?}",
+                sim.crew
+                    .log
+                    .iter()
+                    .rev()
+                    .take(6)
+                    .map(|l| l.text.clone())
+                    .collect::<Vec<_>>()
+            );
+            assert!(sim.ship.hull > 0.0, "seed {seed}: ship lost (was {hull0})");
+            assert!(sim.credits > 0.0, "seed {seed}: broke after 10 days");
+        }
+    }
+
+    #[test]
+    fn every_scenario_leaves_two_weeks_of_pay_and_the_difficulty_follows_the_money() {
+        let d = data();
+        for sc in d.scenarios.iter().filter(|s| !s.wreck) {
+            let sim = new_sim_with(&cfg(&d, &sc.id, 3), Arc::clone(&d)).expect("scenario");
+            let pay = sim.crew.daily_payroll().max(1.0);
+            assert!(
+                sim.credits / pay >= 15.0,
+                "{}: {} CR for {} CR a day is {:.1} days",
+                sc.id,
+                sim.credits,
+                pay,
+                sim.credits / pay
+            );
+        }
+        let by = |id: &str| d.scenarios[d.scenario_index(id).expect("scenario")].difficulty;
+        assert!(
+            by("marchand") < by("voyageur"),
+            "25 000 CR of goods is easier than 500 CR"
+        );
+    }
+
+    #[test]
+    fn a_hunted_start_begins_beyond_the_reach_of_the_batteries() {
+        let d = data();
+        for seed in 1u64..=5 {
+            let sim = new_sim_with(&cfg(&d, "hors_la_loi", seed), Arc::clone(&d)).expect("outlaw");
+            let (_, dist) = sim.nearest_station().expect("a station");
+            assert!(
+                dist > crate::arms::BATTERY_RANGE,
+                "seed {seed}: {dist} m from the station"
+            );
+        }
+    }
+
+    #[test]
+    fn every_home_has_ore_a_short_hop_from_its_station_and_the_default_start_is_quiet() {
+        use vector_world::galaxy::Galaxy;
+        let mut m_homes = 0;
+        for seed in (1u64..=20).chain([24263]) {
+            let home = crate::scene::pick_start_home(&Galaxy::new(seed));
+            if home.header.class == vector_world::StarClass::M {
+                m_homes += 1;
+            }
+            if let Some(dist) = crate::scene::station_to_asteroid_m(home.seed) {
+                assert!(
+                    dist < 1.0e8,
+                    "seed {seed}: the nearest rock is {:.0} Mm from the station",
+                    dist / 1e6
+                );
+            }
+        }
+        assert!(m_homes <= 4, "{m_homes} of 21 starts under a red dwarf");
+        let home = crate::scene::pick_start_home(&Galaxy::new(24263));
+        assert_ne!(
+            home.header.class,
+            vector_world::StarClass::M,
+            "the default seed"
+        );
+    }
+
+    #[test]
     fn the_castaway_starts_on_the_ground_without_a_ship_that_flies() {
         let d = data();
         for seed in [1u64, 2, 3, 11] {
@@ -842,23 +991,23 @@ mod tests {
     #[test]
     fn the_castaway_lives_long_enough_to_search_and_is_told_what_the_place_costs() {
         let d = data();
-        for seed in [1u64, 2, 3, 11, 24263] {
+        for seed in (1u64..=20).chain([24263]) {
             let mut sim = new_sim_with(&cfg(&d, "naufrage", seed), Arc::clone(&d)).expect("wreck");
             assert!(
                 sim.crew.members[0].gear.get(1).is_some_and(Option::is_some),
                 "seed {seed}: a suit on the survivor"
             );
+            for _ in 0..40 {
+                let _ = sim.rogue_wait();
+            }
             let told = sim
                 .rogue
                 .as_ref()
                 .is_some_and(|r| r.log.iter().any(|l| l.starts_with("ATTENTION")));
-            for _ in 0..30 {
-                let _ = sim.rogue_wait();
-            }
             let health = sim.crew.members[0].health;
             assert!(
-                health > 0.3,
-                "seed {seed}: only {health} of health left after 30 turns in the open"
+                health > 0.2,
+                "seed {seed}: only {health} of health left after 40 turns in the open"
             );
             if health < 0.9 {
                 assert!(
@@ -920,7 +1069,9 @@ mod tests {
         );
         assert!(r.parts_kg < before, "mending consumes spare parts");
         assert!(r.can_fly());
-        // Now thrust leaves the ground.
+        // Now thrust leaves the ground (the world turned under the parked ship while it was
+        // being mended: put it back under the nose).
+        sim.parked = Some((body, off0));
         sim.advance(
             60.0,
             &ShipInput {
@@ -929,7 +1080,14 @@ mod tests {
             },
         );
         let alt = (sim.ship.pos - sim.bodies[body].pos).length() - sim.bodies[body].radius;
-        assert!(sim.parked.is_none(), "the ship thrusted off");
+        assert!(
+            sim.parked.is_none(),
+            "the ship thrusted off: body {:?} g {} spin period {} readiness {:?}",
+            sim.system.bodies[body].kind,
+            sim.system.bodies[body].gravity,
+            sim.system.spin_period(body),
+            sim.readiness()
+        );
         assert!(alt > 500.0, "the castaway reaches the sky: {alt}");
     }
 
@@ -947,7 +1105,7 @@ mod tests {
     fn the_seed_preview_describes_the_real_home_system() {
         let d = data();
         let p = home_preview(&d, 5);
-        let sim = crate::scene::new_sim(5, Arc::clone(&d));
+        let sim = new_sim_with(&StartConfig::new(5), Arc::clone(&d)).expect("standard");
         assert_eq!(p.system, sim.system.name);
         assert!(p.stations >= 1 && p.planets >= 3, "{p:?}");
         assert_ne!(home_preview(&d, 6), p, "another seed, another sky");

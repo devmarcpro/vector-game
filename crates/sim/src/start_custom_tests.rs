@@ -212,7 +212,7 @@ fn start_systems_have_the_character_asked_for() {
     let mut found = [false; 5];
     for seed in 1..6u64 {
         let g = Galaxy::new(seed);
-        let usual = pick_home(&g);
+        let usual = crate::scene::pick_start_home(&g);
         for (k, id) in vector_data::startopts::SYSTEM_KINDS.iter().enumerate() {
             let (e, exact) = home_for(&g, id);
             if !exact {

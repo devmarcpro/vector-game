@@ -33,6 +33,15 @@ const TIME_LADDER: [f64; 10] = [
     0.25, 0.5, 1.0, 2.0, 5.0, 10.0, 100.0, 1000.0, 10_000.0, 100_000.0,
 ];
 
+/// Sort orders of the market list (`V` cycles them).
+pub const MARKET_SORTS: [&str; 5] = [
+    "ORDRE DU CODEX",
+    "PRIX D'ACHAT",
+    "STOCK",
+    "EN SOUTE D'ABORD",
+    "NOM",
+];
+
 /// Fastest time warp left while a flare is about to hit a ship with nothing to shelter it.
 const FLARE_WARP_MAX: f64 = 60.0;
 
@@ -117,6 +126,12 @@ pub struct Game {
     pub menu_sel: usize,
     pub seed_text: String,
     pub sel_res: usize,
+    /// Market list: sort order (`MARKET_SORTS`) and category filter (0 = all, then the
+    /// categories of the data, then "in the hold").
+    pub market_sort: usize,
+    pub market_cat: usize,
+    /// Inhabited world whose founding was announced: the next O founds anyway.
+    pub found_pending: Option<usize>,
     pub quit: bool,
     pub ship_sel: usize,
     pub picker: bool,
@@ -310,6 +325,8 @@ pub struct Game {
     /// The cockpit looks astern (at the ground of a ship landing tail first).
     pub rear_view: bool,
     pub tut_step: Option<usize>,
+    /// Target whose autopilot cost was shown: the next G engages the economy plan.
+    pub ap_pending: Option<usize>,
     pub tut_keys: Vec<(Screen, KeyCode)>,
     pub save_path: PathBuf,
     /// New-game flow and main menu (see `newgame` and `hub`).
@@ -360,6 +377,9 @@ impl Game {
             menu_sel: 0,
             seed_text: String::new(),
             sel_res: 0,
+            market_sort: 0,
+            market_cat: 0,
+            found_pending: None,
             quit: false,
             ship_sel: 0,
             picker: false,
@@ -502,6 +522,7 @@ impl Game {
             ctx_menu: None,
             rear_view: false,
             tut_step: None,
+            ap_pending: None,
             tut_keys: Vec::new(),
             save_path: PathBuf::from("saves").join("slot1.sav"),
             ng: Default::default(),
@@ -932,11 +953,61 @@ impl Game {
             self.say("PILOTE AUTO: AUCUNE CIBLE");
             return;
         };
-        match self.sim.engage_autopilot(t) {
-            Ok(()) => {
-                self.say("PILOTE AUTO ENGAGE");
+        use vector_sim::autopilot::Pace;
+        let fast = match self.sim.autopilot_plan(t, Pace::Fast) {
+            Ok(p) => p,
+            Err(e) => {
+                self.say(format!("PILOTE AUTO REFUSE: {}", e.to_uppercase()));
+                return;
             }
-            Err(e) => self.say(format!("PILOTE AUTO REFUSE: {e}")),
+        };
+        let shift =
+            self.keys.contains(&KeyCode::ShiftLeft) || self.keys.contains(&KeyCode::ShiftRight);
+        // A trip that eats a quarter of the tank, or leaves too little to come back, is shown
+        // before it is paid for: the first G prints the bill, the next one takes the economy plan.
+        let costly = fast.fuel_frac > 0.25 || !fast.can_return;
+        let pace = if costly && !shift {
+            let Ok(eco) = self.sim.autopilot_plan(t, Pace::Economy) else {
+                self.say("PILOTE AUTO REFUSE: carburant insuffisant");
+                return;
+            };
+            if self.ap_pending != Some(t) {
+                self.ap_pending = Some(t);
+                self.say(format!(
+                    "PILOTE AUTO COUTEUX : RAPIDE {} / {:.0} % DU RESERVOIR (~{:.0} CR){} - ECONOMIE {} / {:.0} % (~{:.0} CR) - G : ECONOMIE, MAJ+G : RAPIDE",
+                    crate::fmt::duration(fast.eta_s),
+                    fast.fuel_frac * 100.0,
+                    fast.credits,
+                    if fast.can_return { "" } else { ", SANS RETOUR POSSIBLE" },
+                    crate::fmt::duration(eco.eta_s),
+                    eco.fuel_frac * 100.0,
+                    eco.credits
+                ));
+                return;
+            }
+            Pace::Economy
+        } else {
+            Pace::Fast
+        };
+        self.ap_pending = None;
+        let plan = if pace == Pace::Fast {
+            fast
+        } else {
+            self.sim.autopilot_plan(t, pace).unwrap_or(fast)
+        };
+        match self.sim.engage_autopilot_paced(t, pace) {
+            Ok(()) => self.say(format!(
+                "PILOTE AUTO ENGAGE{} : {} / {:.1} % DU RESERVOIR (~{:.0} CR)",
+                if pace == Pace::Economy {
+                    " (ECONOMIE)"
+                } else {
+                    ""
+                },
+                crate::fmt::duration(plan.eta_s),
+                plan.fuel_frac * 100.0,
+                plan.credits
+            )),
+            Err(e) => self.say(format!("PILOTE AUTO REFUSE: {}", e.to_uppercase())),
         }
     }
 
@@ -1726,16 +1797,109 @@ impl Game {
         }
     }
 
+    /// Categories of the goods, in the order of the data, for the market filter.
+    pub fn market_categories(&self) -> Vec<String> {
+        let mut v: Vec<String> = Vec::new();
+        for r in &self.data.resources {
+            if !v.contains(&r.category) {
+                v.push(r.category.clone());
+            }
+        }
+        v
+    }
+
+    /// Name of the current market filter.
+    pub fn market_filter_name(&self) -> String {
+        let cats = self.market_categories();
+        match self.market_cat {
+            0 => "TOUT".to_string(),
+            c if c == cats.len() + 1 => "EN SOUTE".to_string(),
+            c => cats
+                .get(c - 1)
+                .map_or("TOUT".to_string(), |s| s.to_uppercase()),
+        }
+    }
+
+    /// The goods of the market list, filtered and sorted as the player asked.
+    pub fn market_order(&self) -> Vec<usize> {
+        let cats = self.market_categories();
+        let n = self.data.resources.len();
+        let mut v: Vec<usize> = (0..n)
+            .filter(|&i| match self.market_cat {
+                0 => true,
+                c if c == cats.len() + 1 => self.sim.ship.cargo.kg[i] > 0.0,
+                c => cats
+                    .get(c - 1)
+                    .is_some_and(|k| *k == self.data.resources[i].category),
+            })
+            .collect();
+        let market = self.sim.docked.and_then(|st| self.sim.markets.get(&st));
+        let ask = |i: usize| market.map_or(0.0, |m| m.ask(&self.data, i));
+        match self.market_sort % MARKET_SORTS.len() {
+            1 => v.sort_by(|&a, &b| ask(b).total_cmp(&ask(a))),
+            2 => v.sort_by(|&a, &b| {
+                let st = |i: usize| market.map_or(0.0, |m| m.stock[i]);
+                st(b).total_cmp(&st(a))
+            }),
+            3 => {
+                v.sort_by(|&a, &b| self.sim.ship.cargo.kg[b].total_cmp(&self.sim.ship.cargo.kg[a]))
+            }
+            4 => v.sort_by(|&a, &b| {
+                self.data.resources[a]
+                    .name
+                    .to_lowercase()
+                    .cmp(&self.data.resources[b].name.to_lowercase())
+            }),
+            _ => {}
+        }
+        v
+    }
+
     pub fn station_key(&mut self, code: KeyCode) {
         let n = self.data.resources.len();
         let res = self.sel_res.min(n - 1);
         let msg: Result<String, &str> = match code {
-            KeyCode::ArrowUp => {
-                self.sel_res = (res + n - 1) % n;
+            KeyCode::ArrowUp | KeyCode::ArrowDown => {
+                let order = self.market_order();
+                if let Some(pos) = order.iter().position(|&i| i == res) {
+                    let m = order.len();
+                    let to = if code == KeyCode::ArrowUp {
+                        pos + m - 1
+                    } else {
+                        pos + 1
+                    };
+                    self.sel_res = order[to % m];
+                } else if let Some(&first) = order.first() {
+                    self.sel_res = first;
+                }
                 return;
             }
-            KeyCode::ArrowDown => {
-                self.sel_res = (res + 1) % n;
+            KeyCode::KeyV => {
+                self.market_sort = (self.market_sort + 1) % MARKET_SORTS.len();
+                if let Some(&first) = self.market_order().first() {
+                    self.sel_res = first;
+                }
+                self.say(format!(
+                    "TRI DU MARCHE : {}",
+                    MARKET_SORTS[self.market_sort]
+                ));
+                return;
+            }
+            KeyCode::KeyO => {
+                let m = self.market_categories().len() + 2;
+                self.market_cat = (self.market_cat + 1) % m;
+                if let Some(&first) = self.market_order().first() {
+                    self.sel_res = first;
+                }
+                let shown = self.market_order().len();
+                self.say(format!(
+                    "FILTRE DU MARCHE : {} ({shown} MARCHANDISES)",
+                    self.market_filter_name()
+                ));
+                return;
+            }
+            KeyCode::Escape => {
+                self.say("ECHAP NE DECOLLE PAS : U POUR DECOLLER, F10 POUR LE MENU");
                 return;
             }
             KeyCode::Enter => self
@@ -1827,7 +1991,7 @@ impl Game {
                 .black_sell(res, 50.0)
                 .map(|c| format!("MARCHE NOIR : VENTE POUR {c:.0} CR")),
             KeyCode::KeyR => self.sim.repair().map(|c| format!("REPARATIONS: {c:.0} CR")),
-            KeyCode::KeyU | KeyCode::Escape => {
+            KeyCode::KeyU => {
                 self.sim.undock();
                 self.handle_events();
                 return;
@@ -2343,6 +2507,19 @@ impl Game {
             self.say("CIBLEZ D ABORD UN CORPS A COLONISER");
             return;
         };
+        // A world that has a people: say so, and found only on a second O.
+        if let Some(civ) = self.sim.civilisation(t) {
+            if self.found_pending != Some(t) {
+                self.found_pending = Some(t);
+                self.say(format!(
+                    "MONDE HABITE : LES {} ({:.0} HABITANTS). UNE COLONIE SANS LEUR ACCORD LES OFFENSERA (LEUR CONFIANCE S'EFFONDRERA). O DE NOUVEAU POUR FONDER QUAND MEME, ENTREE POUR LEUR PARLER",
+                    civ.name.to_uppercase(),
+                    civ.population
+                ));
+                return;
+            }
+        }
+        self.found_pending = None;
         match self.sim.found_colony(t, None) {
             Ok(_) => self.handle_events(),
             Err(e) => self.say(format!("COLONISATION IMPOSSIBLE: {}", e.to_uppercase())),
@@ -2754,7 +2931,14 @@ impl Game {
         match self.sim.start_research(t) {
             Ok(()) => {
                 let name = self.data.techs[t].name.to_uppercase();
-                self.say(format!("RECHERCHE LANCEE : {name}"));
+                if self.sim.ship_research_rate() <= 0.0 && self.sim.colonies.is_empty() {
+                    self.say(format!(
+                        "RECHERCHE LANCEE : {name} - AUCUN LABO : 0 PTS/J (RESERVE {:.0} PTS). ELLE N'AVANCERA QU'AVEC UN LABO A BORD, UNE COLONIE OU DES DECOUVERTES",
+                        self.sim.research_pool
+                    ));
+                } else {
+                    self.say(format!("RECHERCHE LANCEE : {name}"));
+                }
             }
             Err(e) => self.say(e.to_uppercase()),
         }
@@ -4241,7 +4425,7 @@ mod tests {
         let mut found = None;
         for seed in 1..60u64 {
             let mut g = Game::new(data(), seed);
-            g.key(KeyCode::Enter, None, true);
+            g.screen = Screen::Flight;
             if let Some(b) = g.sim.first_civilised_world() {
                 found = Some((g, b));
                 break;
@@ -4690,6 +4874,139 @@ mod tests {
         assert_eq!(g.screen, Screen::Flight);
     }
 
+    fn started(seed: u64) -> Game {
+        let mut g = Game::new(data(), seed);
+        g.settings.azerty = false;
+        g.key(KeyCode::Enter, None, true);
+        g
+    }
+
+    fn tap(g: &mut Game, k: KeyCode) {
+        g.key(k, None, true);
+        g.key(k, None, false);
+    }
+
+    #[test]
+    fn a_costly_autopilot_trip_shows_its_bill_first_then_takes_the_economy_plan() {
+        use vector_sim::autopilot::Pace;
+        for seed in 1..40u64 {
+            let mut g = started(seed);
+            let costly = (0..g.sim.bodies.len()).find(|&i| {
+                matches!(
+                    g.sim.bodies[i].kind,
+                    BodyKind::Planet(_) | BodyKind::Moon(_)
+                ) && g
+                    .sim
+                    .autopilot_plan(i, Pace::Fast)
+                    .is_ok_and(|p| p.fuel_frac > 0.25 || !p.can_return)
+            });
+            let Some(t) = costly else { continue };
+            g.sim.target = Some(t);
+            tap(&mut g, KeyCode::KeyG);
+            assert!(g.sim.autopilot.is_none(), "the bill comes before the burn");
+            assert!(g.messages.last().is_some_and(|m| m.contains("COUTEUX")));
+            tap(&mut g, KeyCode::KeyG);
+            assert!(g.sim.autopilot.is_some());
+            assert!(g.messages.last().is_some_and(|m| m.contains("ECONOMIE")));
+            return;
+        }
+        panic!("no costly trip found on 40 seeds");
+    }
+
+    #[test]
+    fn a_research_without_a_lab_says_so() {
+        let mut g = started(1);
+        assert!(g.sim.ship_research_rate() <= 0.0 && g.sim.colonies.is_empty());
+        for t in 0..g.data.techs.len() {
+            g.tech_start(t);
+            if g.messages
+                .last()
+                .is_some_and(|m| m.starts_with("RECHERCHE LANCEE"))
+            {
+                assert!(
+                    g.messages.last().is_some_and(|m| m.contains("AUCUN LABO")),
+                    "{:?}",
+                    g.messages.last()
+                );
+                return;
+            }
+        }
+        panic!("no technology can be started");
+    }
+
+    #[test]
+    fn the_market_list_sorts_filters_and_escape_does_not_launch() {
+        let mut g = started(1);
+        let (st, _) = g.sim.nearest_station().expect("station");
+        g.sim.spawn_near(st, g.sim.bodies[st].radius + 200.0);
+        tap(&mut g, KeyCode::KeyD);
+        assert_eq!(g.screen, Screen::Station);
+        let all = g.market_order().len();
+        tap(&mut g, KeyCode::KeyO);
+        let some = g.market_order();
+        assert!(
+            !some.is_empty() && some.len() < all,
+            "{} of {all}",
+            some.len()
+        );
+        let cat = g.data.resources[some[0]].category.clone();
+        assert!(some.iter().all(|&i| g.data.resources[i].category == cat));
+        tap(&mut g, KeyCode::KeyV);
+        let by_price = g.market_order();
+        let m = g.sim.markets.get(&st).expect("market");
+        let ask = |i: usize| m.ask(&g.data, i);
+        assert!(by_price.windows(2).all(|w| ask(w[0]) >= ask(w[1])));
+        assert!(g.messages.last().is_some_and(|m| m.contains("TRI")));
+        tap(&mut g, KeyCode::Escape);
+        assert!(g.sim.docked.is_some(), "Escape does not undock");
+        assert_eq!(g.screen, Screen::Station);
+        tap(&mut g, KeyCode::KeyU);
+        assert_eq!(g.screen, Screen::Flight);
+    }
+
+    #[test]
+    fn founding_on_an_inhabited_world_asks_twice() {
+        for seed in 1..60u64 {
+            let mut g = Game::new(data(), seed);
+            g.screen = Screen::Flight;
+            let Some(b) = g.sim.first_civilised_world() else {
+                continue;
+            };
+            let data = Arc::clone(&g.data);
+            g.sim.ship.cargo.cap_mass = 1.0e6;
+            for (id, kg) in [
+                ("construction_materials", 3000.0),
+                ("colonists", 400.0),
+                ("food", 600.0),
+                ("water", 900.0),
+            ] {
+                g.sim
+                    .ship
+                    .cargo
+                    .add(&data, data.resource_index(id).expect("res"), kg);
+            }
+            g.sim.credits = 100_000.0;
+            g.sim.ship.pos =
+                g.sim.bodies[b].pos - Vec3::new(0.0, 0.0, g.sim.bodies[b].radius + 5000.0);
+            g.sim.ship.vel = g.sim.bodies[b].vel;
+            g.sim.update_ref_pub();
+            g.sim.target = Some(b);
+            g.found_colony_at_target();
+            if g.sim.colonies.len() == 1 {
+                panic!("seed {seed}: founded without a word");
+            }
+            assert!(g
+                .messages
+                .last()
+                .is_some_and(|m| m.contains("MONDE HABITE")));
+            g.found_colony_at_target();
+            if g.sim.colonies.len() == 1 {
+                return;
+            }
+        }
+        panic!("no inhabited world could be colonised on 60 seeds");
+    }
+
     #[test]
     fn a_coming_flare_ends_the_time_warp_of_an_exposed_ship() {
         let mut g = Game::new(data(), 1);
@@ -5061,8 +5378,10 @@ mod tests {
         let hauler = g.data.hull_index("hauler").expect("hull");
         assert_eq!(g.sim.ship.design.hull, hauler, "the chosen ship");
         assert_eq!(g.sim.rules.damage, 1.5, "the chosen difficulty");
-        let direct = scene::new_sim(parse_seed("ANDROMEDX"), Arc::clone(&g.data));
-        assert_eq!(g.sim.here_pos, direct.here_pos, "the typed seed");
+        let home = vector_sim::scene::pick_start_home(&vector_world::galaxy::Galaxy::new(
+            parse_seed("ANDROMEDX"),
+        ));
+        assert_eq!(g.sim.here_pos, home.pos, "the typed seed");
         assert!(g.sim.credits >= 3000.0);
     }
 

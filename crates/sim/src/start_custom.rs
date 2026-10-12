@@ -10,7 +10,7 @@ use crate::crew::Person;
 use crate::design::ShipDesign;
 use crate::relations::Entity;
 use crate::rules::Rules;
-use crate::scene::{good_home, pick_home};
+use crate::scene::{good_home, pick_start_home};
 use crate::shipwright::{self, Blueprint, Report};
 use crate::start::{CrewPick, StartConfig};
 use crate::Sim;
@@ -811,7 +811,7 @@ fn apply_ai(sim: &mut Sim, a: &AiCustom, seed: u64) {
 /// The home system for a kind of start, and whether the galaxy really had one of that kind
 /// (else the usual home is used).
 pub fn home_for(galaxy: &Galaxy, kind: &str) -> (StarEntry, bool) {
-    let usual = pick_home(galaxy);
+    let usual = pick_start_home(galaxy);
     if kind == "aleatoire" {
         return (usual, true);
     }

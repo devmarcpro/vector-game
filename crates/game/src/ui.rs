@@ -815,17 +815,33 @@ fn draw_station(fb: &mut Framebuffer, g: &Game) {
     let (x, top) = (40, 3);
     fb.text(
         x,
+        2,
+        &format!(
+            "TRI : {}   FILTRE : {}   (V TRI, O FILTRE)",
+            crate::game::MARKET_SORTS[g.market_sort % crate::game::MARKET_SORTS.len()],
+            g.market_filter_name()
+        ),
+        DIM,
+    );
+    fb.text(
+        x,
         top,
-        "RESSOURCE            STOCK KG     ACHAT     VENTE    SOUTE KG",
+        "RESSOURCE                  STOCK KG     ACHAT     VENTE    SOUTE KG",
         DIM,
     );
     let rows = fb.rows().saturating_sub(top + 6);
-    for (line, i) in window(g.sel_res, g.data.resources.len(), rows).enumerate() {
+    let order = g.market_order();
+    let sel_pos = order.iter().position(|&i| i == g.sel_res).unwrap_or(0);
+    if order.is_empty() {
+        fb.text(x, top + 1, "AUCUNE MARCHANDISE POUR CE FILTRE (O)", AMBER);
+    }
+    for (line, k) in window(sel_pos, order.len(), rows).enumerate() {
+        let i = order[k];
         let r = &g.data.resources[i];
         let hover = g.hit_cells(
             x,
             top + 1 + line,
-            66,
+            72,
             1,
             Act::Call(Game::click_sel_res, i),
             Some(Act::Key(KeyCode::Enter)),
@@ -841,9 +857,9 @@ fn draw_station(fb: &mut Framebuffer, g: &Game) {
             x,
             top + 1 + line,
             &format!(
-                "{}{:<18} {:>10.0} {:>9.2} {:>9.2} {:>10.0}",
+                "{}{:<24} {:>10.0} {:>9.2} {:>9.2} {:>10.0}",
                 if i == g.sel_res { ">" } else { " " },
-                r.name.chars().take(18).collect::<String>(),
+                r.name.chars().take(24).collect::<String>(),
                 m.stock[i],
                 m.ask(&g.data, i),
                 m.bid(&g.data, i),
@@ -1840,6 +1856,19 @@ fn draw_galaxy(fb: &mut Framebuffer, g: &Game) {
             &format!("CARBURANT {:.0} KG", s.jump_fuel_cost(d)),
             GREEN,
         );
+        let leave = s.jump_departure_fuel();
+        if leave > 0.0 {
+            fb.text(
+                x,
+                14,
+                &format!(
+                    "+ SORTIE {:.0} KG = {:.0} % AU TOTAL",
+                    leave,
+                    (leave + s.jump_fuel_cost(d)) / s.ship.stats.fuel_cap.max(1.0) * 100.0
+                ),
+                AMBER,
+            );
+        }
         fb.text(
             x,
             13,
@@ -2562,15 +2591,10 @@ fn draw_colony(fb: &mut Framebuffer, g: &Game) {
     );
     fb.text(1, by, "CONSTRUIRE", focus(3));
     if g.col_focus != 3 {
-        // The list is one zone of the TAB cycle: say so instead of leaving an empty gap.
-        fb.text(
-            12,
-            by,
-            "(TAB OU CLIC : LISTE DES BATIMENTS A CONSTRUIRE)",
-            DIM,
-        );
+        fb.text(12, by, "(TAB OU CLIC : CHOISIR, ENTREE : BATIR)", DIM);
     }
-    if g.col_focus == 3 {
+    // The list is always on screen; TAB puts the cursor in it.
+    {
         let n = g.data.buildings.len();
         let show = 7usize;
         let st = g

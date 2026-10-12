@@ -359,7 +359,7 @@ pub fn person_from_kin(
         loyalty: rng.range(0.5, 0.8) as f32,
         role: 0,
         shift: (rng.next_u64() % 3) as u8,
-        salary: (30.0 + 22.0 * best).round(),
+        salary: (20.0 + 6.0 * best).round(),
         disease: None,
         immunity: Vec::new(),
         alive: true,
@@ -1573,7 +1573,7 @@ mod tests {
         assert_eq!(a.name, b.name);
         assert_eq!(a.skills, b.skills);
         assert!(a.skills.iter().all(|s| (0.0..=10.0).contains(s)) && !a.traits.is_empty());
-        assert!(a.salary >= 30.0 && !a.name.is_empty());
+        assert!(a.salary >= 20.0 && !a.name.is_empty());
         let none = Crew::new();
         let pool = candidates(&d, 1, 3, 0.0, 6, &none);
         assert_eq!(pool.len(), 6);

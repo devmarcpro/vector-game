@@ -1233,6 +1233,16 @@ impl Sim {
             projects: Vec::new(),
             introduced: Vec::new(),
         };
+        // The kit is not lost: its materials, food and water go to the stores of the new colony
+        // (the colonists are its population).
+        for (id, kg) in need {
+            if id == "colonists" {
+                continue;
+            }
+            if let Some(r) = data.resource_index(id) {
+                c.storage[r] += kg;
+            }
+        }
         for def_id in ["habitat_dome", "solar_farm", "spaceport"] {
             if let Some(d) = data.building_index(def_id) {
                 if data.buildings[d].sites.iter().any(|s| c.tags.contains(s)) {
@@ -1268,6 +1278,18 @@ impl Sim {
         self.colonies.push(c);
         let last = self.colonies.len() - 1;
         self.colony_env_init(last);
+        // A world that was somebody's home: its people take it as it is.
+        if let Some(civ) = self.civilisation(i) {
+            self.change_civ_reputation(i, -0.5);
+            let t = self.time;
+            self.crew.log_event(
+                t,
+                format!(
+                    "Les {} voient d'un mauvais oeil une colonie fondee sur leur monde sans leur accord.",
+                    civ.name
+                ),
+            );
+        }
         self.events.push(Event::ColonyFounded {
             index: self.colonies.len() - 1,
         });
@@ -1533,6 +1555,8 @@ pub(crate) mod tests {
         stock_kit(&mut s);
         park_at(&mut s, b);
         let c = s.found_colony(b, None).expect("found");
+        // The tests below start from empty stores (the kit's stores have their own test).
+        s.colonies[c].storage.fill(0.0);
         (s, c)
     }
 
@@ -1541,6 +1565,53 @@ pub(crate) mod tests {
         for (id, kg) in items {
             s.colonies[ci].storage[data.resource_index(id).expect("res")] += kg;
         }
+    }
+
+    #[test]
+    fn the_kit_fills_the_stores_of_the_new_colony() {
+        let mut s = sim();
+        let b = rocky(&s);
+        stock_kit(&mut s);
+        park_at(&mut s, b);
+        let c = s.found_colony(b, None).expect("found");
+        let r = |id: &str| s.data.resource_index(id).expect("res");
+        let col = &s.colonies[c];
+        assert!(col.storage[r("food")] > 100.0, "food for the founders");
+        assert!(col.storage[r("water")] > 200.0, "water for the founders");
+        assert!(
+            col.storage[r("construction_materials")] > 1000.0,
+            "something to build with"
+        );
+    }
+
+    #[test]
+    fn founding_on_an_inhabited_world_offends_its_people() {
+        let data = Arc::new(
+            vector_data::GameData::load(
+                &std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../data"),
+            )
+            .expect("data"),
+        );
+        let mut tried = 0;
+        for seed in 1..60u64 {
+            let mut s = crate::scene::new_sim(seed, Arc::clone(&data));
+            let Some(b) = s.first_civilised_world() else {
+                continue;
+            };
+            stock_kit(&mut s);
+            park_at(&mut s, b);
+            let before = s.civ_reputation(b);
+            if s.found_colony(b, None).is_ok() {
+                tried += 1;
+                assert!(
+                    s.civ_reputation(b) < before - 0.3,
+                    "seed {seed}: the natives were not asked ({before} -> {})",
+                    s.civ_reputation(b)
+                );
+                assert!(s.crew.log.iter().any(|l| l.text.contains("mauvais oeil")));
+            }
+        }
+        assert!(tried > 0, "some inhabited world could be colonised");
     }
 
     #[test]

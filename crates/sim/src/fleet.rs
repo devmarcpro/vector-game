@@ -1102,6 +1102,7 @@ mod tests {
         s.ship.vel = s.bodies[b].vel;
         s.update_ref();
         let ci = s.found_colony(b, None).expect("colony");
+        s.colonies[ci].storage.fill(0.0);
         let iron = data.resource_index("iron").expect("iron");
         s.colonies[ci].storage[iron] = 30_000.0;
         let station = station_endpoints(&s).remove(0);
@@ -1147,6 +1148,7 @@ mod tests {
         s.ship.vel = s.bodies[b].vel;
         s.update_ref();
         let ci = s.found_colony(b, None).expect("colony");
+        s.colonies[ci].storage.fill(0.0);
         let iron = data.resource_index("iron").expect("iron");
         let station = station_endpoints(&s).remove(0);
         s.buy_fleet_ship_free(data.hull_index("hauler").expect("hull"));

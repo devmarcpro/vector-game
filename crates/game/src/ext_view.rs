@@ -466,7 +466,11 @@ mod tests {
         let len = ship_length(&g.sim);
         let cam = camera(&g, &g.sim, None);
         let d = (cam.pos - g.sim.ship.pos).length();
-        assert!((d - len * g.ext_zoom).abs() < 1e-6, "{d}");
+        // Positions are tens of gigametres from the origin: a relative tolerance.
+        assert!(
+            (d - len * g.ext_zoom).abs() < 1e-6 + 1e-13 * g.sim.ship.pos.length(),
+            "{d}"
+        );
         // The ship is at the centre of the view.
         let v = cam.to_view(g.sim.ship.pos);
         assert!(v.z > 0.0 && v.x.abs() < 1e-6 * v.z && v.y.abs() < 1e-6 * v.z);

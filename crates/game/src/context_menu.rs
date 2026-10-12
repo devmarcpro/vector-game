@@ -1818,6 +1818,9 @@ mod tests {
                 if let Some(f) = first {
                     eprintln!("    clipped: {f}");
                 }
+                for o in off.iter().take(3) {
+                    eprintln!("    off {o}");
+                }
                 for o in overlap.iter().take(3) {
                     eprintln!("    overlap {o}");
                 }

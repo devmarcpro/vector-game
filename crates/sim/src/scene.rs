@@ -19,7 +19,8 @@ pub(crate) fn good_home(seed: u64) -> bool {
             >= 3
 }
 
-/// The nearest star to the origin with a good system and neighbours inside basic jump range.
+/// The nearest star to the origin with a good system and neighbours inside basic jump range
+/// (the home of the test fixtures: `new_sim`).
 pub fn pick_home(galaxy: &Galaxy) -> StarEntry {
     let near = galaxy.nearby([0.0; 3], 60.0);
     let fits = |e: &&StarEntry| good_home(e.seed) && galaxy.nearby(e.pos, 4.0).len() >= 3;
@@ -29,6 +30,47 @@ pub fn pick_home(galaxy: &Galaxy) -> StarEntry {
         .or_else(|| near.first())
         .cloned()
         .unwrap_or_else(|| galaxy.sector((0, 0, 0)).remove(0))
+}
+
+/// The home of a real new game: `pick_home`, but among the places where a ship that waits does
+/// not die of it (no red dwarf, no hot region of the galaxy, no station in the belt of a big
+/// planet) when the galaxy has one.
+pub fn pick_start_home(galaxy: &Galaxy) -> StarEntry {
+    let near = galaxy.nearby([0.0; 3], 60.0);
+    let fits = |e: &&StarEntry| good_home(e.seed) && galaxy.nearby(e.pos, 4.0).len() >= 3;
+    // A red dwarf flares the most and its habitable zone is close to it: a start under one is a
+    // start under fire. Take the nearest quieter star when there is one.
+    let calm = |e: &&StarEntry| calm_home(galaxy, e);
+    let quiet = |e: &&StarEntry| fits(e) && calm(e) && e.header.class != vector_world::StarClass::M;
+    near.iter()
+        .find(quiet)
+        .or_else(|| near.iter().find(|e| fits(e) && calm(e)))
+        .or_else(|| near.iter().find(fits))
+        .or_else(|| near.iter().find(|e| good_home(e.seed)))
+        .or_else(|| near.first())
+        .cloned()
+        .unwrap_or_else(|| galaxy.sector((0, 0, 0)).remove(0))
+}
+
+/// Whether the place a new game starts in is free of the radiation that kills a ship that waits
+/// there: no hot region of the galaxy around the star, and no station inside the radiation belt of
+/// a magnetised world (a start is "in flight beside a station": the belts of big planets give
+/// tens of mGy/h, Io-like).
+pub(crate) fn calm_home(galaxy: &Galaxy, e: &StarEntry) -> bool {
+    if galaxy.cosmic_effects(e.pos).radiation > 0.0 {
+        return false;
+    }
+    let sys = generate_system(e.seed);
+    sys.bodies
+        .iter()
+        .filter(|b| b.kind == BodyKind::Station)
+        .filter_map(|b| b.orbit.as_ref())
+        .all(|o| {
+            let host = &sys.bodies[o.parent];
+            let l = o.a / host.radius.max(1.0);
+            let magnetic = sys.physics(o.parent, 0.0).magnetic;
+            crate::navigation::belt_dose(magnetic, l) < 0.003
+        })
 }
 
 /// The world every start shares: the galaxy of the seed, its home system, the ship parked at
@@ -74,4 +116,22 @@ pub fn new_sim(seed: u64, data: Arc<GameData>) -> Sim {
         sim.crew.hire(&data, p, role, 0.0);
     }
     sim
+}
+
+/// Distance (m) from the station of a system to its nearest asteroid at time 0 (None without
+/// either).
+#[cfg(test)]
+pub(crate) fn station_to_asteroid_m(seed: u64) -> Option<f64> {
+    let sys = generate_system(seed);
+    let st = sys
+        .bodies
+        .iter()
+        .position(|b| b.kind == BodyKind::Station)?;
+    let sp = sys.state(st, 0.0).0;
+    sys.bodies
+        .iter()
+        .enumerate()
+        .filter(|(_, b)| matches!(b.kind, BodyKind::Asteroid(_)))
+        .map(|(i, _)| (sys.state(i, 0.0).0 - sp).length())
+        .min_by(f64::total_cmp)
 }

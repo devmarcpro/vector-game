@@ -820,6 +820,7 @@ mod tests {
         s.ship.vel = b.vel;
         s.update_ref_pub();
         let ci = s.found_colony(map.body, None).expect("found");
+        s.colonies[ci].storage.fill(0.0);
         s.colonies[ci].pop = 100.0;
         (s, ci, map.body)
     }

@@ -474,6 +474,11 @@ impl Sim {
         if save.scan.len() == sim.scan.len() {
             sim.scan = save.scan;
             sim.scan_progress = save.scan_progress;
+            // A system may hold more bodies than when the game was saved (the rocks near the
+            // stations): the new ones are unscanned.
+            let n_bodies = sim.bodies.len();
+            sim.scan.resize(n_bodies, 0);
+            sim.scan_progress.resize(n_bodies, 0.0);
         }
         sim.jump = save.jump;
         sim.contracts = save.contracts;

@@ -2,16 +2,16 @@
 // reputation: ("home" = la faction du systeme de depart). wreck: la partie commence au sol, sur
 // un vaisseau qui ne vole pas encore (voir crates/sim/src/start.rs). difficulty: 1 (doux) a 5 (rude), indicatif.
 [
- (id:"voyageur", name:"Voyageur", difficulty:2,
+ (id:"voyageur", name:"Voyageur", difficulty:3,
   ships:[
    ("prospector", ["torch_mk2","fusion_mk2","gyro_mk1","tank_mk2","cargo_mk2","lifesup_mk1","battery_mk1","habitat_mk1","ftl_mk1","radiator_mk2","rcs_mk1","laser_mk2"]),
    ("driller", ["torch_mk2","fusion_mk2","ftl_mk1","tank_mk3","cargo_mk3","lifesup_mk1","habitat_mk1","radiator_mk3","rcs_mk1","laser_mk3"]),
    ("hauler", ["torch_mk2","fusion_mk2","tank_mk3","cargo_mk3","lifesup_mk1","habitat_mk1","radiator_mk2","rcs_mk1","laser_mk1"]),
   ],
-  credits:500.0, cargo:[("food",60.0),("water",150.0),("spare_parts",20.0),("medicine",3.0)],
+  credits:1500.0, cargo:[("food",60.0),("water",150.0),("spare_parts",20.0),("medicine",3.0)],
   crew:["engineer"], crew_points:4, techs:[], reputation:[], wanted_days:0.0, wreck:false,
   text:"Un petit mineur, un ingenieur, quelques rations et un systeme a explorer. Le depart classique : tout reste a faire, rien n'est impose."),
- (id:"marchand", name:"Marchand", difficulty:2,
+ (id:"marchand", name:"Marchand", difficulty:1,
   ships:[
    ("freighter", ["torch_mk2","fusion_mk2","ftl_mk1","cargo_mk4","cargo_mk4","tank_mk3","lifesup_mk1","habitat_mk1","radiator_mk3","rcs_mk1","pulselaser_mk1"]),
    ("hauler", ["torch_mk2","fusion_mk2","tank_mk3","cargo_mk3","lifesup_mk1","habitat_mk1","radiator_mk2","rcs_mk1","laser_mk1"]),
@@ -20,13 +20,13 @@
   credits:3000.0, cargo:[("food",200.0),("water",300.0),("spare_parts",30.0),("steel",6000.0),("machinery",600.0),("electronics",150.0)],
   crew:["pilot","engineer"], crew_points:5, techs:[], reputation:[("home",25.0)], wanted_days:0.0, wreck:false,
   text:"Une grosse soute, une licence de commerce reconnue dans la region et une cargaison a revendre au meilleur prix. Peu d'armes : on negocie, on ne se bat pas."),
- (id:"explorateur", name:"Explorateur", difficulty:3,
+ (id:"explorateur", name:"Explorateur", difficulty:2,
   ships:[
    ("explorer", ["torch_mk2","fusion_mk2","ftl_mk2","tank_mk3","cargo_mk3","lifesup_mk1","habitat_mk1","scanner_mk3","radiator_mk2","laser_mk1"]),
    ("prospector", ["torch_mk2","fusion_mk2","gyro_mk1","tank_mk2","cargo_mk2","lifesup_mk1","battery_mk1","habitat_mk1","ftl_mk1","radiator_mk2","scanner_mk1","laser_mk2"]),
    ("driller", ["torch_mk2","fusion_mk2","ftl_mk1","tank_mk3","cargo_mk3","lifesup_mk1","habitat_mk1","scanner_mk2","radiator_mk2","laser_mk3"]),
   ],
-  credits:2000.0, cargo:[("food",150.0),("water",300.0),("spare_parts",40.0),("medicine",8.0)],
+  credits:3000.0, cargo:[("food",150.0),("water",300.0),("spare_parts",40.0),("medicine",8.0)],
   crew:["pilot","scientist","engineer"], crew_points:5, techs:["xenology","closed_ecology"], reputation:[], wanted_days:0.0, wreck:false,
   text:"Un vaisseau d'exploration a long rayon d'action, des scanners puissants et une equipe de scientifiques. Ce qu'il y a derriere la prochaine etoile est la seule question."),
  (id:"hors_la_loi", name:"Hors-la-loi", difficulty:4,
@@ -35,7 +35,7 @@
    ("driller", ["torch_mk2","fusion_mk2","ftl_mk1","tank_mk3","cargo_mk3","lifesup_mk1","habitat_mk1","radiator_mk3","armor_mk2","pulselaser_mk3"]),
    ("explorer", ["torch_mk2","fusion_mk2","ftl_mk1","tank_mk3","cargo_mk3","lifesup_mk1","habitat_mk1","armor_mk3","radiator_mk2","pulselaser_mk1"]),
   ],
-  credits:1500.0, cargo:[("food",100.0),("water",200.0),("spare_parts",40.0),("weapon_parts",20.0),("medicine",25.0)],
+  credits:2500.0, cargo:[("food",100.0),("water",200.0),("spare_parts",40.0),("weapon_parts",20.0),("medicine",25.0)],
   crew:["gunner","pilot"], crew_points:4, techs:["applied_ballistics"], reputation:[("home",-45.0),("errants",35.0)], wanted_days:90.0, wreck:false,
   text:"Un ancien mineur reconverti, arme, et une prime sur la tete dans le territoire de depart. Les Clans Errants vous accueillent ; les patrouilles locales beaucoup moins."),
  (id:"colon", name:"Colon", difficulty:3,

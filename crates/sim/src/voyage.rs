@@ -127,6 +127,20 @@ impl Sim {
         FUEL_PER_LY_PER_KG * self.ship.mass() * dist_ly
     }
 
+    /// Fuel of the fly-out that comes before the jump when the ship is inside the well of a
+    /// body (0 when it is clear to jump): the burn up to `JUMP_RUN_SPEED`.
+    pub fn jump_departure_fuel(&self) -> f64 {
+        if self.docked.is_none() && self.near_well() {
+            crate::navigation::propellant_for(
+                Self::JUMP_RUN_SPEED,
+                self.ship.stats.isp.max(1.0),
+                self.ship.mass(),
+            )
+        } else {
+            0.0
+        }
+    }
+
     /// Stars the galactic map lets the player see: those near any visited system.
     pub fn is_seen(&self, pos: [f64; 3]) -> bool {
         if self.rules.reveal_map {
@@ -152,8 +166,8 @@ impl Sim {
                 if d > self.jump_range() {
                     return Err("hors de portee de saut");
                 }
-                if self.jump_fuel_cost(d) > self.ship.fuel {
-                    return Err("carburant insuffisant pour ce saut");
+                if self.jump_fuel_cost(d) + self.jump_departure_fuel() > self.ship.fuel {
+                    return Err("carburant insuffisant pour ce saut (sortie du puits comprise)");
                 }
                 self.autopilot = None;
                 self.jump_run = Some(target.clone());

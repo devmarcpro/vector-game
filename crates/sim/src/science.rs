@@ -10,6 +10,12 @@ use vector_world::{AnomalyKind, BodyKind, StarClass};
 /// Research points per day from one point of lab `science` at baseline staffing.
 pub const LAB_POINTS_PER_DAY: f64 = 6.0;
 pub const FLARE_WARNING_S: f64 = 300.0;
+/// Most a flare can put on an open ship's hull, Gy (before the hull itself).
+pub const FLARE_MAX_GY: f64 = 40.0;
+/// Share of a flare's dose that gets through the hull of a ship that is not docked: the worst
+/// flare of a close red dwarf (40 Gy) then gives 0.8 Gy: a bad night, under the 1 Gy of the
+/// radiation sickness, and not a grave.
+pub const FLARE_HULL_COVER: f64 = 0.02;
 pub(crate) const METEOR_MEAN_INTERVAL: f64 = 6.0 * 3600.0;
 
 /// Combined environmental effects at a point.
@@ -423,14 +429,20 @@ impl Sim {
         if self.time >= t {
             self.pending_flare = None;
             let d_au = (self.ship.pos.length() / AU).max(0.05);
-            let mut dose = severity * 2.0 / (d_au * d_au);
+            // Flux falls with the square of the distance, but a flare is a finite burst: the
+            // fluence on the hull saturates (FLARE_MAX_GY) however close the ship is.
+            let mut dose = (severity * 2.0 / (d_au * d_au)).min(FLARE_MAX_GY);
             // A variable star is brighter at some times than at others; a magnetar burst is worse.
             dose *= self.system.luminosity_at(self.time) / self.system.luminosity.max(1e-12);
             if self.system.star_class == StarClass::N {
                 dose *= 4.0;
             }
-            // The same cover as any other dose (docked, behind the shield, behind the plating).
+            // The same cover as any other dose (docked, behind the shield, behind the plating),
+            // and the hull itself, its tanks and its cargo, which stop most of the particles.
             dose *= self.dose_protection();
+            if self.docked.is_none() {
+                dose *= FLARE_HULL_COVER;
+            }
             if self.docked.is_none() && self.ship.sys.shield_pts > 0.0 {
                 self.ship.sys.shield_pts *= 0.5;
             }
@@ -803,6 +815,42 @@ mod tests {
         );
         assert!(warned, "flares are announced first");
         let _ = ShipInput::default();
+    }
+
+    #[test]
+    fn a_flare_dose_is_bounded_whatever_the_distance_and_the_hull_and_the_quay_cut_it() {
+        let (mut s, _) = sim_with_anomaly(None);
+        let data = Arc::clone(&s.data);
+        let p = crate::crew::generate_person(&data, 9, None);
+        s.crew.hire(&data, p, 0, 0.0);
+        let mut doses = Vec::new();
+        for docked in [false, true] {
+            // Right against the star, the worst flare of the generator.
+            s.ship.pos = Vec3::new(AU * 0.01, 0.0, 0.0);
+            s.update_ref();
+            s.docked = if docked { Some(0) } else { None };
+            s.time = 10.0 * DAY;
+            s.flare_day = 10;
+            s.pending_flare = Some((s.time - 1.0, 1.0, true));
+            s.events.clear();
+            s.flare_tick();
+            let dose = s
+                .events
+                .iter()
+                .find_map(|e| match e {
+                    Event::FlareHit { dose } => Some(*dose),
+                    _ => None,
+                })
+                .expect("the flare hits");
+            doses.push(dose);
+        }
+        assert!(
+            doses[0] <= FLARE_MAX_GY * FLARE_HULL_COVER + 1e-9,
+            "{} Gy on an open hull",
+            doses[0]
+        );
+        assert!(doses[0] < 8.0, "survivable (the lethal dose is 8 Gy)");
+        assert!(doses[1] < doses[0] * 0.5, "docked is better");
     }
 
     #[test]

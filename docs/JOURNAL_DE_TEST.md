@@ -167,8 +167,9 @@ Etapes : `scripts/play/start_colon.txt`, `h1.txt`, `h2.txt`, `h3.txt`.
 * Confus :
   * **Fonder sur un monde deja habite** (Kaae-Saison : 1,58 M d'habitants Krethak) est possible sans
     aucun avertissement.
-  * Le vaisseau se pose seul apres la fondation et "bascule a l'atterrissage" (message du journal) ;
-    alerte CRITIQUE ensuite, sans explication.
+  * (Retire apres verification : le vaisseau "basculait a l'atterrissage" parce que ma commande de test
+    `near planet` le posait a l'arret au-dessus de la planete, sans orbite : il tombait. Ce n'est pas
+    un defaut du jeu.)
   * La zone **CONSTRUIRE** est vide tant qu'on n'a pas fait `TAB` trois fois (corrige : un indice est
     affiche), et le colon n'a que 2 kg de rations en stock : "VIVRES 0 %  EAU 0 %" des le premier jour.
   * Libelles de politiques tronques ("Maintien de l'ordr", "Cueillette et élev", "Quarantaine biolog").
@@ -320,3 +321,37 @@ a ~660 s) ; le premier quai du Voyageur ne coute plus d'amende.
   verifie).
 * Combat rapproche, abordage, ruines et grottes, construction d'une base a pied, epidemie de colonie,
   navigation par noeuds de manoeuvre, atterrissage manuel, casino/banque/bourse, flotte deleguee.
+
+## 8. Deuxieme passe : les problemes listes sont corriges (avant / apres)
+
+Rejoue avec les memes scripts (`scripts/play/`) apres correction. Chaque ligne a un test qui peut echouer.
+
+| Probleme (avant) | Apres | Test |
+|---|---|---|
+| Eruption de 88 Gy, equipage mort au jour 1 sur une naine rouge ; depart dans une ceinture de radiations (30 a 280 mGy/h) ; region chaude de la galaxie | Dose d'eruption bornee (flux en 1/d2 plafonne a 40 Gy, puis coque 2 % : 0,8 Gy au pire, sous le seuil du mal des rayons de 1 Gy ; a quai 0,2 Gy). Fond naturel x0,1 a travers la coque et x0,05 sous le parapluie d'une station (50 km). Le depart d'une vraie partie evite les naines rouges, les regions chaudes et les stations dans la ceinture d'une grosse planete (`pick_start_home`). La graine par defaut est maintenant une etoile K calme | `science::a_flare_dose_is_bounded...`, `start::a_passive_voyageur_lives_ten_days_on_twenty_seeds` (21 graines : equipage vivant, coque entiere, credits > 0 apres 10 jours), `start::every_home_has_ore...` (<= 4 departs sur 21 sous une naine rouge, graine par defaut non M) |
+| Premier minage : asteroide a 22 Gm, 59 % du carburant | Le generateur de systemes ajoute 6 petits rochers (C, S, M) en orbite autour de la planete de chaque station, a 5-25 Mm : le premier minerai est a un saut de puce (18 min, 5,6 % du reservoir, ~270 CR sur la graine par defaut). Le pilote auto a un mode ECONOMIE et affiche la facture avant d'engager : `G` sur un trajet qui coute plus de 25 % du reservoir (ou sans retour possible) montre "RAPIDE ... / ECONOMIE ..." ; `G` de nouveau = economie, `MAJ+G` = rapide | `autopilot::the_economy_plan_burns...`, `game::a_costly_autopilot_trip_shows_its_bill_first...`, `start::the_first_ore_is_a_cheap_hop_away...` |
+| Hors-la-loi detruit en 62 s | Depart a 90 km de la station (hors de portee des batteries de 60 km), grace de 10 min et alerte `BatteryFire` | `start::a_hunted_start_begins_beyond_the_reach_of_the_batteries`, `arms::batteries_fire...` |
+| Naufrage mortel | Site d'atterrissage choisi pour sa temperature (cellule la plus proche de 290 K), mondes toxiques et fours evites, combinaison etanche (seulement 25 % de l'air toxique ou du vide), avertissement des le premier dixieme de sante perdu quelle que soit la cause | `start::the_castaway_lives_long_enough...` (21 graines, 40 tours, sante > 20 %) |
+| Colonie : fonder sur un monde habite sans un mot ; liste CONSTRUIRE cachee ; kit perdu | `O` sur un monde habite annonce le peuple et sa population et demande un second `O` ; la fondation fait chuter la confiance de ce peuple et ecrit au journal ; la liste des batiments est toujours affichee ; les materiaux, vivres et eau du kit sont verses au stock de la colonie (avant : perdus, "VIVRES 0 %") | `colony::founding_on_an_inhabited_world_offends_its_people`, `colony::the_kit_fills_the_stores...`, `game::founding_on_an_inhabited_world_asks_twice`, `script::the_colony_screen_lists_what_can_be_built...` |
+| Recherche sans labo | "RECHERCHE LANCEE : X - AUCUN LABO : 0 PTS/J ... ELLE N'AVANCERA QU'AVEC UN LABO A BORD, UNE COLONIE OU DES DECOUVERTES" | `game::a_research_without_a_lab_says_so` |
+| Marche : liste de 63 lignes, noms tronques, Echap decolle, cout d'un saut | `V` change le tri (ordre du codex, prix d'achat, stock, en soute d'abord, nom), `O` filtre par categorie ou "en soute" ; noms sur 24 colonnes ; `Echap` dit "U POUR DECOLLER" et ne decolle plus ; la carte galactique ajoute "+ SORTIE n KG = x % AU TOTAL" et `jump_or_run` refuse si la sortie du puits n'est pas payable | `game::the_market_list_sorts_filters_and_escape_does_not_launch`, `start::the_first_ore...` (facture du saut) |
+| Voyageur a sec en 2 jours ; difficulte annoncee incoherente | Salaire de depart 20 + 6 x competence (ingenieur : ~74 CR/j au lieu de 227) ; credits de depart Voyageur 1500, Explorateur 3000, Hors-la-loi 2500 ; difficulte Voyageur 3, Explorateur 2, Marchand 1 ; le HUD affiche "PAIE : n J" quand la caisse paie moins de 15 jours | `start::every_scenario_leaves_two_weeks_of_pay...`, `script::the_hud_counts_the_days...` |
+| Messages d'erreur en minuscules (pilote auto) | en majuscules | revue visuelle |
+
+Avant / apres des parcours rejoues :
+
+* (a) Premier lancement : la graine par defaut ne place plus le joueur sous une naine rouge ; le texte du tutoriel
+  est sur une seule rangee ; Voyageur commence avec 1500 CR.
+* (b) Voyage : `T` cible maintenant un rocher a 18 min ; `G` annonce "PILOTE AUTO ENGAGE : 18.9 MIN / 5.6 % DU
+  RESERVOIR (~270 CR)" ; apres `8` (SAS vers la cible) et `V` le laser rapporte Cobalt, Or, Platine (rocher de
+  type M). Reste a ameliorer (P2) : rien n'indique qu'il faut orienter le nez vers la cible (touche `8`) avant `V`.
+* (c) Naufrage : 95 % de sante apres 60 tours sur la graine par defaut ; sur les 21 graines au moins 40 tours de marge.
+
+Changements de structures sauvegardees (aucun champ de `Save` modifie, `VERSION` inchange) :
+
+* le generateur de systemes (`crates/world/src/stellar.rs`, `station_rocks`) ajoute 6 asteroides par station apres
+  les existants et avant le portail : une sauvegarde v44 faite avant cette version relit un systeme qui a plus de
+  corps (indices apres le dernier asteroide decales, dont le portail ; les vecteurs `scan` de longueur differente
+  sont ignores, le scan repart de zero) ;
+* `Event::BatteryFire` ajoute (non sauvegarde) ; `data/scenarios.ron` : credits et difficultes ; formule de salaire
+  des personnes generees : seules les nouvelles personnes sont touchees (le salaire est stocke).

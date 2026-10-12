@@ -710,6 +710,69 @@ expect_no_text \"zzzqqq\"
     }
 
     #[test]
+    fn the_hud_counts_the_days_the_cash_pays_the_crew_when_they_are_few() {
+        let mut g = Game::new(data(), 24263);
+        g.settings.azerty = false;
+        g.new_game(24263);
+        g.sim.credits = 1.0e6;
+        let (_, rec) = screen_texts(&g, crate::draw_frame);
+        assert!(
+            find_text(&rec, "PAIE :").is_none(),
+            "plenty of cash: no note"
+        );
+        g.sim.credits = 100.0;
+        let (_, rec) = screen_texts(&g, crate::draw_frame);
+        assert!(
+            find_text(&rec, "PAIE :").is_some(),
+            "a few days left: a note"
+        );
+    }
+
+    #[test]
+    fn the_colony_screen_lists_what_can_be_built_without_pressing_tab() {
+        use crate::game::Screen;
+        for seed in 1..40u64 {
+            let mut g = Game::new(data(), seed);
+            g.screen = Screen::Flight;
+            g.settings.tutorial = false;
+            let data = Arc::clone(&g.data);
+            g.sim.ship.cargo.cap_mass = 1.0e6;
+            for (id, kg) in [
+                ("construction_materials", 3000.0),
+                ("colonists", 400.0),
+                ("food", 600.0),
+                ("water", 900.0),
+            ] {
+                g.sim
+                    .ship
+                    .cargo
+                    .add(&data, data.resource_index(id).expect("res"), kg);
+            }
+            g.sim.credits = 100_000.0;
+            for b in 0..g.sim.bodies.len() {
+                if !matches!(g.sim.bodies[b].kind, vector_world::BodyKind::Planet(_)) {
+                    continue;
+                }
+                g.sim.spawn_near(b, g.sim.bodies[b].radius * 1.2);
+                g.sim.ship.vel = g.sim.bodies[b].vel;
+                if g.sim.found_colony(b, None).is_ok() {
+                    g.col_idx = 0;
+                    g.col_focus = 0;
+                    g.screen = Screen::Colony;
+                    let (_, rec) = screen_texts(&g, crate::draw_frame);
+                    let name = g.data.buildings[0].name.clone();
+                    assert!(
+                        find_text(&rec, &name).is_some(),
+                        "{name} is not on the colony screen"
+                    );
+                    return;
+                }
+            }
+        }
+        panic!("no colony could be founded on 40 seeds");
+    }
+
+    #[test]
     fn key_names_parse() {
         assert_eq!(key_code("W"), Some(KeyCode::KeyW));
         assert_eq!(key_code("PageUp"), Some(KeyCode::PageUp));

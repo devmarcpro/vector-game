@@ -360,6 +360,58 @@ pub(crate) fn add_extras(sys: &mut System) {
     rings(sys);
     trojans(sys);
     companions(sys);
+    station_rocks(sys);
+}
+
+/// A handful of small rocks in orbit around the world a station circles, a few thousand
+/// kilometres from it: the first ore of a new game is a short hop away, not a trip to a belt
+/// tens of millions of kilometres off. Their own random stream: nothing drawn before moves.
+fn station_rocks(sys: &mut System) {
+    let mut rng = Rng::new(sys.seed ^ 0x57A7_10C5);
+    let stations: Vec<Orbit> = sys
+        .bodies
+        .iter()
+        .filter(|b| b.kind == BodyKind::Station)
+        .filter_map(|b| b.orbit.clone())
+        .collect();
+    for (k, so) in stations.iter().enumerate() {
+        let host = so.parent;
+        if host == 0 || host >= sys.bodies.len() {
+            continue;
+        }
+        let (mu, hname) = (sys.bodies[host].gm(), sys.bodies[host].name.clone());
+        for j in 0..6 {
+            let class = match j % 3 {
+                0 => AstType::C,
+                1 => AstType::S,
+                _ => AstType::M,
+            };
+            let radius = rng.range(40.0, 260.0);
+            let mass = 4.0 / 3.0 * PI * radius.powi(3) * class.density();
+            let orbit = Orbit {
+                parent: host,
+                a: so.a + rng.range(3.0e6, 2.0e7),
+                e: rng.range(0.0, 0.02),
+                incl: rng.range(-0.05, 0.05),
+                lan: rng.range(0.0, TAU),
+                argp: rng.range(0.0, TAU),
+                m0: rng.range(0.0, TAU),
+                mu,
+            };
+            sys.bodies.push(CelBody {
+                name: format!("{hname} roche-{}{}", k + 1, j + 1),
+                kind: BodyKind::Asteroid(class),
+                mass,
+                radius,
+                orbit: Some(orbit),
+                rotation_period: rng.range(300.0, 40000.0),
+                temp: 150.0,
+                gravity: G * mass / (radius * radius),
+                pressure: 0.0,
+                atmosphere: vec![],
+            });
+        }
+    }
 }
 
 /// Comets fall from far out and swing close to the star: eccentric, with a perihelion that
@@ -682,6 +734,7 @@ mod tests {
                     .iter()
                     .filter(|b| {
                         matches!(b.kind, BodyKind::Asteroid(_))
+                            && b.name.contains("anneau")
                             && b.orbit.as_ref().is_some_and(|o| o.parent == r.planet)
                     })
                     .collect();

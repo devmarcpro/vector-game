@@ -113,6 +113,12 @@ pub fn fmt_dist(m: f64) -> String {
     }
 }
 
+/// Whether a zone of radius `reach` around (x, y) touches the frame: a body behind the view or far
+/// to the side is projected to coordinates thousands of pixels away and gets no click zone.
+fn on_screen(fb: &Framebuffer, x: f32, y: f32, reach: f32) -> bool {
+    x + reach > 0.0 && y + reach > 0.0 && x - reach < fb.w as f32 && y - reach < fb.h as f32
+}
+
 pub fn fmt_time(s: f64) -> String {
     crate::fmt::duration(s)
 }
@@ -477,16 +483,18 @@ fn draw_cockpit(fb: &mut Framebuffer, v: &View) {
         if let Some((x, y)) = cam.project_world(b.pos, fb) {
             // Click to target, double click to fly there.
             let reach = (px as f32).clamp(9.0, 220.0);
-            v.game.hit(
-                (
-                    (x - reach) as i32,
-                    (y - reach) as i32,
-                    (x + reach) as i32,
-                    (y + reach) as i32,
-                ),
-                Act::Call(Game::click_body, i),
-                Some(Act::Call(Game::dbl_body, i)),
-            );
+            if on_screen(fb, x, y, reach) {
+                v.game.hit(
+                    (
+                        (x - reach) as i32,
+                        (y - reach) as i32,
+                        (x + reach) as i32,
+                        (y + reach) as i32,
+                    ),
+                    Act::Call(Game::click_body, i),
+                    Some(Act::Call(Game::dbl_body, i)),
+                );
+            }
             if px < 6.0 && !matches!(b.kind, BodyKind::Star(_)) {
                 fb.line(x - 3.0, y, x + 3.0, y, col);
                 fb.line(x, y - 3.0, x, y + 3.0, col);
@@ -574,16 +582,18 @@ fn draw_cockpit(fb: &mut Framebuffer, v: &View) {
             scaled.draw(&cam, fb, &rot, n.pos, col);
         }
         if let Some((x, y)) = cam.project_world(n.pos, fb) {
-            v.game.hit(
-                (
-                    (x - 12.0) as i32,
-                    (y - 12.0) as i32,
-                    (x + 12.0) as i32,
-                    (y + 12.0) as i32,
-                ),
-                Act::Call(Game::click_npc, k),
-                None,
-            );
+            if on_screen(fb, x, y, 12.0) {
+                v.game.hit(
+                    (
+                        (x - 12.0) as i32,
+                        (y - 12.0) as i32,
+                        (x + 12.0) as i32,
+                        (y + 12.0) as i32,
+                    ),
+                    Act::Call(Game::click_npc, k),
+                    None,
+                );
+            }
             fb.line(x - 3.0, y, x, y - 3.0, col);
             fb.line(x, y - 3.0, x + 3.0, y, col);
             fb.line(x + 3.0, y, x, y + 3.0, col);
@@ -711,7 +721,7 @@ fn draw_map(fb: &mut Framebuffer, v: &View) {
         }
         let (x, y) = to_px(b.pos);
         let r = (b.radius / v.map_scale).clamp(2.0, 14.0) as f32;
-        if v.sim.scan[i] > 0 {
+        if v.sim.scan[i] > 0 && on_screen(fb, x, y, r.max(7.0)) {
             let reach = r.max(7.0);
             v.game.hit(
                 (
@@ -907,7 +917,22 @@ fn draw_status(fb: &mut Framebuffer, v: &View) {
         DIM,
     );
 
+    // The days the cash pays the crew: a quiet clock in the credits line.
+    let payroll = sim.crew.daily_payroll();
+    let (pay_note, pay_col) = if payroll > 0.0 && sim.credits < payroll * 15.0 {
+        let days = (sim.credits / payroll).max(0.0);
+        (
+            format!("  PAIE : {days:.0} J"),
+            if days < 5.0 { RED } else { AMBER },
+        )
+    } else {
+        (String::new(), GREEN)
+    };
     fb.text(1, 5, &format!("CREDITS {:.0}", sim.credits), GREEN);
+    if !pay_note.is_empty() {
+        let col = format!("CREDITS {:.0}", sim.credits).len() + 1;
+        fb.text(col, 5, &pay_note, pay_col);
+    }
     fb.text(
         1,
         6,

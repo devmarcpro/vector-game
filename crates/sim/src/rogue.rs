@@ -3324,7 +3324,10 @@ impl Sim {
         if !r.on_surface() {
             return Err("on ne relache que sur la surface d'un monde");
         }
-        let a = self.herd.get(i).ok_or("aucun animal choisi dans les enclos")?;
+        let a = self
+            .herd
+            .get(i)
+            .ok_or("aucun animal choisi dans les enclos")?;
         let (sp, genes) = (a.species, a.genes);
         let (body, (cx, cy)) = (
             r.body.ok_or("pas de surface")?,
@@ -5274,11 +5277,20 @@ mod tests {
             (r.x, r.y)
         };
         // The wild genes are a fact of the population: same place, same pool.
-        let pool: Vec<[[u8; 2]; 4]> = (0..40).map(|n| wild_genes(map.seed, tame, biome, n)).collect();
-        assert_eq!(pool[3], wild_genes(map.seed, tame, biome, 3), "deterministic");
+        let pool: Vec<[[u8; 2]; 4]> = (0..40)
+            .map(|n| wild_genes(map.seed, tame, biome, n))
+            .collect();
+        assert_eq!(
+            pool[3],
+            wild_genes(map.seed, tame, biome, 3),
+            "deterministic"
+        );
         for t in 0..4 {
             let alleles: Vec<u8> = pool.iter().flat_map(|g| g[t]).collect();
-            let (lo, hi) = (*alleles.iter().min().unwrap(), *alleles.iter().max().unwrap());
+            let (lo, hi) = (
+                *alleles.iter().min().unwrap(),
+                *alleles.iter().max().unwrap(),
+            );
             assert!(hi - lo <= 2 && hi <= ALLELE_MAX, "trait {t}: {lo}..{hi}");
         }
         // A beast with its genes next to the squad: the catch brings them to the pens.
@@ -5290,7 +5302,11 @@ mod tests {
         s.rogue_capture().expect("caught");
         assert_eq!(s.herd.len(), herd + 1);
         let a = s.herd.last().unwrap().clone();
-        assert_eq!((a.species, a.genes), (tame, genes), "the genes of the wild beast");
+        assert_eq!(
+            (a.species, a.genes),
+            (tame, genes),
+            "the genes of the wild beast"
+        );
         // The release puts the same species back on the ground with the same genes.
         let msg = s.rogue_release(herd).expect("released");
         assert!(msg.ends_with("RELACHE"), "{msg}");
@@ -5315,7 +5331,10 @@ mod tests {
         let mut d = (*s.data).clone();
         d.species[tame].habitat.clear();
         s.data = Arc::new(d);
-        assert_eq!(s.rogue_release(herd), Err("cette bete ne survivrait pas ici"));
+        assert_eq!(
+            s.rogue_release(herd),
+            Err("cette bete ne survivrait pas ici")
+        );
         assert!(s.rogue_release(99).is_err());
     }
 

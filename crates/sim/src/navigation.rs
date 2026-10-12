@@ -863,7 +863,11 @@ mod tests {
             .collect();
         let mean = each.iter().sum::<f64>() / each.len() as f64;
         assert!((s.dosimeter_gy() - mean).abs() < 1e-9);
-        assert!((s.dosimeter_gy() - 0.30).abs() < 1e-3, "{}", s.dosimeter_gy());
+        assert!(
+            (s.dosimeter_gy() - 0.30).abs() < 1e-3,
+            "{}",
+            s.dosimeter_gy()
+        );
         // Once the bodies have taken it, the reading is the same (nothing lost, nothing counted twice).
         let before = s.dosimeter_gy();
         for p in s.crew.members.iter_mut() {

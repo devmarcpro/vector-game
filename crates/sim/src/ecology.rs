@@ -956,8 +956,13 @@ mod tests {
         let taken = eco.harvest(sp, 0, 5.0);
         assert!((taken - 5.0).abs() < 1e-9 && (eco.at(sp, 0) - 10.0).abs() < 1e-9);
         assert!(eco.restock(sp, 0, 1.0e30));
-        assert!(eco.at(sp, 0) <= eco.cap[0] + 1e-6, "never above the capacity");
-        let dead = (0..eco.ns).find(|&i| !eco.live[i]).expect("a species that cannot live here");
+        assert!(
+            eco.at(sp, 0) <= eco.cap[0] + 1e-6,
+            "never above the capacity"
+        );
+        let dead = (0..eco.ns)
+            .find(|&i| !eco.live[i])
+            .expect("a species that cannot live here");
         assert!(!eco.restock(dead, 0, 5.0), "it cannot live in this biome");
         assert_eq!(eco.at(dead, 0), 0.0);
     }

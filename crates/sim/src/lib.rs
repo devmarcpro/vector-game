@@ -1486,7 +1486,11 @@ impl Sim {
         // unload the real stock of the station.
         let flows = match self.markets.get(&i) {
             Some(m) => {
-                let from = if m.lanes_to > 0.0 { m.lanes_to } else { m.updated };
+                let from = if m.lanes_to > 0.0 {
+                    m.lanes_to
+                } else {
+                    m.updated
+                };
                 if time - from >= Market::LANE_STEP {
                     crate::lanes::flows_between(
                         &data,

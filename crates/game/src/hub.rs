@@ -72,9 +72,7 @@ pub fn place_of(s: Screen) -> Place {
         Galaxy | Surface | NavAuto => Place::Space(NAVIGATION),
         Ship | Inventory | Shipyard => Place::Space(VAISSEAU),
         Crew => Place::Space(EQUIPAGE),
-        Station | Contracts | Bank | Livestock | Casino => {
-            Place::Space(COMMERCE)
-        }
+        Station | Contracts | Bank | Livestock | Casino => Place::Space(COMMERCE),
         Rogue | Expedition => Place::Space(EXPLORATION),
         Empire | Colony | Fleet | Factions => Place::Space(COLONIES),
         Journal | Codex | Tech | Proto => Place::Space(CODEX),

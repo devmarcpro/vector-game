@@ -438,13 +438,16 @@ mod tests {
         let d = data();
         let width = |class: &str| {
             let segs = norm(hull(class));
-            let (lo, hi) = segs.iter().flat_map(|(a, b)| [a[2], b[2]]).fold(
-                (f32::MAX, f32::MIN),
-                |(lo, hi), z| (lo.min(z), hi.max(z)),
-            );
+            let (lo, hi) = segs
+                .iter()
+                .flat_map(|(a, b)| [a[2], b[2]])
+                .fold((f32::MAX, f32::MIN), |(lo, hi), z| (lo.min(z), hi.max(z)));
             hi - lo
         };
-        assert!(width("cargo") > width("combat"), "a freighter is wider than a fighter");
+        assert!(
+            width("cargo") > width("combat"),
+            "a freighter is wider than a fighter"
+        );
         assert!(width("rapide") < width("colonial"));
         for h in &d.hulls {
             assert!(crate::ship_model::class_aspect(&h.class) > 0.05);

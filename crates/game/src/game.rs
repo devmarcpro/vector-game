@@ -3506,7 +3506,10 @@ mod tests {
             for tab in CrewTab::ALL {
                 g.crew_tab = tab;
                 let line = crate::tutorial::hint_line(&g);
-                assert!(!line.is_empty() && line.chars().count() <= 128, "{tab:?}: {line}");
+                assert!(
+                    !line.is_empty() && line.chars().count() <= 128,
+                    "{tab:?}: {line}"
+                );
             }
             g.crew_tab = CrewTab::List;
             let line = crate::tutorial::hint_line(&g);
@@ -4692,7 +4695,12 @@ mod tests {
         g.sim.ship.cargo.cap_mass = 1.0e9;
         g.sim.ship.cargo.cap_vol = 1.0e9;
         g.screen = Screen::Station;
-        let verdant = g.data.factions.iter().position(|f| f.id == "verdant").unwrap();
+        let verdant = g
+            .data
+            .factions
+            .iter()
+            .position(|f| f.id == "verdant")
+            .unwrap();
         g.sim.faction = Some(verdant);
         for (key, tab) in [
             (KeyCode::KeyT, MarketTab::Exchange),
@@ -4721,7 +4729,10 @@ mod tests {
                 0 => assert_eq!(g.market_tab, MarketTab::Open),
                 1 => assert_eq!(g.market_tab, MarketTab::Black),
                 2 => assert_eq!(g.market_tab, MarketTab::Exchange),
-                k => assert_eq!((g.market_tab, g.trade_ui.tab), (MarketTab::Brokerage, k - 3)),
+                k => assert_eq!(
+                    (g.market_tab, g.trade_ui.tab),
+                    (MarketTab::Brokerage, k - 3)
+                ),
             }
             frame(&g);
         }
@@ -4738,11 +4749,17 @@ mod tests {
             let (before, held) = (g.sim.market(st).stock[res], g.sim.ship.cargo.kg[res]);
             g.key(KeyCode::KeyB, None, true);
             let got = g.sim.ship.cargo.kg[res] - held;
-            assert!(g.sim.market(st).stock[res] <= before + 1e-6, "the shelf only goes down");
+            assert!(
+                g.sim.market(st).stock[res] <= before + 1e-6,
+                "the shelf only goes down"
+            );
             taken += got;
         }
         assert!(taken > 0.0, "the contact sold something");
-        assert!(taken <= 400.0 + 1e-6, "no more than the station held: {taken}");
+        assert!(
+            taken <= 400.0 + 1e-6,
+            "no more than the station held: {taken}"
+        );
         // The licit market sees the same shelf: what the contact took is gone for it too.
         let shelf = g.sim.market(st).stock[res];
         assert!(shelf < 400.0, "{shelf}");

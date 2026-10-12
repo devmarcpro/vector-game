@@ -124,7 +124,12 @@ impl Game {
 pub fn draw(fb: &mut Framebuffer, g: &Game) {
     let s = &g.sim;
     let ui = &g.trade_ui;
-    fb.text(1, 1, &format!("== COURTAGE : {} ==", TABS[ui.tab.min(TABS.len() - 1)]), AMBER);
+    fb.text(
+        1,
+        1,
+        &format!("== COURTAGE : {} ==", TABS[ui.tab.min(TABS.len() - 1)]),
+        AMBER,
+    );
     fb.text(18, 1, &format!("CREDITS {:.0}", s.credits), GREEN);
     // The tabs are the words of the bar of the market screen (`ui::market_tab_bar`).
     match ui.tab {

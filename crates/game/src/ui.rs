@@ -736,7 +736,11 @@ fn market_tab_bar(fb: &mut Framebuffer, g: &Game) {
 fn draw_black(fb: &mut Framebuffer, g: &Game) {
     let s = &g.sim;
     let Some(st) = s.docked else { return };
-    header(fb, g, &format!("STATION {} : MARCHE NOIR", s.bodies[st].name));
+    header(
+        fb,
+        g,
+        &format!("STATION {} : MARCHE NOIR", s.bodies[st].name),
+    );
     let Some(m) = s.markets.get(&st) else { return };
     let Some(f) = s.faction else {
         fb.text(
@@ -774,9 +778,20 @@ fn draw_black(fb: &mut Framebuffer, g: &Game) {
     );
     let goods = g.black_goods();
     let sel = g.black_sel.min(goods.len().saturating_sub(1));
-    for (line, &i) in goods.iter().take(fb.rows().saturating_sub(top + 9)).enumerate() {
+    for (line, &i) in goods
+        .iter()
+        .take(fb.rows().saturating_sub(top + 9))
+        .enumerate()
+    {
         let r = &g.data.resources[i];
-        let hover = g.hit_cells(x, top + 1 + line, 66, 1, Act::Call(Game::click_black, line), None);
+        let hover = g.hit_cells(
+            x,
+            top + 1 + line,
+            66,
+            1,
+            Act::Call(Game::click_black, line),
+            None,
+        );
         let c = if line == sel {
             AMBER
         } else if hover {
@@ -801,7 +816,12 @@ fn draw_black(fb: &mut Framebuffer, g: &Game) {
         );
     }
     if goods.is_empty() {
-        fb.text(x, top + 2, "RIEN N'EST INTERDIT ICI : TOUT SE VEND AU GRAND JOUR", DIM);
+        fb.text(
+            x,
+            top + 2,
+            "RIEN N'EST INTERDIT ICI : TOUT SE VEND AU GRAND JOUR",
+            DIM,
+        );
     }
     let b = fb.rows() - 4;
     foot(

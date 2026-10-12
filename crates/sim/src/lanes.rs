@@ -536,9 +536,7 @@ impl Sim {
             .flatten()
             .and_then(|st| self.markets.get(&st));
         match live {
-            Some(m) => {
-                base * m.scarcity_at(res, m.stock[res]) / m.scarcity_at(res, m.target[res])
-            }
+            Some(m) => base * m.scarcity_at(res, m.stock[res]) / m.scarcity_at(res, m.target[res]),
             None => base,
         }
     }
@@ -807,8 +805,8 @@ mod tests {
         // Audit B15: the lines write the physical stock; the price follows it.
         let d = data();
         let (mut s, st, line) = docked_at_a_hub(&d);
-        let origin = (line.a[0] - s.here_pos[0]).abs() < 1e-6
-            && (line.a[1] - s.here_pos[1]).abs() < 1e-6;
+        let origin =
+            (line.a[0] - s.here_pos[0]).abs() < 1e-6 && (line.a[1] - s.here_pos[1]).abs() < 1e-6;
         let r = line.res;
         // A convoy that leaves or arrives within the next weeks.
         s.time = 30.0 * DAY;
@@ -830,8 +828,7 @@ mod tests {
         s.time = t_event + 2.0 * DAY / 24.0;
         let after = s.market(st).stock[r];
         let moved = after - before;
-        let expected = if origin { -c.loaded } else { c.delivered() } * reference
-            / MARKET_KG;
+        let expected = if origin { -c.loaded } else { c.delivered() } * reference / MARKET_KG;
         // (the stock also relaxes a little in the two hours of the window)
         assert!(
             (moved - expected).abs() < 0.05 * expected.abs() + 0.05 * (target - before).abs() + 1.0,
@@ -849,9 +846,15 @@ mod tests {
         s.market(st).stock[r] = kept * 0.2 + 1.0;
         let m1 = s.convoy_margin(&line);
         if origin {
-            assert!(m1 < m0, "a dear origin makes the line pay less: {m0} -> {m1}");
+            assert!(
+                m1 < m0,
+                "a dear origin makes the line pay less: {m0} -> {m1}"
+            );
         } else {
-            assert!(m1 > m0, "a short destination makes the line pay more: {m0} -> {m1}");
+            assert!(
+                m1 > m0,
+                "a short destination makes the line pay more: {m0} -> {m1}"
+            );
         }
     }
 

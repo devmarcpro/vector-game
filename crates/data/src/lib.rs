@@ -3121,13 +3121,20 @@ impl GameData {
                 return bad(format!("incident {} en double", k.id));
             }
             if !(0.02..=0.5).contains(&k.share.abs()) {
-                return bad(format!("incident {}: effet {} hors de 2..50 %", k.id, k.share));
+                return bad(format!(
+                    "incident {}: effet {} hors de 2..50 %",
+                    k.id, k.share
+                ));
             }
             if !k.text.contains("{c}") || !k.text.contains("{p}") {
-                return bad(format!("incident {}: le texte doit citer {{c}} et {{p}}", k.id));
+                return bad(format!(
+                    "incident {}: le texte doit citer {{c}} et {{p}}",
+                    k.id
+                ));
             }
         }
-        if !self.incidents.iter().any(|k| k.share < 0.0) || !self.incidents.iter().any(|k| k.share > 0.0)
+        if !self.incidents.iter().any(|k| k.share < 0.0)
+            || !self.incidents.iter().any(|k| k.share > 0.0)
         {
             return bad("incidents: il faut au moins un revers et un succes".into());
         }

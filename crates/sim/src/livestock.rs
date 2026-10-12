@@ -75,7 +75,12 @@ pub fn wild_genes(world: u64, sp: usize, biome: usize, n: u64) -> [[u8; 2]; 4] {
         let pool = hash_coord(world ^ 0x6E4E, sp as i64, biome as i64, t as i64);
         let mean = (pool % (u64::from(ALLELE_MAX) + 1)) as i64;
         for (k, a) in gene.iter_mut().enumerate() {
-            let h = hash_coord(world ^ 0x1D17, sp as i64, (n % (1 << 40)) as i64, (t * 2 + k) as i64);
+            let h = hash_coord(
+                world ^ 0x1D17,
+                sp as i64,
+                (n % (1 << 40)) as i64,
+                (t * 2 + k) as i64,
+            );
             let step = (h % 3) as i64 - 1;
             *a = (mean + step).clamp(0, i64::from(ALLELE_MAX)) as u8;
         }

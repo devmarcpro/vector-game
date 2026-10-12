@@ -116,7 +116,7 @@ impl Sim {
 
     /// Price multiplier for the player in the current territory: good standing earns better prices.
     pub fn trade_edge(&self) -> f64 {
-        1.0 + 0.002 * f64::from(self.reputation_with(self.faction))
+        (1.0 + 0.002 * f64::from(self.reputation_with(self.faction))) * self.language_edge()
     }
 
     /// Share of a sale withheld by the local authority.

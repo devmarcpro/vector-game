@@ -88,3 +88,5 @@ Xenobiologie : 13 especes dans data/species_xeno.ron (ecrit a la main, ajoute a 
 
 ## Astronomie
 `data/cosmos.ron` : id, nom, groupe (etoile, systeme, milieu, galaxie, asteroide), lien (classe d'asteroide de `asteroids.ron`), texte. Chaque stade d'etoile, chaque type d'objet du milieu interstellaire et chaque classe d'asteroide du code a son entree (test).
+
+`data/society.ron` : langues (famille, peuples et cultures qui la parlent, annees par ere de derive, trois mots), fetes (moment de l'annee locale, duree, moral, moeurs requises), plats, arts (prix de base, gout sur un axe d'ethos, titres), sports (concurrents, marge), etudes (competence, langue ou art, jours, frais, gain). Valides au chargement ; une entree de codex est generee pour chacun (categories 47 a 52). `data/laws.ron` gagne la loi de quarantaine.

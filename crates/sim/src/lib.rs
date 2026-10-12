@@ -55,6 +55,7 @@ pub mod save;
 pub mod scene;
 pub mod science;
 pub mod start;
+pub mod society;
 pub mod surgery;
 pub mod surprises;
 pub mod trading;
@@ -335,6 +336,7 @@ pub struct Sim {
     pub rogue: Option<rogue::Rogue>,
     pub rogue_visits: Vec<(u64, u32)>,
     pub births_day: i64,
+    pub society: society::SocietyState,
     /// The news heard so far, and the last day the sectors around were listened to.
     pub news: Vec<news::NewsItem>,
     pub news_scanned_to: f64,
@@ -485,6 +487,7 @@ impl Sim {
             rogue: None,
             rogue_visits: Vec::new(),
             births_day: i64::MIN,
+            society: Default::default(),
             news: Vec::new(),
             news_scanned_to: f64::NEG_INFINITY,
             last_livestock_day: i64::MIN,
@@ -784,6 +787,7 @@ impl Sim {
         self.multiverse_tick();
         self.mind_tick();
         self.births_tick();
+        self.society_tick();
         self.news_tick();
         let flux = self.solar_flux();
         let ext_heat_kw = self.external_heat_kw(dt);
@@ -1338,6 +1342,7 @@ impl Sim {
         if self.bodies[i].kind == BodyKind::Station {
             self.customs_check();
             self.law_patrol();
+            self.quarantine_check();
         }
         Ok(i)
     }

@@ -33,6 +33,7 @@ mod script;
 mod settings;
 mod ship_model;
 mod sky_view;
+mod society_view;
 mod sprites;
 mod surface_view;
 mod tech_view;
@@ -596,6 +597,20 @@ fn snapshot(path: &str, scene: &str, data: Arc<GameData>) {
             g.sim.set_reputation(4, -70.0);
             g.key(KeyCode::KeyX, None, true);
             g.fac_sel = 4;
+        }
+        "societe" => {
+            let (st, _) = g.sim.nearest_station().expect("station");
+            g.sim.spawn_near(st, g.sim.bodies[st].radius + 200.0);
+            g.sim.try_dock().ok();
+            g.sim.credits = 50_000.0;
+            let id = g.sim.crew.members[0].id;
+            for k in 0..3 {
+                g.sim.time += 86_400.0;
+                g.sim.compose(id, k).ok();
+            }
+            g.key(KeyCode::KeyX, None, true);
+            g.fac_sel = g.sim.faction.unwrap_or(0);
+            g.soc_page = true;
         }
         "bourse" | "bourse2" => {
             let (st, _) = g.sim.nearest_station().expect("station");

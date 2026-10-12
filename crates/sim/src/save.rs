@@ -88,6 +88,7 @@ pub struct SaveGame {
     pub rogue: Option<crate::rogue::Rogue>,
     pub rogue_visits: Vec<(u64, u32)>,
     pub births_day: i64,
+    pub society: crate::society::SocietyState,
     pub news: Vec<crate::news::NewsItem>,
     pub news_scanned_to: f64,
     pub last_livestock_day: i64,
@@ -149,6 +150,7 @@ impl Sim {
             rogue: self.rogue.clone(),
             rogue_visits: self.rogue_visits.clone(),
             births_day: self.births_day,
+            society: self.society.clone(),
             news: self.news.clone(),
             news_scanned_to: self.news_scanned_to,
             last_livestock_day: self.last_livestock_day,
@@ -238,6 +240,7 @@ impl Sim {
         sim.rogue = save.rogue;
         sim.rogue_visits = save.rogue_visits;
         sim.births_day = save.births_day;
+        sim.society = save.society;
         sim.news = save.news;
         sim.news_scanned_to = save.news_scanned_to;
         sim.last_livestock_day = save.last_livestock_day;

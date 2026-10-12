@@ -151,7 +151,7 @@ pub fn hint_line(g: &Game) -> String {
         Screen::Expedition => "HAUT/BAS CHOISIR  ESPACE COCHER  ENTREE PARTIR  ECHAP RETOUR",
         Screen::Dialogue => "1-6 OU CLIC REPONDRE  HAUT/BAS + ENTREE  ECHAP COUPER LA COMMUNICATION",
         Screen::Proto => "CLIC SUR LES ELEMENTS  GAUCHE/DROITE OU 1-2 PROTOTYPE  F12/ECHAP RETOUR",
-        Screen::Factions => "GAUCHE/DROITE FACTION  P AMENDES  B POT-DE-VIN  L AVOCAT  TAB RELATIONS  X/ECHAP RETOUR",
+        Screen::Factions => "GAUCHE/DROITE FACTION  P AMENDES  B POT-DE-VIN  L AVOCAT  TAB RELATIONS  S SOCIETE  X/ECHAP RETOUR",
         Screen::Galaxy => {
             "HAUT/BAS ETOILE  +/- ZOOM  ENTREE SAUT FTL  L/ECHAP RETOUR  (RETOUR ARRIERE ANNULE UNE CHARGE)"
         }
@@ -274,6 +274,7 @@ pub fn help_lines(screen: Screen) -> &'static [&'static str] {
             "Lois en vigueur chez eux seulement ; ma situation juridique (casier, amendes)",
             "P payer les amendes   B pot-de-vin (peut echouer)   L avocat (moitie)",
             "Tab : registre des relations (factions, peuples, cartels, contacts, entreprises)",
+            "S : page SOCIETE (langue, culture du lieu, ecole, arts, paris) ; Haut/Bas equipier, PgUp/PgDn etude, E C V D P A J",
             "Ce que vous faites a l'un se repercute, attenue, sur ses allies et ses rivaux",
             "X ou Echap : retour",
         ],

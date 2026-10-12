@@ -402,6 +402,35 @@ pub fn draw(fb: &mut Framebuffer, g: &Game) {
             .collect::<String>(),
         GREEN,
     );
+    // Discoveries the research waits for: green once made, red while missing.
+    if !tech.needs.is_empty() && d + 4 < fb.rows() {
+        let missing = s.missing_findings(sel);
+        let line = format!(
+            "DECOUVERTES REQUISES : {}",
+            tech.needs
+                .iter()
+                .map(|n| format!(
+                    "{}{}",
+                    if missing.contains(n) {
+                        "MANQUE "
+                    } else {
+                        "FAIT "
+                    },
+                    n.replace([':', '_'], " ").to_uppercase()
+                ))
+                .collect::<Vec<_>>()
+                .join(" ; ")
+        );
+        fb.text(
+            1,
+            d + 4,
+            &line
+                .chars()
+                .take(cols.saturating_sub(2))
+                .collect::<String>(),
+            if missing.is_empty() { GREEN } else { RED },
+        );
+    }
 }
 
 #[cfg(test)]

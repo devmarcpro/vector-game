@@ -1,4 +1,8 @@
 //! Colonies: aggregated populations and buildings simulated at a coarse tick, anywhere in the galaxy.
+use crate::colony_works::{
+    Ops, LIMIT_INPUT, LIMIT_NONE, LIMIT_OFF, LIMIT_POWER, LIMIT_SPACE, LIMIT_STAFF, LIMIT_TOOLS,
+    LIMIT_WORN, TOOLS_PER_JOB,
+};
 use crate::crew::DAY;
 use crate::{Event, Sim};
 use serde::{Deserialize, Serialize};
@@ -50,6 +54,8 @@ pub struct BuildingInst {
     /// Index into the definition's recipe list.
     pub recipe: usize,
     pub health: f64,
+    /// What held it back last tick and how much of its rated throughput it used.
+    pub ops: crate::colony_works::Ops,
 }
 
 impl BuildingInst {
@@ -127,6 +133,12 @@ pub struct Colony {
     pub debt_days: f64,
     pub stats: ColonyStats,
     pub log: Vec<(f64, String)>,
+    /// Industry, farming and city state (see `colony_works`).
+    pub works: crate::colony_works::Works,
+    /// Capacities unlocked by research (bits of `vector_data::CAPACITIES`), set by the sim each
+    /// update; not saved.
+    #[serde(skip)]
+    pub caps: u32,
     /// Climate of the world being terraformed (see `terraform`); None for bodies without one.
     pub terra: Option<crate::terraform::Terra>,
     /// Terraforming works and megastructures (see `megastructure`).
@@ -406,6 +418,10 @@ impl Colony {
             self.log_line(now, format!("Construction terminee : {n}."));
         }
 
+        // Convoys that arrived, food that came from elsewhere.
+        self.receive_convoys(data, now);
+        self.absorb_foreign_food(data);
+
         // Capacities.
         let active = |b: &&BuildingInst| b.built() && b.enabled && b.health > 0.2;
         let housing: f64 = self
@@ -421,23 +437,22 @@ impl Colony {
                 .filter(|b| b.built())
                 .map(|b| data.buildings[b.def].storage)
                 .sum::<f64>();
-        let jobs: f64 = self
+        let raw_jobs: f64 = self
             .buildings
             .iter()
             .filter(active)
             .map(|b| data.buildings[b.def].workers)
             .sum();
+        // Machines replace a share of the labour.
+        let auto = self.automation_level(data);
+        self.works.automation = auto;
+        let jobs = raw_jobs * (1.0 - auto);
         // Works under way take their crews, finished ones house, store and power.
         let mx = self.mega_effects(data);
         let housing = housing + mx.housing + self.open_air_housing();
         let storage_cap = storage_cap + mx.storage;
         let jobs = jobs + mx.crew;
         let workers = 0.55 * self.pop;
-        let staffing = if jobs > 0.0 {
-            (workers / jobs).min(1.0)
-        } else {
-            1.0
-        };
 
         // Power: solar scales with the star, fuel plants burn stock, others are steady.
         let (mut supply, mut demand, mut vital) = (0.0, 0.0, 0.0);
@@ -523,6 +538,103 @@ impl Colony {
             self.log_line(now, msg);
         }
 
+        // Skill of the workers (schools) and the transit that gets them to work.
+        let edu_cover = {
+            let cap: f64 = self
+                .buildings
+                .iter()
+                .filter(active)
+                .map(|b| data.buildings[b.def].education)
+                .sum();
+            (cap / (self.pop / 800.0).max(1e-9)).min(1.0)
+        };
+        let area = self.area_ha(data);
+        let transit: f64 = self
+            .buildings
+            .iter()
+            .filter(active)
+            .map(|b| data.buildings[b.def].transit * b.health)
+            .sum::<f64>()
+            * power_sat.min(1.0);
+        let commuters = workers.min(jobs) * (0.3 + 0.7 * (area / 60.0).min(1.0));
+        let walk = 1.0 / (1.0 + area / 30.0);
+        let moves = if commuters > 1.0 {
+            walk + (1.0 - walk) * (transit / commuters).min(1.0)
+        } else {
+            1.0
+        };
+        self.works.mobility = moves;
+        let staffing = if jobs > 0.0 {
+            (workers * (0.7 + 0.3 * moves) / jobs).min(1.0)
+        } else {
+            1.0
+        };
+        self.works.unemployment = if workers > 1.0 && jobs > 0.0 {
+            0.6 * ((workers - jobs).max(0.0) / workers)
+        } else {
+            0.0
+        };
+
+        // Productivity.
+        let (_, work_mult, _) = self.policy_level(data, "work");
+        let (_, sec_mult, _) = self.policy_level(data, "security");
+        let (_, quarantine_mult, _) = self.policy_level(data, "quarantine");
+        let rioting = self.unrest > 0.7;
+        let broke = self.treasury < 0.0;
+        let strike = self.strike_factor(data, now, days);
+        let prod_mult = (staffing
+            * power_sat
+            * (0.35 + 0.9 * self.happiness)
+            * (1.0 + work_mult + sec_mult + quarantine_mult)
+            * (1.0 - self.pest.clamp(0.0, 0.5))
+            * (1.0 - self.labor_loss(data))
+            * strike
+            * if rioting { 0.5 } else { 1.0 }
+            * if broke { 0.3 } else { 1.0 })
+        .max(0.0);
+        // Cheap energy lifts everything: a tenth per tenfold of surplus power, up to a third.
+        let abundance = if demand > 0.0 && supply > demand {
+            (0.1 * (supply / demand).log10()).min(0.33)
+        } else {
+            0.0
+        };
+        let prod_mult = prod_mult * (1.0 + mx.prod + abundance);
+
+        // Tools wear out; the quality of the work follows tooling, skill and machines.
+        let industrial_jobs: f64 = self
+            .buildings
+            .iter()
+            .filter(active)
+            .filter(|b| !data.buildings[b.def].recipes.is_empty())
+            .map(|b| data.buildings[b.def].workers)
+            .sum();
+        let tool_need = industrial_jobs * TOOLS_PER_JOB * days;
+        let tool_got = self.take_stock(data, "tools", tool_need);
+        let tool_ok = if tool_need > 0.0 {
+            tool_got / tool_need
+        } else {
+            1.0
+        };
+        self.works.tool_cover = tool_ok;
+        let tool_factor = 0.8 + 0.2 * tool_ok;
+        let quality = self.quality_index(data, tool_ok, edu_cover, auto);
+        self.works.quality = quality;
+        let defect = (0.20 * (1.0 - quality) + 0.01).clamp(0.01, 0.25);
+        self.works.defect = defect;
+
+        // Food spoils (cold stores slow it), the fields give, the people eat.
+        let spoiled = self.spoil_tick(data, days, now, power_sat);
+        self.farm_tick(data, days, now, power_sat, prod_mult);
+        let cook_cover = (self
+            .buildings
+            .iter()
+            .filter(active)
+            .map(|b| data.buildings[b.def].cooking * b.health)
+            .sum::<f64>()
+            * power_sat.min(1.0)
+            / self.pop.max(1.0))
+        .min(1.0);
+
         // Population needs.
         let (_, _, rations_h) = self.policy_level(data, "rations");
         let ration_factor = if rations_h < -0.01 {
@@ -550,11 +662,15 @@ impl Colony {
                 _ => 1.0,
             }
         };
-        let food_sat = take(
-            "food",
-            self.pop * FOOD_KG_PER_DAY * ration_factor * days,
-            &mut self.storage,
-        );
+        let need_food =
+            self.pop * FOOD_KG_PER_DAY * ration_factor * (1.0 - 0.08 * cook_cover) * days;
+        let mut food_sat = take("food", need_food, &mut self.storage);
+        if food_sat < 0.999 && need_food > 0.0 {
+            // Preserves feed the people when the fresh food runs out.
+            let short = need_food * (1.0 - food_sat);
+            food_sat += take("preserves", short, &mut self.storage) * short / need_food;
+        }
+        self.nutrition_tick(food_sat, cook_cover, days);
         let water_sat = take(
             "water",
             self.pop * WATER_KG_PER_DAY * (1.0 - recycle) * days,
@@ -566,54 +682,77 @@ impl Colony {
             &mut self.storage,
         );
 
-        // Productivity.
-        let (_, work_mult, _) = self.policy_level(data, "work");
-        let (_, sec_mult, _) = self.policy_level(data, "security");
-        let (_, quarantine_mult, _) = self.policy_level(data, "quarantine");
-        let rioting = self.unrest > 0.7;
-        let broke = self.treasury < 0.0;
-        let strike = self.strike_factor(data, now, days);
-        let prod_mult = (staffing
-            * power_sat
-            * (0.35 + 0.9 * self.happiness)
-            * (1.0 + work_mult + sec_mult + quarantine_mult)
-            * (1.0 - self.pest.clamp(0.0, 0.5))
-            * (1.0 - self.labor_loss(data))
-            * strike
-            * if rioting { 0.5 } else { 1.0 }
-            * if broke { 0.3 } else { 1.0 })
-        .max(0.0);
-        // Cheap energy lifts everything: a tenth per tenfold of surplus power, up to a third.
-        let abundance = if demand > 0.0 && supply > demand {
-            (0.1 * (supply / demand).log10()).min(0.33)
-        } else {
-            0.0
-        };
-        let prod_mult = prod_mult * (1.0 + mx.prod + abundance);
-
         // Production.
         let mut research_gain = 0.0;
         let mut messages: Vec<String> = Vec::new();
+        let mut extra_waste = spoiled;
+        let mut shortages: Vec<(usize, u32)> = Vec::new();
+        let base_limit = |inst: &BuildingInst, d: &vector_data::Building| -> u8 {
+            if d.power < 0.0 && power_sat < 0.7 {
+                LIMIT_POWER
+            } else if staffing < 0.7 {
+                LIMIT_STAFF
+            } else if inst.health < 0.5 {
+                LIMIT_WORN
+            } else if tool_ok < 0.5 && !d.recipes.is_empty() {
+                LIMIT_TOOLS
+            } else {
+                LIMIT_NONE
+            }
+        };
         for bi in 0..self.buildings.len() {
             let inst = self.buildings[bi].clone();
-            if !(inst.built() && inst.enabled && inst.health > 0.2) {
+            if !inst.built() {
+                continue;
+            }
+            if !inst.enabled {
+                self.buildings[bi].ops = Ops {
+                    limit: LIMIT_OFF,
+                    load: 0.0,
+                };
+                continue;
+            }
+            if inst.health <= 0.2 {
+                self.buildings[bi].ops = Ops {
+                    limit: LIMIT_WORN,
+                    load: 0.0,
+                };
                 continue;
             }
             let def = &data.buildings[inst.def];
+            let lim0 = base_limit(&inst, def);
             if def.recipes.is_empty() {
+                self.buildings[bi].ops = Ops {
+                    limit: lim0,
+                    load: 1.0,
+                };
                 continue;
             }
             let Some(ri) = data.recipe_index(&def.recipes[inst.recipe % def.recipes.len()]) else {
                 continue;
             };
             let r = &data.recipes[ri];
-            let mut batches = def.throughput * days * prod_mult * inst.health;
+            let rated = (def.throughput * days).max(1e-9);
+            let cap = rated * prod_mult * inst.health * tool_factor;
+            let mut batches = cap;
             if batches <= 1e-9 {
+                self.buildings[bi].ops = Ops {
+                    limit: if lim0 == LIMIT_NONE {
+                        LIMIT_STAFF
+                    } else {
+                        lim0
+                    },
+                    load: 0.0,
+                };
                 continue;
             }
             if r.kind == "extract" {
                 let split = extraction_split(data, self, &r.outputs[0].0);
                 if split.is_empty() {
+                    self.buildings[bi].ops = Ops {
+                        limit: lim0,
+                        load: 0.0,
+                    };
                     continue;
                 }
                 let mass = r.outputs[0].1 * batches;
@@ -622,21 +761,60 @@ impl Colony {
                 for (i, share) in split {
                     self.storage[i] += mass * scale * share;
                 }
+                self.buildings[bi].ops = Ops {
+                    limit: if scale < 0.7 { LIMIT_SPACE } else { lim0 },
+                    load: (batches * scale / rated).min(1.0) as f32,
+                };
                 continue;
             }
+            let mut short: Option<usize> = None;
             for (id, kg) in &r.inputs {
                 if let Some(i) = data.resource_index(id) {
-                    batches = batches.min(self.storage[i] / kg);
+                    let avail = self.storage[i] / kg;
+                    if avail < batches {
+                        batches = avail;
+                        short = Some(i);
+                    }
                 }
             }
             let net: f64 = r.outputs.iter().map(|o| o.1).sum::<f64>()
                 - r.inputs.iter().map(|i| i.1).sum::<f64>();
+            let mut full = false;
             if r.kind != "data" && net > 0.0 {
-                batches = batches.min(self.free_space() / net);
+                let room = self.free_space() / net;
+                if room < batches {
+                    batches = room;
+                    full = true;
+                    short = None;
+                }
+            }
+            let limit = if batches < 0.7 * cap {
+                if short.is_some() {
+                    LIMIT_INPUT
+                } else if full {
+                    LIMIT_SPACE
+                } else {
+                    lim0
+                }
+            } else {
+                lim0
+            };
+            if limit == LIMIT_INPUT {
+                if let Some(i) = short {
+                    match shortages.iter_mut().find(|s| s.0 == i) {
+                        Some(s) => s.1 += 1,
+                        None => shortages.push((i, 1)),
+                    }
+                }
             }
             if batches <= 1e-9 {
+                self.buildings[bi].ops = Ops { limit, load: 0.0 };
                 continue;
             }
+            self.buildings[bi].ops = Ops {
+                limit,
+                load: (batches / rated).min(1.0) as f32,
+            };
             for (id, kg) in &r.inputs {
                 if let Some(i) = data.resource_index(id) {
                     self.storage[i] -= kg * batches;
@@ -646,10 +824,13 @@ impl Colony {
                 if r.kind == "data" {
                     research_gain += kg * batches * def.research.max(1.0);
                 } else if let Some(i) = data.resource_index(id) {
-                    self.storage[i] += kg * batches;
+                    // Defects of the work go to the waste heap.
+                    self.storage[i] += kg * batches * (1.0 - defect);
+                    extra_waste += kg * batches * defect;
                 }
             }
         }
+        self.works.short_res = shortages.into_iter().max_by_key(|s| s.1);
         self.research +=
             research_gain * (1.0 + data.religions.get(self.faith).map_or(0.0, |r| r.research));
 
@@ -686,6 +867,17 @@ impl Colony {
         } else {
             0.0
         };
+        let city = self.city_tick(
+            data,
+            &crate::colony_works::CityIn {
+                days,
+                now,
+                vital_sat,
+                sec,
+                happiness: self.happiness,
+            },
+            extra_waste,
+        );
         let target = (0.10
             + 0.30 * food_sat
             + 0.20 * water_sat
@@ -702,6 +894,9 @@ impl Colony {
             + imm_h
             + gather_h
             + quarantine_h
+            + city.mood
+            + 0.08 * (self.works.nutrition - 0.75)
+            + 0.03 * cook_cover
             - crowd
             - self.culture_friction(data)
             - self.fear()
@@ -747,7 +942,7 @@ impl Colony {
             days,
             &crate::epidemic::EpiCtx {
                 med,
-                crowd,
+                crowd: (crowd + city.crowd).min(0.5),
                 food_sat,
                 water_sat,
             },
@@ -757,9 +952,11 @@ impl Colony {
             * (0.00008
                 + 0.00005 * (1.0 - med)
                 + 0.01 * (1.0 - food_sat).powi(2)
-                + 0.03 * (1.0 - water_sat).powi(2))
+                + 0.03 * (1.0 - water_sat).powi(2)
+                + 0.00006 * (1.0 - self.works.nutrition))
             * days
-            + epidemic_deaths;
+            + epidemic_deaths
+            + city.deaths;
         let immigration_rate = match data
             .policy_index("immigration")
             .map_or(1, |p| self.policies[p])
@@ -791,7 +988,7 @@ impl Colony {
 
         // Treasury.
         let (tax_cr, _, _) = self.policy_level(data, "tax");
-        let income = self.pop * tax_cr * days * self.happiness;
+        let income = self.pop * tax_cr * days * self.happiness * city.income_mult;
         let upkeep: f64 = self
             .buildings
             .iter()
@@ -818,6 +1015,11 @@ impl Colony {
         let surplus_w = (supply - demand).max(0.0) * 1000.0;
         let proc_w = (plants * 2.0e7 * power_sat + surplus_w).min(plants * 1.0e9);
         self.mega_tick(data, days, power_sat, staffing, proc_w, now);
+
+        // Imports and exports of food, upkeep of the works, and the record for the charts.
+        self.trade_tick(data, days, now);
+        self.upkeep_tick(data, days, now, auto);
+        self.works_close(data, now);
 
         self.stats = ColonyStats {
             power_supply: supply,
@@ -982,6 +1184,8 @@ impl Sim {
             debt_days: 0.0,
             stats: ColonyStats::default(),
             log: Vec::new(),
+            works: crate::colony_works::Works::default(),
+            caps: 0,
             terra: Some(crate::terraform::Terra::new(
                 &self.system,
                 i,
@@ -999,11 +1203,13 @@ impl Sim {
                         enabled: true,
                         recipe: 0,
                         health: 1.0,
+                        ops: Default::default(),
                     });
                 }
             }
         }
         c.log_line(self.time, format!("Fondation de {}.", c.name));
+        c.caps = self.capacity_mask();
         if let Some((sg, _)) = &site {
             c.log_line(
                 self.time,
@@ -1021,6 +1227,8 @@ impl Sim {
         }
         c.update(&data, self.time);
         self.colonies.push(c);
+        let last = self.colonies.len() - 1;
+        self.colony_env_init(last);
         self.events.push(Event::ColonyFounded {
             index: self.colonies.len() - 1,
         });
@@ -1108,6 +1316,7 @@ impl Sim {
             enabled: true,
             recipe: 0,
             health: 1.0,
+            ops: Default::default(),
         });
         let t = self.time;
         c.log_line(t, format!("Construction lancee : {}.", d.name));
@@ -1175,9 +1384,16 @@ impl Sim {
         self.sync_terra_air();
         let data = std::sync::Arc::clone(&self.data);
         let now = self.time;
+        let caps = self.capacity_mask();
+        for ci in 0..self.colonies.len() {
+            if !self.colonies[ci].works.env.ready {
+                self.colony_env_init(ci);
+            }
+        }
         let mut advanced = Vec::new();
         for (ci, c) in self.colonies.iter_mut().enumerate() {
             let (before, t0) = (c.log.len(), c.last_tick);
+            c.caps = caps;
             c.update(&data, now);
             if c.last_tick > t0 {
                 advanced.push((ci, t0, c.last_tick));
@@ -1196,6 +1412,7 @@ impl Sim {
             self.apply_mega_threats(ci, t0, t1);
             self.apply_introductions(ci);
             self.apply_ecology(ci, t1);
+            self.apply_works_world(ci);
             let c = &self.colonies[ci];
             if c.log.len() > before && c.star == self.here {
                 if let Some((_, text)) = c.log.last() {
@@ -1379,6 +1596,7 @@ pub(crate) mod tests {
             enabled: true,
             recipe: 0,
             health: 1.0,
+            ops: Default::default(),
         });
         let supply = |c: &mut Colony, tag: &str, t: f64| {
             c.tags.retain(|x| !x.starts_with("geo_"));
@@ -1393,7 +1611,8 @@ pub(crate) mod tests {
         let cold = supply(c, "geo_cold", t + 2.0 * DAY);
         let rated = data.buildings[plant].power;
         assert!(
-            (hot - cold - 1.6 * rated * c.geo).abs() < 1.0,
+            // The plant wears a little (0.08 % a day) between the readings.
+            (hot - cold - 1.6 * rated * c.geo).abs() < 0.001 * rated * 3.0 * c.geo.max(1.0) + 1.0,
             "{hot} {cold} {rated}"
         );
         assert!(hot > none && none > cold, "{hot} {none} {cold}");
@@ -1437,6 +1656,8 @@ pub(crate) mod tests {
                     ("food", 20000.0),
                     ("water", 20000.0),
                     ("consumer_goods", 2000.0),
+                    ("construction_materials", 3000.0),
+                    ("spare_parts", 500.0),
                 ],
             );
             let had = s.colonies[ci].outbreaks.iter().any(|o| o.active());
@@ -1666,6 +1887,7 @@ pub(crate) mod tests {
                 enabled: true,
                 recipe: 0,
                 health: 1.0,
+                ops: Default::default(),
             });
         }
         fill(
@@ -1697,6 +1919,7 @@ pub(crate) mod tests {
             enabled: true,
             recipe: 0,
             health: 1.0,
+            ops: Default::default(),
         });
         s2.colonies[ci2].pop = 100.0;
         s2.colonies[ci2].happiness = 1.0;
@@ -1720,6 +1943,7 @@ pub(crate) mod tests {
             enabled: true,
             recipe: 0,
             health: 1.0,
+            ops: Default::default(),
         });
         let dome = s2.data.building_index("habitat_dome").expect("def");
         s2.colonies[ci2].buildings.push(BuildingInst {
@@ -1728,6 +1952,7 @@ pub(crate) mod tests {
             enabled: true,
             recipe: 0,
             health: 1.0,
+            ops: Default::default(),
         });
         s2.time += 5.0 * DAY;
         s2.update_colonies();
@@ -1754,9 +1979,11 @@ pub(crate) mod tests {
             &mut s,
             ci,
             &[
-                ("food", 9000.0),
-                ("water", 3000.0),
+                ("food", 20000.0),
+                ("water", 12000.0),
                 ("consumer_goods", 900.0),
+                ("construction_materials", 3000.0),
+                ("spare_parts", 500.0),
             ],
         );
         let dome = s.data.building_index("habitat_dome").expect("def");
@@ -1767,6 +1994,7 @@ pub(crate) mod tests {
                 enabled: true,
                 recipe: 0,
                 health: 1.0,
+                ops: Default::default(),
             });
         }
         let mut a = s.colonies[ci].clone();
@@ -1791,6 +2019,7 @@ pub(crate) mod tests {
             enabled: true,
             recipe: 0,
             health: 1.0,
+            ops: Default::default(),
         });
         s3.colonies[c3].pop = 60.0;
         fill(
@@ -1857,6 +2086,7 @@ pub(crate) mod tests {
                 enabled: true,
                 recipe: 0,
                 health: 1.0,
+                ops: Default::default(),
             });
         }
         s.colonies[ci].pop = 80.0;
@@ -1906,6 +2136,7 @@ pub(crate) mod tests {
                 enabled: true,
                 recipe: 0,
                 health: 1.0,
+                ops: Default::default(),
             });
         }
     }

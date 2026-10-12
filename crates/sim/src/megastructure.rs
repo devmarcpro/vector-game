@@ -679,15 +679,17 @@ mod tests {
                 enabled: true,
                 recipe: 0,
                 health: 1.0,
+                ops: Default::default(),
             });
         }
-        for _ in 0..30 {
+        for _ in 0..60 {
             c.buildings.push(BuildingInst {
                 def: dome,
                 progress: 1.0,
                 enabled: true,
                 recipe: 0,
                 health: 1.0,
+                ops: Default::default(),
             });
         }
         let warehouse = d.building_index("warehouse").expect("warehouse");
@@ -698,16 +700,55 @@ mod tests {
                 enabled: true,
                 recipe: 0,
                 health: 1.0,
+                ops: Default::default(),
             });
         }
-        c.pop = 1500.0;
+        // A town this size has its metro and its spare parts (see `colony_works`: commuting, wear).
+        let metro = d.building_index("metro_line").expect("metro");
+        let sewage = d.building_index("sewage_plant").expect("sewage");
+        for _ in 0..2 {
+            c.buildings.push(BuildingInst {
+                def: sewage,
+                progress: 1.0,
+                enabled: true,
+                recipe: 0,
+                health: 1.0,
+                ops: Default::default(),
+            });
+        }
+        for _ in 0..3 {
+            c.buildings.push(BuildingInst {
+                def: metro,
+                progress: 1.0,
+                enabled: true,
+                recipe: 0,
+                health: 1.0,
+                ops: Default::default(),
+            });
+        }
+        c.pop = 3000.0;
         c.happiness = 0.9;
         fill(
             &mut s,
             ci,
-            &[("food", 3.0e7), ("water", 3.0e7), ("consumer_goods", 3.0e6)],
+            &[
+                ("food", 3.0e7),
+                ("water", 3.0e7),
+                ("consumer_goods", 3.0e6),
+                ("spare_parts", 2.0e6),
+                ("construction_materials", 2.0e6),
+            ],
         );
         (s, ci)
+    }
+
+    /// Food spoils (see `colony_works`): the granary of a long test is refilled as it rots.
+    fn feed(s: &mut Sim) {
+        for c in &mut s.colonies {
+            if let Some(f) = s.data.resource_index("food") {
+                c.storage[f] = c.storage[f].max(2.0e7);
+            }
+        }
     }
 
     fn advance(s: &mut Sim, days: f64) {
@@ -879,6 +920,7 @@ mod tests {
             ],
         );
         for _ in 0..60 {
+            feed(&mut s);
             advance(&mut s, 100.0);
             if s.colonies[ci].projects[0].units >= 1 {
                 break;
@@ -1083,6 +1125,7 @@ mod tests {
                 enabled: true,
                 recipe: 0,
                 health: 1.0,
+                ops: Default::default(),
             });
         }
         raid(&mut s);

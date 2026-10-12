@@ -910,6 +910,7 @@ impl Sim {
             total += got;
         }
         w.cargo.retain(|(_, kg)| *kg > 0.5);
+        self.findings.insert("wreck:salvaged".to_string());
         if self.wrecks[i].cargo.is_empty() {
             self.wrecks.remove(i);
         }

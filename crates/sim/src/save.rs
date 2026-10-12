@@ -79,6 +79,7 @@ pub struct SaveGame {
     pub current_research: Option<usize>,
     pub research_progress: f64,
     pub explored: Vec<bool>,
+    pub findings: Vec<String>,
     pub rules: crate::rules::Rules,
     /// Food web of each colony's territory: (colony id, game time, biomass in kg).
     pub ecologies: Vec<(u32, f64, Vec<f32>, Vec<bool>)>,
@@ -151,6 +152,7 @@ impl Sim {
             current_research: self.current_research,
             research_progress: self.research_progress,
             explored: self.explored.clone(),
+            findings: self.findings.iter().cloned().collect(),
             rules: self.rules.clone(),
             relations: self.relations.clone(),
             surprises: self.surprises.clone(),
@@ -285,6 +287,7 @@ impl Sim {
             }
         }
         sim.research_pool = save.research_pool;
+        sim.findings = save.findings.into_iter().collect();
         sim.current_research = save.current_research;
         sim.research_progress = save.research_progress;
         if save.explored.len() == sim.explored.len() {

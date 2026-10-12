@@ -185,7 +185,7 @@ pub fn hint_line(g: &Game) -> String {
             "TAB ZONE  HAUT/BAS CHOIX  ENTREE COMMANDER  [ ] UNITES  </> ESPECE  ESP ON/OFF  X ANNULER  P/ECHAP RETOUR"
         }
         Screen::Colony => {
-            "TAB ZONE  ESP ON/OFF  R RECETTE  X DEMOL  D/W STOCK  </> POLIT.  ENT BATIR  T CAISSE  U DECOLLER  F CHAINES  H SANTE  P PROJET"
+            "TAB ZONE  R RECETTE  X DEMOL  ENT BATIR  U DECOLLER  F CHAINES  H SANTE  P PROJET  I IND  G AGRI  V VILLE  L CONVOIS"
         }
         Screen::Fleet => {
             "TAB LISTE  N ROUTE  A AFFECTER  U RETIRER  X VENDRE  B ACHETER  O ORDRE  R MUNITIONS  V REPARER  1-4 PRISE  ECHAP"
@@ -351,6 +351,8 @@ pub fn help_lines(screen: Screen) -> &'static [&'static str] {
             "F : schema des chaines de production   H : suivi sanitaire (epidemies)",
             "P : projets (terraformation, megastructures, usines atmospheriques)",
             "Projets : Tab zone  Entree commander  [ ] unites  </> espece  X annuler",
+            "I industrie (usure, qualite, goulots)   G agriculture (sol, saisons, nutrition)",
+            "V ville (densite, dechets, pollution, crime)   L convois entre colonies",
         ],
         Screen::Fleet => &[
             "Tab : liste   N : nouvelle route   A : affecter",

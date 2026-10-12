@@ -1,0 +1,24 @@
+// Technologies of the colony works (industry, farming, cities). `needs` are findings the research cannot do without:
+// resource:<id> (held aboard or in a colony), anomaly:<id> (explored), artefact:<id> (translated), wreck:salvaged, study:colony|lab.
+// unlocks ("capacity", id) switch on abilities of the colony simulation (see vector_data::CAPACITIES).
+[
+ (id:"maintenance_engineering", name:"Ingénierie de maintenance", field:"industrie", cost:300.0, requires:["basics"], unlocks:[("building","workshop")], start:false),
+ (id:"industrial_standards", name:"Normalisation industrielle", field:"industrie", cost:450.0, requires:["materials_science", "maintenance_engineering"], unlocks:[("building","standards_office"), ("capacity","norms")], start:false),
+ (id:"precision_tooling", name:"Outillage de précision", field:"industrie", cost:800.0, requires:["industrial_standards"], unlocks:[("building","metrology_lab"), ("capacity","precision_tooling")], start:false, needs:["resource:tungsten"]),
+ (id:"process_automation", name:"Automatisation des procédés", field:"industrie", cost:900.0, requires:["advanced_robotics", "industrial_standards"], unlocks:[("building","automation_hub"), ("capacity","automation")], start:false, needs:["resource:circuits"]),
+ (id:"industrial_robotics", name:"Robotique industrielle", field:"industrie", cost:1600.0, requires:["process_automation", "precision_tooling"], unlocks:[("building","robot_cell"), ("capacity","robotics")], start:false, needs:["artefact:outil"]),
+ (id:"reverse_engineering", name:"Ingénierie inverse", field:"industrie", cost:1200.0, requires:["industrial_standards"], unlocks:[("capacity","reverse_engineering")], start:false, needs:["wreck:salvaged"]),
+ (id:"agronomy", name:"Agronomie", field:"sciences_vie", cost:300.0, requires:["basics"], unlocks:[("building","farmland"), ("capacity","crop_rotation")], start:false),
+ (id:"irrigation_engineering", name:"Hydraulique agricole", field:"sciences_vie", cost:400.0, requires:["agronomy"], unlocks:[("building","irrigation_net"), ("capacity","irrigation")], start:false),
+ (id:"fertilizer_chemistry", name:"Chimie des engrais", field:"sciences_vie", cost:500.0, requires:["agronomy"], unlocks:[("capacity","synthetic_fertilizer")], start:false, needs:["resource:phosphorus"]),
+ (id:"food_preservation", name:"Conservation des aliments", field:"sciences_vie", cost:450.0, requires:["agronomy"], unlocks:[("building","cold_store"), ("building","cannery"), ("building","canteen"), ("capacity","cold_chain")], start:false, needs:["resource:salts"]),
+ (id:"controlled_agriculture", name:"Agriculture sous abri", field:"sciences_vie", cost:600.0, requires:["agronomy", "closed_ecology"], unlocks:[("building","greenhouse_hall"), ("module","hydroponics_mk1")], start:false),
+ (id:"aquaculture", name:"Aquaculture", field:"sciences_vie", cost:500.0, requires:["irrigation_engineering"], unlocks:[("building","fish_farm"), ("module","fishtank_mk1")], start:false, needs:["study:colony"]),
+ (id:"sanitation_engineering", name:"Assainissement", field:"structure", cost:350.0, requires:["basics"], unlocks:[("building","sewage_plant"), ("building","composter"), ("capacity","sanitation")], start:false),
+ (id:"recycling_science", name:"Science du recyclage", field:"structure", cost:600.0, requires:["sanitation_engineering", "materials_science"], unlocks:[("building","waste_sorting"), ("capacity","recycling")], start:false),
+ (id:"road_engineering", name:"Génie routier", field:"structure", cost:300.0, requires:["basics"], unlocks:[("building","road_network"), ("building","convoy_depot"), ("capacity","convoys")], start:false),
+ (id:"mass_transit", name:"Transports de masse", field:"structure", cost:700.0, requires:["road_engineering", "materials_science"], unlocks:[("building","tram_line"), ("building","metro_line"), ("capacity","mass_transit")], start:false),
+ (id:"urban_planning", name:"Urbanisme", field:"structure", cost:800.0, requires:["mass_transit", "sanitation_engineering"], unlocks:[("capacity","district_planning")], start:false, needs:["study:colony"]),
+ (id:"air_scrubbing", name:"Épuration de l'air", field:"structure", cost:700.0, requires:["recycling_science"], unlocks:[("building","air_scrubber"), ("capacity","air_scrubbing")], start:false, needs:["resource:lithium"]),
+ (id:"orbital_lift_engineering", name:"Ascenseurs orbitaux", field:"structure", cost:3200.0, requires:["mass_transit", "precision_tooling", "orbital_engineering"], unlocks:[("building","orbital_elevator"), ("capacity","orbital_lift")], start:false, needs:["resource:nanomaterials", "anomaly:gravity_well"]),
+]

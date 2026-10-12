@@ -333,7 +333,7 @@ impl Systems {
         } else {
             let room_kw = (stats.battery_cap - self.battery_mj).max(0.0) * 1000.0 / dt;
             let charge = net.min(room_kw);
-            self.battery_mj += charge * dt / 1000.0;
+            self.battery_mj += charge * dt / 1000.0 * crate::colony::BATTERY_EFFICIENCY;
         }
         self.supply_kw = supply;
         self.demand_kw = demand;
@@ -379,7 +379,13 @@ impl Systems {
             e.mining_rate += m.mining_rate * k;
             e.mining_range = f64::max(e.mining_range, m.mining_range);
             life += m.life_support * k;
-            e.food_per_day += m.food * k;
+            // Greenhouses live on the light of the star; hydroponics and tanks on current.
+            let light = if m.category == "greenhouse" {
+                solar.sqrt().clamp(0.05, 1.0)
+            } else {
+                1.0
+            };
+            e.food_per_day += m.food * k * light;
             e.medbay += m.medical * k;
             e.workshop += m.repair * k;
             e.shield_cap += m.shield * k * SHIELD_PTS_PER_MJ;
@@ -502,6 +508,57 @@ mod tests {
         assert!(
             hot.health.iter().any(|&h| h < 1.0),
             "overheating must hurt modules"
+        );
+    }
+
+    #[test]
+    fn greenhouses_follow_the_light_of_the_star_and_hydroponics_do_not() {
+        let d = data();
+        let food = |module: &str, solar: f64| {
+            let mut des = ShipDesign::empty(&d, d.hull_index("prospector").expect("hull"));
+            for id in ["fission_mk1", module, "lifesup_mk1"] {
+                des.install_first_fit(&d, id).expect("fit");
+            }
+            let mut sys = Systems::new(&des, 0.0);
+            let stats = ShipStats::compute(&d, &des, &sys.health);
+            let act = Activity {
+                throttle: 0.0,
+                mining: false,
+                rcs_use: 0.0,
+                jumping: false,
+                firing: false,
+                ext_heat_kw: 0.0,
+            };
+            sys.step(&d, &des, &stats, 30_000.0, &act, solar, 0.1)
+                .food_per_day
+        };
+        let (near, far) = (food("greenhouse_mk1", 1.0), food("greenhouse_mk1", 0.04));
+        assert!(near > 0.0 && far < near * 0.3, "{near} {far}");
+        let (hn, hf) = (food("hydroponics_mk1", 1.0), food("hydroponics_mk1", 0.04));
+        assert!(hn > 0.0 && (hn - hf).abs() < 1e-9, "{hn} {hf}");
+    }
+
+    #[test]
+    fn batteries_lose_a_tenth_of_what_they_are_charged_with_like_the_colony_banks() {
+        let d = data();
+        let (design, stats, mut sys) = setup(&d);
+        sys.battery_mj = 0.0;
+        let act = Activity {
+            throttle: 0.0,
+            mining: false,
+            rcs_use: 0.0,
+            jumping: false,
+            firing: false,
+            ext_heat_kw: 0.0,
+        };
+        sys.step(&d, &design, &stats, 30_000.0, &act, 1.0, 1.0);
+        let surplus = sys.supply_kw - sys.demand_kw;
+        assert!(surplus > 0.0, "{surplus}");
+        let want = surplus / 1000.0 * crate::colony::BATTERY_EFFICIENCY;
+        assert!(
+            (sys.battery_mj - want.min(stats.battery_cap)).abs() < 1e-6,
+            "{} vs {want}",
+            sys.battery_mj
         );
     }
 

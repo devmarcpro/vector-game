@@ -2,7 +2,7 @@
 //! weapon, faction, anomaly and condition, generated from the real data (no hand-written numbers).
 use vector_data::GameData;
 
-pub const CATEGORIES: [&str; 61] = [
+pub const CATEGORIES: [&str; 64] = [
     "RESSOURCES",
     "MODULES",
     "ARMES",
@@ -64,6 +64,9 @@ pub const CATEGORIES: [&str; 61] = [
     "PLANS DE VAISSEAU",
     "PROJETS",
     "DOCTRINES ET OPERATIONS",
+    "CULTURES",
+    "CAPACITES",
+    "DECOUVERTES",
 ];
 
 /// The cards of the military codex: doctrines, secret operations and orders to the squadron,
@@ -89,6 +92,73 @@ pub fn military_cards() -> Vec<(String, String)> {
         v.push((format!("Ordre {}", o.label().to_lowercase()), o.text()));
     }
     v
+}
+
+
+/// The abilities technologies unlock in the colony simulation (ids of `vector_data::CAPACITIES`):
+/// name and what they change.
+const CAPACITY_TEXT: [(&str, &str, &str); 16] = [
+    ("automation", "Automatisation", "Les centres d'automatisation remplacent une part du personnel (jusqu'a 55 %) : moins d'emplois a pourvoir et une production plus reguliere, mais du chomage et de la criminalite si la ville n'offre pas d'autres emplois."),
+    ("robotics", "Robotique industrielle", "Les ateliers robotises portent l'automatisation jusqu'a 80 % du travail."),
+    ("precision_tooling", "Outillage de precision", "Les outils usent moins la qualite : les normes et les laboratoires de metrologie donnent tout leur effet (moins de rebuts)."),
+    ("norms", "Normalisation", "Les bureaux des normes comptent pleinement : produits conformes, moins de defauts, moins de dechets."),
+    ("crop_rotation", "Rotation des cultures", "Les cultures changent de famille chaque saison : le sol est menage, les legumineuses le nourrissent, le regime se diversifie."),
+    ("irrigation", "Irrigation", "Les reseaux d'irrigation pompent l'eau du stock vers les champs : les terres seches donnent des recoltes."),
+    ("synthetic_fertilizer", "Engrais de synthese", "L'engrais rend tout son effet au sol (le procede Haber fournit l'ammoniac) : sol entretenu, rendements soutenus."),
+    ("cold_chain", "Chaine du froid", "Entrepots frigorifiques, conserveries et cuisines collectives : moins d'avaries, des conserves pour les disettes."),
+    ("sanitation", "Assainissement", "Les egouts et stations d'epuration collectent pleinement les dechets : moins d'ordures dans les rues, moins de maladies."),
+    ("recycling", "Recyclage", "Les centres de tri valorisent les dechets en metaux, plastiques et verre."),
+    ("mass_transit", "Transports de masse", "Tramways et metros amenent les ouvriers aux ateliers : la grande ville reste productive."),
+    ("orbital_lift", "Ascenseur orbital", "Un cable vers l'orbite : des convois plus rapides et un port de plus."),
+    ("convoys", "Convois logistiques", "Les routes et depots expedient des marchandises entre colonies avec des delais reels, et permettent d'importer des vivres ou d'exporter un surplus."),
+    ("district_planning", "Urbanisme", "Des quartiers planifies : densite toleree plus haute, pollution moins ressentie."),
+    ("air_scrubbing", "Epuration de l'air", "Les epurateurs nettoient pleinement l'air que l'industrie souille."),
+    ("reverse_engineering", "Ingenierie inverse", "Les ruines, objets anciens et epaves rapportent deux fois plus de savoir quand les ingenieurs savent les demonter."),
+];
+
+/// The distinct discoveries technologies wait for (`Tech::needs`), sorted.
+fn finding_keys(data: &GameData) -> Vec<String> {
+    let mut v: Vec<String> = data.techs.iter().flat_map(|t| t.needs.clone()).collect();
+    v.sort();
+    v.dedup();
+    v
+}
+
+/// How a discovery is made, in words.
+fn finding_label(data: &GameData, key: &str) -> (String, String) {
+    match key.split_once(':') {
+        Some(("resource", id)) => (
+            format!("Ressource : {}", res_name(data, id).unwrap_or_else(|| id.to_string())),
+            "Se decouvre en detenant cette ressource, dans la soute ou dans une colonie (miner, acheter, echanger).".to_string(),
+        ),
+        Some(("anomaly", id)) => (
+            format!(
+                "Anomalie : {}",
+                data.anomalies_def.iter().find(|a| a.id == id).map_or(id.to_string(), |a| a.name.clone())
+            ),
+            "Se decouvre en scannant completement une anomalie de ce genre.".to_string(),
+        ),
+        Some(("artefact", id)) => (
+            format!(
+                "Artefact : {}",
+                data.history.artefacts.iter().find(|a| a.id == id).map_or(id.to_string(), |a| a.name.clone())
+            ),
+            "Se decouvre en faisant traduire un vrai artefact de ce genre (fouilles de ruines et d'epaves).".to_string(),
+        ),
+        Some(("wreck", _)) => (
+            "Epave recuperee".to_string(),
+            "Se decouvre en recuperant la cargaison d'une epave (touche de recuperation en vol).".to_string(),
+        ),
+        Some(("study", "colony")) => (
+            "Etude d'une colonie".to_string(),
+            "Se decouvre quand une colonie annonce sa premiere decouverte (laboratoires de colonie).".to_string(),
+        ),
+        Some(("study", _)) => (
+            "Etude du laboratoire du bord".to_string(),
+            "Se decouvre des que les laboratoires du vaisseau travaillent.".to_string(),
+        ),
+        _ => (key.to_string(), String::new()),
+    }
 }
 
 /// The category of the reactions: the laboratory.
@@ -266,6 +336,9 @@ fn entries(data: &GameData, cat: usize) -> Vec<usize> {
         58 => (0..data.ship_plans.len()).collect(),
         59 => (0..data.projects.len()).collect(),
         60 => (0..military_cards().len()).collect(),
+        61 => (0..data.crops.len()).collect(),
+        62 => (0..CAPACITY_TEXT.len()).collect(),
+        63 => (0..finding_keys(data).len()).collect(),
         _ => Vec::new(),
     }
 }
@@ -332,6 +405,13 @@ pub fn names(data: &GameData, cat: usize) -> Vec<String> {
             58 => data.ship_plans[i].name.clone(),
             59 => data.projects[i].name.clone(),
             60 => military_cards()[i].0.clone(),
+            61 => data
+                .species_index(&data.crops[i].species)
+                .map_or(data.crops[i].species.clone(), |s| {
+                    data.species[s].name.clone()
+                }),
+            62 => CAPACITY_TEXT[i].1.to_string(),
+            63 => finding_label(data, &finding_keys(data)[i]).0,
             18 => format!(
                 "Appeler : {}",
                 vector_data::dialogue::ROLES[i].to_lowercase()
@@ -791,6 +871,25 @@ pub fn entry(data: &GameData, cat: usize, k: usize) -> Vec<String> {
                 "geothermal" => out.push("Source : chaleur interne de la planete".into()),
                 _ => {}
             }
+            let works: [(&str, f64, &str); 12] = [
+                ("Champs", b.farm, "ha"),
+                ("Abri contre le climat", b.shelter * 100.0, "%"),
+                ("Irrigation", b.irrigation, "ha"),
+                ("Froid pour les vivres", b.preserve, "kg"),
+                ("Repas cuisines", b.cooking, "personnes"),
+                ("Automatisation du travail", b.automation * 100.0, "%"),
+                ("Qualite des produits", b.quality, "(normes)"),
+                ("Assainissement", b.sanitation, "personnes"),
+                ("Transport des travailleurs", b.transit, "personnes"),
+                ("Convois", b.lift, "kg/jour"),
+                ("Entretien des batiments", b.tooling * 8.0, "batiments"),
+                ("Pollution", b.pollution, "par jour (negatif : epure)"),
+            ];
+            for (what, v, unit) in works {
+                if v != 0.0 {
+                    out.push(format!("{what} : {v:.1} {unit}"));
+                }
+            }
             if b.battery > 0.0 {
                 out.push(format!(
                     "Batterie : {:.0} kWh (rendement {:.0} %)",
@@ -854,6 +953,9 @@ pub fn entry(data: &GameData, cat: usize, k: usize) -> Vec<String> {
             ));
             for (k, id) in &t.unlocks {
                 out.push(format!("Debloque ({k}) : {id}"));
+            }
+            for n in &t.needs {
+                out.push(format!("Decouverte requise : {}", finding_label(data, n).0));
             }
         }
         7 => {
@@ -2204,6 +2306,56 @@ pub fn entry(data: &GameData, cat: usize, k: usize) -> Vec<String> {
                 "Surdose au-dessus d'un niveau de {:.1} (foie faible ou melange : plus tot).",
                 vector_sim::body::OVERDOSE
             ));
+        }
+        61 => {
+            let c = &data.crops[i];
+            let sp = &data.species[data.species_index(&c.species).unwrap_or(0)];
+            out.push(format!("{}  [famille {}]", sp.name, c.family));
+            let (lo, hi) = vector_sim::colony_works::crop_window(data, i);
+            out.push(format!(
+                "Pousse entre {lo:.0} K et {hi:.0} K ({:.0} a {:.0} C) ; rendement ideal {:.1} kg/ha/jour",
+                lo - 273.15,
+                hi - 273.15,
+                vector_sim::colony_works::crop_yield(data, i)
+            ));
+            out.push(format!(
+                "Besoin en eau : {:.1} (1 = la pluie d'un climat tempere) ; {} le sol de {:.4} par jour",
+                c.water,
+                if c.draw < 0.0 { "enrichit" } else { "epuise" },
+                c.draw.abs()
+            ));
+            out.push(format!(
+                "Nutrition par kg : energie {:.2}, proteines {:.2}, vitamines {:.2}",
+                c.nutrition.0, c.nutrition.1, c.nutrition.2
+            ));
+            out.push(format!("Milieux d'origine : {}", sp.habitat.join(", ")));
+            out.push("Tourner les familles menage le sol (rotation, technologie d'agronomie) ; repeter la meme famille l'epuise deux fois plus vite.".to_string());
+            out.push(sp.text.clone());
+        }
+        62 => {
+            let (id, name, text) = CAPACITY_TEXT[i];
+            out.push(format!("{name}  [capacite {id}]"));
+            out.push(text.to_string());
+            let by: Vec<String> = data
+                .techs
+                .iter()
+                .filter(|t| t.unlocks.iter().any(|(k, u)| k == "capacity" && u == id))
+                .map(|t| format!("{} ({:.0} points)", t.name, t.cost))
+                .collect();
+            out.push(format!("Debloquee par : {}", by.join(", ")));
+        }
+        63 => {
+            let key = &finding_keys(data)[i];
+            let (name, how) = finding_label(data, key);
+            out.push(name);
+            out.push(how);
+            let by: Vec<String> = data
+                .techs
+                .iter()
+                .filter(|t| t.needs.contains(key))
+                .map(|t| format!("{} ({:.0} points)", t.name, t.cost))
+                .collect();
+            out.push(format!("Requise par : {}", by.join(", ")));
         }
         16 => {
             let o = &data.organs[i];

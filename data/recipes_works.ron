@@ -1,0 +1,8 @@
+// Recipes of the colony works. Mass is conserved (outputs <= inputs).
+[
+ (id:"compost_waste", name:"Compostage des déchets", kind:"process", inputs:[("waste",1000.0)], outputs:[("fertilizer",450.0), ("organics",250.0)], hours:24.0, energy_kwh:300.0),
+ (id:"sort_waste", name:"Tri et valorisation des déchets", kind:"process", inputs:[("waste",1000.0)], outputs:[("iron",120.0), ("aluminium",40.0), ("plastics",120.0), ("glass",60.0), ("organics",100.0)], hours:24.0, energy_kwh:600.0),
+ (id:"can_food", name:"Mise en conserve", kind:"process", inputs:[("food",900.0), ("salts",20.0)], outputs:[("preserves",900.0)], hours:24.0, energy_kwh:500.0),
+ (id:"haber_fertilizer", name:"Engrais par procédé Haber", kind:"process", inputs:[("ammonia",600.0), ("phosphorus",80.0), ("organics",100.0)], outputs:[("fertilizer",760.0)], hours:24.0, energy_kwh:700.0),
+ (id:"raise_fish", name:"Élevage de poissons en vivier", kind:"grow", inputs:[("water",600.0), ("organics",120.0), ("oxygen",10.0)], outputs:[("food",160.0)], hours:24.0, energy_kwh:350.0),
+]

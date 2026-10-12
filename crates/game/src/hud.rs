@@ -11,7 +11,7 @@ use vector_sim::Sim;
 use vector_world::BodyKind;
 
 pub const GREEN: u32 = 0x0030_E050;
-pub const DIM: u32 = 0x0010_6020;
+pub const DIM: u32 = 0x0020_9048;
 pub const AMBER: u32 = 0x00E0_A020;
 pub const RED: u32 = 0x00FF_3030;
 /// Shared accents of the screens (one definition each; the views import them).

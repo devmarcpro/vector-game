@@ -426,12 +426,7 @@ pub fn draw_war(fb: &mut Framebuffer, g: &Game) {
             W_OP + k,
         );
     }
-    fb.text(
-        1,
-        fb.rows() - 3,
-        "R RECRUTER  A AGENT  C SECTEUR  I INFILTRER  1-4 OPERATION  W RAPPELER  D DRONE  P PAIX  M CONTRAT  G/ECHAP RETOUR",
-        DIM,
-    );
+    crate::ui::foot(fb, g, 1, fb.rows() - 3, "R RECRUTER  A AGENT  C SECTEUR  I INFILTRER  1-4 OPERATION  W RAPPELER  D DRONE  P PAIX  M CONTRAT  G/ECHAP RETOUR");
 }
 
 impl Game {

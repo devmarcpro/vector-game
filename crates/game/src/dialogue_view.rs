@@ -126,11 +126,12 @@ pub fn draw(fb: &mut Framebuffer, g: &Game) {
             fb.text(x + label.chars().count() + 8, row, "(indisponible)", DIM);
         }
     }
-    fb.text(
+    crate::ui::foot(
+        fb,
+        g,
         1,
         fb.rows() - 3,
         "1-6 OU CLIC : REPONDRE   HAUT/BAS + ENTREE   ECHAP : COUPER LA COMMUNICATION",
-        DIM,
     );
 }
 

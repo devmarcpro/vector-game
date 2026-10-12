@@ -1817,9 +1817,22 @@ pub fn draw(fb: &mut Framebuffer, g: &Game) {
     draw_colonies(fb, g, r[COLONIES]);
     draw_foot(fb, g, r[EXPLORATION]);
     draw_mind(fb, g, r[ESPRIT]);
+    crate::context_menu::draw_banner_line(fb, g, 1, 2, cols.saturating_sub(2));
 }
 
 /// The alerts counter of the top bar of every screen: a click opens the dashboard.
+/// Width of the alerts badge of the top bar (the help button sits to its left).
+pub fn badge_width(g: &Game) -> usize {
+    let (c, a, _) = vector_sim::Sim::alert_counts(&g.alerts());
+    if c > 0 {
+        format!("ALERTES {c} CRIT {a} ATT").chars().count()
+    } else if a > 0 {
+        format!("ALERTES {a} ATT").chars().count()
+    } else {
+        "ALERTES 0".len()
+    }
+}
+
 pub fn draw_alert_badge(fb: &mut Framebuffer, g: &Game) {
     if matches!(
         g.screen,
@@ -2106,7 +2119,13 @@ mod game_tests {
                 .borrow()
                 .iter()
                 .filter_map(|h| match h.act {
-                    Act::Call(_, code) if code >= 100 => {
+                    Act::Call(f, code)
+                        if code >= 100
+                            && std::ptr::fn_addr_eq(
+                                f,
+                                Game::click_dash_link as fn(&mut Game, usize),
+                            ) =>
+                    {
                         Some(((h.rect.0 + h.rect.2) / 2, (h.rect.1 + h.rect.3) / 2, code))
                     }
                     _ => None,

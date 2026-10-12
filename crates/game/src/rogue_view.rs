@@ -27,6 +27,27 @@ const OY: i32 = 30;
 pub const VIEW_COLS: usize = 56;
 pub const VIEW_ROWS: usize = 30;
 
+/// The pixel at the middle of a cell of the map.
+pub fn cell_px(r: &Rogue, x: i32, y: i32) -> (i32, i32) {
+    let (cx, cy) = camera(r);
+    (
+        OX + (x - cx) * TILE_W + TILE_W / 2,
+        OY + (y - cy) * TILE_H + TILE_H / 2,
+    )
+}
+
+/// A cell as one number a zone can carry.
+pub fn pack_cell(x: i32, y: i32) -> usize {
+    ((y + 1000) as usize) * 100_000 + (x + 1000) as usize
+}
+
+pub fn unpack_cell(code: usize) -> (i32, i32) {
+    (
+        (code % 100_000) as i32 - 1000,
+        (code / 100_000) as i32 - 1000,
+    )
+}
+
 /// Top-left tile of the window on the map, keeping the squad in view.
 pub fn camera(r: &Rogue) -> (i32, i32) {
     let fit = |pos: i32, size: usize, view: usize| -> i32 {
@@ -67,18 +88,31 @@ impl Game {
     }
 
     /// A click on the map: step next to us, or walk there over what is known.
+    /// The cell of the map under a pixel, if the walk is on.
+    pub fn rogue_cell_at(&self, px: i32, py: i32) -> Option<(i32, i32)> {
+        let r = self.sim.rogue.as_ref()?;
+        if r.over {
+            return None;
+        }
+        let (cx, cy) = camera(r);
+        Some((
+            (px - OX).div_euclid(TILE_W) + cx,
+            (py - OY).div_euclid(TILE_H) + cy,
+        ))
+    }
+
     pub fn rogue_click(&mut self, (px, py): (i32, i32)) {
+        if let Some((tx, ty)) = self.rogue_cell_at(px, py) {
+            self.rogue_goto(tx, ty);
+        }
+    }
+
+    /// Walk to a cell (a step when it is next to the squad, which attacks or talks to what stands
+    /// there), or travel there.
+    pub fn rogue_goto(&mut self, tx: i32, ty: i32) {
         let Some(r) = self.sim.rogue.as_ref() else {
             return;
         };
-        if r.over {
-            return;
-        }
-        let (cx, cy) = camera(r);
-        let (tx, ty) = (
-            (px - OX).div_euclid(TILE_W) + cx,
-            (py - OY).div_euclid(TILE_H) + cy,
-        );
         let (dx, dy) = (tx - r.x, ty - r.y);
         let res = if dx.abs().max(dy.abs()) == 1 {
             self.sim.rogue_step(dx, dy).map(|()| 1)
@@ -88,6 +122,68 @@ impl Game {
         if let Err(e) = res {
             self.say(e.to_uppercase());
         }
+    }
+
+    pub fn rogue_walk_cell(&mut self, code: usize) {
+        let (x, y) = unpack_cell(code);
+        self.rogue_goto(x, y);
+    }
+
+    /// Turn the squad towards an adjacent cell (what X digs and B / N build).
+    pub fn rogue_face_cell(&mut self, code: usize) {
+        let (x, y) = unpack_cell(code);
+        if let Some(r) = self.sim.rogue.as_ref() {
+            self.rogue_ui.face = ((x - r.x).signum(), (y - r.y).signum());
+        }
+    }
+
+    /// Say what is on a cell.
+    pub fn rogue_inspect_cell(&mut self, code: usize) {
+        let (x, y) = unpack_cell(code);
+        let Some(r) = self.sim.rogue.as_ref() else {
+            return;
+        };
+        if !r.inside(x, y) {
+            return;
+        }
+        let i = r.idx(x, y);
+        let f = r.floor();
+        let text = if let Some(m) = f
+            .monsters
+            .iter()
+            .find(|m| (m.x, m.y) == (x, y) && r.visible()[i])
+        {
+            format!(
+                "{} : SANTE {:.0}, ATTAQUE {:.0}, DEFENSE {:.0}{}",
+                m.name.to_uppercase(),
+                m.hp,
+                m.attack,
+                m.defense,
+                if m.friendly {
+                    " (PACIFIQUE)"
+                } else if m.hunts {
+                    " (HOSTILE)"
+                } else {
+                    ""
+                }
+            )
+        } else if !f.seen[i] {
+            "CASE INCONNUE".to_string()
+        } else {
+            let mat = r
+                .mat(x, y)
+                .and_then(|m| self.data.materials.get(m))
+                .map_or("?".to_string(), |m| m.name.to_uppercase());
+            format!(
+                "CASE {x},{y} : {mat}{}",
+                if r.owned(x, y) {
+                    " (BATIE PAR VOUS)"
+                } else {
+                    ""
+                }
+            )
+        };
+        self.say(text);
     }
 
     pub fn rogue_key(&mut self, code: KeyCode) {
@@ -632,16 +728,23 @@ fn draw_run(fb: &mut Framebuffer, g: &Game, r: &Rogue) {
         word(fb, g, sx, y, label, key);
         y += 1;
     }
-    fb.text(
-        sx,
-        y + 1,
-        if g.fpv {
-            "GAUCHE/DROITE TOURNER, HAUT/BAS AVANCER"
-        } else {
-            "FLECHES / PAVE NUM. / ZQSD"
-        },
-        DIM,
-    );
+    if g.fpv {
+        // First person has no map to click on: four words turn and step.
+        for (i, (label, key)) in [
+            ("[<] TOURNER A GAUCHE", KeyCode::ArrowLeft),
+            ("[>] TOURNER A DROITE", KeyCode::ArrowRight),
+            ("[^] AVANCER", KeyCode::ArrowUp),
+            ("[v] RECULER", KeyCode::ArrowDown),
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            word(fb, g, sx, y + 1 + i, label, key);
+        }
+        y += 4;
+    } else {
+        fb.text(sx, y + 1, "FLECHES / PAVE NUM. / ZQSD", DIM);
+    }
     fb.text(sx, y + 2, "CLIC : MARCHER JUSQU'A LA CASE", DIM);
     fb.text(sx, y + 3, "FONCER SUR UN MONSTRE = ATTAQUER", DIM);
     fb.text(sx, y + 4, &format!("VUE : {VIEW_RADIUS} CASES"), DIM);

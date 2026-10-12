@@ -304,12 +304,7 @@ pub fn draw(fb: &mut Framebuffer, g: &Game) {
         GREEN,
     );
     let bot = fb.rows() - 4;
-    fb.text(
-        1,
-        bot,
-        "HAUT/BAS PERSONNE  E ENDORMIR  R REVEILLER  U URGENCE  A/L/D REVEIL PROGRAMME  P PLAN AUTO  T ROTATION  K/B COLONS  C/ECHAP RETOUR",
-        DIM,
-    );
+    crate::ui::foot(fb, g, 1, bot, "HAUT/BAS PERSONNE  E ENDORMIR  R REVEILLER  U URGENCE  A/L/D REVEIL PROGRAMME  P PLAN AUTO  T ROTATION  K/B COLONS  C/ECHAP RETOUR");
     for (i, msg) in g.messages.iter().rev().take(2).enumerate() {
         fb.text(1, bot + 1 + i, msg, if i == 0 { AMBER } else { DIM });
     }

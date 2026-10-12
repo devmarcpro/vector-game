@@ -4,6 +4,7 @@ mod bourse_view;
 mod codex;
 mod codex_sky;
 mod console;
+mod context_menu;
 mod cosmos_view;
 mod crew_net_view;
 mod cryo_view;
@@ -213,7 +214,10 @@ impl ApplicationHandler for App {
                         el.exit();
                     }
                 }
-                MouseButton::Right => self.game.pointer_back(),
+                MouseButton::Right => {
+                    let (x, y) = self.game.pointer.pos;
+                    self.game.pointer_context(x, y);
+                }
                 _ => {}
             },
             WindowEvent::MouseWheel { delta, .. } => {
@@ -1758,6 +1762,9 @@ fn snapshot(path: &str, scene: &str, data: Arc<GameData>) {
                 let _ = g.sim.order_ship(2, 3);
                 g.dz.column = 2;
             }
+        }
+        s if s.starts_with("ctx_") || s.starts_with("tip_") => {
+            context_menu::snapshot_scene(&mut g, s);
         }
         _ => {
             g.cycle_target(|_| true);

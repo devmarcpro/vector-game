@@ -344,12 +344,7 @@ pub fn draw(fb: &mut Framebuffer, g: &Game) {
         fb.text(x, ay2 + 2, &d.text.to_uppercase(), DIM);
     }
     let bot = fb.rows() - 4;
-    fb.text(
-        1,
-        bot,
-        "HAUT/BAS PERSONNE  GAUCHE/DROITE MEDICAMENT  TAB PLAIE  ENTREE DONNER  A SOINS  S OPERER  R CHOC  C CRYO  M/ECHAP RETOUR",
-        DIM,
-    );
+    crate::ui::foot(fb, g, 1, bot, "HAUT/BAS PERSONNE  GAUCHE/DROITE MEDICAMENT  TAB PLAIE  ENTREE DONNER  A SOINS  S OPERER  R CHOC  C CRYO  M/ECHAP RETOUR");
     for (i, msg) in g.messages.iter().rev().take(2).enumerate() {
         fb.text(1, bot + 1 + i, msg, if i == 0 { AMBER } else { DIM });
     }

@@ -118,11 +118,12 @@ fn draw_relations(fb: &mut Framebuffer, g: &Game) {
             },
         );
     }
-    fb.text(
+    crate::ui::foot(
+        fb,
+        g,
         1,
         fb.rows() - 3,
         "HAUT/BAS:CHOISIR  PGUP/PGDN:SAUTER  TAB:FACTIONS  X/ECHAP:RETOUR",
-        DIM,
     );
 }
 

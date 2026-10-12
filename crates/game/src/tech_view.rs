@@ -324,7 +324,7 @@ pub fn draw(fb: &mut Framebuffer, g: &Game) {
             )
         })
         .collect();
-    fb.text(
+    fb.text_fit(
         1,
         d + 1,
         &format!(
@@ -345,7 +345,7 @@ pub fn draw(fb: &mut Framebuffer, g: &Game) {
         .iter()
         .map(|&i| data.techs[i].name.to_uppercase())
         .collect();
-    fb.text(
+    fb.text_fit(
         1,
         d + 2,
         &format!(

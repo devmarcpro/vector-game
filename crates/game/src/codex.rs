@@ -946,6 +946,15 @@ fn describe_cond(data: &GameData, c: &vector_data::surprise::Cond) -> String {
         Cond::InDebt => "la banque vous reclame de l'argent".to_string(),
         Cond::Shares => "vous detenez des actions".to_string(),
         Cond::Herd => "vous gardez des betes a bord".to_string(),
+        Cond::Cryo(n) => format!("au moins {n} dormeur(s) dans les caissons cryo"),
+        Cond::Terraform => "une de vos colonies proches a des travaux en cours".to_string(),
+        Cond::Sick => "quelqu'un est malade a bord".to_string(),
+        Cond::Dose(sv) => format!("quelqu'un a recu au moins {sv:.1} Sv"),
+        Cond::Language(c, v) => format!(
+            "comprehension de la langue locale {} {:.0} %",
+            cmp(c),
+            v * 100.0
+        ),
     }
 }
 

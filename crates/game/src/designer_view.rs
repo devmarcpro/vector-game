@@ -1098,7 +1098,11 @@ fn draw_report(fb: &mut Framebuffer, g: &Game, bp: &Blueprint, r: &Report) {
     ];
     let b = [
         (
-            format!("DELTA-V {:.0} / CHARGE {:.0} M/S", r.dv_empty, r.dv_loaded),
+            format!(
+                "DELTA-V {:.1} / CHARGE {:.1} KM/S",
+                r.dv_empty / 1e3,
+                r.dv_loaded / 1e3
+            ),
             c_ok(r.dv_empty >= 1000.0),
         ),
         (

@@ -443,9 +443,12 @@ impl Sim {
                 if let Some(c) = self.colonies.iter_mut().find(|c| c.id == *id) {
                     let room = (c.stats.storage_cap.max(5_000.0) - c.total_stored()).max(0.0);
                     c.storage[res] += kg.min(room);
-                    // The colony credits the shipper at the base value of what arrived.
-                    revenue = kg.min(room) * data.resources[res].value * 0.5;
-                    c.treasury -= 0.0;
+                    // The colony pays the shipper, out of its own treasury, half the base value of
+                    // what arrived: a transfer between the two purses of the player, so that
+                    // shuttling goods between colonies no longer prints money.
+                    revenue =
+                        (kg.min(room) * data.resources[res].value * 0.5).min(c.treasury.max(0.0));
+                    c.treasury -= revenue;
                 }
             }
             Endpoint::Station {
@@ -1121,6 +1124,59 @@ mod tests {
             "the freighter must have carried iron away"
         );
         assert!(s.routes[0].trips >= 1);
+    }
+
+    #[test]
+    fn a_colony_pays_the_shipper_out_of_its_treasury_nothing_is_printed() {
+        let mut s = two_station_sim();
+        let b = s
+            .system
+            .bodies
+            .iter()
+            .position(|b| matches!(b.kind, BodyKind::Planet(k) if !k.is_giant()))
+            .expect("planet");
+        let data = Arc::clone(&s.data);
+        s.undock();
+        s.ship.cargo.cap_mass = 1.0e6;
+        s.ship.cargo.cap_vol = 1.0e6;
+        for (id, kg) in [
+            ("construction_materials", 3000.0),
+            ("colonists", 400.0),
+            ("food", 300.0),
+            ("water", 600.0),
+        ] {
+            s.ship
+                .cargo
+                .add(&data, data.resource_index(id).expect("res"), kg);
+        }
+        s.ship.pos =
+            s.bodies[b].pos - vector_core::Vec3::new(0.0, 0.0, s.bodies[b].radius + 5000.0);
+        s.ship.vel = s.bodies[b].vel;
+        s.update_ref();
+        let ci = s.found_colony(b, None).expect("colony");
+        let iron = data.resource_index("iron").expect("iron");
+        let station = station_endpoints(&s).remove(0);
+        s.buy_fleet_ship_free(data.hull_index("hauler").expect("hull"));
+        s.create_route(station, Endpoint::Colony(s.colonies[ci].id), iron, 8_000.0)
+            .expect("route");
+        s.fleet[0].route = Some(s.routes[0].id);
+        let worth = 1_000.0 * data.resources[iron].value * 0.5;
+        for (treasury, expected) in [
+            (worth * 10.0, worth),
+            (worth / 4.0, worth / 4.0),
+            (-5.0, 0.0),
+        ] {
+            s.colonies[ci].treasury = treasury;
+            s.fleet[0].cargo = Some((iron, 1_000.0, 0.0));
+            let (before, stock) = (s.colonies[ci].treasury, s.colonies[ci].storage[iron]);
+            let paid = s.fleet_unload(0, 0);
+            assert!((paid - expected).abs() < 1e-6, "{paid} vs {expected}");
+            assert!((before - s.colonies[ci].treasury - paid).abs() < 1e-6);
+            assert!(
+                s.colonies[ci].storage[iron] > stock,
+                "the goods arrived anyway"
+            );
+        }
     }
 
     #[test]

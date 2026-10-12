@@ -77,6 +77,9 @@ pub mod treat;
 pub mod voyage;
 pub mod yard;
 
+#[cfg(test)]
+mod emergence_tests;
+
 use autopilot::Autopilot;
 use cargo::Cargo;
 use colony::Colony;
@@ -1428,7 +1431,8 @@ impl Sim {
         }
     }
 
-    /// Damage to the hull (scaled by the rules) and to the modules; none when invulnerable.
+    /// Damage to the hull (scaled by the rules), to the modules and to the crew; none when
+    /// invulnerable.
     pub(crate) fn hurt_ship(&mut self, damage: f64, source: usize) {
         if self.rules.invulnerable {
             return;
@@ -1445,6 +1449,9 @@ impl Sim {
             .sys
             .damage_modules(&self.data, &self.ship.design, damage * 0.5, pick);
         self.ship.refresh_stats(&self.data);
+        // The same blow shakes the people inside: a crash, a toppled landing or a hard dock
+        // fracture bones and tear flesh like a hit of a weapon does (see `injure_crew`).
+        self.injure_crew(damage);
     }
 
     /// Remaining minable mass of body `i` (kg).

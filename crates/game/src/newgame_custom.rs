@@ -2140,8 +2140,10 @@ pub fn draw_ship_panel(fb: &mut Framebuffer, g: &Game, x: usize) {
                             r.hp
                         ),
                         format!(
-                            "DELTA-V {:.0} M/S (VIDE {:.0})   POUSSEE/POIDS {:.2}",
-                            r.dv_loaded, r.dv_empty, r.twr
+                            "DELTA-V {:.1} KM/S (VIDE {:.1})   POUSSEE/POIDS {:.2}",
+                            r.dv_loaded / 1e3,
+                            r.dv_empty / 1e3,
+                            r.twr
                         ),
                         format!(
                             "ENERGIE {:.1} MW (PIC {:.1})   COUCHETTES {}",

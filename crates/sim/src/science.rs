@@ -305,8 +305,11 @@ impl Sim {
             .iter_mut()
             .filter(|p| p.alive && !p.body.cryo)
         {
-            if rng.f64() < p_hurt {
-                let loss = rng.range(0.1, 0.4) as f32;
+            // The armour worn (`gear.ron`, the same figure that stops blows on foot) stops its
+            // share of what reaches the body.
+            let stopped = p.gear_stat(&data, "defense").clamp(0.0, 0.8);
+            if rng.f64() < p_hurt * (1.0 - stopped) {
+                let loss = (rng.range(0.1, 0.4) * (1.0 - stopped)) as f32;
                 p.health = (p.health - loss).max(0.0);
                 let k = kinds[(rng.next_u64() % kinds.len() as u64) as usize];
                 let pick = rng.next_u64();

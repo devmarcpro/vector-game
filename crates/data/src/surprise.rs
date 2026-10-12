@@ -85,6 +85,17 @@ pub enum Cond {
     Shares,
     /// You keep animals aboard.
     Herd,
+    /// At least this many people sleep in the cryo caissons.
+    Cryo(u32),
+    /// One of your colonies within 30 ly has terraforming works or a megastructure under way.
+    Terraform,
+    /// Somebody aboard is ill.
+    Sick,
+    /// Somebody aboard, asleep or not, has an acute dose of at least this many Sv.
+    Dose(f64),
+    /// What the ship understands of the language spoken here (0..1), where somebody holds the
+    /// space, is under / over the value.
+    Language(Cmp, f64),
 }
 
 /// What a surprise does to the world.

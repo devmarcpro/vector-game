@@ -74,6 +74,13 @@ pub(crate) struct Ctx {
     colony_unrest: f64,
     anomalies: Vec<&'static str>,
     civ: Option<Option<u64>>,
+    /// Sleepers in the caissons, a colony of the player with works under way near, somebody ill
+    /// aboard, the worst acute dose aboard (Sv), what the ship understands of the local language.
+    cryo: u32,
+    terraform: bool,
+    sick: bool,
+    dose: f64,
+    pub(crate) lingo: Option<f64>,
 }
 
 fn dist(a: [f64; 3], b: [f64; 3]) -> f64 {
@@ -109,7 +116,7 @@ impl Sim {
             * crate::lanes::good_factor(&self.data, &self.galaxy, pos, t, res)
     }
 
-    fn surprise_ctx(&self) -> Ctx {
+    pub(crate) fn surprise_ctx(&self) -> Ctx {
         let data = &self.data;
         let (seed, pos, t) = (self.galaxy.seed, self.here_pos, self.time);
         let events = events_between(data, seed, pos, t, t)
@@ -121,6 +128,7 @@ impl Sim {
         let incident =
             !crate::incidents::incidents_in_cell(data, seed, cell_of(pos), t, t).is_empty();
         let (mut colony_ly, mut epidemic_ly, mut colony_unrest) = (f64::MAX, f64::MAX, 0.0f64);
+        let mut terraform = false;
         for col in &self.colonies {
             let d = self
                 .galaxy
@@ -132,6 +140,7 @@ impl Sim {
             }
             if d <= COLONY_REACH_LY {
                 colony_unrest = colony_unrest.max(col.unrest);
+                terraform |= col.projects.iter().any(|p| p.units < p.target);
             }
         }
         let anomalies = (0..self.bodies.len())
@@ -149,6 +158,17 @@ impl Sim {
             colony_unrest,
             anomalies,
             civ: None,
+            cryo: self.crew.alive().filter(|p| p.body.cryo).count() as u32,
+            terraform,
+            sick: self.crew.alive().any(|p| p.disease.is_some()),
+            dose: self
+                .crew
+                .alive()
+                .map(|p| f64::from(p.body.acute_dose))
+                .fold(0.0, f64::max),
+            lingo: self
+                .local_language()
+                .map(|l| f64::from(self.understanding(l))),
         }
     }
 
@@ -192,7 +212,7 @@ impl Sim {
         }
     }
 
-    fn surprise_cond(&self, c: &Cond, ctx: &mut Ctx) -> bool {
+    pub(crate) fn surprise_cond(&self, c: &Cond, ctx: &mut Ctx) -> bool {
         let d = &self.data;
         let alive = || self.crew.members.iter().filter(|p| p.health > 0.0);
         match c {
@@ -247,6 +267,11 @@ impl Sim {
             Cond::InDebt => self.bank.loan > 0.0,
             Cond::Shares => self.shares.iter().any(|(_, n)| *n > 0.0),
             Cond::Herd => !self.herd.is_empty(),
+            Cond::Cryo(n) => ctx.cryo >= *n,
+            Cond::Terraform => ctx.terraform,
+            Cond::Sick => ctx.sick,
+            Cond::Dose(sv) => ctx.dose >= *sv,
+            Cond::Language(cmp, v) => ctx.lingo.is_some_and(|x| cmp.test(x, *v)),
         }
     }
 
@@ -662,6 +687,17 @@ pub(crate) mod tests {
             }
             Cond::InDebt => s.bank.loan = 1000.0,
             Cond::Shares => s.shares.push((0, 1.0)),
+            Cond::Cryo(n) => ctx.cryo = *n,
+            Cond::Terraform => ctx.terraform = true,
+            Cond::Sick => ctx.sick = true,
+            Cond::Dose(sv) => ctx.dose = *sv + 0.1,
+            Cond::Language(cmp, v) => {
+                ctx.lingo = Some(if *cmp == vector_data::surprise::Cmp::Gt {
+                    (*v + 0.1).min(1.0)
+                } else {
+                    (*v - 0.1).max(0.0)
+                })
+            }
             Cond::Herd => s.herd.push(crate::livestock::Animal {
                 species: 0,
                 male: true,

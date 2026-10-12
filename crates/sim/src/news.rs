@@ -19,6 +19,10 @@ pub const BACKFILL_DAYS: f64 = 25.0;
 /// ship's own sector.
 pub const HEARING_CELLS: i64 = 2;
 pub const COURIER_LY_DAY: f64 = 4.0;
+/// Harvest (see `macroeco::harvest`) under which a year is told as a bad one, and over which
+/// as a bumper one: the same figure that moves the price of food and the yield of the fields.
+pub const BAD_HARVEST: f64 = 0.7;
+pub const BUMPER_HARVEST: f64 = 1.25;
 pub const TAGS: [&str; 8] = [
     "POLITIQUE",
     "GUERRE",
@@ -174,6 +178,35 @@ impl Sim {
                     }
                 };
                 self.news_push(e.time + delay, tag, d, text);
+            }
+            // The harvest of the year and the blockades: states that cross a threshold.
+            let (h0, h1) = (
+                crate::macroeco::harvest(seed, c, e0),
+                crate::macroeco::harvest(seed, c, e1),
+            );
+            let harvest_story = if h0 >= BAD_HARVEST && h1 < BAD_HARVEST {
+                Some("Mauvaise recolte pres de {p} : secheresse ou mauvaise annee, les vivres montent dans la region et les fermes a ciel ouvert souffrent.")
+            } else if h0 < BUMPER_HARVEST && h1 >= BUMPER_HARVEST {
+                Some("Recolte exceptionnelle pres de {p} : les vivres se bradent dans la region.")
+            } else {
+                None
+            };
+            if let Some(story) = harvest_story {
+                let place = self.place_name(cell_center(c));
+                self.news_push(e1 + delay, 3, d, story.replace("{p}", &place));
+            }
+            let (b0, b1) = (
+                crate::arms::is_besieged(&data, &galaxy, seed, c, e0),
+                crate::arms::is_besieged(&data, &galaxy, seed, c, e1),
+            );
+            if b0 != b1 {
+                let place = self.place_name(cell_center(c));
+                let story = if b1 {
+                    format!("Blocus pres de {place} : la flotte du vainqueur coupe les routes, tout y devient plus cher et les convois des colonies n'arrivent plus.")
+                } else {
+                    format!("Fin du blocus pres de {place} : les convois repassent et les prix retombent.")
+                };
+                self.news_push(e1 + delay, 1, d, story);
             }
             for (t, k, at) in epidemic::declarations_in_cell(&data, seed, c, e0, e1) {
                 let place = self.place_name(at);

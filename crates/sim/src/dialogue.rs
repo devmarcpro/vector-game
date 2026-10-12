@@ -208,7 +208,14 @@ impl Sim {
                     Some(b) => self.change_civ_reputation(b, *x as f32),
                     None => {
                         let faction = self.npcs[subject].faction;
-                        self.change_reputation(faction, *x as f32);
+                        // A favour is worth less when it is not understood: the same rule as
+                        // for the native peoples (see `change_civ_reputation`).
+                        let mut gain = *x as f32;
+                        if let Some(f) = faction.filter(|_| gain > 0.0) {
+                            let heard = self.understanding(self.language_of_faction(f));
+                            gain *= 0.5 + 0.5 * heard;
+                        }
+                        self.change_reputation(faction, gain);
                     }
                 }
                 None

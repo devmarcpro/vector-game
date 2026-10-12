@@ -51,4 +51,4 @@ cargo test                                                 # toute la suite (≈
 | `vector-game` | fenêtre, écrans, HUD, console, audio, tutoriel, mode script |
 | `vector-tools` | `data_check`, `sim_bench`, `balance_check` |
 
-Voir aussi [docs/SIM_MODEL.md](docs/SIM_MODEL.md) (modèle de simulation), [docs/DECISIONS.md](docs/DECISIONS.md), [docs/ROADMAP.md](docs/ROADMAP.md) et [docs/PROGRESS.md](docs/PROGRESS.md).
+Voir aussi [docs/SIM_MODEL.md](docs/SIM_MODEL.md) (modèle de simulation), [docs/DECISIONS.md](docs/DECISIONS.md), [docs/ROADMAP.md](docs/ROADMAP.md) et [docs/PROGRESS.md](docs/PROGRESS.md) ; les liens entre systèmes sont dans [docs/MATRICE_INTERACTIONS.md](docs/MATRICE_INTERACTIONS.md).

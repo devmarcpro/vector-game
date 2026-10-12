@@ -1004,7 +1004,9 @@ impl Colony {
             .filter(|b| b.built())
             .map(|b| data.buildings[b.def].upkeep)
             .sum::<f64>()
-            * days;
+            * days
+            // Nobody left to keep the books: an abandoned colony stops costing, it only decays.
+            * if self.pop >= 1.0 { 1.0 } else { 0.0 };
         self.treasury += income - upkeep + mx.income * days;
         self.research += mx.research * days;
         self.debt_days = if self.treasury < 0.0 {
@@ -1099,6 +1101,16 @@ impl Sim {
         }
         self.near_for_colony(i)?;
         let data = std::sync::Arc::clone(&self.data);
+        // Nowhere to house the founders (a gas giant): the kit and the colonists would be lost
+        // at the first tick, when the population is clamped to a housing of zero.
+        let site = site_tags(&cb);
+        if !data
+            .buildings
+            .iter()
+            .any(|b| b.housing > 0.0 && b.sites.iter().any(|s| site.contains(s)))
+        {
+            return Err("aucun habitat possible sur ce corps");
+        }
         let need = [
             ("construction_materials", KIT_MATERIALS),
             ("colonists", KIT_COLONISTS_KG),
@@ -1668,6 +1680,24 @@ pub(crate) mod tests {
         assert!(
             c.stats.power_supply > c.stats.power_demand,
             "a solar farm powers a dome"
+        );
+    }
+
+    #[test]
+    fn an_abandoned_colony_stops_running_up_debts() {
+        let (mut s, ci) = founded();
+        // No food, no water: the founders die out.
+        s.time += 120.0 * DAY;
+        s.update_colonies();
+        assert!(s.colonies[ci].pop < 1.0, "{}", s.colonies[ci].pop);
+        let before = s.colonies[ci].treasury;
+        s.time += 400.0 * DAY;
+        s.update_colonies();
+        assert!(
+            s.colonies[ci].treasury >= before - 1e-6,
+            "{} -> {}",
+            before,
+            s.colonies[ci].treasury
         );
     }
 

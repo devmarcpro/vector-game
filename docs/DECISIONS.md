@@ -296,3 +296,12 @@ Un dormeur est un `Body` avec `cryo = true` (plus la glace, le cryoprotecteur, l
 ## Un seul menu contextuel, qui rejoue les actes des zones
 
 Le clic droit ouvre `context_menu::Menu` : une liste d'`Item { label, key, run: Vec<Act>, off }`. `run` est une suite des mêmes `Act` que les zones et la barre de commandes exécutent déjà (`Act::Key(touche)`, `Act::Call(fonction, n)`) : « sélectionner la ligne n, puis appuyer M » plutôt qu'une seconde implémentation de « soigner ». Une action = un identifiant (la touche ou la fonction du clic), donc la touche, le clic gauche et le menu ne peuvent pas diverger (test : le choix « CRYOGENISER » met `cryo_mode`, « CIBLER » fixe `sim.target`). Le contexte n'est pas redéclaré écran par écran : `ctx_of` le déduit de la zone la plus haute sous le pointeur d'après la fonction de son clic gauche (`std::ptr::fn_addr_eq`), si bien que toute zone qui existe déjà a un menu ; une zone inconnue reçoit le menu générique (ACTIVER / AIDE / RETOUR). Seule la case de la marche à pied a des actes à elle (`rogue_walk_cell`, `rogue_face_cell` : coordonnées empaquetées dans le `usize` de l'`Act::Call`). Les raisons d'indisponibilité sont calculées à l'ouverture (`off_if`) et dites à l'écran si on clique quand même la ligne grise. Le menu est modal (il mange les touches) et dessiné en dernier : ses lignes sont les dernières zones du cadre, donc les premières touchées. Clic droit sur une zone vide = retour comme avant (ce n'est plus le comportement sur un élément). Les infobulles réutilisent les mêmes `items_for` (premier item = ce que fait le clic). Contrôle de mise en page : `Framebuffer::clipped` compte les textes qui dépassent à droite, et un test parcourt tous les écrans (état normal, aide ouverte, tutoriel, infobulle) en cherchant les débordements, les zones hors écran et les mots de commande qui se chevauchent. Pas de changement de `VERSION` de sauvegarde.
+
+## Echelle des vitesses du vaisseau
+
+Decision: on la garde. Le jeu est une simulation d'univers aux distances REELLES (l'UA fait 1,5e11 m) avec
+des vaisseaux a torche de fusion/antimatiere (impulsion specifique 150 a 340 ks, vitesse d'ejection 1,5 a
+3,3 Mm/s, soit un delta-v de 400 a 930 km/s pour le vaisseau de depart) : une UA se traverse en quelques
+jours et un systeme en quelques semaines, ce qui rend le jeu jouable sans temps mort. Diviser les
+impulsions par dix ramenerait la portee a 0,7 UA. L'interstellaire passe par les sauts FTL. Les moteurs
+exotiques (Bussard, antimatiere) restent sous 0,1 c, le delta-v s'affiche en km/s partout.

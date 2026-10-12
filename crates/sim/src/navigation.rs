@@ -542,6 +542,22 @@ mod tests {
     use vector_data::GameData;
     use vector_world::orbit::{M_EARTH, M_SUN, R_EARTH};
 
+    #[test]
+    fn a_station_shelters_its_crew_from_the_belts_and_the_flares() {
+        let mut s = sim();
+        let st = s
+            .bodies
+            .iter()
+            .position(|b| b.kind == BodyKind::Station)
+            .expect("station");
+        let free = s.dose_protection();
+        s.docked = Some(st);
+        let docked = s.dose_protection();
+        assert!(docked <= 0.01 * free, "docked {docked} vs free {free}");
+        // A belt of 0.1 Gy/h outside leaves under the 1 mGy/h that sickens nobody in a dock.
+        assert!(0.1 * docked < 1.0e-3);
+    }
+
     fn sim() -> Sim {
         let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../data");
         new_sim(5, Arc::new(GameData::load(&dir).expect("data")))

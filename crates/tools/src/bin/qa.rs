@@ -733,8 +733,8 @@ fn play(
         if std::env::var("QA_CREW").is_ok() {
             for p in &s.crew.members {
                 eprintln!(
-                    "  crew j{day} {} alive {} sante {:.2} faim {:.2} soif {:.2} fatigue {:.2} stress {:.2} moral {:.2} maladie {:?} air {:.2} dose {:.3} t {:.0}K",
-                    p.name, p.alive, p.health, p.hunger, p.thirst, p.fatigue, p.stress, p.morale, p.disease, s.crew.air, s.ship.sys.dose_gy, s.ship.sys.temp_k
+                    "  crew j{day} {} alive {} sante {:.2} faim {:.2} soif {:.2} fatigue {:.2} stress {:.2} moral {:.2} maladie {:?} air {:.2} dose {:.3} t {:.0}K aigu {:.2} sv/j {:.3}",
+                    p.name, p.alive, p.health, p.hunger, p.thirst, p.fatigue, p.stress, p.morale, p.disease, s.crew.air, s.ship.sys.dose_gy, s.ship.sys.temp_k, p.body.acute_dose, s.crew.env.rad_sv_day
                 );
             }
         }

@@ -368,7 +368,7 @@ impl Sim {
                 dose *= 4.0;
             }
             if self.docked.is_some() {
-                dose *= 0.05;
+                dose *= crate::navigation::DOCKED_COVER * 2.0;
             } else if self.ship.sys.shield_pts > 0.3 * self.effective.shield_cap.max(1.0) {
                 dose *= 0.15;
                 self.ship.sys.shield_pts *= 0.5;

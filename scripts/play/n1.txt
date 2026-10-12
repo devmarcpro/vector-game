@@ -1,0 +1,46 @@
+reveal
+near planet
+key i
+post ZZMSG
+expect_text ZZMSG
+lint
+key escape
+key j
+post ZZMSG
+expect_text ZZMSG
+lint
+key escape
+key f4
+post ZZMSG
+expect_text ZZMSG
+lint
+key escape
+key f6
+post ZZMSG
+expect_text ZZMSG
+lint
+key escape
+key x
+post ZZMSG
+expect_text ZZMSG
+lint
+key escape
+key f8
+post ZZMSG
+expect_text ZZMSG
+lint
+key escape
+key backslash
+post ZZMSG
+expect_text ZZMSG
+lint
+key escape
+key tab
+key g
+wait 40
+key d
+wait 3
+key t
+post ZZMSG
+expect_text ZZMSG
+lint

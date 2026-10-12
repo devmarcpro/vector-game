@@ -1,0 +1,12 @@
+key f4
+shot shots/play_57_tech.png
+key enter
+messages
+key tab
+key enter
+messages
+key escape
+key f5
+messages
+key f9
+messages

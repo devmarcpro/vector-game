@@ -1,0 +1,17 @@
+print
+key tab
+key g
+wait 40
+key d
+wait 3
+print
+click_text Acier
+key enter
+print
+click_text Machines
+key enter
+print
+click_text Electronique
+key enter
+print
+shot shots/play_51_marchand_sold.png

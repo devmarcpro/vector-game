@@ -272,7 +272,12 @@ pub(crate) fn crash_body(sim: &Sim) -> Option<usize> {
         } else {
             0.0
         };
-        Some(crate::colony::habitability(cb) * 10.0 + air)
+        // A castaway must walk out and live: toxic air and ovens or freezers are worse than a
+        // world with a little less ground to walk on.
+        let lungs = sim.air_hazard_of(i).map_or(0.0, |a| a.lungs());
+        let t = cb.temp;
+        let heat = ((t - 320.0).max(0.0) + (240.0 - t).max(0.0)) / 20.0;
+        Some(crate::colony::habitability(cb) * 10.0 + air - lungs * 400.0 - heat)
     };
     (0..sim.system.bodies.len())
         .filter(|&i| {
@@ -545,6 +550,15 @@ pub fn new_sim_with(cfg: &StartConfig, data: Arc<GameData>) -> Result<Sim, Strin
             sim.update_ref();
             if let Some((cx, cy)) = sim.default_landing(body) {
                 let party: Vec<usize> = (0..sim.crew.members.len()).take(1).collect();
+                // The survivors walk out in the reinforced suit the crash left them: without a sealed
+                // suit the air of most worlds kills a castaway within a few dozen turns.
+                if let Some(suit) = sim.data.gear_index("combi_renforcee") {
+                    for &who in &party {
+                        if let Some(slot) = sim.crew.members[who].gear.get_mut(1) {
+                            *slot = Some(suit);
+                        }
+                    }
+                }
                 let _ = sim.rogue_land(body, cx, cy, party, false);
             }
         }
@@ -822,6 +836,36 @@ mod tests {
                 alt < 100.0,
                 "seed {seed}: a dead engine does not lift: {alt}"
             );
+        }
+    }
+
+    #[test]
+    fn the_castaway_lives_long_enough_to_search_and_is_told_what_the_place_costs() {
+        let d = data();
+        for seed in [1u64, 2, 3, 11, 24263] {
+            let mut sim = new_sim_with(&cfg(&d, "naufrage", seed), Arc::clone(&d)).expect("wreck");
+            assert!(
+                sim.crew.members[0].gear.get(1).is_some_and(Option::is_some),
+                "seed {seed}: a suit on the survivor"
+            );
+            let told = sim
+                .rogue
+                .as_ref()
+                .is_some_and(|r| r.log.iter().any(|l| l.starts_with("ATTENTION")));
+            for _ in 0..30 {
+                let _ = sim.rogue_wait();
+            }
+            let health = sim.crew.members[0].health;
+            assert!(
+                health > 0.3,
+                "seed {seed}: only {health} of health left after 30 turns in the open"
+            );
+            if health < 0.9 {
+                assert!(
+                    told,
+                    "seed {seed}: the place hurts ({health}) and nobody said so"
+                );
+            }
         }
     }
 

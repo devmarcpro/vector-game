@@ -33,6 +33,9 @@ const TIME_LADDER: [f64; 10] = [
     0.25, 0.5, 1.0, 2.0, 5.0, 10.0, 100.0, 1000.0, 10_000.0, 100_000.0,
 ];
 
+/// Fastest time warp left while a flare is about to hit a ship with nothing to shelter it.
+const FLARE_WARP_MAX: f64 = 60.0;
+
 /// Reagents of one batch in the laboratory (codex, REACTIONS), kg.
 pub const LAB_BATCH_KG: f64 = 100.0;
 
@@ -676,6 +679,15 @@ impl Game {
         if self.sim.combat_active() {
             self.timescale = 1.0;
         }
+        // A flare is announced five minutes ahead: never let the time warp swallow the warning
+        // when nothing shelters the ship.
+        if self.timescale > 1.0 && self.sim.docked.is_none() {
+            if let Some((t, _, _)) = self.sim.pending_flare {
+                if t - self.sim.time < 3.0 * vector_sim::science::FLARE_WARNING_S {
+                    self.timescale = self.timescale.min(FLARE_WARP_MAX);
+                }
+            }
+        }
         let input = if self.timescale > 2.0 {
             ShipInput::default()
         } else {
@@ -780,9 +792,15 @@ impl Game {
                 }
                 Event::JumpMishap => self.say("INCIDENT DE SAUT: DEGATS SUR LE PROPULSEUR"),
                 Event::Customs { seized_kg, fine } => {
-                    self.say(format!(
-                        "DOUANES: {seized_kg:.0} KG DE CONTREBANDE SAISIS, AMENDE {fine:.0} CR"
-                    ));
+                    if fine > 0.0 {
+                        self.say(format!(
+                            "DOUANES: {seized_kg:.0} KG DE CONTREBANDE SAISIS, AMENDE {fine:.0} CR"
+                        ));
+                    } else {
+                        self.say(format!(
+                            "DOUANES: {seized_kg:.0} KG DE CONTREBANDE SAISIS (AVERTISSEMENT, PAS D'AMENDE)"
+                        ));
+                    }
                 }
                 Event::ContractDone { reward } => {
                     self.say(format!("CONTRAT REMPLI: +{reward:.0} CR"));
@@ -793,6 +811,9 @@ impl Game {
                     self.say(format!("LA BANQUE SAISIT {amount:.0} CR POUR PRET IMPAYE"))
                 }
                 Event::PatrolScan => self.say("PATROUILLE: SCAN DE VOTRE SOUTE"),
+                Event::BatteryFire => self.say(
+                    "ALERTE : LES BATTERIES ORBITALES TIRENT SUR VOTRE VAISSEAU - FUYEZ LA STATION !",
+                ),
                 Event::ColonyFounded { index } => {
                     let name = self.sim.colonies[index].name.clone();
                     self.say(format!("COLONIE FONDEE : {name}"));
@@ -859,7 +880,10 @@ impl Game {
                 }
                 Event::RiftJump => self.say("UNE FAILLE SPATIALE VOUS A DEPLACE !"),
                 Event::FlareWarning => {
-                    self.say("ALERTE : ERUPTION STELLAIRE IMMINENTE - ABRITEZ-VOUS !")
+                    self.timescale = 1.0;
+                    self.say(
+                        "ALERTE : ERUPTION STELLAIRE DANS 5 MIN - AMARREZ-VOUS (D) OU ACTIVEZ LE BOUCLIER !",
+                    )
                 }
                 Event::FlareHit { dose } => {
                     self.say(format!("ERUPTION STELLAIRE : DOSE {dose:.2} GY"))
@@ -4664,6 +4688,41 @@ mod tests {
         assert_eq!(g.codex_cat, 1);
         g.key(KeyCode::F6, None, true);
         assert_eq!(g.screen, Screen::Flight);
+    }
+
+    #[test]
+    fn a_coming_flare_ends_the_time_warp_of_an_exposed_ship() {
+        let mut g = Game::new(data(), 1);
+        g.key(KeyCode::Enter, None, true);
+        g.sim.docked = None;
+        g.timescale = 1000.0;
+        g.sim.pending_flare = Some((g.sim.time + 600.0, 0.5, false));
+        g.advance(0.01);
+        assert!(g.timescale <= 60.0, "slow enough to see the warning");
+        g.sim.events.push(Event::FlareWarning);
+        g.timescale = 50.0;
+        g.handle_events();
+        assert_eq!(g.timescale, 1.0);
+        assert!(g.messages.last().is_some_and(|m| m.contains("AMARREZ")));
+        g.sim.events.push(Event::BatteryFire);
+        g.handle_events();
+        assert!(g.messages.last().is_some_and(|m| m.contains("BATTERIES")));
+    }
+
+    #[test]
+    fn docking_early_skips_the_flight_lessons() {
+        let mut g = Game::new(data(), 1);
+        g.key(KeyCode::Enter, None, true);
+        assert_eq!(g.tut_step, Some(0));
+        let (st, _) = g.sim.nearest_station().expect("station");
+        g.sim.spawn_near(st, g.sim.bodies[st].radius + 200.0);
+        g.key(KeyCode::KeyD, None, true);
+        assert_eq!(g.screen, Screen::Station);
+        assert_eq!(
+            g.tut_step,
+            Some(9),
+            "no lesson about thrust at the quay: on to trading"
+        );
     }
 
     #[test]

@@ -46,6 +46,12 @@ pub struct Ride {
 }
 
 impl Autopilot {
+    /// Time left on the planned trip, seconds, and the delta-v it asks of the ship, m/s (a flip
+    /// at the middle: accelerate half way, brake the other half).
+    pub fn eta_and_dv(&self) -> (f64, f64) {
+        ((self.total - self.t).max(0.0), self.a_cruise * self.total)
+    }
+
     pub fn new(sim: &Sim, target: usize) -> Result<Self, &'static str> {
         let b = sim.bodies.get(target).ok_or("cible inconnue")?;
         let stop_alt = match b.kind {

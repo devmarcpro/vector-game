@@ -1,0 +1,20 @@
+key tab
+key g
+wait 40
+key d
+wait 3
+key u
+wait 2
+key t
+print
+key g
+scale 100000
+wait 3
+print
+wait 3
+print
+wait 3
+print
+scale 1
+print
+shot shots/play_34_arrived_asteroid.png

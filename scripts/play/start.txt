@@ -1,0 +1,11 @@
+tutorial on
+click_text NOUVELLE
+key enter
+key enter
+key enter
+key enter
+key enter
+key enter
+key enter
+key enter
+key enter

@@ -1,0 +1,10 @@
+reveal
+near planet
+key o
+scale 1000
+wait 90
+scale 1
+key f2
+key enter
+text
+shot shots/play_38_colony.png

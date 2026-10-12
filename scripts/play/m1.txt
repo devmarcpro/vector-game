@@ -1,0 +1,6 @@
+reveal
+near planet
+key f8
+messages
+key e
+messages

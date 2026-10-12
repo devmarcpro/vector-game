@@ -25,6 +25,8 @@ pub struct Framebuffer {
     pub clipped: usize,
     /// The first of them, for the report.
     pub clipped_first: Option<String>,
+    /// When `Some`, every text drawn is recorded as (x, y, scale, text) in pixels (the script tool reads it).
+    pub rec: Option<Vec<(i32, i32, i32, String)>>,
 }
 
 impl Framebuffer {
@@ -35,6 +37,7 @@ impl Framebuffer {
             px: vec![0; w * h],
             clipped: 0,
             clipped_first: None,
+            rec: None,
         }
     }
     pub fn clear(&mut self) {
@@ -90,6 +93,14 @@ impl Framebuffer {
         }
     }
     pub fn text(&mut self, col: usize, row: usize, s: &str, c: u32) {
+        if let Some(r) = &mut self.rec {
+            r.push((
+                (col * font::CELL_W) as i32,
+                (row * font::CELL_H) as i32,
+                1,
+                s.to_string(),
+            ));
+        }
         let cols = self.cols();
         if s.chars().skip(cols.saturating_sub(col)).any(|ch| ch != ' ') {
             self.clipped += 1;
@@ -116,6 +127,9 @@ impl Framebuffer {
     }
     /// Scaled text (each font pixel becomes a `scale` x `scale` block), for titles.
     pub fn text_big(&mut self, x: i32, y: i32, s: &str, scale: i32, c: u32) {
+        if let Some(r) = &mut self.rec {
+            r.push((x, y, scale, s.to_string()));
+        }
         for (i, ch) in s.chars().enumerate() {
             let g = font::glyph(ch);
             let ox = x + i as i32 * font::CELL_W as i32 * scale;
@@ -135,6 +149,9 @@ impl Framebuffer {
     /// Like `text_big` but opaque: the pixels of the glyph replace what is under them instead of
     /// adding to it (billboards drawn over a bright ground).
     pub fn text_big_over(&mut self, x: i32, y: i32, s: &str, scale: i32, c: u32) {
+        if let Some(r) = &mut self.rec {
+            r.push((x, y, scale, s.to_string()));
+        }
         for (i, ch) in s.chars().enumerate() {
             let g = font::glyph(ch);
             let ox = x + i as i32 * font::CELL_W as i32 * scale;
@@ -195,6 +212,9 @@ impl Framebuffer {
 
     /// Text at an arbitrary pixel position.
     pub fn text_at(&mut self, x: i32, y: i32, s: &str, c: u32) {
+        if let Some(r) = &mut self.rec {
+            r.push((x, y, 1, s.to_string()));
+        }
         for (i, ch) in s.chars().enumerate() {
             let g = font::glyph(ch);
             let ox = x + (i * font::CELL_W) as i32;

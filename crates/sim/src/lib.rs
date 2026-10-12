@@ -292,6 +292,8 @@ pub enum Event {
         amount: f64,
     },
     PatrolScan,
+    /// The orbital batteries of a people that hunts the ship opened fire (first shot of the day).
+    BatteryFire,
     PirateAlert,
     ColonyFounded {
         index: usize,

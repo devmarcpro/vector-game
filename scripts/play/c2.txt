@@ -1,0 +1,13 @@
+key l
+key enter
+scale 100
+wait 300
+print
+scale 1000
+wait 200
+print
+wait 200
+print
+shot shots/play_24_jump_later.png
+wait 400
+print

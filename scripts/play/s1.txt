@@ -1,0 +1,7 @@
+key tab
+key g
+scale 100
+wait 8
+scale 1
+print
+shot shots/play_58_unknown_obj.png

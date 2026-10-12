@@ -16,6 +16,9 @@ fn any_pressed(g: &Game, screen: Screen, codes: &[KeyCode]) -> bool {
     codes.iter().any(|&c| pressed(g, screen, c))
 }
 
+/// Index of the lesson that ends when the ship is docked.
+const DOCK_STEP: usize = 8;
+
 pub const STEPS: [Step; 17] = [
     Step {
         text: "Bienvenue, IA de bord. Tout se fait aussi a la souris : CLIC DROIT sur un element = ses actions, F10 = menu, ? = aide. Pilotez : W/S tangage, A/D lacet, Q/E roulis.",
@@ -132,7 +135,7 @@ pub fn hint_line(g: &Game) -> String {
             "WASD/QE ROT  ESP/X POUSSEE  MAJ BOOST  C FREIN  F ASSIST  TAB CIBLE  G AUTO  D AMARRER  V LASER  F10 MENU  M CARTE  F1 AIDE"
         }
         Screen::Station => {
-            "ENTREE VENDRE  F PLEIN  R REPARER  FIN VISITER LA STATION (TOUS LES SERVICES)  H NAVIRE  T BOURSE  U DECOLLER"
+            "B ACHETER 100 KG  S VENDRE 100 KG  ENTREE VENDRE TOUT  F PLEIN  R REPARER  FIN SERVICES  H NAVIRE  T BOURSE  U DECOLLER"
         }
         Screen::Inventory => "HAUT/BAS CHOISIR  J JETER  F CARBURANT DE LA SOUTE AU RESERVOIR  I/ECHAP RETOUR",
         Screen::Pause => "HAUT/BAS CHOISIR  ENTREE VALIDER  ECHAP REPRENDRE",
@@ -488,9 +491,17 @@ impl Game {
 
     /// Record a key press for the tutorial and advance when the current step is complete.
     pub fn tutorial_tick(&mut self, key: Option<(Screen, KeyCode)>) {
-        let Some(step) = self.tut_step else { return };
+        let Some(mut step) = self.tut_step else {
+            return;
+        };
         if let Some(k) = key {
             self.tut_keys.push(k);
+        }
+        // Docked already (the autopilot is a fine way to get there): the flight lessons that
+        // are left would ask for keys that do nothing at the quay.
+        if self.sim.docked.is_some() && step < DOCK_STEP {
+            step = DOCK_STEP;
+            self.tut_step = Some(step);
         }
         if step >= STEPS.len() {
             self.tut_step = None;

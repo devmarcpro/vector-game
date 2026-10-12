@@ -1,0 +1,58 @@
+key tab
+key g
+wait 40
+key d
+wait 3
+lint
+key c
+lint
+key escape
+lint
+key e
+lint
+key escape
+lint
+key t
+lint
+key escape
+lint
+key h
+lint
+key escape
+lint
+key y
+lint
+key escape
+lint
+key k
+lint
+key escape
+lint
+key l
+lint
+key escape
+lint
+key r
+lint
+key escape
+lint
+key backslash
+lint
+key escape
+lint
+key a
+lint
+key escape
+lint
+key j
+lint
+key escape
+lint
+key g
+lint
+key escape
+lint
+key d
+lint
+key escape
+lint

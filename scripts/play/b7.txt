@@ -1,0 +1,20 @@
+key tab
+key g
+wait 40
+key d
+wait 3
+shot shots/play_15_tuto_dock.png
+key u
+wait 2
+key t
+print
+shot shots/play_16_asteroid_target.png
+key g
+wait 60
+print
+shot shots/play_17_asteroid_near.png
+hold v 20
+print
+shot shots/play_18_mining.png
+key i
+shot shots/play_19_hold.png

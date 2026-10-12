@@ -602,6 +602,8 @@ pub const MERC_PAY_PER_HULL: f64 = 800.0;
 /// Orbital batteries: damage per gun and second, reach (m).
 pub const BATTERY_DPS: f64 = 25.0;
 pub const BATTERY_RANGE: f64 = 60_000.0;
+/// Seconds from the start of a game during which the batteries of the home sector stay quiet.
+pub const BATTERY_GRACE_S: f64 = 600.0;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum AgentState {
@@ -1678,7 +1680,13 @@ impl Sim {
 
     /// The batteries of the sector fire on a ship its people hunts, near their station.
     pub(crate) fn battery_tick(&mut self, dt: f64) {
-        if self.docked.is_some() || self.faction.is_none() || !self.is_wanted() {
+        // A new game starts where the scenario says, wanted or not: the first minutes are a
+        // chance to understand and leave before the guns of the place open up.
+        if self.docked.is_some()
+            || self.faction.is_none()
+            || !self.is_wanted()
+            || self.time < BATTERY_GRACE_S
+        {
             return;
         }
         let Some(station) = self
@@ -1712,6 +1720,7 @@ impl Sim {
         let day = self.day_index();
         if self.military.last_battery_day != day + 1 {
             self.military.last_battery_day = day + 1;
+            self.events.push(crate::Event::BatteryFire);
             let t = self.time;
             self.news_push(
                 t,
@@ -2535,8 +2544,20 @@ mod tests {
         assert_eq!(s.ship.hull, h0, "an innocent ship is left alone");
         s.change_reputation(Some(0), -90.0);
         assert!(s.is_wanted());
+        // The first minutes of a game: a warning period, no fire.
+        s.time = 10.0;
+        s.battery_tick(1.0);
+        assert_eq!(s.ship.hull, h0, "no fire in the grace period");
+        s.time = BATTERY_GRACE_S + 1.0;
+        s.events.clear();
         s.battery_tick(1.0);
         assert!(s.ship.hull < h0, "the guns open up");
+        assert!(
+            s.events
+                .iter()
+                .any(|e| matches!(e, crate::Event::BatteryFire)),
+            "and the pilot is told"
+        );
         assert!(s
             .news
             .iter()

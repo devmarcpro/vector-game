@@ -1,0 +1,7 @@
+key end
+shot shots/play_55_explore_menu.png
+key down
+key enter
+shot shots/play_56_ship_walk.png
+key enter
+text

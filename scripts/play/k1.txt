@@ -1,0 +1,6 @@
+pirate
+shot shots/play_44_pirate.png
+engage 30
+print
+shot shots/play_45_combat.png
+text

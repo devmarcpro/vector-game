@@ -1,0 +1,19 @@
+key tab
+key g
+wait 40
+key d
+wait 3
+key down
+key down
+key b
+print
+key b
+print
+key s
+print
+key i
+shot shots/play_12_inventory.png
+key escape
+key c
+text
+shot shots/play_13_contracts.png

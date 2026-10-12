@@ -484,7 +484,8 @@ pub fn environment_damage(pressure: f64, temp: f64, defense: f64) -> (f64, &'sta
     let mut dmg: f64 = 0.0;
     let mut why = "";
     if pressure < 0.05 {
-        dmg += 0.03;
+        // A sealed suit (defence 0.15 or more) keeps its own pressure: only the seams leak.
+        dmg += if defense >= 0.15 { 0.0075 } else { 0.03 };
         why = "L'air manque";
     }
     let excess = if temp < 250.0 {
@@ -1910,9 +1911,55 @@ impl Sim {
             names.join(", "),
             if vehicle { ", avec le rover" } else { "" }
         ));
+        // Say it at once when the place hurts: the loss per turn and the way back.
+        let worst = r
+            .party
+            .iter()
+            .map(|&w| self.surface_harm(Some(body), w, map.pressure, temp_here))
+            .fold((0.0f64, ""), |a, b| if b.0 > a.0 { b } else { a });
+        let per_turn = worst.0 * SURFACE_TURN_SECONDS / 60.0;
+        if per_turn >= 0.003 {
+            r.say(format!(
+                "ATTENTION : {} ; environ {:.1} % de sante par tour. Explorez vite, ENTREE sur < ramene au vaisseau.",
+                worst.1.to_lowercase(),
+                per_turn * 100.0
+            ));
+        }
         r.reveal();
         self.rogue = Some(r);
         Ok(())
+    }
+
+    /// What the air and the climate of a surface cost one member of the squad per minute of
+    /// turn: (damage, reason). A suit protects in proportion to its defence, warm clothes in the
+    /// cold, and a sealed suit (defence 0.15 or more) keeps the bad air out but at the seams.
+    fn surface_harm(
+        &self,
+        body: Option<usize>,
+        who: usize,
+        pressure: f64,
+        temp: f64,
+    ) -> (f64, &'static str) {
+        // What the air is made of (chemistry): poison and lack of oxygen.
+        let lungs = body
+            .and_then(|b| self.air_hazard_of(b))
+            .map_or(0.0, |a| a.lungs());
+        let p = &self.crew.members[who];
+        let defense = p.gear_stat(&self.data, "defense")
+            + if temp < 250.0 {
+                p.gear_stat(&self.data, "warmth")
+            } else {
+                0.0
+            };
+        let (mut dmg, mut why) = environment_damage(pressure, temp, defense);
+        if lungs > 0.0 {
+            let sealed = if defense >= 0.15 { 0.25 } else { 1.0 };
+            dmg += lungs * sealed * (1.0 - (1.5 * defense).min(0.95));
+            if why.is_empty() {
+                why = "L'air est irrespirable";
+            }
+        }
+        (dmg, why)
     }
 
     // ---- the squad -------------------------------------------------------------------------
@@ -3096,31 +3143,20 @@ impl Sim {
         // The air and the climate of a surface: a suit protects in proportion to its defence, and
         // warm clothes in the cold.
         if let (Some((pressure, temp)), true) = (r.env, r.on_surface()) {
-            // What the air is made of (chemistry): poison and lack of oxygen.
-            let lungs = r
-                .body
-                .and_then(|b| self.air_hazard_of(b))
-                .map_or(0.0, |a| a.lungs());
             for who in self.party_up(r) {
-                let p = &self.crew.members[who];
-                let defense = p.gear_stat(&self.data, "defense")
-                    + if temp < 250.0 {
-                        p.gear_stat(&self.data, "warmth")
-                    } else {
-                        0.0
-                    };
-                let (mut dmg, mut why) = environment_damage(pressure, temp, defense);
-                if lungs > 0.0 {
-                    dmg += lungs * (1.0 - (1.5 * defense).min(0.95));
-                    if why.is_empty() {
-                        why = "L'air est irrespirable";
-                    }
-                }
+                let (dmg, why) = self.surface_harm(r.body, who, pressure, temp);
                 if dmg > 0.0 {
+                    let name = self.crew.members[who].name.clone();
                     let p = &mut self.crew.members[who];
+                    let before = p.health;
                     p.health = (p.health - (dmg * r.turn_seconds / 60.0) as f32).max(0.0);
                     if r.turn.is_multiple_of(10) {
                         r.say(format!("{why}."));
+                    }
+                    if before >= 0.5 && p.health < 0.5 {
+                        r.say(format!(
+                            "{name} est a bout : retournez au vaisseau (ENTREE sur <) pour vous soigner."
+                        ));
                     }
                 }
             }

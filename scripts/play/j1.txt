@@ -1,0 +1,16 @@
+give credits 3000
+key tab
+key g
+wait 40
+key d
+wait 3
+key k
+key n
+key enter
+print
+key escape
+key k
+shot shots/play_42_crew2.png
+key m
+shot shots/play_43_medicine.png
+text

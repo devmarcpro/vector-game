@@ -184,63 +184,140 @@ pub fn draw_overlay(fb: &mut Framebuffer, g: &Game) {
     crate::context_menu::draw_tooltip(fb, g);
 }
 
+/// Width in characters of the tutorial row on the screens that are not the flight view: from
+/// column 1 to the buttons at the top right.
+const TUTORIAL_ROW: usize = 104;
+const TUTORIAL_BUTTON: &str = "[SUPPR ignorer]";
+
+/// The tutorial line on the top row of a menu screen. It is one row only (the rows below are the
+/// screen's title and tabs): a long lesson scrolls like the news ticker, the "[SUPPR ignorer]"
+/// button stays where it is.
+fn draw_tutorial_row(fb: &mut Framebuffer, g: &Game, i: usize, text: &str) {
+    let head = format!("TUTO {}/{}  ", i + 1, crate::tutorial::STEPS.len());
+    let room = TUTORIAL_ROW - head.chars().count() - TUTORIAL_BUTTON.len() - 2;
+    let chars: Vec<char> = text.chars().collect();
+    let shown: String = if chars.len() <= room {
+        text.to_string()
+    } else {
+        // Hold still for the first moments of each lap so the beginning can be read.
+        let lap = chars.len() + 7;
+        let t = (crate::proto_view::anim_time() * 8.0) as usize;
+        let start = t.saturating_sub(24) % lap;
+        chars
+            .iter()
+            .chain("   +++ ".chars().collect::<Vec<_>>().iter())
+            .cycle()
+            .skip(start)
+            .take(room)
+            .collect()
+    };
+    fb.text(1, 0, &format!("{head}{shown:<room$}"), AMBER);
+    let col = 1 + head.chars().count() + room + 2;
+    let hover = g.hit_cells(
+        col,
+        0,
+        TUTORIAL_BUTTON.len(),
+        1,
+        Act::Key(KeyCode::Delete),
+        None,
+    );
+    fb.text(
+        col,
+        0,
+        TUTORIAL_BUTTON,
+        if hover { 0x00D0_FFD0 } else { AMBER },
+    );
+}
+
 fn draw_overlay_inner(fb: &mut Framebuffer, g: &Game) {
     crate::flight_menu::draw(fb, g);
     // Before the command bar: the bar stays the last zone drawn.
     crate::hub::draw_menu_button(fb, g);
     crate::dash_view::draw_alert_badge(fb, g);
     crate::context_menu::draw_help_button(fb, g);
+    // Screens that have no message line of their own: the result of an action (fuel moved,
+    // fine paid, research started, expedition refused...) still has to be readable.
+    if matches!(
+        g.screen,
+        Screen::Inventory
+            | Screen::Journal
+            | Screen::Tech
+            | Screen::Codex
+            | Screen::Factions
+            | Screen::Surface
+            | Screen::Bourse
+            | Screen::Dashboard
+    ) {
+        if let Some(m) = g.messages.last() {
+            fb.text_fit(1, fb.rows().saturating_sub(3), m, AMBER);
+        }
+    }
     if g.settings.ticker && !matches!(g.screen, Screen::MainMenu | Screen::NewGame) {
         draw_ticker(fb, g);
     }
     if let Some((i, text)) = g.tutorial_line() {
-        let line = format!(
-            "TUTO {}/{}  {}  [SUPPR ignorer]",
-            i + 1,
-            crate::tutorial::STEPS.len(),
-            text
-        );
-        let flight = g.screen == Screen::Flight;
-        let w = if flight {
-            54
+        if g.screen != Screen::Flight && g.settings.hints {
+            draw_tutorial_row(fb, g, i, &text);
         } else {
-            fb.cols().saturating_sub(2).max(10)
-        };
-        let mut rows: Vec<String> = Vec::new();
-        let mut cur = String::new();
-        for word in line.split_whitespace() {
-            if !cur.is_empty() && cur.chars().count() + 1 + word.chars().count() > w {
-                rows.push(std::mem::take(&mut cur));
-            }
-            if !cur.is_empty() {
-                cur.push(' ');
-            }
-            cur.push_str(word);
-        }
-        rows.push(cur);
-        for (k, r) in rows.iter().enumerate() {
-            let (c, row) = if flight {
-                (40, 5 + k)
-            } else if g.settings.hints {
-                // The last row belongs to the command bar and the rows above to messages.
-                (1, k)
-            } else {
-                (1, fb.rows().saturating_sub(rows.len() - k))
+            let line = format!(
+                "TUTO {}/{}  {}  [SUPPR ignorer]",
+                i + 1,
+                crate::tutorial::STEPS.len(),
+                text
+            );
+            let flight = g.screen == Screen::Flight;
+            let hints = g.settings.hints;
+            // Width of row `k`. On the other screens with the command bar the first row stops before
+            // the buttons at the top right and the next ones sit right of the screen's title (rows 1
+            // and 2, from column 64), so the text never lands on the title.
+            let width = |k: usize| -> usize {
+                if flight || (hints && k > 0) {
+                    54
+                } else if hints {
+                    116
+                } else {
+                    fb.cols().saturating_sub(2).max(10)
+                }
             };
-            fb.text(c, row, r, AMBER);
-            // "[SUPPR ignorer]" is a button (it can wrap onto the next row: the word "[SUPPR" opens it).
-            if let Some(pos) = r.find("[SUPPR") {
-                let n = r.chars().count() - r[..pos].chars().count();
-                let hover = g.hit_cells(
-                    c + r[..pos].chars().count(),
-                    row,
-                    n,
-                    1,
-                    Act::Key(KeyCode::Delete),
-                    None,
-                );
-                if hover {
-                    fb.text(c + r[..pos].chars().count(), row, &r[pos..], 0x00D0_FFD0);
+            let mut rows: Vec<String> = Vec::new();
+            let mut cur = String::new();
+            for word in line.split_whitespace() {
+                if !cur.is_empty()
+                    && cur.chars().count() + 1 + word.chars().count() > width(rows.len())
+                {
+                    rows.push(std::mem::take(&mut cur));
+                }
+                if !cur.is_empty() {
+                    cur.push(' ');
+                }
+                cur.push_str(word);
+            }
+            rows.push(cur);
+            for (k, r) in rows.iter().enumerate() {
+                let (c, row) = if flight {
+                    // Row 6: the four newest messages own rows 2 to 5.
+                    (40, 6 + k)
+                } else if hints {
+                    // The last row belongs to the command bar and the rows above to messages.
+                    (if k == 0 { 1 } else { 64 }, k)
+                } else {
+                    (1, fb.rows().saturating_sub(rows.len() - k))
+                };
+                fb.text(c, row, r, AMBER);
+                // "[SUPPR ignorer]" is a button (it can wrap onto the next row: the word "[SUPPR" opens it).
+                if let Some(pos) = r.find("[SUPPR") {
+                    let n = r.chars().count() - r[..pos].chars().count();
+                    let hover = g.hit_cells(
+                        c + r[..pos].chars().count(),
+                        row,
+                        n,
+                        1,
+                        Act::Key(KeyCode::Delete),
+                        None,
+                    );
+                    if hover {
+                        fb.text(c + r[..pos].chars().count(), row, &r[pos..], 0x00D0_FFD0);
+                    }
                 }
             }
         }
@@ -790,8 +867,10 @@ fn draw_station(fb: &mut Framebuffer, g: &Game) {
         b + 1,
         "D:COURTAGE  L:ELEVAGE  A:CASINO  G/J:NOIR  F:CARBURANT  R:REPARER  H:VAISSEAU  Y:CHANTIER  K:EQUIPAGE  U:DECOLLER",
     );
-    for (i, msg) in g.messages.iter().rev().take(2).enumerate() {
-        fb.text(1, b + 2 + i, msg, if i == 0 { AMBER } else { DIM });
+    // The result of the last action (bought, sold, refuelled, seized...) sits just under the
+    // list: the rows below it belong to the news ticker and the key hints.
+    if let Some(msg) = g.messages.last() {
+        fb.text(1, b - 1, msg, AMBER);
     }
 }
 
@@ -2482,6 +2561,15 @@ fn draw_colony(fb: &mut Framebuffer, g: &Game) {
         None,
     );
     fb.text(1, by, "CONSTRUIRE", focus(3));
+    if g.col_focus != 3 {
+        // The list is one zone of the TAB cycle: say so instead of leaving an empty gap.
+        fb.text(
+            12,
+            by,
+            "(TAB OU CLIC : LISTE DES BATIMENTS A CONSTRUIRE)",
+            DIM,
+        );
+    }
     if g.col_focus == 3 {
         let n = g.data.buildings.len();
         let show = 7usize;

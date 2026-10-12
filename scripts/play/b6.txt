@@ -1,0 +1,20 @@
+key tab
+key g
+wait 40
+key d
+wait 3
+key c
+key down
+key enter
+key escape
+click_text Silicium
+key b
+key b
+key c
+key up
+print
+key enter
+print
+key up
+key enter
+print

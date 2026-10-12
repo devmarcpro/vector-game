@@ -1,0 +1,13 @@
+key backslash
+shot shots/play_46_dashboard.png
+key escape
+key f6
+shot shots/play_47_codex.png
+key escape
+rclick 640 360
+shot shots/play_48_ctx_empty.png
+key escape
+click 640 360
+rclick 660 352
+shot shots/play_49_ctx_station.png
+text

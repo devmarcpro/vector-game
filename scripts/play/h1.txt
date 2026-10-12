@@ -1,0 +1,7 @@
+reveal
+near planet
+print
+key o
+print
+shot shots/play_36_colonize.png
+text

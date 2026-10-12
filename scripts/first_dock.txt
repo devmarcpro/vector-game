@@ -1,0 +1,13 @@
+# First dock of a new game: the autopilot brings the ship to the station, D docks, and the customs
+# only warn about the contraband of the scenario (no fine in the first hour).
+new 24263
+tutorial off
+key tab
+key g
+wait 40
+key d
+wait 3
+expect docked yes
+expect screen station
+expect credits > 499
+expect_text "ACHETER 100 KG"

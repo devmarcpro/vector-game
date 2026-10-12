@@ -684,7 +684,7 @@ pub fn orientation(g: &Game) -> Orientation {
         todo.push("PUIS ESPACE POUR DECOLLER. RIEN N'EST OBLIGATOIRE.".into());
     }
     if s.docked.is_some() {
-        todo.push("A QUAI : ENTREE VENDRE LA SOUTE, F LE PLEIN, R REPARER, U DECOLLER.".into());
+        todo.push("A QUAI : B ACHETER / S VENDRE 100 KG, ENTREE VENDRE LA SOUTE, F LE PLEIN, R REPARER, U DECOLLER.".into());
         if st.fuel < 0.9 * st.stats.fuel_cap {
             todo.push("LE RESERVOIR N'EST PAS PLEIN : F AU MARCHE.".into());
         }

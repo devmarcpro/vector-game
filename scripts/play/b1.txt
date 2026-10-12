@@ -1,0 +1,11 @@
+key tab
+print
+shot shots/play_08_target.png
+key g
+wait 30
+print
+wait 120
+print
+shot shots/play_09_autopilot.png
+wait 300
+print

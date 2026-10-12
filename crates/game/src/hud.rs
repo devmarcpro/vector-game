@@ -765,8 +765,9 @@ fn draw_map(fb: &mut Framebuffer, v: &View) {
     fb.line(sx, sy - 5.0, sx, sy + 5.0, RED);
     fb.text_at(sx as i32 + 8, sy as i32 + 4, "VAISSEAU", RED);
     let rows = fb.rows();
+    // Column 50: the gauges at the bottom left own the columns before it.
     fb.text(
-        1,
+        50,
         rows - 5,
         &format!(
             "CARTE SYSTEME  ECHELLE {}/PX  [+/-] ZOOM  [C] CENTRE:{}",
@@ -819,12 +820,17 @@ fn draw_status(fb: &mut Framebuffer, v: &View) {
         fb.text(cols.saturating_sub(18), 1, "PARTIE MODIFIEE", AMBER);
     }
     if let Some(ap) = &sim.autopilot {
+        // How long and how much: the trip can take days and a good part of the tank.
+        let (eta, dv) = ap.eta_and_dv();
         fb.text(
             1,
             4,
             &format!(
-                "PILOTE AUTO -> {}  A={:.2} M/S2",
-                sim.bodies[ap.target].name, ap.a_cruise
+                "PILOTE AUTO -> {}  A={:.2} M/S2  RESTE {}  DV {:.0} KM/S",
+                sim.bodies[ap.target].name,
+                ap.a_cruise,
+                fmt_time(eta),
+                dv / 1e3
             ),
             AMBER,
         );
@@ -882,8 +888,9 @@ fn draw_status(fb: &mut Framebuffer, v: &View) {
         GREEN
     };
     fb.gauge(1, rows - 5, "TEMP     ", temp_frac, 20, temp_col);
+    // The gauge above is 32 columns wide from column 1: the numbers start after it.
     fb.text(
-        28,
+        35,
         rows - 5,
         &format!(
             "{:.0} K  {:.1}/{:.1} MW",

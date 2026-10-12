@@ -7,6 +7,8 @@ use vector_core::{hash_coord, Rng};
 use vector_world::galaxy::StarRef;
 use vector_world::{generate_system, BodyKind};
 
+/// Seconds from the start of a game during which customs only warn (no fine, no reputation loss).
+pub const CUSTOMS_GRACE_S: f64 = 3600.0;
 pub const REP_MIN: f32 = -100.0;
 pub const REP_MAX: f32 = 100.0;
 /// Below this reputation the faction refuses docking.
@@ -169,7 +171,7 @@ impl Sim {
         banned_goods_of(&self.data, faction)
     }
 
-    /// Contraband inspection at the docks. Returns (kg seized, fine) when something was found.
+    /// Contraband inspection at the docks (see `CUSTOMS_GRACE_S`). Returns (kg seized, fine) when something was found.
     pub fn customs_check(&mut self) -> Option<(f64, f64)> {
         let f = self.faction?;
         let fac = self.data.factions[f].clone();
@@ -198,10 +200,19 @@ impl Sim {
             kg += self.ship.cargo.remove(&data, r, amount);
             value += amount * data.resources[r].value;
         }
-        let fine = (2.0 * value).min(self.credits);
+        // A new game starts with whatever the scenario put in the hold, which can be banned in
+        // the starting territory: the first hour is a warning, not a fine.
+        let warning = self.time < CUSTOMS_GRACE_S;
+        let fine = if warning {
+            0.0
+        } else {
+            (2.0 * value).min(self.credits)
+        };
         self.credits -= fine;
-        self.change_reputation(Some(f), -8.0);
-        self.offend(Some(f), "contrebande");
+        if !warning {
+            self.change_reputation(Some(f), -8.0);
+            self.offend(Some(f), "contrebande");
+        }
         self.events.push(Event::Customs {
             seized_kg: kg,
             fine,
@@ -1162,6 +1173,27 @@ mod tests {
     }
 
     #[test]
+    fn customs_only_warn_in_the_first_hour() {
+        let mut s = docked_at_hub();
+        let faction = s.data.faction_index("hegemonie").expect("faction");
+        s.faction = Some(faction);
+        let gold = s.data.resource_index("gold").expect("gold");
+        let data = Arc::clone(&s.data);
+        let credits = s.credits;
+        for k in 0..40 {
+            s.time = f64::from(k);
+            s.ship.cargo.add(&data, gold, 50.0);
+            if let Some((kg, fine)) = s.customs_check() {
+                assert!(kg > 0.0);
+                assert_eq!(fine, 0.0, "no fine in the grace period");
+                assert_eq!(s.credits, credits);
+                return;
+            }
+        }
+        panic!("an aggressive faction should seize within 40 inspections");
+    }
+
+    #[test]
     fn customs_seizes_contraband_and_rewards_clean_ships() {
         let mut s = docked_at_hub();
         let conc = s.data.faction_index("hegemonie").expect("faction");
@@ -1171,7 +1203,7 @@ mod tests {
         s.ship.cargo.add(&data, gold, 50.0);
         let mut caught = false;
         for k in 0..60 {
-            s.time = f64::from(k) * 100.0;
+            s.time = CUSTOMS_GRACE_S + f64::from(k) * 100.0;
             s.ship.cargo.add(
                 &data,
                 gold,

@@ -1,0 +1,12 @@
+key x
+messages
+key b
+shot shots/play_53_rogue_dig.png
+key left
+key left
+key left
+key x
+key tab
+key f
+shot shots/play_54_rogue_fp.png
+key f

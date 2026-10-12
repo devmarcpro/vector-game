@@ -155,8 +155,9 @@ pub fn draw_livestock(fb: &mut Framebuffer, g: &Game) {
         },
         AMBER,
     );
+    // After the longest title (32 characters from column 1).
     fb.text(
-        20,
+        36,
         1,
         &format!(
             "CREDITS {:.0}   ENCLOS {}/{}   RATIONS {:.0} KG",

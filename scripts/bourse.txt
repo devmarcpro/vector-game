@@ -5,10 +5,12 @@ near station
 key d
 expect docked yes
 key t
-expect screen bourse
+expect screen station
+expect market exchange
 key tab
 key down
 key down
 key left
 key escape
 expect screen station
+expect market open

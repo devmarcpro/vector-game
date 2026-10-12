@@ -415,6 +415,29 @@ impl Sim {
         d
     }
 
+    /// The cabin dosimeter (Gy): what the crew has received in all, a view on the dose of each
+    /// person (`Body::total_dose` plus what is not yet taken by the body), averaged over the
+    /// living. There is no second counter.
+    pub fn dosimeter_gy(&self) -> f64 {
+        let alive = self.crew.members.iter().filter(|p| p.alive);
+        let n = alive.clone().count();
+        if n == 0 {
+            return 0.0;
+        }
+        alive
+            .map(|p| f64::from(p.body.total_dose + p.body.pending_dose))
+            .sum::<f64>()
+            / n as f64
+    }
+
+    /// Set the dose every living person has received in all (Gy): scripted demos and tests.
+    pub fn set_dosimeter_gy(&mut self, gy: f64) {
+        for p in self.crew.members.iter_mut().filter(|p| p.alive) {
+            p.body.total_dose = gy as f32;
+            p.body.pending_dose = 0.0;
+        }
+    }
+
     /// Dose the crew gets now (Gy/h): the natural and hazard doses through the plating.
     pub fn dose_rate_aboard(&self) -> f64 {
         let env = self.environment_at(self.ship.pos);
@@ -463,11 +486,12 @@ impl Sim {
         let p = self.ship.pos;
         let natural = self.natural_dose_at(p).total();
         let rate = natural * self.dose_protection();
-        let hazard = self.environment_at(p).radiation * self.dose_protection();
-        self.ship.sys.dose_gy += (rate + hazard) * dt / 3600.0;
-        // Ordinary background hurts no one: only a real belt, or a star close by, makes the crew ill.
+        // Ordinary background hurts no one: only a real belt, or a star close by, makes the crew
+        // ill. It is booked all the same (the belt of the environment is irradiated in `step`).
         if rate > 1.0e-3 {
             self.irradiate(rate * dt / 3600.0);
+        } else {
+            self.book_dose(rate * dt / 3600.0);
         }
     }
 
@@ -823,18 +847,51 @@ mod tests {
     }
 
     #[test]
+    fn the_cabin_dosimeter_is_a_view_on_the_dose_of_each_person() {
+        // Audit B6/dose: one registry of dose (`Body::total_dose`), no second counter.
+        let mut s = sim();
+        assert!(!s.crew.members.is_empty());
+        assert_eq!(s.dosimeter_gy(), 0.0);
+        s.irradiate(0.25);
+        s.book_dose(0.05);
+        let each: Vec<f64> = s
+            .crew
+            .members
+            .iter()
+            .filter(|p| p.alive)
+            .map(|p| f64::from(p.body.total_dose + p.body.pending_dose))
+            .collect();
+        let mean = each.iter().sum::<f64>() / each.len() as f64;
+        assert!((s.dosimeter_gy() - mean).abs() < 1e-9);
+        assert!(
+            (s.dosimeter_gy() - 0.30).abs() < 1e-3,
+            "{}",
+            s.dosimeter_gy()
+        );
+        // Once the bodies have taken it, the reading is the same (nothing lost, nothing counted twice).
+        let before = s.dosimeter_gy();
+        for p in s.crew.members.iter_mut() {
+            p.body.total_dose += p.body.pending_dose;
+            p.body.pending_dose = 0.0;
+        }
+        assert!((s.dosimeter_gy() - before).abs() < 1e-6);
+        s.set_dosimeter_gy(1.5);
+        assert!((s.dosimeter_gy() - 1.5).abs() < 1e-6);
+    }
+
+    #[test]
     fn the_dose_accumulates_and_a_close_star_makes_the_crew_ill() {
         let mut s = sim();
         let p = Vec3::new(0.02 * AU, 0.0, 0.0);
         s.ship.pos = p;
         s.ship.vel = Vec3::ZERO;
         s.effective.armor = 0.0;
-        let d0 = s.ship.sys.dose_gy;
+        let d0 = s.dosimeter_gy();
         let h0: f32 = s.crew.members.iter().map(|m| m.health).sum();
         for _ in 0..50 {
             s.radiation_tick(60.0);
         }
-        assert!(s.ship.sys.dose_gy > d0);
+        assert!(s.dosimeter_gy() > d0);
         let h1: f32 = s.crew.members.iter().map(|m| m.health).sum();
         assert!(h1 < h0 || s.crew.members.is_empty(), "the crew suffers");
         // Behind plating the same exposure adds up to less.
@@ -844,7 +901,7 @@ mod tests {
         for _ in 0..50 {
             t.radiation_tick(60.0);
         }
-        assert!(t.ship.sys.dose_gy < s.ship.sys.dose_gy * 0.5);
+        assert!(t.dosimeter_gy() < s.dosimeter_gy() * 0.5);
     }
 
     #[test]
@@ -888,7 +945,7 @@ mod tests {
                 s.radiation_tick(10.0);
             }
             (
-                s.ship.sys.dose_gy,
+                s.dosimeter_gy(),
                 s.solar_heat_kw(),
                 s.natural_dose_at(s.ship.pos).total(),
             )

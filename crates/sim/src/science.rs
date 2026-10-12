@@ -259,11 +259,24 @@ impl Sim {
         e
     }
 
+    /// Book a dose (Gy) on everyone alive, without harm of its own: the one place where a dose
+    /// enters the books (`Body::pending_dose`, then `acute_dose` and `total_dose`). The cabin
+    /// dosimeter (`dosimeter_gy`) is a view on these.
+    pub fn book_dose(&mut self, dose: f64) {
+        if dose <= 0.0 || self.rules.invulnerable {
+            return;
+        }
+        for p in self.crew.members.iter_mut().filter(|p| p.alive) {
+            p.body.pending_dose += dose as f32;
+        }
+    }
+
     /// Apply a radiation dose (Gy) to the crew and, when severe, to electronics.
     pub fn irradiate(&mut self, dose: f64) {
         if dose <= 0.0 || self.rules.invulnerable {
             return;
         }
+        self.book_dose(dose);
         let mut rng = Rng::new(hash_coord(
             self.system.seed,
             (self.time * 100.0) as i64,
@@ -272,7 +285,6 @@ impl Sim {
         ));
         let sick = self.data.disease_index("radiation");
         for p in self.crew.members.iter_mut().filter(|p| p.alive) {
-            p.body.pending_dose += dose as f32;
             p.health = (p.health - (dose * 0.04) as f32).max(0.0);
             // Radiation sickness needs about a gray at once; below, only the dose is booked.
             if dose > 1.0 && p.disease.is_none() && rng.f64() < (dose - 0.5).min(1.0) {
@@ -434,8 +446,6 @@ impl Sim {
             if self.docked.is_none() && self.ship.sys.shield_pts > 0.0 {
                 self.ship.sys.shield_pts *= 0.5;
             }
-            // One counter of dose: the dosimeter of the ship reads the flares as well.
-            self.ship.sys.dose_gy += dose;
             self.irradiate(dose);
             if dose > 0.3 {
                 let pick = hash_coord(self.system.seed, day_hash(t), 3, 67);

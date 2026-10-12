@@ -1,5 +1,5 @@
 //! Guided tutorial (state-driven, skippable) and contextual help (F1) per screen.
-use crate::game::{Game, Screen};
+use crate::game::{CrewTab, Game, MarketTab, Screen};
 use winit::keyboard::KeyCode;
 
 /// One tutorial step: instruction text and the condition that completes it.
@@ -134,6 +134,15 @@ pub fn hint_line(g: &Game) -> String {
         Screen::Flight => {
             "WASD/QE ROT  ESP/X POUSSEE  MAJ BOOST  C FREIN  F ASSIST  TAB CIBLE  G AUTO  D AMARRER  V LASER  F10 MENU  M CARTE  F1 AIDE"
         }
+        Screen::Station if g.market_tab == MarketTab::Black => {
+            "HAUT/BAS BIEN INTERDIT  B ACHETER 50 KG  S VENDRE 50 KG  G/ECHAP RETOUR AU MARCHE  (RISQUE DE DESCENTE)"
+        }
+        Screen::Station if g.market_tab == MarketTab::Exchange => {
+            "HAUT/BAS RESSOURCE  TAB PERIODE  B HAUSSE  N BAISSE  C CLORE  E ENTREPRISES (ACTIONS)  T/ECHAP RETOUR AU MARCHE"
+        }
+        Screen::Station if g.market_tab == MarketTab::Brokerage => {
+            "GAUCHE/DROITE ONGLET  HAUT/BAS CHOIX  +/- MISE  ENTREE AGIR  TOUT TEXTE VERT SE CLIQUE  ECHAP RETOUR AU MARCHE"
+        }
         Screen::Station => {
             "B ACHETER 100 KG  S VENDRE 100 KG  ENTREE VENDRE TOUT  F PLEIN  R REPARER  FIN SERVICES  H NAVIRE  T BOURSE  U DECOLLER"
         }
@@ -150,22 +159,30 @@ pub fn hint_line(g: &Game) -> String {
             "HAUT/BAS COQUE  ENTREE ACHETER (REPRISE 50%)  C CONCEVOIR SON VAISSEAU  ECHAP RETOUR"
         }
         Screen::Designer => crate::designer_view::hint(g),
-        Screen::Crew if g.gear_mode => {
+        Screen::Crew if g.crew_tab == CrewTab::Gear => {
             "FLECHES CHOISIR UN EQUIPEMENT  ENTREE EQUIPER (IL FAUT L'OBJET EN SOUTE)  U RETIRER  E/ECHAP RETOUR A LA LISTE"
         }
-        Screen::Crew if g.cryo_mode => {
+        Screen::Crew if g.crew_tab == CrewTab::Cryo => {
             "HAUT/BAS PERSONNE  E ENDORMIR  R REVEILLER  U URGENCE  A/L/D REVEIL PROGRAMME  P PLAN AUTO  T ROTATION  K/B COLONS  C/ECHAP"
         }
-        Screen::Crew if g.med_mode => {
+        Screen::Crew if g.crew_tab == CrewTab::Medicine => {
             "HAUT/BAS PERSONNE  </> MEDICAMENT  ENTREE DONNER  TAB PLAIE  A PREMIERS SOINS  S OPERER  R CHOC  C CRYOSTASE  M/ECHAP RETOUR"
         }
-        Screen::Crew if g.organ_mode => {
+        Screen::Crew if g.crew_tab == CrewTab::Organs => {
             "HAUT/BAS ORGANE  ENTREE GREFFE  P PROTHESE  H PRELEVER  </> IMPLANT  I POSER  U RETIRER  K CLONER  M MUTAGENE  O/ECHAP"
+        }
+        Screen::Crew if g.crew_tab == CrewTab::Network => {
+            "HAUT/BAS PERSONNE  CLIC CHOISIR  DOUBLE CLIC ARBRE  V/ECHAP RETOUR A LA LISTE"
+        }
+        Screen::Crew if g.crew_tab == CrewTab::Family => {
+            "GAUCHE/DROITE PERSONNE SUIVANTE  TAB ARBRE/GENES  G/K/ECHAP RETOUR A LA LISTE"
+        }
+        Screen::Crew if g.crew_tab == CrewTab::Recruit => {
+            "HAUT/BAS CANDIDAT  ENTREE EMBAUCHER  K LISTE  ECHAP RETOUR A LA STATION"
         }
         Screen::Crew => {
             "HAUT/BAS CHOIX  </> POSTE  T QUART  X DEBARQ.  N RECRUT.  J JOURNAL  G ARBRE  V RESEAU  O ORGANES  M MEDECINE  E EQUIP."
         }
-        Screen::Recruit => "HAUT/BAS CANDIDAT  ENTREE EMBAUCHER  K EQUIPAGE  ECHAP RETOUR",
         Screen::Journal => "HAUT/BAS DEFILER  1-3 SURPRISE  K EQUIPAGE  J/ECHAP RETOUR  TAB NOUVELLES/ARCHIVES (D C M R T)",
         Screen::Expedition => "HAUT/BAS CHOISIR  ESPACE COCHER  ENTREE PARTIR  ECHAP RETOUR",
         Screen::Dialogue => "1-6 OU CLIC REPONDRE  HAUT/BAS + ENTREE  ECHAP COUPER LA COMMUNICATION",
@@ -183,9 +200,6 @@ pub fn hint_line(g: &Game) -> String {
         }
         Screen::Livestock => {
             "HAUT/BAS ANIMAL  GAUCHE/DROITE ESPECE  B ACHETER  P REPRODUIRE  H ABATTRE  ECHAP RETOUR"
-        }
-        Screen::Trading => {
-            "GAUCHE/DROITE ONGLET  HAUT/BAS CHOIX  +/- MISE  ENTREE AGIR  TOUT TEXTE VERT SE CLIQUE  ECHAP RETOUR"
         }
         Screen::Rogue => {
             "FLECHES/ZQSD DEPLACER  CLIC MARCHER  ENTREE ESCALIER/SITE  X CREUSER  B/N BATIR  V DRONE  R RAPPEL  TAB CHEF"
@@ -211,10 +225,6 @@ pub fn hint_line(g: &Game) -> String {
         Screen::Rules => "HAUT/BAS REGLE  GAUCHE/DROITE MODIFIER  R DEFAUTS  ECHAP RETOUR",
         Screen::Options => "HAUT/BAS REGLAGE  GAUCHE/DROITE CHANGER  ENTREE/ECHAP RETOUR",
         Screen::Codex => "GAUCHE/DROITE CATEGORIE  HAUT/BAS ENTREE  ECHAP RETOUR",
-        Screen::Family => "GAUCHE/DROITE PERSONNE SUIVANTE  TAB ARBRE/GENES  G/K/ECHAP RETOUR A L'EQUIPAGE",
-        Screen::Bourse => {
-            "HAUT/BAS RESSOURCE  TAB PERIODE  B HAUSSE  N BAISSE  C CLORE  E ENTREPRISES (ACTIONS)  T/ECHAP RETOUR"
-        }
         Screen::Surface if g.surf_globe => {
             "GLOBE  GAUCHE/DROITE TOURNER  TAB COUCHE  V ESPECE (BIOSPHERE)  G CARTE  F CODEX  F8/ECHAP RETOUR"
         }
@@ -273,6 +283,24 @@ pub fn help_lines(screen: Screen) -> &'static [&'static str] {
             "H : vaisseau   Y : chantier naval   N : recruter",
             "K : equipage   C : contrats   E : banque   T : bourse (courbes de prix)",
             "F2 : empire   F3 : flotte   U : decoller",
+            "ONGLETS (barre cliquable au-dessus des commandes) : MARCHE, NOIR (G), BOURSE (T), puis le courtage (D) : rumeurs, arbitrage, cartels, appels d'offres, assurance, titres, ventes, lignes, economie ; Echap revient au marche",
+            "NOIR : les biens interdits ici ; B achete 50 kg au contact, S lui en vend 50 kg ; il ne vend que le stock de la station, et ce qu'on lui vend y reste ; risque de descente de police",
+            "Haut/Bas : ressource   PgUp/PgDn : sauter de 10",
+            "B / N : contrat a terme a la hausse / baisse (100 kg, 30 j, marge 25 %)",
+            "C : clore un contrat (gain ou perte au prix de reference du jour)",
+            "E : entreprises cotees ; B achete 10 actions, N en vend 10 ; dividende chaque mois",
+            "Tab ou Gauche/Droite : periode du graphique (30, 90, 180 jours)",
+            "Courbe pleine : prix de reference ; ligne ambre : moyenne sur 7 jours",
+            "Bandes colorees : evenements du monde qui touchent cette ressource",
+            "T ou Echap : retour a la station",
+            "Gauche/Droite : onglet (rumeurs, arbitrage, cartels, appels d'offres, assurance, titres, ventes, lignes, economie)",
+            "Entree : agir   +/- : mise de l'offre ou de l'enchere   Haut/Bas : choix (un bien pour les options et les ventes)",
+            "Assurance : prime = valeur x risque reel (pirates, guerre, blocus, epidemie, catastrophe) x dossier ; declarer une perte est controle (fraude = amende)",
+            "Titres : obligations d'Etat (monnaie locale, defaut en cas de krach), fonds actions et matieres, options d'achat et de vente ; le patrimoine les compte, futurs compris",
+            "Ventes : encheres hebdomadaires (second prix), marche aux puces (contrefacons : expertise), campagnes de publicite qui font monter la demande locale",
+            "Lignes : convois reguliers de cargos entre plaques tournantes, marchandises reellement en transit ; financer un convoi partage sa marge et ses pertes",
+            "Economie : tableau d'une juridiction (PIB tire de la production, inflation, change, taux, dette, douanes, tourisme) et ses courbes sur 24 mois",
+            "Contrats de passagers : croisieres et pelerinages a plusieurs escales (deliver a chaque escale, hotels selon la beaute et la securite) ; migrants et refugies changent les populations",
         ],
         Screen::Inventory => &[
             "Haut/Bas : ressource   J : jeter   Echap : retour",
@@ -299,12 +327,14 @@ pub fn help_lines(screen: Screen) -> &'static [&'static str] {
             "Gauche/Droite : poste   T : quart   X : debarquer",
             "J : journal   Les besoins (faim, soif, air) comptent.",
             "V : reseau des relations (amis, rivaux, famille)",
+            "Les onglets de la barre du haut (LISTE, MEDECINE, CRYO, ORGANES, EQUIPEMENT, RESEAU, ARBRE, RECRUTEMENT) se cliquent ; chaque touche (M, C, O, E, V, G, N) ouvre le sien, K ou Echap revient a la liste",
+            "G : arbre familial (grands-parents, parents, fratrie ; Tab bascule entre l'arbre et les genes ; Gauche/Droite : personne suivante ; pourcentage = ressemblance genetique ; ligne ambre = parent a bord)",
+            "N : recrutement a quai (Haut/Bas : candidat, Entree : embaucher ; il prend le poste de sa meilleure competence)",
             "E : equipement (arme, armure, outil pris en soute ; Entree equipe, U retire)",
             "O : organes (Entree greffe, P prothese, H prelever, </> choisir un implant, I poser, U retirer, K cloner l'organe a l'hopital, M mutagene ; piece en soute)",
             "C : cryogenisation (caissons, dormeurs, reveil programme a une date, a l'arrivee ou sur alerte critique ; E endormir, R reveiller, U urgence, P plan auto tous sauf N, T rotation des veilleurs, K/B colons)",
             "M : medecine (silhouette, plaies, medicaments ; A premiers soins, S operer, Entree donner le medicament, </> choisir, R choc electrique, C cryostase)",
         ],
-        Screen::Recruit => &["Haut/Bas : candidat   Entree : embaucher"],
         Screen::Journal => &[
             "Haut/Bas ou PgUp/PgDn : defiler   Echap : retour",
             "Une surprise qui attend un choix s'affiche en bas : touches 1 a 3 pour repondre",
@@ -350,16 +380,6 @@ pub fn help_lines(screen: Screen) -> &'static [&'static str] {
             "B : acheter un animal   P : reproduire avec le meilleur partenaire",
             "H : abattre (rendement selon les genes)   les animaux mangent des rations",
         ],
-        Screen::Trading => &[
-            "Gauche/Droite : onglet (rumeurs, arbitrage, cartels, appels d'offres, assurance, titres, ventes, lignes, economie)",
-            "Entree : agir   +/- : mise de l'offre ou de l'enchere   Haut/Bas : choix (un bien pour les options et les ventes)",
-            "Assurance : prime = valeur x risque reel (pirates, guerre, blocus, epidemie, catastrophe) x dossier ; declarer une perte est controle (fraude = amende)",
-            "Titres : obligations d'Etat (monnaie locale, defaut en cas de krach), fonds actions et matieres, options d'achat et de vente ; le patrimoine les compte, futurs compris",
-            "Ventes : encheres hebdomadaires (second prix), marche aux puces (contrefacons : expertise), campagnes de publicite qui font monter la demande locale",
-            "Lignes : convois reguliers de cargos entre plaques tournantes, marchandises reellement en transit ; financer un convoi partage sa marge et ses pertes",
-            "Economie : tableau d'une juridiction (PIB tire de la production, inflation, change, taux, dette, douanes, tourisme) et ses courbes sur 24 mois",
-            "Contrats de passagers : croisieres et pelerinages a plusieurs escales (deliver a chaque escale, hotels selon la beaute et la securite) ; migrants et refugies changent les populations",
-        ],
         Screen::Rogue => &[
             "Fin : explorer a pied un lieu a portee (station, epave, ruine, grotte, portail...)",
             "Souris : CLIC DROIT sur une case = marcher jusque-la, attaquer ou parler, ramasser, creuser, batir, escalier, borne, drone, rappel, fiche",
@@ -368,6 +388,7 @@ pub fn help_lines(screen: Screen) -> &'static [&'static str] {
             "V : lance un drone (robotique) qui ramasse a proximite ; R : rappelle l'equipe depuis la surface",
             "X : creuse ou casse la case devant (outil et durete = temps ; la matiere donne ses ressources)",
             "B : construit un mur, N : pose un sol (tole, pont sur l'eau) avec ce que porte l'equipe : ces cases sont a vous",
+            "C : capture une bete domestique a cote (elle va aux enclos avec ses genes)   L : relache l'animal choisi des enclos (ecran ELEVAGE) la ou son espece vit",
             "T : tirer avec les armes a feu (chargeur, recul, portee, bruit)   E : recharger depuis la soute   G : lancer une grenade (charge chimique, rayon 2)",
         ],
         Screen::Cosmos => &[
@@ -413,24 +434,6 @@ pub fn help_lines(screen: Screen) -> &'static [&'static str] {
             "Gauche/Droite : categorie   Haut/Bas : entree",
             "PgUp/PgDn : sauter de 10   Echap ou F6 : retour",
             "Categorie REACTIONS (laboratoire) : L ou Entree lance un lot de 100 kg sur la soute",
-        ],
-        Screen::Family => &[
-            "Arbre : grands-parents (couples), parents, fratrie, oncles et tantes avec leurs enfants",
-            "Pourcentage : ressemblance genetique avec la personne",
-            "Ligne ambre : parent a bord ; + age : decede",
-            "Tab : bascule entre l'arbre et les genes",
-            "Gauche/Droite : personne suivante   G, K ou Echap : retour",
-            "Page des genes : porteur (x1.5) ou atteint (x4) pour les predispositions",
-        ],
-        Screen::Bourse => &[
-            "Haut/Bas : ressource   PgUp/PgDn : sauter de 10",
-            "B / N : contrat a terme a la hausse / baisse (100 kg, 30 j, marge 25 %)",
-            "C : clore un contrat (gain ou perte au prix de reference du jour)",
-            "E : entreprises cotees ; B achete 10 actions, N en vend 10 ; dividende chaque mois",
-            "Tab ou Gauche/Droite : periode du graphique (30, 90, 180 jours)",
-            "Courbe pleine : prix de reference ; ligne ambre : moyenne sur 7 jours",
-            "Bandes colorees : evenements du monde qui touchent cette ressource",
-            "T ou Echap : retour a la station",
         ],
         Screen::Surface => &[
             "Fleches : deplacer le curseur (Maj : x4)",

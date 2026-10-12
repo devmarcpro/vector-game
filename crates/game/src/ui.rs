@@ -1,5 +1,5 @@
 //! Text-grid screens: main menu, pause, station market, inventory.
-use crate::game::{Game, Screen, MAIN_MENU, PAUSE_MENU};
+use crate::game::{CrewTab, Game, MarketTab, Screen, MAIN_MENU, PAUSE_MENU};
 use crate::hud::{AMBER, DIM, GREEN, HOVER, RED};
 use crate::mouse::{arrow_of_word, key_of_word, pair_of_word, Act};
 use winit::keyboard::KeyCode;
@@ -66,20 +66,18 @@ pub fn draw(fb: &mut Framebuffer, g: &Game) {
                 DIM,
             );
         }
-        Screen::Station => draw_station(fb, g),
+        Screen::Station => draw_market(fb, g),
         Screen::Inventory => draw_inventory(fb, g),
         Screen::Ship => draw_ship(fb, g),
         Screen::Shipyard => draw_shipyard(fb, g),
         Screen::Designer => crate::designer_view::draw(fb, g),
         Screen::Crew => draw_crew(fb, g),
-        Screen::Recruit => draw_recruit(fb, g),
         Screen::Journal => draw_journal(fb, g),
         Screen::Galaxy => draw_galaxy(fb, g),
         Screen::Contracts => draw_contracts(fb, g),
         Screen::Bank => draw_bank(fb, g),
         Screen::Livestock => crate::farm_view::draw_livestock(fb, g),
         Screen::Casino => crate::farm_view::draw_casino(fb, g),
-        Screen::Trading => crate::trade_view::draw(fb, g),
         Screen::Cosmos => crate::cosmos_view::draw(fb, g),
         Screen::Rogue => crate::rogue_view::draw(fb, g),
         Screen::Empire => draw_empire(fb, g),
@@ -90,12 +88,10 @@ pub fn draw(fb: &mut Framebuffer, g: &Game) {
         Screen::Options => draw_options(fb, g),
         Screen::Codex => draw_codex(fb, g),
         Screen::Surface => crate::surface_view::draw(fb, g),
-        Screen::Bourse => crate::bourse_view::draw(fb, g),
         Screen::Factions => crate::faction_view::draw(fb, g),
         Screen::Proto => crate::proto_view::draw(fb, g),
         Screen::Dialogue => crate::dialogue_view::draw(fb, g),
         Screen::Expedition => crate::expedition_view::draw_prep(fb, g),
-        Screen::Family => crate::family_view::draw(fb, g),
         Screen::NavAuto => crate::nav_view::draw(fb, g),
         Screen::Destroyed => {
             let cols = fb.cols();
@@ -772,6 +768,151 @@ fn window(sel: usize, n: usize, rows: usize) -> std::ops::Range<usize> {
     start..(start + rows).min(n)
 }
 
+/// The market screen: one of its tabs and the bar of the tabs.
+fn draw_market(fb: &mut Framebuffer, g: &Game) {
+    match g.market_tab {
+        MarketTab::Open => draw_station(fb, g),
+        MarketTab::Black => draw_black(fb, g),
+        MarketTab::Exchange => crate::bourse_view::draw(fb, g),
+        MarketTab::Brokerage => crate::trade_view::draw(fb, g),
+    }
+    market_tab_bar(fb, g);
+}
+
+/// The tab bar of the market, above the command lines: the open market, the black market, the
+/// exchange and the tabs of the brokerage; one clickable word each, the open one in amber.
+fn market_tab_bar(fb: &mut Framebuffer, g: &Game) {
+    let y = fb.rows().saturating_sub(5);
+    let mut x = 1;
+    let words = ["MARCHE", "NOIR", "BOURSE"]
+        .into_iter()
+        .chain(crate::trade_view::TABS);
+    for (i, label) in words.enumerate() {
+        let w = label.len();
+        let hover = g.hit_cells(x, y, w, 1, Act::Call(Game::click_market_tab, i), None);
+        let on = match i {
+            0 => g.market_tab == MarketTab::Open,
+            1 => g.market_tab == MarketTab::Black,
+            2 => g.market_tab == MarketTab::Exchange,
+            k => g.market_tab == MarketTab::Brokerage && g.trade_ui.tab == k - 3,
+        };
+        let c = if on {
+            AMBER
+        } else if hover {
+            HOVER
+        } else {
+            DIM
+        };
+        fb.text(x, y, label, c);
+        x += w + 2;
+    }
+}
+
+/// The black market tab: the goods the people of the station ban, with what the contact asks
+/// and pays, on the stock that the open market shows (it is the same shelf).
+fn draw_black(fb: &mut Framebuffer, g: &Game) {
+    let s = &g.sim;
+    let Some(st) = s.docked else { return };
+    header(
+        fb,
+        g,
+        &format!("STATION {} : MARCHE NOIR", s.bodies[st].name),
+    );
+    let Some(m) = s.markets.get(&st) else { return };
+    let Some(f) = s.faction else {
+        fb.text(
+            1,
+            8,
+            "ESPACE LIBRE : ICI TOUT SE VEND AU GRAND JOUR (ONGLET MARCHE)",
+            DIM,
+        );
+        return;
+    };
+    let (ask, pay, raid) = s.black_terms();
+    fb.text(
+        1,
+        8,
+        &format!(
+            "{}  CONFIANCE DU CONTACT {:.0} %  RISQUE DE DESCENTE {:.0} %",
+            s.data.factions[f].name.to_uppercase(),
+            s.contact_trust() * 100.0,
+            raid * 100.0
+        ),
+        GREEN,
+    );
+    fb.text(
+        1,
+        9,
+        "LE CONTACT NE VEND QUE LE STOCK DE LA STATION (CELUI DU MARCHE) ET CE QUE VOUS LUI VENDEZ Y RESTE",
+        DIM,
+    );
+    let (x, top) = (1, 11);
+    fb.text(
+        x,
+        top,
+        "BIEN INTERDIT        STOCK KG   IL VEND A   IL ACHETE   SOUTE KG",
+        DIM,
+    );
+    let goods = g.black_goods();
+    let sel = g.black_sel.min(goods.len().saturating_sub(1));
+    for (line, &i) in goods
+        .iter()
+        .take(fb.rows().saturating_sub(top + 9))
+        .enumerate()
+    {
+        let r = &g.data.resources[i];
+        let hover = g.hit_cells(
+            x,
+            top + 1 + line,
+            66,
+            1,
+            Act::Call(Game::click_black, line),
+            None,
+        );
+        let c = if line == sel {
+            AMBER
+        } else if hover {
+            HOVER
+        } else {
+            GREEN
+        };
+        let mid = m.price(&g.data, i);
+        fb.text(
+            x,
+            top + 1 + line,
+            &format!(
+                "{}{:<18.18} {:>10.0} {:>11.2} {:>11.2} {:>10.0}",
+                if line == sel { ">" } else { " " },
+                r.name,
+                m.stock[i],
+                mid * ask,
+                mid * pay,
+                s.ship.cargo.kg[i]
+            ),
+            c,
+        );
+    }
+    if goods.is_empty() {
+        fb.text(
+            x,
+            top + 2,
+            "RIEN N'EST INTERDIT ICI : TOUT SE VEND AU GRAND JOUR",
+            DIM,
+        );
+    }
+    let b = fb.rows() - 4;
+    foot(
+        fb,
+        g,
+        1,
+        b,
+        "HAUT/BAS:CHOISIR  B:ACHETER 50 KG  S:VENDRE 50 KG  G/ECHAP:RETOUR AU MARCHE",
+    );
+    for (i, msg) in g.messages.iter().rev().take(2).enumerate() {
+        fb.text(1, b + 1 + i, msg, if i == 0 { AMBER } else { DIM });
+    }
+}
+
 fn draw_station(fb: &mut Framebuffer, g: &Game) {
     let s = &g.sim;
     let Some(st) = s.docked else { return };
@@ -819,7 +960,7 @@ fn draw_station(fb: &mut Framebuffer, g: &Game) {
         "RESSOURCE            STOCK KG     ACHAT     VENTE    SOUTE KG",
         DIM,
     );
-    let rows = fb.rows().saturating_sub(top + 6);
+    let rows = fb.rows().saturating_sub(top + 8);
     for (line, i) in window(g.sel_res, g.data.resources.len(), rows).enumerate() {
         let r = &g.data.resources[i];
         let hover = g.hit_cells(
@@ -865,7 +1006,7 @@ fn draw_station(fb: &mut Framebuffer, g: &Game) {
         g,
         1,
         b + 1,
-        "D:COURTAGE  L:ELEVAGE  A:CASINO  G/J:NOIR  F:CARBURANT  R:REPARER  H:VAISSEAU  Y:CHANTIER  K:EQUIPAGE  U:DECOLLER",
+        "T:BOURSE  D:COURTAGE  G:MARCHE NOIR  L:ELEVAGE  A:CASINO  F:CARBURANT  R:REPARER  H:VAISSEAU  Y:CHANTIER  K:EQUIPAGE  U:DECOLLER",
     );
     // The result of the last action (bought, sold, refuelled, seized...) sits just under the
     // list: the rows below it belong to the news ticker and the key hints.
@@ -1172,7 +1313,33 @@ fn stamp(t: f64) -> String {
     format!("J{:<4}{:02}h", day as i64, hour as i64)
 }
 
+/// The tab bar of the crew screen, above the command line at the foot of the screen: one
+/// clickable word per tab, the open one in amber.
+fn crew_tab_bar(fb: &mut Framebuffer, g: &Game) {
+    let y = fb.rows().saturating_sub(6);
+    let mut x = 1;
+    for (i, tab) in CrewTab::ALL.iter().enumerate() {
+        let w = tab.label().len();
+        let hover = g.hit_cells(x, y, w, 1, Act::Call(Game::click_crew_tab, i), None);
+        let c = if *tab == g.crew_tab {
+            AMBER
+        } else if hover {
+            HOVER
+        } else {
+            DIM
+        };
+        fb.text(x, y, tab.label(), c);
+        x += w + 2;
+    }
+}
+
 fn draw_crew(fb: &mut Framebuffer, g: &Game) {
+    crew_tab_bar(fb, g);
+    match g.crew_tab {
+        CrewTab::Family => return crate::family_view::draw(fb, g),
+        CrewTab::Recruit => return draw_recruit(fb, g),
+        _ => {}
+    }
     let s = &g.sim;
     header(fb, g, "EQUIPAGE");
     let crew = &s.crew;
@@ -1188,15 +1355,15 @@ fn draw_crew(fb: &mut Framebuffer, g: &Game) {
         ),
         GREEN,
     );
-    if g.crew_net {
+    if g.crew_tab == CrewTab::Network {
         crate::crew_net_view::draw(fb, g);
         return;
     }
-    if g.med_mode {
+    if g.crew_tab == CrewTab::Medicine {
         crate::medicine_view::draw(fb, g);
         return;
     }
-    if g.cryo_mode {
+    if g.crew_tab == CrewTab::Cryo {
         crate::cryo_view::draw(fb, g);
         return;
     }
@@ -1335,7 +1502,7 @@ fn draw_crew(fb: &mut Framebuffer, g: &Game) {
             ),
             DIM,
         );
-        if g.gear_mode {
+        if g.crew_tab == CrewTab::Gear {
             if let Some(it) = g.data.gear.get(g.gear_sel) {
                 let held = g
                     .data
@@ -1369,7 +1536,7 @@ fn draw_crew(fb: &mut Framebuffer, g: &Game) {
                 if on { GREEN } else { RED },
             );
         }
-        if g.organ_mode {
+        if g.crew_tab == CrewTab::Organs {
             if let Some(c) = g.data.cybernetics.get(g.cyber_sel) {
                 fb.text(
                     x,
@@ -1390,7 +1557,7 @@ fn draw_crew(fb: &mut Framebuffer, g: &Game) {
                 Act::Call(Game::click_organ, k),
                 None,
             );
-            let picked = g.organ_mode && k == g.organ_sel;
+            let picked = g.crew_tab == CrewTab::Organs && k == g.organ_sel;
             let kind = match p.organ_kind.get(k) {
                 Some(1) => 'G',
                 Some(2) => 'P',
@@ -1501,7 +1668,7 @@ fn draw_recruit(fb: &mut Framebuffer, g: &Game) {
         g,
         1,
         b,
-        "HAUT/BAS:CHOISIR  ENTREE:EMBAUCHER  K:EQUIPAGE  ECHAP:RETOUR",
+        "HAUT/BAS:CHOISIR  ENTREE:EMBAUCHER  K:LISTE  ECHAP:RETOUR A LA STATION",
     );
     for (i, msg) in g.messages.iter().rev().take(2).enumerate() {
         fb.text(1, b + 1 + i, msg, if i == 0 { AMBER } else { DIM });

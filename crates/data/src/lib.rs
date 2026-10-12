@@ -1499,6 +1499,9 @@ impl GameData {
         if let Some(d) = f.strip_prefix("disease:") {
             return self.disease_index(d).is_some();
         }
+        if let Some(w) = f.strip_prefix("wound:") {
+            return self.wound_index(w).is_some();
+        }
         PERSON_FIELDS.contains(&f)
     }
 
@@ -2874,8 +2877,8 @@ impl GameData {
                 return bad(format!("organe {}: valeurs invalides", o.id));
             }
             for d in &o.afflicted_by {
-                if self.disease_index(d).is_none() {
-                    return bad(format!("organe {}: maladie {d} inconnue", o.id));
+                if self.disease_index(d).is_none() && self.wound_index(d).is_none() {
+                    return bad(format!("organe {}: maladie ou blessure {d} inconnue", o.id));
                 }
             }
             for (k, w) in &o.effects {
@@ -2920,7 +2923,10 @@ impl GameData {
                     }
                 }
                 "predisposition" => {
-                    if self.disease_index(&g.disease).is_none() || !g.effects.is_empty() {
+                    if (self.disease_index(&g.disease).is_none()
+                        && self.wound_index(&g.disease).is_none())
+                        || !g.effects.is_empty()
+                    {
                         return bad(format!("gene {}: maladie {} inconnue", g.id, g.disease));
                     }
                 }

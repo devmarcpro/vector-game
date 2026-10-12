@@ -19,7 +19,7 @@
  (id:"grippe", kind:"health", weight:0.6, needs_other:false, cond:[("health","<",0.95)], effects:[("disease:grippe",1.0)], text:"{a} tombe malade : grippe spatiale."),
  (id:"intoxication", kind:"health", weight:0.4, needs_other:false, cond:[("hunger",">",0.5)], effects:[("disease:intoxication",1.0)], text:"{a} souffre d'une intoxication alimentaire."),
  (id:"mal_des_rayons", kind:"health", weight:0.2, needs_other:false, cond:[("health","<",0.8)], effects:[("disease:radiation",1.0)], text:"{a} presente les symptômes du mal des rayons."),
- (id:"fracture", kind:"health", weight:0.3, needs_other:false, cond:[("fatigue",">",0.5)], effects:[("disease:fracture",1.0),("health",-0.1)], text:"{a} se fracture un membre dans une chute en apesanteur."),
+ (id:"fracture", kind:"health", weight:0.3, needs_other:false, cond:[("fatigue",">",0.5)], effects:[("wound:fracture_os",0.5),("health",-0.1)], text:"{a} se fracture un membre dans une chute en apesanteur."),
  (id:"insomnie", kind:"health", weight:0.7, needs_other:false, cond:[("stress",">",0.3)], effects:[("fatigue",0.2),("stress",0.05)], text:"{a} n'arrive pas a dormir et tourne en rond toute la nuit."),
  (id:"celebration", kind:"morale", weight:0.7, needs_other:false, cond:[("morale",">",0.7)], effects:[("morale",0.06),("loyalty",0.03),("social",-0.3)], text:"{a} organise une petite fête improvisee ; tout le monde sourit."),
  (id:"mal_du_pays", kind:"morale", weight:0.8, needs_other:false, cond:[("morale","<",0.5)], effects:[("morale",-0.06),("stress",0.05)], text:"{a} regarde longuement les étoiles en pensant a son foyer."),

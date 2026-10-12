@@ -25,4 +25,6 @@
   cause:"Choc, chute, acceleration soutenue."),
  (id:"traumatisme_crane", name:"Traumatisme cranien", bleed:0.02, pain:0.5, heal_days:14.0, infect:0.0, internal:true, dress:false, parts:["tete"],
   cause:"Choc a la tete, acceleration brutale."),
+ (id:"entorse", name:"Entorse", bleed:0.0, pain:0.3, heal_days:10.0, infect:0.0, internal:false, dress:true, parts:["bras_g","bras_d","jambe_g","jambe_d"],
+  cause:"Faux mouvement, echelle, chute en apesanteur."),
 ]

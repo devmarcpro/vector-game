@@ -5,6 +5,7 @@ pub mod medical;
 pub mod ship;
 pub mod surprise;
 pub use medical::{BodyPart, Drug, WoundKind};
+pub mod projects;
 use serde::{Deserialize, Serialize};
 pub use ship::{ShipPart, ShipPlanDef};
 use std::collections::BTreeSet;
@@ -1077,6 +1078,7 @@ pub struct GameData {
     pub cosmos: Vec<CosmosDef>,
     pub ship_parts: Vec<ShipPart>,
     pub ship_plans: Vec<ShipPlanDef>,
+    pub projects: Vec<projects::ProjectDef>,
 }
 
 /// The tasks the ship's AI splits its computing power between (fixed ids, in this order).
@@ -1282,6 +1284,7 @@ impl GameData {
             cosmos: read(&dir.join("cosmos.ron"))?,
             ship_parts: read(&dir.join("ship_parts.ron"))?,
             ship_plans: read(&dir.join("ship_plans.ron"))?,
+            projects: read(&dir.join("projects.ron"))?,
         };
         // Generated extension files (tools/gen_scale.py) extend the hand-written tables.
         let mut extra_resources: Vec<Resource> = read(&dir.join("resources_organs.ron"))?;
@@ -1728,6 +1731,7 @@ impl GameData {
                     "module" => self.module_index(id).is_some(),
                     "hull" => self.hull_index(id).is_some(),
                     "building" => self.building_index(id).is_some(),
+                    "project" => self.project_index(id).is_some(),
                     _ => false,
                 };
                 if !ok {
@@ -1807,6 +1811,7 @@ impl GameData {
         self.validate_rogue()?;
         self.validate_chemistry()?;
         self.validate_pathogens()?;
+        self.validate_projects()?;
         self.validate_companies()
     }
 

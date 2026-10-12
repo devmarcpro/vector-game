@@ -142,6 +142,16 @@ pub struct Game {
     pub col_flow: bool,
     /// Colony screen: health tracking (epidemics) instead of the lists.
     pub col_health: bool,
+    /// Colony screen: projects (terraforming, megastructures) instead of the lists.
+    pub col_proj: bool,
+    /// Projects screen: zone with the keys (0 works, 1 catalogue, 2 plants), selections, units
+    /// step, seeded species (index among producers).
+    pub proj_focus: u8,
+    pub proj_sel: usize,
+    pub cat_sel: usize,
+    pub proj_units: usize,
+    pub proj_species: usize,
+    pub proc_sel: usize,
     pub fac_sel: usize,
     /// Factions screen: the registry of relations (every entity) instead of the ring.
     pub rel_page: bool,
@@ -341,6 +351,13 @@ impl Game {
             col_focus: 0,
             col_flow: false,
             col_health: false,
+            col_proj: false,
+            proj_focus: 1,
+            proj_sel: 0,
+            cat_sel: 0,
+            proj_units: 0,
+            proj_species: 0,
+            proc_sel: 0,
             fac_sel: 0,
             rel_page: false,
             soc_page: false,
@@ -546,8 +563,10 @@ impl Game {
     /// The map of a solid world of the system, for its globe in the cockpit (built once).
     pub fn flight_map(&self, body: usize) -> Option<std::rc::Rc<vector_sim::planet::PlanetMap>> {
         let mut cache = self.flight_maps.borrow_mut();
-        if cache.0 != self.sim.system.seed {
-            cache.0 = self.sim.system.seed;
+        // A terraformed world changes: the stamp makes the maps be built again.
+        let key = self.sim.system.seed ^ self.sim.terra_stamp().wrapping_mul(0x9E37_79B9_7F4A_7C15);
+        if cache.0 != key {
+            cache.0 = key;
             cache.1.clear();
         }
         if let Some(m) = cache.1.get(&body) {
@@ -2118,6 +2137,10 @@ impl Game {
             self.screen = Screen::Empire;
             return;
         }
+        if self.col_proj {
+            self.project_key(code);
+            return;
+        }
         let here = self.sim.docked_colony() == Some(ci);
         let nb = self.sim.colonies[ci].buildings.len();
         let nres = self.data.resources.len();
@@ -2131,6 +2154,7 @@ impl Game {
                 self.col_health = !self.col_health;
                 self.col_flow = false;
             }
+            KeyCode::KeyP => self.col_proj = true,
             KeyCode::Tab => self.col_focus = (self.col_focus + 1) % 4,
             KeyCode::ArrowUp => match self.col_focus {
                 0 if nb > 0 => self.b_sel = (self.b_sel + nb - 1) % nb,

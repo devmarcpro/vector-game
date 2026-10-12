@@ -1,0 +1,129 @@
+// Projects of a colony: terraforming works and megastructures, built stage after stage (see
+// crates/data/src/projects.rs). Each stage streams its materials out of the colony stores while a
+// crew works and power is drawn (kW). kind: mirror | soot | comet | seeding | ring | elevator |
+// dyson | driller | factory | station | shipyard. param: size of one unit (m2 of mirror, kg of
+// soot or comet, kg of founding biomass, m2 of collectors, specific strength in J/kg of the cable
+// of an elevator). repeat: can be ordered by the thousand. scale "taper": the stage costs that
+// many times its listed materials as the cable of the elevator needs to be thick at the base
+// (it depends on the world); "radius": as many times as the world is wide compared to the Earth.
+// Numbers are physical orders of magnitude: a mirror film weighs a gram per square metre, a
+// comet of ten kilometres weighs 5e14 kg, a Mars-sized world holds 2.5e16 kg of air.
+[
+ // ---- terraforming -------------------------------------------------------------------------
+ (id:"miroirs_orbitaux", name:"Miroirs orbitaux", kind:"mirror", category:"terraformation",
+  text:"Un voile réfléchissant en orbite renvoie la lumière de l'étoile vers le sol : une unité couvre dix mille kilomètres carrés.",
+  sites:["rocky"], repeat:true, max_units:100000, param:1.0e10, upkeep:30.0, decay:0.01,
+  stages:[
+   (name:"Films réfléchissants", cost:[("aluminium",3.0e6), ("polymers",5.0e6)], days:400.0, crew:120.0, power:4000.0),
+   (name:"Lancement et déploiement", cost:[("fuel",2.0e6), ("machinery",3.0e4)], days:300.0, crew:80.0, power:2000.0),
+   (name:"Mise en station", cost:[("electronics",2.0e4)], days:100.0, crew:60.0, power:1500.0),
+  ]),
+ (id:"nuage_de_suie", name:"Poussière sombre", kind:"soot", category:"terraformation",
+  text:"De la suie répandue sur les calottes les assombrit : la glace absorbe la lumière au lieu de la rendre, et fond.",
+  sites:["rocky"], repeat:true, max_units:10000, param:1.0e7, decay:0.0,
+  stages:[
+   (name:"Production de suie", cost:[("carbon",1.0e7)], days:120.0, crew:40.0, power:2500.0),
+   (name:"Dispersion aérienne", cost:[("fuel",1.0e5)], days:60.0, crew:30.0, power:600.0),
+  ]),
+ (id:"comete_eau", name:"Comète d'eau", kind:"comet", category:"terraformation",
+  text:"Un noyau de glace de dix kilomètres, tiré hors de la ceinture glacée, frappe le monde : océans, vapeur, et une chaleur d'impact qui se dissipe sur des années.",
+  sites:["rocky"], repeat:true, max_units:1000, param:5.0e14, volatile:[("H2O",1.0)],
+  stages:[
+   (name:"Capture et déviation", cost:[("fuel",8.0e6), ("machinery",2.0e4)], days:900.0, crew:150.0, power:6000.0),
+   (name:"Transit", cost:[("fuel",1.0e5)], days:2200.0, crew:20.0, power:500.0),
+   (name:"Freinage et impact", cost:[("fuel",2.0e6), ("robotics",500.0)], days:60.0, crew:100.0, power:3000.0),
+  ]),
+ (id:"comete_co2", name:"Comète de glace carbonique", kind:"comet", category:"terraformation",
+  text:"Un noyau de glace carbonique : de quoi épaissir une atmosphère, et l'échauffer par effet de serre.",
+  sites:["rocky"], repeat:true, max_units:1000, param:5.0e14, volatile:[("CO2",0.9), ("N2",0.1)],
+  stages:[
+   (name:"Capture et déviation", cost:[("fuel",8.0e6), ("machinery",2.0e4)], days:900.0, crew:150.0, power:6000.0),
+   (name:"Transit", cost:[("fuel",1.0e5)], days:2200.0, crew:20.0, power:500.0),
+   (name:"Freinage et impact", cost:[("fuel",2.0e6), ("robotics",500.0)], days:60.0, crew:100.0, power:3000.0),
+  ]),
+ (id:"comete_ammoniac", name:"Comète d'ammoniac", kind:"comet", category:"terraformation",
+  text:"L'ammoniac se casse sous la lumière en azote, qui reste, et en hydrogène, qui s'échappe : la source d'azote des mondes sans air.",
+  sites:["rocky"], repeat:true, max_units:1000, param:2.0e14, volatile:[("NH3",1.0)],
+  stages:[
+   (name:"Capture et déviation", cost:[("fuel",6.0e6), ("machinery",2.0e4)], days:900.0, crew:150.0, power:6000.0),
+   (name:"Transit", cost:[("fuel",1.0e5)], days:2500.0, crew:20.0, power:500.0),
+   (name:"Freinage et impact", cost:[("fuel",1.5e6), ("robotics",400.0)], days:60.0, crew:100.0, power:3000.0),
+  ]),
+ (id:"ensemencement", name:"Ensemencement biologique", kind:"seeding", category:"terraformation",
+  text:"Une souche de producteurs primaires, cultivée en cuve puis épandue : elle consomme du gaz carbonique, rejette de l'oxygène et en enfouit le carbone, sur des siècles.",
+  sites:["rocky"], repeat:true, max_units:1000, param:1.0e6, decay:0.0,
+  stages:[
+   (name:"Culture en cuve", cost:[("organics",2.0e6), ("water",5.0e5), ("fertilizer",1.0e5)], days:120.0, crew:40.0, power:800.0),
+   (name:"Épandage", cost:[("fuel",1.0e5), ("machinery",500.0)], days:60.0, crew:30.0, power:300.0),
+  ]),
+ // ---- megastructures -----------------------------------------------------------------------
+ (id:"anneau_orbital", name:"Anneau orbital", kind:"ring", category:"megastructure",
+  text:"Un anneau de structures qui ceint le monde à quatre cents kilomètres : des millions de logements, des quais pour des flottes entières.",
+  sites:["rocky"], repeat:false, max_units:1, param:4.0e5, upkeep:3000.0, decay:0.004,
+  housing:400000.0, storage:5.0e7, port:1.0, defense:3.0, research:20.0,
+  stages:[
+   (name:"Segments structurels", cost:[("steel",2.0e9), ("titanium_alloy",3.0e8)], days:1800.0, crew:300.0, power:20000.0, scale:"radius"),
+   (name:"Verrous magnétiques", cost:[("copper_wire",4.0e7), ("electronics",2.0e7)], days:900.0, crew:250.0, power:15000.0, scale:"radius"),
+   (name:"Habitats et quais", cost:[("construction_materials",5.0e8), ("life_support_parts",1.0e6)], days:700.0, crew:200.0, power:10000.0, scale:"radius"),
+  ]),
+ (id:"ascenseur_kevlar", name:"Ascenseur spatial (câble de polymère)", kind:"elevator", category:"megastructure",
+  text:"Un câble de polymère tendu jusqu'à l'orbite synchrone et un contrepoids au-delà : trop faible pour les grands mondes, il tient sur les petits.",
+  sites:["rocky"], repeat:false, max_units:1, param:2.5e6, upkeep:800.0, decay:0.01,
+  storage:1.0e6, port:1.0, payload:2000.0,
+  stages:[
+   (name:"Filage du câble", cost:[("polymers",2.0e6)], days:600.0, crew:120.0, power:8000.0, scale:"taper"),
+   (name:"Contrepoids et ancrage", cost:[("steel",3.0e7), ("regolith",1.0e7)], days:500.0, crew:150.0, power:6000.0),
+   (name:"Grimpeurs et ports", cost:[("machinery",2.0e5), ("electronics",5.0e4)], days:200.0, crew:80.0, power:3000.0),
+  ]),
+ (id:"ascenseur_nanotubes", name:"Ascenseur spatial (nanotubes)", kind:"elevator", category:"megastructure",
+  text:"Un câble de nanotubes de carbone : dix fois plus résistant à poids égal, assez pour une planète comme la Terre.",
+  sites:["rocky"], repeat:false, max_units:1, param:4.0e7, upkeep:1000.0, decay:0.008,
+  storage:2.0e6, port:1.0, payload:12000.0,
+  stages:[
+   (name:"Synthèse du câble", cost:[("nanomaterials",2.0e6)], days:700.0, crew:150.0, power:12000.0, scale:"taper"),
+   (name:"Contrepoids et ancrage", cost:[("steel",3.0e7), ("regolith",1.0e7)], days:500.0, crew:150.0, power:6000.0),
+   (name:"Grimpeurs et ports", cost:[("machinery",2.0e5), ("electronics",5.0e4)], days:200.0, crew:80.0, power:3000.0),
+  ]),
+ (id:"essaim_dyson", name:"Essaim de Dyson", kind:"dyson", category:"megastructure",
+  text:"Des collecteurs en orbite autour de l'étoile captent une part de sa lumière et la renvoient par faisceau : l'énergie vient de la luminosité et de la surface captée : une unité est un kilomètre carré de collecteurs.",
+  sites:["any"], repeat:true, max_units:5000000, param:1.0e6, upkeep:5.0, decay:0.003,
+  stages:[
+   (name:"Collecteurs", cost:[("aluminium",4.0e5), ("solar_cells",1.0e5)], days:200.0, crew:100.0, power:3000.0),
+   (name:"Émetteurs et rectennas", cost:[("copper_wire",2.0e5), ("electronics",5.0e4), ("machinery",3.0e4)], days:150.0, crew:80.0, power:2000.0),
+  ]),
+ (id:"foreuse_asteroides", name:"Foreuse d'astéroïdes", kind:"driller", category:"megastructure",
+  text:"Une foreuse géante dévore un astéroïde de la ceinture et en envoie le minerai à la colonie.",
+  sites:["rocky", "asteroid"], repeat:true, max_units:60, param:1.0, upkeep:120.0, decay:0.02,
+  yields:[("iron",200000.0), ("nickel",40000.0), ("silicon",30000.0), ("aluminium",20000.0)],
+  stages:[
+   (name:"Foreuse mère", cost:[("steel",5.0e5), ("machinery",4.0e4)], days:240.0, crew:80.0, power:8000.0),
+   (name:"Convoyeurs de minerai", cost:[("electronics",2.0e4), ("fuel",2.0e5)], days:120.0, crew:50.0, power:4000.0),
+  ]),
+ (id:"usine_orbitale", name:"Usine orbitale", kind:"factory", category:"megastructure",
+  text:"Une chaîne de fabrication en apesanteur : machines et électronique par milliers de tonnes, sans gravité à vaincre.",
+  sites:["rocky", "icy", "asteroid"], repeat:true, max_units:100, param:1.0, upkeep:250.0, decay:0.01,
+  prod:0.04,
+  inputs:[("steel",2400.0), ("copper_wire",300.0), ("silicon",200.0)],
+  yields:[("machinery",2000.0), ("electronics",500.0)],
+  stages:[
+   (name:"Coque et chaînes", cost:[("steel",8.0e5), ("machinery",6.0e4)], days:300.0, crew:100.0, power:10000.0),
+   (name:"Mise en service", cost:[("electronics",3.0e4), ("robotics",800.0)], days:90.0, crew:60.0, power:4000.0),
+  ]),
+ (id:"station_geante", name:"Station géante", kind:"station", category:"megastructure",
+  text:"Une station de plusieurs kilomètres : cent mille habitants, des laboratoires, des batteries défensives.",
+  sites:["any"], repeat:false, max_units:1, param:1.0, upkeep:1500.0, decay:0.005,
+  housing:120000.0, storage:5.0e6, port:1.0, defense:4.0, research:30.0,
+  stages:[
+   (name:"Ossature", cost:[("steel",4.0e8), ("titanium_alloy",5.0e7)], days:900.0, crew:250.0, power:15000.0),
+   (name:"Habitats", cost:[("construction_materials",1.0e8), ("life_support_parts",5.0e5)], days:500.0, crew:200.0, power:10000.0),
+   (name:"Systèmes et armements", cost:[("electronics",1.0e7), ("weapon_parts",1.0e5)], days:300.0, crew:150.0, power:8000.0),
+  ]),
+ (id:"chantier_orbital", name:"Chantier orbital", kind:"shipyard", category:"megastructure",
+  text:"Un chantier en orbite où l'on assemble des coques : un quai pour la flotte, des ateliers, des cales.",
+  sites:["any"], repeat:false, max_units:1, param:1.0, upkeep:600.0, decay:0.01,
+  housing:8000.0, storage:1.0e7, port:1.0, defense:1.0, prod:0.03,
+  stages:[
+   (name:"Ossature du quai", cost:[("steel",8.0e7), ("hull_plates",2.0e6)], days:500.0, crew:180.0, power:9000.0),
+   (name:"Ateliers et grues", cost:[("machinery",3.0e5), ("robotics",3000.0)], days:240.0, crew:120.0, power:6000.0),
+  ]),
+]

@@ -127,6 +127,13 @@ pub struct Colony {
     pub debt_days: f64,
     pub stats: ColonyStats,
     pub log: Vec<(f64, String)>,
+    /// Climate of the world being terraformed (see `terraform`); None for bodies without one.
+    pub terra: Option<crate::terraform::Terra>,
+    /// Terraforming works and megastructures (see `megastructure`).
+    pub projects: Vec<crate::megastructure::ProjectInst>,
+    /// Species just seeded, to bring into the food web of the territory (not saved).
+    #[serde(skip)]
+    pub introduced: Vec<usize>,
 }
 
 /// Which site tags a body carries.
@@ -291,6 +298,10 @@ impl Colony {
         self.buildings
             .iter()
             .any(|b| b.built() && b.health > 0.2 && data.buildings[b.def].port > 0.0)
+            || self
+                .projects
+                .iter()
+                .any(|p| p.working() && data.projects[p.def].port > 0.0)
     }
 
     pub fn policy_level(&self, data: &GameData, id: &str) -> (f64, f64, f64) {
@@ -362,8 +373,13 @@ impl Colony {
                 TICK
             } else if gap < 200.0 * DAY {
                 DAY
-            } else {
+            } else if gap < 30.0 * 365.0 * DAY {
                 5.0 * DAY
+            } else if gap < 400.0 * 365.0 * DAY {
+                // Centuries of terraforming: the world is integrated in finer sub-steps.
+                60.0 * DAY
+            } else {
+                365.0 * DAY
             };
             self.last_tick += h;
             self.tick(data, h);
@@ -411,6 +427,11 @@ impl Colony {
             .filter(active)
             .map(|b| data.buildings[b.def].workers)
             .sum();
+        // Works under way take their crews, finished ones house, store and power.
+        let mx = self.mega_effects(data);
+        let housing = housing + mx.housing + self.open_air_housing();
+        let storage_cap = storage_cap + mx.storage;
+        let jobs = jobs + mx.crew;
         let workers = 0.55 * self.pop;
         let staffing = if jobs > 0.0 {
             (workers / jobs).min(1.0)
@@ -460,6 +481,8 @@ impl Colony {
         for (i, kg) in burn_needs {
             self.storage[i] = (self.storage[i] - kg).max(0.0);
         }
+        supply += mx.power;
+        demand += mx.demand;
         // Grid: losses, then batteries buffer the surplus and cover the deficit, then the
         // remaining shortage sheds the non-vital load first.
         let n_active = self.buildings.iter().filter(active).count();
@@ -560,6 +583,13 @@ impl Colony {
             * if rioting { 0.5 } else { 1.0 }
             * if broke { 0.3 } else { 1.0 })
         .max(0.0);
+        // Cheap energy lifts everything: a tenth per tenfold of surplus power, up to a third.
+        let abundance = if demand > 0.0 && supply > demand {
+            (0.1 * (supply / demand).log10()).min(0.33)
+        } else {
+            0.0
+        };
+        let prod_mult = prod_mult * (1.0 + mx.prod + abundance);
 
         // Production.
         let mut research_gain = 0.0;
@@ -769,21 +799,25 @@ impl Colony {
             .map(|b| data.buildings[b.def].upkeep)
             .sum::<f64>()
             * days;
-        self.treasury += income - upkeep;
+        self.treasury += income - upkeep + mx.income * days;
+        self.research += mx.research * days;
         self.debt_days = if self.treasury < 0.0 {
             self.debt_days + days
         } else {
             0.0
         };
 
-        // Terraforming.
-        let terra: f64 = self
+        // Terraforming: the plants crack gases with their power and the surplus of the grid,
+        // then the works advance and the world follows (see `megastructure`, `terraform`).
+        let plants = self
             .buildings
             .iter()
             .filter(active)
-            .map(|b| data.buildings[b.def].terraform)
-            .sum();
-        self.terraform = (self.terraform + terra * days * power_sat * prod_mult).min(1.0);
+            .filter(|b| data.buildings[b.def].terraform > 0.0)
+            .count() as f64;
+        let surplus_w = (supply - demand).max(0.0) * 1000.0;
+        let proc_w = (plants * 2.0e7 * power_sat + surplus_w).min(plants * 1.0e9);
+        self.mega_tick(data, days, power_sat, staffing, proc_w, now);
 
         self.stats = ColonyStats {
             power_supply: supply,
@@ -948,6 +982,13 @@ impl Sim {
             debt_days: 0.0,
             stats: ColonyStats::default(),
             log: Vec::new(),
+            terra: Some(crate::terraform::Terra::new(
+                &self.system,
+                i,
+                self.planet_map(i).as_ref(),
+            )),
+            projects: Vec::new(),
+            introduced: Vec::new(),
         };
         for def_id in ["habitat_dome", "solar_farm", "spaceport"] {
             if let Some(d) = data.building_index(def_id) {
@@ -1131,6 +1172,7 @@ impl Sim {
         if self.colonies.is_empty() {
             return;
         }
+        self.sync_terra_air();
         let data = std::sync::Arc::clone(&self.data);
         let now = self.time;
         let mut advanced = Vec::new();
@@ -1151,6 +1193,8 @@ impl Sim {
         for (ci, t0, t1) in advanced {
             let before = self.colonies[ci].log.len();
             self.apply_catastrophes(ci, t0, t1);
+            self.apply_mega_threats(ci, t0, t1);
+            self.apply_introductions(ci);
             self.apply_ecology(ci, t1);
             let c = &self.colonies[ci];
             if c.log.len() > before && c.star == self.here {

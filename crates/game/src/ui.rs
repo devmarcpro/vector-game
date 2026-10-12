@@ -46,6 +46,7 @@ pub fn draw(fb: &mut Framebuffer, g: &Game) {
         Screen::Inventory => draw_inventory(fb, g),
         Screen::Ship => draw_ship(fb, g),
         Screen::Shipyard => draw_shipyard(fb, g),
+        Screen::Designer => crate::designer_view::draw(fb, g),
         Screen::Crew => draw_crew(fb, g),
         Screen::Recruit => draw_recruit(fb, g),
         Screen::Journal => draw_journal(fb, g),
@@ -518,7 +519,7 @@ fn draw_main(fb: &mut Framebuffer, g: &Game) {
     }
 }
 
-fn header(fb: &mut Framebuffer, g: &Game, title: &str) {
+pub(crate) fn header(fb: &mut Framebuffer, g: &Game, title: &str) {
     let s = &g.sim;
     fb.text(1, 1, title, AMBER);
     fb.text(1, 2, &format!("CREDITS {:>10.0}", s.credits), GREEN);
@@ -720,7 +721,7 @@ pub fn bar(frac: f64, width: usize) -> String {
 fn draw_ship(fb: &mut Framebuffer, g: &Game) {
     let s = &g.sim;
     let ship = &s.ship;
-    let hull = &g.data.hulls[ship.design.hull];
+    let hull = &g.sim.data.hulls[ship.design.hull];
     header(fb, g, &format!("VAISSEAU {}  ({})", hull.name, hull.class));
     let top = 8;
     fb.text(
@@ -890,8 +891,9 @@ fn draw_ship(fb: &mut Framebuffer, g: &Game) {
 
 fn draw_shipyard(fb: &mut Framebuffer, g: &Game) {
     header(fb, g, "CHANTIER NAVAL");
+    crate::designer_view::tabs(fb, g, 0);
     let cur = g.sim.ship.design.hull;
-    let trade = g.data.hulls[cur].cost * RESALE;
+    let trade = g.sim.data.hulls[cur].cost * RESALE;
     let top = 8;
     fb.text(
         1,
@@ -899,7 +901,7 @@ fn draw_shipyard(fb: &mut Framebuffer, g: &Game) {
         "COQUE                    CLASSE        MASSE    EMPL.    PRIX (REPRISE DEDUITE)",
         DIM,
     );
-    for (i, h) in g.data.hulls.iter().enumerate() {
+    for (i, h) in g.data.hulls.iter().enumerate().take(g.sim.base_hulls) {
         let sel = i == g.yard_sel;
         let hover = g.hit_cells(
             1,
@@ -940,7 +942,7 @@ fn draw_shipyard(fb: &mut Framebuffer, g: &Game) {
     fb.text(
         1,
         b,
-        "ENTREE:ACHETER (MODULES -> STOCK, SOUTE VIDE REQUISE)  ECHAP:RETOUR",
+        "ENTREE:ACHETER (MODULES -> STOCK, SOUTE VIDE REQUISE)  C:CONCEVOIR SON VAISSEAU  ECHAP:RETOUR",
         DIM,
     );
     for (i, msg) in g.messages.iter().rev().take(2).enumerate() {
@@ -2318,7 +2320,7 @@ fn draw_fleet(fb: &mut Framebuffer, g: &Game) {
     if let Some(sel) = g.hull_pick {
         let y = ry + 3 + s.routes.len().max(1);
         fb.text(1, y, "ACHETER UN VAISSEAU (ENTREE, ECHAP)", AMBER);
-        for (k, h) in g.data.hulls.iter().enumerate() {
+        for (k, h) in g.data.hulls.iter().enumerate().take(g.sim.base_hulls) {
             fb.text(
                 1,
                 y + 1 + k,
@@ -2346,7 +2348,7 @@ fn s_unlocked(g: &Game, hull_id: &str) -> bool {
 /// powered, red = off or damaged, dim = empty). Click a box to select the slot.
 fn draw_ship_schematic(fb: &mut Framebuffer, g: &Game) {
     let ship = &g.sim.ship;
-    let hull = &g.data.hulls[ship.design.hull];
+    let hull = &g.sim.data.hulls[ship.design.hull];
     let (x0, y0) = (960i32, 80i32);
     let bus = x0 + 152;
     fb.text_at(x0 + 62, y0 - 12, "SCHEMA DU VAISSEAU", DIM);

@@ -97,7 +97,10 @@ impl Game {
     }
 
     /// The pointer moved by (dx, dy) pixels with the left button down: it turns the globe.
-    pub fn pointer_drag(&mut self, dx: i32, _dy: i32) {
+    pub fn pointer_drag(&mut self, dx: i32, dy: i32) {
+        if self.screen == Screen::Designer {
+            self.dz_drag(dx, dy);
+        }
         if self.screen == Screen::Surface && self.surf_globe {
             self.surf_spin += f64::from(dx) * 0.01;
         }

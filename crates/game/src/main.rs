@@ -5,6 +5,7 @@ mod codex;
 mod console;
 mod cosmos_view;
 mod crew_net_view;
+mod designer_view;
 mod dialogue_view;
 mod expedition_view;
 mod faction_view;
@@ -27,6 +28,7 @@ mod rogue_view;
 mod scene;
 mod script;
 mod settings;
+mod ship_preview;
 mod sprites;
 mod surface_view;
 mod tech_view;
@@ -973,6 +975,63 @@ fn snapshot(path: &str, scene: &str, data: Arc<GameData>) {
             if scene == "yard" {
                 g.screen = Screen::Shipyard;
                 g.yard_sel = 5;
+            }
+        }
+        "ship_inside" => {
+            let (st, _) = g.sim.nearest_station().expect("station");
+            g.sim.spawn_near(st, g.sim.bodies[st].radius + 200.0);
+            g.key(KeyCode::KeyD, None, true);
+            g.sim.credits = 3_000_000.0;
+            g.advance(0.2);
+            let bi = g.sim.buy_plan(2).expect("plan");
+            g.sim.order_ship(bi, 4).expect("order");
+            if let Some(o) = g.sim.yard_orders.first() {
+                g.sim.time = o.ready + 1.0;
+            }
+            g.advance(0.2);
+            g.sim.ship.cargo.mass = 0.0;
+            g.sim.board_fleet_ship(0).expect("board");
+            let d = Arc::clone(&g.data);
+            for k in 0..3 {
+                let p = vector_sim::crew::generate_person(&d, 900 + k, None);
+                g.sim.crew.hire(&d, p, 1, 0.0);
+            }
+            let theme = d
+                .rogue_themes
+                .iter()
+                .position(|t| t.id == "vaisseau")
+                .expect("theme");
+            g.sim.rogue_begin_social(theme, 5, vec![0]);
+            g.screen = Screen::Rogue;
+        }
+        "designer" | "designer_fit" | "designer_plans" => {
+            let (st, _) = g.sim.nearest_station().expect("station");
+            g.sim.spawn_near(st, g.sim.bodies[st].radius + 200.0);
+            g.key(KeyCode::KeyD, None, true);
+            g.sim.credits = 3_000_000.0;
+            g.advance(0.2);
+            for i in [0usize, 1, 3] {
+                let _ = g.sim.buy_plan(i);
+            }
+            g.dz_open();
+            g.dz.bp = 0;
+            g.dz.cursor = (4, 0);
+            g.dz.layer = 1;
+            g.dz.part = 6;
+            g.dz.yaw = 0.7;
+            g.dz.tab = match scene {
+                "designer_fit" => 1,
+                "designer_plans" => 2,
+                _ => 0,
+            };
+            if scene == "designer_plans" {
+                let _ = g.sim.order_ship(0, 2);
+                if let Some(o) = g.sim.yard_orders.first() {
+                    g.sim.time = o.ready + 1.0;
+                }
+                g.advance(0.2);
+                let _ = g.sim.order_ship(2, 3);
+                g.dz.column = 2;
             }
         }
         _ => {

@@ -1,0 +1,20 @@
+// Ready-made ship plans on sale at the yards (cells: (part, x, y, z); loadout: (x, y, z, slot of the
+// part, module)). A plan is checked at load for known ids and by a test for being buildable.
+[
+ (id:"courier_x", name:"Courrier Zéphyr-X", price:60000.0,
+  cells:[("mount_main",0,0,1), ("reactor_bay",1,0,1), ("hold_tankage",2,0,1), ("hold_small",3,0,1), ("deck_crew",4,0,1), ("core_cockpit",5,0,1), ("hull_nose",6,0,1), ("hull_truss",1,1,1), ("hull_truss",1,-1,1), ("gear_skid",1,1,0), ("gear_skid",1,-1,0), ("gear_leg",5,0,0)],
+  loadout:[(0,0,1,0,"torch_mk2"), (0,0,1,1,"gyro_mk1"), (0,0,1,2,"radiator_mk2"), (1,0,1,0,"fusion_mk2"), (1,0,1,2,"battery_mk2"), (2,0,1,0,"tank_mk3"), (2,0,1,1,"tank_mk3"), (2,0,1,2,"tank_mk3"), (3,0,1,0,"cargo_mk3"), (3,0,1,1,"cargo_mk2"), (4,0,1,0,"lifesup_mk2"), (4,0,1,1,"habitat_mk1"), (5,0,1,0,"fusion_mk1"), (5,0,1,1,"lifesup_mk1"), (6,0,1,0,"scanner_mk2"), (1,1,1,0,"rcs_mk1"), (1,-1,1,0,"rcs_mk1")],
+  text:"Un courrier rapide, droit et symétrique : tout sur l'axe, trois points d'appui, juste assez de soute."),
+ (id:"lander_m", name:"Atterrisseur Mercure", price:45000.0,
+  cells:[("mount_light",0,0,1), ("hull_frame",1,0,1), ("deck_crew",2,0,1), ("core_cockpit",3,0,1), ("hull_nose",4,0,1), ("wing_delta",1,1,1), ("wing_delta",1,-1,1), ("hull_truss",3,1,1), ("hull_truss",3,-1,1), ("gear_skid",3,1,0), ("gear_skid",3,-1,0), ("gear_leg",1,0,0)],
+  loadout:[(0,0,1,0,"torch_mk2"), (0,0,1,1,"radiator_mk1"), (1,0,1,0,"battery_mk2"), (2,0,1,0,"lifesup_mk2"), (2,0,1,1,"habitat_mk1"), (3,0,1,0,"fusion_mk2"), (3,0,1,1,"tank_mk2"), (3,1,1,0,"rcs_mk1"), (3,-1,1,0,"rcs_mk1"), (1,1,1,0,"solar_mk2"), (1,-1,1,0,"solar_mk2"), (4,0,1,0,"scanner_mk1")],
+  text:"Une navette de poche à grandes ailes : elle se pose, redécolle et plane dans l'air. Peu de carburant, faite pour les descentes."),
+ (id:"hauler_x", name:"Cargo Pachyderme", price:140000.0,
+  cells:[("mount_main",0,0,1), ("reactor_bay",1,0,1), ("hold_tankage",2,0,1), ("hold_large",3,0,1), ("hold_large",4,0,1), ("hold_large",5,0,1), ("deck_crew",6,0,1), ("core_command",7,0,1), ("hull_nose",8,0,1), ("hull_truss",2,1,1), ("hull_truss",2,-1,1), ("hull_truss",5,1,1), ("hull_truss",5,-1,1), ("gear_leg",2,1,0), ("gear_leg",2,-1,0), ("gear_leg",5,1,0), ("gear_leg",5,-1,0)],
+  loadout:[(0,0,1,0,"torch_mk3"), (0,0,1,1,"gyro_mk1"), (0,0,1,2,"radiator_mk2"), (1,0,1,0,"fusion_mk3"), (1,0,1,1,"fusion_mk2"), (1,0,1,2,"battery_mk2"), (2,0,1,0,"tank_mk4"), (2,0,1,1,"tank_mk4"), (2,0,1,2,"tank_mk3"), (3,0,1,0,"cargo_mk4"), (3,0,1,1,"cargo_mk4"), (4,0,1,0,"cargo_mk4"), (4,0,1,1,"cargo_mk4"), (5,0,1,0,"cargo_mk4"), (5,0,1,1,"cargo_mk4"), (6,0,1,0,"habitat_mk1"), (6,0,1,1,"lifesup_mk1"), (7,0,1,0,"fusion_mk2"), (7,0,1,1,"gyro_mk1"), (7,0,1,2,"lifesup_mk2"), (2,1,1,0,"radiator_mk2"), (2,-1,1,0,"radiator_mk2"), (5,1,1,0,"rcs_mk2"), (5,-1,1,0,"rcs_mk2")],
+  text:"La soute avant tout : trois grandes soutes en ligne, quatre jambes, un seul gros moteur sur l'axe."),
+ (id:"fighter_x", name:"Chasseur Frelon", price:90000.0,
+  cells:[("mount_light",0,0,1), ("hull_frame",1,0,1), ("core_cockpit",2,0,1), ("hull_nose",3,0,1), ("wing_delta",1,1,1), ("wing_delta",1,-1,1), ("hull_truss",2,1,1), ("hull_truss",2,-1,1), ("gear_skid",2,1,0), ("gear_skid",2,-1,0), ("gear_skid",1,0,0)],
+  loadout:[(0,0,1,0,"torch_mk2"), (0,0,1,1,"radiator_mk1"), (1,0,1,0,"tank_mk3"), (2,0,1,0,"fusion_mk2"), (2,0,1,1,"lifesup_mk1"), (2,1,1,0,"rcs_mk1"), (2,-1,1,0,"rcs_mk1"), (1,1,1,0,"radiator_mk3"), (1,-1,1,0,"radiator_mk3"), (1,1,1,1,"pulselaser_mk2"), (1,-1,1,1,"pulselaser_mk2"), (3,0,1,0,"armor_mk2")],
+  text:"Deux ailes delta portant chacune une arme, un moteur compact et peu de carburant : pour mordre, pas pour durer."),
+]

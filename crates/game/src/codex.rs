@@ -2,7 +2,7 @@
 //! weapon, faction, anomaly and condition, generated from the real data (no hand-written numbers).
 use vector_data::GameData;
 
-pub const CATEGORIES: [&str; 47] = [
+pub const CATEGORIES: [&str; 49] = [
     "RESSOURCES",
     "MODULES",
     "ARMES",
@@ -50,6 +50,8 @@ pub const CATEGORIES: [&str; 47] = [
     "PARTIES DU CORPS",
     "BLESSURES",
     "MEDICAMENTS",
+    "PIECES DE VAISSEAU",
+    "PLANS DE VAISSEAU",
 ];
 
 /// The category of the reactions: the laboratory.
@@ -122,6 +124,8 @@ fn entries(data: &GameData, cat: usize) -> Vec<usize> {
         44 => (0..data.body_parts.len()).collect(),
         45 => (0..data.wounds.len()).collect(),
         46 => (0..data.drugs.len()).collect(),
+        47 => (0..data.ship_parts.len()).collect(),
+        48 => (0..data.ship_plans.len()).collect(),
         _ => Vec::new(),
     }
 }
@@ -174,6 +178,8 @@ pub fn names(data: &GameData, cat: usize) -> Vec<String> {
             44 => data.body_parts[i].name.clone(),
             45 => data.wounds[i].name.clone(),
             46 => data.drugs[i].name.clone(),
+            47 => data.ship_parts[i].name.clone(),
+            48 => data.ship_plans[i].name.clone(),
             18 => format!(
                 "Appeler : {}",
                 vector_data::dialogue::ROLES[i].to_lowercase()
@@ -1684,6 +1690,89 @@ pub fn entry(data: &GameData, cat: usize, k: usize) -> Vec<String> {
                 .collect();
             out.push(format!("Peut toucher : {}", places.join(", ")));
         }
+        47 => {
+            let p = &data.ship_parts[i];
+            out.push(format!("{}  [{}]", p.name, p.kind));
+            out.push(format!(
+                "Masse : {:.0} kg   structure : {:.0}   volume : {:.0} m3 (habitable {:.0})",
+                p.mass, p.hp, p.volume, p.hab_m3
+            ));
+            let mats: Vec<String> = p
+                .materials
+                .iter()
+                .map(|(r, kg)| {
+                    format!(
+                        "{kg:.0} kg {}",
+                        res_name(data, r).unwrap_or_else(|| r.clone())
+                    )
+                })
+                .collect();
+            out.push(format!("Materiaux : {}", mats.join(", ")));
+            out.push(format!("Travail : {:.0} jours-equipe", p.labor));
+            let faces: Vec<&str> = [
+                (vector_data::ship::PORT_PX, "avant"),
+                (vector_data::ship::PORT_NX, "arriere"),
+                (vector_data::ship::PORT_PY, "tribord"),
+                (vector_data::ship::PORT_NY, "babord"),
+                (vector_data::ship::PORT_PZ, "dessus"),
+                (vector_data::ship::PORT_NZ, "dessous"),
+            ]
+            .iter()
+            .filter(|(b, _)| p.ports & b != 0)
+            .map(|(_, n)| *n)
+            .collect();
+            out.push(format!("Raccords : {}", faces.join(", ")));
+            if p.slots.is_empty() {
+                out.push("Emplacements : aucun".to_string());
+            } else {
+                let s: Vec<String> = p
+                    .slots
+                    .iter()
+                    .map(|(t, n)| format!("{} {n}", t.label().to_lowercase()))
+                    .collect();
+                out.push(format!("Emplacements : {}", s.join(", ")));
+            }
+            if p.berths > 0 {
+                out.push(format!("Couchettes : {}", p.berths));
+            }
+            if p.lift_area > 0.0 {
+                out.push(format!("Surface portante : {:.0} m2", p.lift_area));
+            }
+            if p.support_kg > 0.0 {
+                out.push(format!("Porte {:.0} kg a 1 g", p.support_kg));
+            }
+            if p.rcs > 0.0 {
+                out.push(format!("Propulseurs d'attitude : {:.0} kN", p.rcs / 1e3));
+            }
+            out.push(p.text.clone());
+        }
+        48 => {
+            let d = &data.ship_plans[i];
+            out.push(format!("{}  (plan, {:.0} cr)", d.name, d.price));
+            let mut bp = vector_sim::shipwright::Blueprint::new(0, &d.name);
+            for (part, x, y, z) in &d.cells {
+                let _ = bp.place(data, part, *x, *y, *z);
+            }
+            for (x, y, z, slot, m) in &d.loadout {
+                let _ = bp.fit(data, *x, *y, *z, *slot, m);
+            }
+            let r = vector_sim::shipwright::analyze(data, &bp);
+            out.push(format!(
+                "{} pieces   masse {:.0} kg a vide, {:.0} kg pleine",
+                r.cells, r.mass_dry, r.mass_wet
+            ));
+            out.push(format!(
+                "Poussee {:.0} kN   delta-v {:.0} m/s   puissance {:.0} kW",
+                r.thrust / 1e3,
+                r.dv_empty,
+                r.power_supply
+            ));
+            out.push(format!(
+                "Soute {:.0} kg   couchettes {}   valeur {:.0} cr",
+                r.cargo_kg, r.berths, r.value
+            ));
+            out.push(d.text.clone());
+        }
         46 => {
             let d = &data.drugs[i];
             out.push(format!("{}  ({})", d.name, d.text));
@@ -2101,8 +2190,8 @@ mod tests {
         assert!(entry(&d, 13, k)
             .join("\n")
             .contains("Silicones thermophiles"));
-        assert_eq!(count(&d, 29), d.chemistries.len());
-        let chem = entry(&d, 29, 0).join("\n");
+        assert_eq!(count(&d, 38), d.chemistries.len());
+        let chem = entry(&d, 38, 0).join("\n");
         assert!(
             chem.contains("Serpent de scorie") && chem.contains("K"),
             "{chem}"

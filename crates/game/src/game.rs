@@ -44,6 +44,7 @@ pub enum Screen {
     Pause,
     Ship,
     Shipyard,
+    Designer,
     Crew,
     Recruit,
     Journal,
@@ -109,6 +110,8 @@ pub struct Game {
     pub picker: bool,
     pub pick_sel: usize,
     pub yard_sel: usize,
+    /// The ship designer tab of the shipyard (see `designer_view`).
+    pub dz: crate::designer_view::DesignerUi,
     pub crew_sel: usize,
     pub recruit_sel: usize,
     pub journal_scroll: usize,
@@ -294,6 +297,7 @@ impl Game {
             picker: false,
             pick_sel: 0,
             yard_sel: 0,
+            dz: crate::designer_view::DesignerUi::default(),
             crew_sel: 0,
             recruit_sel: 0,
             journal_scroll: 0,
@@ -691,6 +695,9 @@ impl Game {
                 Event::MeteorImpact { damage } => {
                     self.say(format!("IMPACT DE METEOROIDE : -{damage:.0}"))
                 }
+                Event::ShipBuilt { name } => {
+                    self.say(format!("LE CHANTIER LIVRE : {}", name.to_uppercase()))
+                }
                 Event::PirateAlert => self.say("ALERTE: PIRATES A PROXIMITE !"),
                 Event::Overheat => self.say("ALERTE: SURCHAUFFE !"),
                 Event::ModuleLost { slot } => {
@@ -889,6 +896,7 @@ impl Game {
             Screen::Inventory => self.inventory_key(code),
             Screen::Ship => self.ship_key(code),
             Screen::Shipyard => self.shipyard_key(code),
+            Screen::Designer => self.designer_key(code, text),
             Screen::Crew => self.crew_key(code),
             Screen::Recruit => self.recruit_key(code),
             Screen::Journal => self.journal_key(code),
@@ -2427,7 +2435,7 @@ impl Game {
 
     /// Modules that can go into slot `slot` of the current hull, grouped by category then size.
     pub fn compatible_modules(&self, slot: usize) -> Vec<usize> {
-        let (ty, size) = self.data.hulls[self.sim.ship.design.hull].slots[slot];
+        let (ty, size) = self.sim.data.hulls[self.sim.ship.design.hull].slots[slot];
         let mut v: Vec<usize> = (0..self.data.modules.len())
             .filter(|&i| self.data.modules[i].slot == ty && self.data.modules[i].size <= size)
             .collect();
@@ -2488,8 +2496,9 @@ impl Game {
     }
 
     fn shipyard_key(&mut self, code: KeyCode) {
-        let n = self.data.hulls.len();
+        let n = self.sim.base_hulls;
         match code {
+            KeyCode::KeyC => self.dz_open(),
             KeyCode::ArrowUp => self.yard_sel = (self.yard_sel + n - 1) % n,
             KeyCode::ArrowDown => self.yard_sel = (self.yard_sel + 1) % n,
             KeyCode::Enter => match self.sim.buy_hull(self.yard_sel) {
@@ -2766,6 +2775,7 @@ mod tests {
             Screen::Pause,
             Screen::Ship,
             Screen::Shipyard,
+            Screen::Designer,
             Screen::Crew,
             Screen::Recruit,
             Screen::Journal,
@@ -4063,6 +4073,7 @@ mod tests {
             Screen::Inventory,
             Screen::Ship,
             Screen::Shipyard,
+            Screen::Designer,
             Screen::Crew,
             Screen::Recruit,
             Screen::Journal,

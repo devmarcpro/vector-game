@@ -1325,6 +1325,20 @@ pub fn entry(data: &GameData, cat: usize, k: usize) -> Vec<String> {
                     vector_sim::exotic::CLUES_NEEDED
                 ));
             } else {
+                if e.kardashev > 0.0 {
+                    out.push(format!(
+                        "Echelle de Kardashev : K{:.1} (puissance {:.1e} W)",
+                        e.kardashev,
+                        vector_sim::exotic_field::power_of_kardashev(e.kardashev)
+                    ));
+                }
+                let radius = vector_sim::exotic_field::field_radius(&e.id);
+                if radius > 0.0 {
+                    out.push(format!(
+                        "Effet continu dans {:.0} 000 km : attraction, degats, paradoxe ou stase selon le phenomene.",
+                        radius / 1e6
+                    ));
+                }
                 out.push(format!(
                     "Genre : {}   danger {:.0} %   etude {:.0} a {:.0} points de recherche",
                     e.kind,

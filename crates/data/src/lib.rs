@@ -739,6 +739,9 @@ pub struct Exotic {
     /// "matter", "propulsion", "field", "entity", "precursor" or "fermi".
     pub kind: String,
     pub danger: f64,
+    /// Position on the Kardashev scale of the civilisation behind it (0 = none).
+    #[serde(default)]
+    pub kardashev: f64,
     pub research: (f64, f64),
     pub credits: (f64, f64),
     pub loot: Vec<(String, f64, f64)>,
@@ -1939,6 +1942,9 @@ impl GameData {
                 return bad(format!("exotique {}: genre inconnu {}", e.id, e.kind));
             }
             let ranges = [e.research, e.credits];
+            if !(0.0..=3.5).contains(&e.kardashev) {
+                return bad(format!("exotique {}: Kardashev hors limites", e.id));
+            }
             if !(0.0..=1.0).contains(&e.danger)
                 || ranges.iter().any(|r| r.0 < 0.0 || r.1 < r.0)
                 || e.text.is_empty()

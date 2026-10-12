@@ -529,6 +529,32 @@ fn snapshot(path: &str, scene: &str, data: Arc<GameData>) {
             let _ = g.sim.rewind(0);
             g.screen = Screen::Cosmos;
         }
+        "haute_sf" => {
+            g.sim.credits = 500_000.0;
+            let d = std::sync::Arc::clone(&g.sim.data);
+            g.sim.ship.cargo.cap_mass = 1.0e7;
+            g.sim.ship.cargo.cap_vol = 1.0e7;
+            for (id, kg) in [("antimatter", 0.02), ("nanites", 3.0)] {
+                if let Some(r) = d.resource_index(id) {
+                    g.sim.ship.cargo.add(&d, r, kg);
+                }
+            }
+            let p = vector_sim::crew::generate_person(&d, 4, None);
+            g.sim.crew.hire(&d, p, 1, 0.0);
+            let slot = g
+                .sim
+                .ship
+                .design
+                .modules(&d)
+                .find(|(_, m)| m.jump_range > 0.0)
+                .map(|(i, _)| i);
+            if let Some(i) = slot {
+                g.sim.ship.design.slots[i] = d.module_index("exo_warp_drive");
+            }
+            g.sim.ship.refresh_stats(&d);
+            let _ = g.sim.clone_crew(0);
+            g.screen = Screen::Cosmos;
+        }
         "courtage" => {
             let (st, _) = g.sim.nearest_station().expect("station");
             g.sim.spawn_near(st, g.sim.bodies[st].radius + 200.0);

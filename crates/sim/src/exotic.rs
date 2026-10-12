@@ -15,6 +15,8 @@ pub const J_PER_DAMAGE: f64 = 2.0e11;
 pub const TRAP_LEAK_PER_S: f64 = 0.002;
 /// Precursor ruins: share of systems touched by the ancients.
 pub const PRECURSOR_SHARE: f64 = 0.2;
+/// Translation skill kept when the ship shows armed weapons during a first contact.
+pub const ARMED_CONTACT_PENALTY: f64 = 0.6;
 /// Clues about the Fermi paradox needed to understand what happened.
 pub const CLUES_NEEDED: u32 = 5;
 
@@ -190,6 +192,18 @@ impl Sim {
         let role = crate::crew::Crew::role_index(&self.data, "scientist");
         let tr = self.crew.role_efficiency(&self.data, role, self.time);
         let precursor = is_precursor_system(self.galaxy.seed, self.here_pos);
+        // Armed and powered weapons make a stranger nervous: first contact protocol is decided
+        // by what the ship shows.
+        let armed = self
+            .ship
+            .design
+            .modules(&self.data)
+            .any(|(i, m)| m.category == "weapon" && self.ship.sys.powered[i]);
+        let tr = if armed && e.kind == "entity" {
+            tr * ARMED_CONTACT_PENALTY
+        } else {
+            tr
+        };
         let o = study(
             &self.data,
             &e,
@@ -202,7 +216,16 @@ impl Sim {
         self.credits += o.credits;
         self.damage_player(o.damage);
         let mut text = format!("PHENOMENE EXOTIQUE : {}.", e.name.to_uppercase());
+        if e.kardashev > 0.0 {
+            text += &format!(
+                " Civilisation de type K{:.1} sur l'echelle de Kardashev.",
+                e.kardashev
+            );
+        }
         if let Some(u) = o.understanding {
+            if armed {
+                text += " Vos armes sont sorties : le protocole de contact en souffre.";
+            }
             text += &format!(" Comprehension mutuelle {:.0} %.", u * 100.0);
             if u < 0.3 {
                 text += " Malentendu : l'entite l'a pris pour une menace.";

@@ -24,6 +24,7 @@ pub mod ecology;
 pub mod economy;
 pub mod epidemic;
 pub mod exotic;
+pub mod exotic_field;
 pub mod fleet;
 pub mod futures;
 pub mod gear;
@@ -797,6 +798,7 @@ impl Sim {
         self.update_fleet();
         self.tick_research(dt);
         self.tick_antimatter(dt);
+        self.tick_exotic_fields(dt);
     }
 
     /// Advance the crew layer to the current time and apply what the engineers repaired.

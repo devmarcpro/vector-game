@@ -124,6 +124,7 @@ pub fn draw(fb: &mut Framebuffer, v: &View) {
         draw_cockpit(fb, v);
     }
     draw_status(fb, v);
+    crate::landing_view::draw(fb, v);
     draw_console(fb, v.console);
 }
 
@@ -235,9 +236,8 @@ fn terrain_view(
     ));
     let fwd = cam.rot.transpose().mul_vec(Vec3::new(0.0, 0.0, 1.0));
     let pitch = fwd.dot(up).clamp(-1.0, 1.0).asin();
-    if pitch < -1.0 {
-        return false;
-    }
+    // Straight down the heightfield degenerates: look at it from a steep angle instead.
+    let pitch = pitch.max(-1.45);
     let yaw = fwd.dot(east).atan2(fwd.dot(north));
     let sun = (b.pos * -1.0).normalized();
     let air = map.pressure;
@@ -379,7 +379,7 @@ fn draw_cockpit(fb: &mut Framebuffer, v: &View) {
     let ship = &v.sim.ship;
     let cam = Camera {
         pos: ship.pos,
-        rot: ship.rot.transpose(),
+        rot: v.game.view_rot(&ship.rot),
         fov_y: if v.boost { 1.4 } else { 1.2 },
     };
     let focal = fb.h as f64 * 0.5 / (cam.fov_y * 0.5).tan();

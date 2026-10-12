@@ -31,6 +31,7 @@ pub mod genealogy;
 pub mod history;
 pub mod incidents;
 pub mod intrusion;
+pub mod landing;
 pub mod law;
 pub mod livestock;
 pub mod macroeco;
@@ -206,6 +207,20 @@ pub enum Event {
     Orbit {
         body: usize,
     },
+    /// The ship fell over on its side at touchdown (slope, tilt).
+    Toppled {
+        body: usize,
+        damage: f64,
+    },
+    /// A pilot (landing, ascent, docking) finished, or was taken back by the player.
+    PilotDone(&'static str),
+    PilotFailed(&'static str),
+    /// The engines cannot lift the ship off the ground.
+    TooHeavy,
+    /// The port was captured too fast or crooked.
+    HardDock {
+        damage: f64,
+    },
     Impact {
         body: usize,
         speed: f64,
@@ -300,6 +315,16 @@ pub struct Sim {
     pub jump_run: Option<vector_world::galaxy::StarEntry>,
     /// Held in place next to a body (index, offset) until the player thrusts or sets a new course.
     pub parked: Option<(usize, Vec3)>,
+    /// Attitude hold, the heading it keeps, the throttle (0..1), the landing gear, the ground under
+    /// the ship as the renderer draws it, the chosen landing site, and the pilot at the controls.
+    /// None of it is saved: a loaded ship starts with the aids off.
+    pub sas: landing::Sas,
+    pub sas_hold: Vec3,
+    pub throttle: f64,
+    pub gear_down: bool,
+    pub ground: Option<landing::Ground>,
+    pub site: Option<landing::Site>,
+    pub pilot: Option<landing::Pilot>,
     /// The autopilot's plan for this step: (target, position and velocity relative to it).
     pub ride: Option<(usize, Vec3, Vec3)>,
     /// How every faction, people, cartel, contact and company feels about the player.
@@ -454,6 +479,13 @@ impl Sim {
             autopilot: None,
             jump_run: None,
             parked: None,
+            sas: landing::Sas::Off,
+            sas_hold: Vec3::new(0.0, 0.0, 1.0),
+            throttle: 1.0,
+            gear_down: false,
+            ground: None,
+            site: None,
+            pilot: None,
             ride: None,
             relations: relations::Relations::default(),
             surprises: surprises::SurpriseState::default(),
@@ -695,6 +727,10 @@ impl Sim {
             return SIM_DT;
         }
         let mut dt = f64::MAX;
+        // A pilot or the attitude hold steers by small steps.
+        if self.pilot.is_some() {
+            dt = 0.1;
+        }
         for b in &self.bodies {
             let d = (self.ship.pos - b.pos).length();
             let alt = (d - b.radius).max(1.0);
@@ -923,6 +959,12 @@ impl Sim {
             }
             None => *manual,
         };
+        let input = if self.autopilot.is_none() && self.jump_run.is_none() {
+            self.pilot_layer(manual, input, dt)
+        } else {
+            input
+        };
+        let sas_on = self.sas != landing::Sas::Off || self.pilot.is_some();
         let clamp = |v: f64| v.clamp(-1.0, 1.0);
 
         // Power bus, heat, module health -> what the ship can actually do this step.
@@ -947,7 +989,7 @@ impl Sim {
         self.run_systems(&act, dt);
         let mut eff = self.effective.clone();
         eff.max_rate *= self.env_agility.sqrt();
-        eff.ang_accel *= self.env_agility;
+        eff.ang_accel *= self.env_agility * self.attitude_scale();
         let pilot = Crew::role_index(&self.data, "pilot");
         eff.ang_accel *= (self.crew.role_efficiency(&self.data, pilot, self.time)
             / crew::NO_CREW_EFF)
@@ -960,18 +1002,23 @@ impl Sim {
             eff.max_rate *= BOOST_TURN;
             eff.ang_accel *= BOOST_TURN;
         }
-        let assist = self.ship.assist || brake;
+        let assist = self.ship.assist || brake || sas_on;
         // Linear assist is for station-keeping: off under autopilot and at high relative speed.
         // The brake works anywhere and at any speed, against the target if there is one.
+        // Parked on the ground of a turning world, the frame is the ground's.
+        let frame_vel = self
+            .ref_body
+            .map_or(Vec3::ZERO, |i| self.assist_frame_velocity(i));
         let lin_assist = brake
-            || (assist
+            || (self.ship.assist
                 && self.autopilot.is_none()
                 && self.ref_body.is_some()
                 && self.near_well()
-                && self.rel_velocity().length() < ASSIST_MAX_SPEED);
+                && !self.low_over_gravity()
+                && (self.ship.vel - frame_vel).length() < ASSIST_MAX_SPEED);
         let ref_vel = match (brake, self.target.filter(|&t| t < self.bodies.len())) {
             (true, Some(t)) => self.bodies[t].vel,
-            _ => self.ref_body.map_or(Vec3::ZERO, |i| self.bodies[i].vel),
+            _ => frame_vel,
         };
         let grav = self.gravity_at(self.ship.pos);
         let s = &mut self.ship;
@@ -1063,6 +1110,7 @@ impl Sim {
         }
         s.vel = s.vel + (s.rot.mul_vec(acc_b) + grav) * dt;
         s.pos = s.pos + s.vel * dt;
+        let thrust_world = s.rot.mul_vec(acc_b);
         self.g_load = acc_b.length() / G0;
         // The crew feels the thrust (a slow average: a burst of a second is not a sustained load).
         let felt = acc_b.length() / crate::body::G0;
@@ -1079,12 +1127,32 @@ impl Sim {
         }
         if let Some((bi, off)) = self.parked {
             let thrusting = input.fwd != 0.0 || input.lat != 0.0 || input.vert != 0.0;
-            if thrusting || self.autopilot.is_some() || self.jump.is_some() || self.docked.is_some()
+            let solid = self.landable(bi);
+            // The world turns under the parked ship: it keeps its place on the ground.
+            let off = if solid {
+                Mat3::rot_y(self.spin_rate(bi) * dt).mul_vec(off)
+            } else {
+                off
+            };
+            let surf = self.surface_velocity(bi, off);
+            let up = off.normalized();
+            // To leave the ground the engines must beat the weight.
+            let lift = thrust_world.dot(up) + grav.dot(up);
+            let held = solid && thrusting && lift <= 0.0 && self.autopilot.is_none();
+            if held && self.steps.is_multiple_of(30) {
+                self.events.push(Event::TooHeavy);
+            }
+            if (thrusting && !held)
+                || self.autopilot.is_some()
+                || self.jump.is_some()
+                || self.docked.is_some()
             {
                 self.parked = None;
+                self.ship.vel = self.ship.vel + surf;
             } else {
+                self.parked = Some((bi, off));
                 self.ship.pos = self.bodies[bi].pos + off;
-                self.ship.vel = self.bodies[bi].vel;
+                self.ship.vel = self.bodies[bi].vel + surf;
             }
         }
         self.update_ref();
@@ -1115,33 +1183,97 @@ impl Sim {
     fn collide(&mut self) {
         let mut hits = Vec::new();
         let mut landings: Vec<(usize, Vec3)> = Vec::new();
-        {
-            let s = &mut self.ship;
-            for (i, b) in self.bodies.iter().enumerate() {
-                if matches!(b.kind, BodyKind::Anomaly(_)) {
-                    continue;
+        for i in 0..self.bodies.len() {
+            let (kind, bpos, bvel, brad) = {
+                let b = &self.bodies[i];
+                (b.kind, b.pos, b.vel, b.radius)
+            };
+            if matches!(kind, BodyKind::Anomaly(_)) {
+                continue;
+            }
+            let solid = matches!(kind, BodyKind::Planet(k) | BodyKind::Moon(k) if !k.is_giant());
+            let (height, ground_normal, rough) = if solid {
+                self.local_ground(i)
+            } else {
+                (0.0, Vec3::ZERO, 0.0)
+            };
+            let d = self.ship.pos - bpos;
+            let dist = d.length();
+            let min = brad + height + SHIP_RADIUS;
+            if dist >= min || dist <= 1e-9 {
+                continue;
+            }
+            let radial = d * (1.0 / dist);
+            self.ship.pos = bpos + radial * min;
+            if !solid {
+                let vn = (self.ship.vel - bvel).dot(radial);
+                if vn < 0.0 {
+                    let speed = -vn;
+                    let mass = self.ship.mass();
+                    let damage =
+                        (0.5 * mass * speed * speed / 5.0e6).min(self.ship.stats.hull_max * 2.0);
+                    self.ship.vel = self.ship.vel - radial * (vn * 1.2);
+                    hits.push((i, speed, damage));
                 }
-                let d = s.pos - b.pos;
-                let dist = d.length();
-                let min = b.radius + SHIP_RADIUS;
-                if dist < min && dist > 1e-9 {
-                    let n = d * (1.0 / dist);
-                    let vn = (s.vel - b.vel).dot(n);
-                    s.pos = b.pos + n * min;
-                    // A gentle contact with a solid world is a landing: no bounce, no damage, the ship
-                    // stays on the ground (parked) until it thrusts.
-                    let solid =
-                        matches!(b.kind, BodyKind::Planet(k) | BodyKind::Moon(k) if !k.is_giant());
-                    if solid && (s.vel - b.vel).length() <= crate::orbit::LANDING_SPEED {
-                        s.vel = b.vel;
-                        landings.push((i, s.pos - b.pos));
-                    } else if vn < 0.0 {
-                        let speed = -vn;
-                        let damage =
-                            (0.5 * s.mass() * speed * speed / 5.0e6).min(s.stats.hull_max * 2.0);
-                        s.vel = s.vel - n * (vn * 1.2);
-                        hits.push((i, speed, damage));
+                continue;
+            }
+            // A solid world: the touch is judged against the slope of the ground, relative to the
+            // ground itself (which turns with the world).
+            let normal = if ground_normal.length() < 0.5 {
+                radial
+            } else {
+                ground_normal
+            };
+            let surf = bvel + self.surface_velocity(i, self.ship.pos - bpos);
+            let rel = self.ship.vel - surf;
+            let vn = rel.dot(normal);
+            if vn >= 0.0 {
+                continue; // leaving the ground
+            }
+            let tangential = rel - normal * vn;
+            let touch = landing::Touch {
+                v_in: -vn,
+                v_t: tangential.length(),
+                tilt: self.ship.forward().dot(normal).clamp(-1.0, 1.0).acos(),
+                slope: normal.dot(radial).clamp(-1.0, 1.0).acos(),
+                rough,
+                gear: self.gear_down,
+            };
+            let hull = self.ship.stats.hull_max;
+            match landing::classify(&touch) {
+                landing::Outcome::Landed => {
+                    self.ship.vel = surf;
+                    landings.push((i, self.ship.pos - bpos));
+                }
+                landing::Outcome::Hard { excess, bounce } => {
+                    hits.push((i, touch.v_in, hull * landing::damage_fraction(excess)));
+                    if bounce {
+                        self.ship.vel =
+                            surf + normal * (landing::RESTITUTION * touch.v_in) + tangential * 0.6;
+                    } else {
+                        self.ship.vel = surf;
+                        landings.push((i, self.ship.pos - bpos));
                     }
+                }
+                landing::Outcome::Toppled { excess } => {
+                    let damage = hull * (0.04 + landing::damage_fraction(excess));
+                    // It ends up lying on its side, nose along the ground.
+                    let mut f = self.ship.forward();
+                    f = f - normal * f.dot(normal);
+                    if f.length() < 1e-6 {
+                        f = Vec3::new(1.0, 0.0, 0.0).cross(normal);
+                    }
+                    self.ship.rot = Mat3::look_at(f.normalized(), normal);
+                    self.ship.ang = Vec3::ZERO;
+                    self.ship.vel = surf;
+                    landings.push((i, self.ship.pos - bpos));
+                    self.hurt_ship(damage, i);
+                    self.events.push(Event::Toppled { body: i, damage });
+                }
+                landing::Outcome::Crash { excess } => {
+                    let damage = hull * landing::damage_fraction(excess).max(1.0);
+                    self.ship.vel = surf + rel - normal * (vn * 1.2);
+                    hits.push((i, touch.v_in, damage));
                 }
             }
         }
@@ -1152,14 +1284,9 @@ impl Sim {
             self.parked = Some((i, off));
         }
         for (i, speed, damage) in hits {
-            if speed > 5.0 && !self.rules.invulnerable {
-                let damage = damage * self.rules.damage;
-                self.ship.hull = (self.ship.hull - damage).max(0.0);
-                let pick = hash_coord(self.system.seed, i as i64, (self.time * 1000.0) as i64, 99);
-                self.ship
-                    .sys
-                    .damage_modules(&self.data, &self.ship.design, damage * 0.5, pick);
-                self.ship.refresh_stats(&self.data);
+            let solid = self.landable(i);
+            if (speed > 5.0 || solid) && damage > 0.0 {
+                self.hurt_ship(damage, i);
             }
             self.events.push(Event::Impact {
                 body: i,
@@ -1167,6 +1294,25 @@ impl Sim {
                 damage,
             });
         }
+    }
+
+    /// Damage to the hull (scaled by the rules) and to the modules; none when invulnerable.
+    pub(crate) fn hurt_ship(&mut self, damage: f64, source: usize) {
+        if self.rules.invulnerable {
+            return;
+        }
+        let damage = damage * self.rules.damage;
+        self.ship.hull = (self.ship.hull - damage).max(0.0);
+        let pick = hash_coord(
+            self.system.seed,
+            source as i64,
+            (self.time * 1000.0) as i64,
+            99,
+        );
+        self.ship
+            .sys
+            .damage_modules(&self.data, &self.ship.design, damage * 0.5, pick);
+        self.ship.refresh_stats(&self.data);
     }
 
     /// Remaining minable mass of body `i` (kg).
@@ -1301,8 +1447,14 @@ impl Sim {
         if self.faction.is_some_and(|f| self.has_warrant(f)) {
             return Err("acces refuse: mandat d'arret");
         }
+        let hard = self.dock_damage(i);
+        if hard > 0.0 {
+            self.hurt_ship(hard, i);
+            self.events.push(Event::HardDock { damage: hard });
+        }
         self.docked = Some(i);
         self.autopilot = None;
+        self.pilot = None;
         self.events.push(Event::Docked { body: i });
         if self.bodies[i].kind == BodyKind::Station {
             self.customs_check();

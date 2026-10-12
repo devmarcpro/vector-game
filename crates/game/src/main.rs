@@ -18,6 +18,7 @@ mod game;
 mod globe;
 mod health_view;
 mod hud;
+mod landing_view;
 mod medicine_view;
 mod mind_view;
 mod mouse;
@@ -260,6 +261,53 @@ impl ApplicationHandler for App {
 }
 
 /// Headless scripted scenes for visual verification.
+/// Piloting and landing scenes: `descent` (pilot flying the burn), `contact` (just landed), `takeoff`
+/// (ascent pilot after liftoff), `toppled` (a steep slope), all over the first solid world.
+fn landing_scene(g: &mut Game, stage: &str) {
+    use vector_core::{Mat3, Vec3};
+    g.sim.reveal_all();
+    let i = (0..g.sim.bodies.len())
+        .filter(|&i| g.sim.landable(i))
+        .max_by(|&a, &b| g.sim.bodies[a].radius.total_cmp(&g.sim.bodies[b].radius))
+        .expect("a solid world");
+    let b = g.sim.bodies[i].clone();
+    let up = Vec3::new(0.3, 0.8, 0.5).normalized();
+    let alt = if stage == "descent" { 420.0 } else { 0.4 };
+    g.sim.ship.pos = b.pos + up * (b.radius + vector_sim::SHIP_RADIUS + alt);
+    g.sim.ship.vel = b.vel + g.sim.surface_velocity(i, g.sim.ship.pos - b.pos);
+    g.sim.ship.rot = Mat3::look_at(up, Vec3::new(0.0, 0.0, 1.0));
+    g.sim.ship.fuel = g.sim.ship.stats.fuel_cap;
+    g.sim.target = Some(i);
+    g.sim.update_ref_pub();
+    g.update_ground();
+    if let Some(gr) = g.sim.ground {
+        // Put the hull on the ground the cockpit draws.
+        g.sim.ship.pos = b.pos + up * (b.radius + gr.height + vector_sim::SHIP_RADIUS + alt);
+        g.sim.ship.vel = b.vel + g.sim.surface_velocity(i, g.sim.ship.pos - b.pos);
+    }
+    g.sim.gear_down = true;
+    g.sim.ship.assist = false;
+    match stage {
+        "descent" => {
+            g.sim.ship.vel = g.sim.ship.vel - up * 45.0;
+            g.rear_view = true;
+            let _ = g.find_site();
+            let _ = g.sim.engage_pilot(vector_sim::landing::PilotKind::Land);
+            g.advance(3.0);
+        }
+        "takeoff" => {
+            g.advance(1.0);
+            let _ = g.sim.engage_pilot(vector_sim::landing::PilotKind::Ascend);
+            g.advance(6.0);
+        }
+        _ => {
+            g.sim.ship.vel = g.sim.ship.vel - up * 3.0;
+            g.rear_view = true;
+            g.advance(1.5);
+        }
+    }
+}
+
 fn snapshot(path: &str, scene: &str, data: Arc<GameData>) {
     let mut g = Game::new(data, DEFAULT_SEED);
     if scene != "menu" {
@@ -349,6 +397,9 @@ fn snapshot(path: &str, scene: &str, data: Arc<GameData>) {
             };
             g.sim.target = Some(i);
             g.sim.update_ref_pub();
+        }
+        s if s.starts_with("land_") => {
+            landing_scene(&mut g, &s[5..]);
         }
         "visit_ship" | "visit_station" => {
             let d = Arc::clone(&g.data);

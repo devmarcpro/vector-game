@@ -223,8 +223,14 @@ pub fn draw_overlay(fb: &mut Framebuffer, g: &Game) {
         }
     }
     if g.help_open && g.screen != Screen::MainMenu {
-        let lines: Vec<String> = crate::tutorial::help_lines(g.screen)
+        let lesson: &[&str] = if g.screen == Screen::Flight && g.sim.surface_state().is_some() {
+            crate::tutorial::landing_help()
+        } else {
+            &[]
+        };
+        let lines: Vec<String> = lesson
             .iter()
+            .chain(crate::tutorial::help_lines(g.screen).iter())
             .map(|l| g.settings.localize(l))
             .collect();
         let w = lines.iter().map(|l| l.len()).max().unwrap_or(10).max(14) + 2;

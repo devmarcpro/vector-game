@@ -161,7 +161,6 @@ fn finding_label(data: &GameData, key: &str) -> (String, String) {
     }
 }
 
-
 /// Piloting and landing: the attitude holds and the rules of the touchdown, written from the
 /// constants of the simulation (`vector_sim::landing`), so that the codex cannot disagree with it.
 fn pilot_topics() -> Vec<(String, Vec<String>)> {

@@ -702,7 +702,7 @@ impl Terra {
         if self.ice + self.ocean <= 0.0 {
             return 0.0;
         }
-        let te = (self.flux() * (1.0 - self.albedo()) / (4.0 * SIGMA)).powf(0.25);
+        let te = vector_core::units::equilibrium_temperature(self.flux(), self.albedo());
         let rh = 0.6 * (0.3 + 0.7 * self.sea_fraction().sqrt());
         let ts = |t: f64| {
             let tau = self.optical_depth_with(rh * psat_water(t));
@@ -720,7 +720,7 @@ impl Terra {
     /// Temperature of the surface at the balance of the light absorbed and the heat emitted
     /// through the greenhouse, K (the model's own scale: see `target_temperature`).
     fn model_temperature(&self, _t: f64) -> f64 {
-        let te = (self.flux() * (1.0 - self.albedo()) / (4.0 * SIGMA)).powf(0.25);
+        let te = vector_core::units::equilibrium_temperature(self.flux(), self.albedo());
         te * (1.0 + 0.75 * self.optical_depth()).powf(0.25)
     }
 

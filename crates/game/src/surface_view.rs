@@ -322,17 +322,7 @@ fn life_color(g: &Game, biome: usize) -> u32 {
 
 /// A mass in kg as a short string (kg, t, kt, Mt, Gt).
 pub fn fmt_mass(kg: f64) -> String {
-    if kg < 1.0e3 {
-        format!("{kg:.0} kg")
-    } else if kg < 1.0e6 {
-        format!("{:.0} t", kg / 1.0e3)
-    } else if kg < 1.0e9 {
-        format!("{:.0} kt", kg / 1.0e6)
-    } else if kg < 1.0e12 {
-        format!("{:.0} Mt", kg / 1.0e9)
-    } else {
-        format!("{:.0} Gt", kg / 1.0e12)
-    }
+    crate::fmt::mass(kg)
 }
 
 fn fill_cell(fb: &mut Framebuffer, col: usize, row: usize, c: u32) {

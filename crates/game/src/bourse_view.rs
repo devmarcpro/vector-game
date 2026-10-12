@@ -27,13 +27,7 @@ fn sparkline(series: &[f64], width: usize) -> String {
 }
 
 fn fmt_price(p: f64) -> String {
-    if p >= 1000.0 {
-        format!("{p:.0}")
-    } else if p >= 10.0 {
-        format!("{p:.1}")
-    } else {
-        format!("{p:.2}")
-    }
+    crate::fmt::price(p)
 }
 
 /// Change over the last `back` samples, as a percentage.

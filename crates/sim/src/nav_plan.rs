@@ -137,15 +137,19 @@ pub struct Route {
     pub why: Option<String>,
 }
 
+/// Extra cost (ly) of a route through a system: the remnants and giants are dangerous in
+/// themselves, and any star adds what its flares add to the dose (`science::flare_activity`, the
+/// same table as `navigation::stellar_dose`; a G dwarf adds nothing).
 fn star_danger(c: StarClass) -> f64 {
-    match c {
+    let own = match c {
         StarClass::X => 8.0,
         StarClass::N => 4.0,
         StarClass::O => 2.0,
         StarClass::B => 1.5,
         StarClass::D => 0.5,
         _ => 0.0,
-    }
+    };
+    own + 0.5 * (crate::science::flare_activity(c) - 1.0).max(0.0)
 }
 
 /// Scan the departure dates around the windows and refine the best of each window; the earliest
@@ -1319,6 +1323,17 @@ impl Sim {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn the_route_danger_follows_the_same_star_table_as_the_dose() {
+        // Audit B6: a star that doses more also costs more on the plan, whatever its class.
+        let d = |c| crate::navigation::stellar_dose(c, vector_world::orbit::AU);
+        assert!(d(StarClass::M) > d(StarClass::K) && d(StarClass::K) > d(StarClass::G));
+        assert!(star_danger(StarClass::M) > star_danger(StarClass::K));
+        assert!(star_danger(StarClass::K) > star_danger(StarClass::G));
+        assert_eq!(star_danger(StarClass::G), 0.0);
+        assert!(star_danger(StarClass::X) > star_danger(StarClass::N));
+    }
+
     use super::*;
 
     #[test]

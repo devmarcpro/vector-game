@@ -269,9 +269,7 @@ pub struct CrewOut {
     pub repair: f64,
 }
 
-fn sat(v: f32) -> f32 {
-    v.clamp(0.0, 1.0)
-}
+use crate::body::sat;
 
 /// Pick a template for `key` deterministically and fill placeholders.
 pub fn render(

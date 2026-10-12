@@ -327,10 +327,7 @@ fn put(fb: &mut Framebuffer, x: usize, y: usize, w: usize, s: &str, c: u32) {
     fb.text(x, y, &t, c);
 }
 
-/// `[#####---]` of a share.
-fn bar(frac: f64, w: usize) -> String {
-    crate::ui::bar(if frac.is_finite() { frac } else { 0.0 }, w)
-}
+use crate::ui::bar;
 
 /// A labelled bar and its figure. `good` is the share that decides the colour (1 = fine).
 #[allow(clippy::too_many_arguments)]
@@ -373,7 +370,7 @@ pub fn spark(values: &[f64]) -> String {
 }
 
 fn credits(v: f64) -> String {
-    format!("{v:.0} CR")
+    crate::fmt::credits(v)
 }
 
 /// The frame of a panel: a box in pixels and its title over the top edge.

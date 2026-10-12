@@ -20,7 +20,7 @@ use vector_data::GameData;
 use vector_world::galaxy::Galaxy;
 
 /// Radius within which two systems may be joined by a line, ly.
-pub const REACH_LY: f64 = 30.0;
+pub const REACH_LY: f64 = crate::reach::LOCAL_LY;
 /// Shortest line, ly (nearer systems share a market already).
 pub const MIN_LY: f64 = 4.0;
 /// Share of the pairs of hubs that are joined by a line.

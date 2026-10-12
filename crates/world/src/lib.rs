@@ -922,6 +922,26 @@ mod tests {
     use super::*;
 
     #[test]
+    fn eq_temp_agrees_with_the_shared_law_within_one_percent() {
+        // Audit B7: `eq_temp` fixes the kind of a planet from a seed, so it keeps its own constant;
+        // this test fails if it drifts from `units::equilibrium_temperature`.
+        for (lum, a, alb) in [
+            (1.0, 1.0, 0.3),
+            (0.2, 0.3, 0.1),
+            (5.0, 3.0, 0.5),
+            (30.0, 12.0, 0.7),
+        ] {
+            let flux = vector_core::units::SOLAR_CONSTANT * lum / (a * a);
+            let shared = vector_core::units::equilibrium_temperature(flux, alb);
+            let t = eq_temp(lum, a, alb);
+            assert!(
+                (t / shared - 1.0).abs() < 0.01,
+                "{lum} {a} {alb}: {t} vs {shared}"
+            );
+        }
+    }
+
+    #[test]
     fn anomalies_exist_in_all_thirteen_kinds() {
         let mut kinds = std::collections::BTreeSet::new();
         let mut with = 0;

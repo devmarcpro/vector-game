@@ -56,6 +56,7 @@ pub mod npc;
 pub mod orbit;
 pub mod planet;
 pub mod politics;
+pub mod reach;
 pub mod relations;
 pub mod rogue;
 pub mod rules;

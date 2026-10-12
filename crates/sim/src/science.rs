@@ -55,6 +55,12 @@ pub fn flare_probability_per_day(c: StarClass) -> f64 {
     }
 }
 
+/// Activity of a star relative to a G dwarf (1): how much more it flares than the Sun. The one
+/// number behind the dose of its particles and the danger flagged on the navigation plan.
+pub fn flare_activity(c: StarClass) -> f64 {
+    flare_probability_per_day(c) / flare_probability_per_day(StarClass::G)
+}
+
 impl Sim {
     // ---- technology -------------------------------------------------------
 

@@ -13,7 +13,7 @@ use vector_data::GameData;
 use vector_world::galaxy::Galaxy;
 
 /// Side of a sector of power, ly.
-pub const SECTOR_LY: f64 = 240.0;
+pub const SECTOR_LY: f64 = crate::reach::SECTOR_LY;
 /// A sector, by integer coordinates.
 pub type Cell = [i64; 3];
 

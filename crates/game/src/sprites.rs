@@ -292,14 +292,11 @@ fn tone(k: Kind, u: f64, v: f64) -> Tone {
 const RAMP: &[u8] = b".:-+=*%#@";
 
 fn shade(c: u32, k: f64) -> u32 {
-    let ch = |s: u32| (((c >> s) & 0xFF) as f64 * k).clamp(0.0, 255.0) as u32;
-    (ch(16) << 16) | (ch(8) << 8) | ch(0)
+    vector_render::scale_color(c, k as f32)
 }
 
 fn mix(a: u32, b: u32, t: f64) -> u32 {
-    let ch = |c: u32, s: u32| f64::from((c >> s) & 0xFF);
-    let m = |s: u32| (ch(a, s) * (1.0 - t) + ch(b, s) * t).clamp(0.0, 255.0) as u32;
-    (m(16) << 16) | (m(8) << 8) | m(0)
+    vector_render::mix_color(a, b, t as f32)
 }
 
 /// Draw the billboard of `kind`, its feet at (`x`, `y`) (the middle of its base), `height_px`

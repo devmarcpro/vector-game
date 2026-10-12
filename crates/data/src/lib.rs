@@ -270,6 +270,10 @@ pub struct Recipe {
     /// Duration of one batch.
     pub hours: f64,
     pub energy_kwh: f64,
+    /// Chemical equation of the process (`reactions.ron` id), empty for processes without one.
+    /// The masses of the recipe follow the stoichiometry of the reaction (checked by `validate`).
+    #[serde(default)]
+    pub reaction: String,
 }
 
 /// Site tags a body can carry (see `Building::sites`).
@@ -1565,6 +1569,63 @@ impl GameData {
     pub fn resource_index(&self, id: &str) -> Option<usize> {
         self.resources.iter().position(|r| r.id == id)
     }
+    /// A recipe tied to a reaction is that reaction at industrial scale: the mass of every compound
+    /// follows the stoichiometry (within 6 %), and the energy covers at least the enthalpy of an
+    /// endothermic reaction (the rest is the efficiency of the plant).
+    fn validate_recipe_reaction(&self, r: &Recipe) -> Result<(), DataError> {
+        let bad = |s: String| Err(DataError::Invalid(s));
+        let Some(ri) = self.reaction_index(&r.reaction) else {
+            return bad(format!(
+                "recette {}: reaction {} inconnue",
+                r.id, r.reaction
+            ));
+        };
+        let rx = &self.reactions[ri];
+        let mass_of = |side: &[(String, f64)], comp: &str| -> f64 {
+            side.iter()
+                .filter(|(res, _)| {
+                    self.compound_of_resource(res)
+                        .is_some_and(|c| self.chemistry.compounds[c].id == comp)
+                })
+                .map(|x| x.1)
+                .sum()
+        };
+        let mut scale: Option<f64> = None;
+        for (side_rx, side_rec) in [(&rx.reactants, &r.inputs), (&rx.products, &r.outputs)] {
+            for (comp, n) in side_rx {
+                let Some(ci) = self.compound_index(comp) else {
+                    continue;
+                };
+                let have = mass_of(side_rec, comp);
+                let per_mol = self.molar_mass(ci) * f64::from(*n);
+                if have <= 0.0 {
+                    return bad(format!("recette {}: {comp} absent de la reaction", r.id));
+                }
+                let k = have / per_mol;
+                let k0 = *scale.get_or_insert(k);
+                if (k / k0 - 1.0).abs() > 0.06 {
+                    return bad(format!(
+                        "recette {}: {comp} hors stoechiometrie de {} ({:.0} %)",
+                        r.id,
+                        rx.id,
+                        (k / k0 - 1.0) * 100.0
+                    ));
+                }
+            }
+        }
+        if let Some(k) = scale {
+            // kg per mole of reaction -> moles of reaction in the batch.
+            let moles = k * 1000.0;
+            let dh_kwh = self.reaction_enthalpy(rx) * moles / 3600.0;
+            if dh_kwh > 0.0 && r.energy_kwh < dh_kwh * 0.99 {
+                return bad(format!(
+                    "recette {}: {:.0} kWh sous l'enthalpie de {} ({dh_kwh:.0} kWh)",
+                    r.id, r.energy_kwh, rx.id
+                ));
+            }
+        }
+        Ok(())
+    }
 
     /// Fails on duplicate ids, unknown references and out-of-range values.
     pub fn validate(&self) -> Result<(), DataError> {
@@ -1804,6 +1865,9 @@ impl GameData {
                         return bad(format!("recette {}: sortie invalide {id}", r.id));
                     }
                 }
+            }
+            if !r.reaction.is_empty() {
+                self.validate_recipe_reaction(r)?;
             }
             if r.kind == "process" || r.kind == "grow" {
                 let (i, o): (f64, f64) = (
@@ -3511,6 +3575,31 @@ mod tests {
         let mut d = GameData::load(&dir()).expect("data loads");
         d.buildings[0].recipes.push("nope".into());
         assert!(d.validate().is_err());
+    }
+
+    #[test]
+    fn industrial_recipes_follow_their_chemical_reaction() {
+        // Audit B1: one process, one law. These recipes are the reactions of `reactions.ron` at scale.
+        let d = GameData::load(&dir()).expect("data loads");
+        for (rec, rx) in [
+            ("electrolysis", "electrolysis_water"),
+            ("make_ammonia", "haber_bosch"),
+            ("sabatier", "sabatier"),
+        ] {
+            let i = d.recipe_index(rec).expect("recipe");
+            assert_eq!(d.recipes[i].reaction, rx, "{rec}");
+        }
+        let mut bad = GameData::load(&dir()).expect("data loads");
+        let i = bad.recipe_index("sabatier").expect("recipe");
+        bad.recipes[i].outputs[0].1 *= 1.5;
+        assert!(bad.validate().is_err(), "yield off the stoichiometry");
+        let mut bad = GameData::load(&dir()).expect("data loads");
+        let i = bad.recipe_index("electrolysis").expect("recipe");
+        bad.recipes[i].energy_kwh = 1000.0;
+        assert!(
+            bad.validate().is_err(),
+            "below the enthalpy of the reaction"
+        );
     }
 
     #[test]

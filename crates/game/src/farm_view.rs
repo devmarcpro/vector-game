@@ -35,10 +35,7 @@ impl FarmUi {
     }
 }
 
-fn bar(v: f64, w: usize) -> String {
-    let n = (v * w as f64).round() as usize;
-    format!("{}{}", "#".repeat(n.min(w)), ".".repeat(w - n.min(w)))
-}
+use crate::ui::bar;
 
 impl Game {
     pub fn click_game(&mut self, i: usize) {

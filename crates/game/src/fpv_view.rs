@@ -82,8 +82,7 @@ pub fn step_of(dir: i32) -> (i32, i32) {
 }
 
 fn shade(c: u32, k: f64) -> u32 {
-    let ch = |s: u32| (((c >> s) & 0xFF) as f64 * k).clamp(0.0, 255.0) as u32;
-    (ch(16) << 16) | (ch(8) << 8) | ch(0)
+    vector_render::scale_color(c, k as f32)
 }
 
 /// The direction (0..8) with the longest open run: where to look first.

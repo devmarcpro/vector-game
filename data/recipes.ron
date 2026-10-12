@@ -17,7 +17,7 @@
  (id:"make_polymers", name:"Polymères", kind:"process", inputs:[("ammonia",300.0), ("carbon",150.0), ("hydrogen",20.0)], outputs:[("polymers",420.0)], hours:24.0, energy_kwh:1800.0),
  (id:"make_fertilizer", name:"Engrais", kind:"process", inputs:[("ammonia",300.0), ("phosphorus",50.0)], outputs:[("fertilizer",320.0)], hours:24.0, energy_kwh:600.0),
  (id:"make_fuel", name:"Carburant de fusion", kind:"process", inputs:[("hydrogen",596.0), ("deuterium",4.0)], outputs:[("fuel",600.0)], hours:24.0, energy_kwh:1500.0),
- (id:"electrolysis", name:"Électrolyse de l'eau", kind:"process", inputs:[("water",900.0)], outputs:[("oxygen",800.0), ("hydrogen",100.0)], hours:12.0, energy_kwh:3000.0),
+ (id:"electrolysis", name:"Électrolyse de l'eau", kind:"process", inputs:[("water",900.0)], outputs:[("oxygen",800.0), ("hydrogen",100.0)], hours:12.0, energy_kwh:4800.0, reaction:"electrolysis_water"),
  (id:"fab_circuits", name:"Circuits imprimes", kind:"process", inputs:[("silicon",80.0), ("copper_wire",50.0), ("plastics",40.0), ("gold",0.5)], outputs:[("circuits",150.0)], hours:12.0, energy_kwh:1200.0),
  (id:"assemble_electronics", name:"Électronique", kind:"process", inputs:[("circuits",100.0), ("polymers",40.0), ("aluminium_alloy",40.0)], outputs:[("electronics",170.0)], hours:12.0, energy_kwh:900.0),
  (id:"make_solar_cells", name:"Cellules solaires", kind:"process", inputs:[("silicon",120.0), ("glass",60.0), ("copper_wire",15.0)], outputs:[("solar_cells",190.0)], hours:24.0, energy_kwh:2500.0),

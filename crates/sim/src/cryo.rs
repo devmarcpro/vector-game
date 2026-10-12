@@ -249,9 +249,7 @@ pub enum Verdict {
     Woke(String),
 }
 
-fn sat(v: f32) -> f32 {
-    v.clamp(0.0, 1.0)
-}
+use crate::body::sat;
 
 /// One step of a sleeper: the body (cold, ice, dose), slow ageing, a caisson that may fail, and
 /// the end of the rewarming (the roll of the waking).

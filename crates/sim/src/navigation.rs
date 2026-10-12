@@ -175,7 +175,7 @@ pub fn light_delay(d: f64) -> f64 {
 
 /// Equilibrium temperature (K) of a rotating grey body in a flux `kw_m2` with `albedo`.
 pub fn equilibrium_k(kw_m2: f64, albedo: f64) -> f64 {
-    (kw_m2 * (1.0 - albedo) / (4.0 * SIGMA_KW)).powf(0.25)
+    vector_core::units::equilibrium_temperature(kw_m2 * 1000.0, albedo)
 }
 
 /// Tidal acceleration (m/s^2) across a body of `length` m at distance `r` of a mass of parameter `mu`.
@@ -243,7 +243,7 @@ pub fn cross_section(mass: f64) -> f64 {
 
 /// Dose (Gy/h, unshielded) of the particles of a star of the given class at `d` metres.
 pub fn stellar_dose(class: StarClass, d: f64) -> f64 {
-    let activity = crate::science::flare_probability_per_day(class) / 0.012;
+    let activity = crate::science::flare_activity(class);
     let d_au = (d / AU).max(1e-4);
     STELLAR_GY_H_1AU * activity / (d_au * d_au)
 }

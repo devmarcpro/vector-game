@@ -414,6 +414,8 @@ pub struct Sim {
     /// Load on the frame this step in g, and heat the air puts into the hull (kW); not saved.
     pub g_load: f64,
     pub aero_heat_kw: f64,
+    /// Share of the main engine's full thrust used this step (render only, not saved).
+    pub main_throttle: f64,
     pub rules: rules::Rules,
 }
 
@@ -537,6 +539,7 @@ impl Sim {
             env_gravity: Vec3::ZERO,
             g_load: 0.0,
             aero_heat_kw: 0.0,
+            main_throttle: 0.0,
             rules: rules::Rules::default(),
         };
         s.researched = s.data.techs.iter().map(|t| t.start).collect();
@@ -1064,6 +1067,11 @@ impl Sim {
         s.vel = s.vel + (s.rot.mul_vec(acc_b) + grav) * dt;
         s.pos = s.pos + s.vel * dt;
         self.g_load = acc_b.length() / G0;
+        self.main_throttle = if self.effective.thrust > 0.0 && acc_b.z > 0.0 {
+            (main_force / self.effective.thrust).clamp(0.0, 2.5)
+        } else {
+            0.0
+        };
         // The crew feels the thrust (a slow average: a burst of a second is not a sustained load).
         let felt = acc_b.length() / crate::body::G0;
         let env = &mut self.crew.env;

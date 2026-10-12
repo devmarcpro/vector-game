@@ -7,6 +7,7 @@ mod cosmos_view;
 mod crew_net_view;
 mod dialogue_view;
 mod expedition_view;
+mod ext_view;
 mod faction_view;
 mod family_view;
 mod farm_view;
@@ -27,6 +28,7 @@ mod rogue_view;
 mod scene;
 mod script;
 mod settings;
+mod ship_model;
 mod sprites;
 mod surface_view;
 mod tech_view;
@@ -262,9 +264,20 @@ impl ApplicationHandler for App {
 /// Headless scripted scenes for visual verification.
 fn snapshot(path: &str, scene: &str, data: Arc<GameData>) {
     let mut g = Game::new(data, DEFAULT_SEED);
+    // "ext_<scene>[@yaw,pitch,zoom]": the same scene seen from the third-person camera.
+    let (scene, cam) = scene.split_once('@').unwrap_or((scene, ""));
+    let (scene, ext) = match scene.strip_prefix("ext_") {
+        Some(rest) => (rest, true),
+        None => (scene, false),
+    };
+    let cam: Vec<f64> = cam.split(',').filter_map(|x| x.parse().ok()).collect();
+    if let [yaw, pitch, zoom] = cam[..] {
+        (g.ext_yaw, g.ext_pitch, g.ext_zoom) = (yaw, pitch, zoom);
+    }
     if scene != "menu" {
         g.new_game(DEFAULT_SEED);
     }
+    g.ext_view = ext;
     // A world with life, for the views of planets: look for a seed that has a Terran or Ocean one.
     if scene.starts_with("world_life") {
         for seed in 1..400u64 {
@@ -328,11 +341,14 @@ fn snapshot(path: &str, scene: &str, data: Arc<GameData>) {
                 .expect("a solid planet");
             let b = &g.sim.bodies[i];
             let dir = vector_core::Vec3::new(0.3, 0.15, -1.0).normalized();
-            let low = s.ends_with("low");
+            let land = s.ends_with("land");
+            let low = s.ends_with("low") || land || s.ends_with("touch");
             g.sim.ship.pos = b.pos
                 - dir
                     * (b.radius
-                        * if low {
+                        * if land || s.ends_with("touch") {
+                            1.0 + 3000.0 / b.radius
+                        } else if low {
                             1.012
                         } else if near {
                             1.25
@@ -340,6 +356,19 @@ fn snapshot(path: &str, scene: &str, data: Arc<GameData>) {
                             3.2
                         });
             g.sim.ship.vel = b.vel;
+            if land || s.ends_with("touch") {
+                // Over the real ground: 60 m up on approach, on its gear when touching.
+                // Under the star at noon (a little off the zenith so the shadow shows).
+                let sun = (b.pos * -1.0).normalized();
+                let side = sun
+                    .cross(vector_core::Vec3::new(0.0, 1.0, 0.0))
+                    .normalized();
+                let up = (sun + side * 0.45).normalized();
+                let (c, r) = (b.pos, b.radius);
+                let gr = crate::ext_view::ground(&g, &g.sim).map_or(3000.0, |x| x.h);
+                let want = if land { 60.0 } else { 0.0 };
+                g.sim.ship.pos = c + up * (r + 3000.0 - gr + want);
+            }
             g.sim.ship.rot = if low {
                 // Flying along the ground, nose a little down.
                 let forward = (vector_core::Vec3::new(1.0, -0.12, 0.0)).normalized();
@@ -539,6 +568,11 @@ fn snapshot(path: &str, scene: &str, data: Arc<GameData>) {
             }
             g.screen = Screen::Crew;
             g.key(KeyCode::KeyG, None, true);
+        }
+        "stationview" => {
+            let (st, _) = g.sim.nearest_station().expect("station");
+            g.sim.spawn_near(st, g.sim.bodies[st].radius * 2.5);
+            g.sim.reveal_all();
         }
         "station" => {
             let (st, _) = g.sim.nearest_station().expect("station");
@@ -751,7 +785,15 @@ fn snapshot(path: &str, scene: &str, data: Arc<GameData>) {
             g.sim.target = Some(i);
             g.advance(0.2);
         }
+        "space" => {
+            // Under thrust, to see the flames.
+            g.keys.insert(KeyCode::Space);
+            for _ in 0..30 {
+                g.advance(1.0 / 30.0);
+            }
+        }
         "combat" => {
+            g.sim.rules.creative = true;
             let k = console::run("warship", &mut g.sim, &mut g.timescale);
             assert_eq!(k, vec!["warship ready".to_string()]);
             g.sim.ship.pos = vector_core::Vec3::new(4.0e11, 0.0, 0.0);

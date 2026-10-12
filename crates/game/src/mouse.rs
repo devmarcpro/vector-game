@@ -97,7 +97,10 @@ impl Game {
     }
 
     /// The pointer moved by (dx, dy) pixels with the left button down: it turns the globe.
-    pub fn pointer_drag(&mut self, dx: i32, _dy: i32) {
+    pub fn pointer_drag(&mut self, dx: i32, dy: i32) {
+        if self.ext_active() {
+            self.ext_orbit(-f64::from(dx) * 0.008, f64::from(dy) * 0.008);
+        }
         if self.screen == Screen::Surface && self.surf_globe {
             self.surf_spin += f64::from(dx) * 0.01;
         }
@@ -376,7 +379,10 @@ impl Game {
     pub fn pointer_wheel(&mut self, lines: f64) {
         let steps = lines.abs().ceil().max(1.0) as usize;
         for _ in 0..steps.min(5) {
-            if self.screen == Screen::Flight && self.map {
+            if self.ext_active() {
+                // In the third-person view the wheel zooms the camera.
+                self.ext_zoom_by(if lines > 0.0 { 0.88 } else { 1.0 / 0.88 });
+            } else if self.screen == Screen::Flight && self.map {
                 // On the system map the wheel zooms.
                 self.run_act(Act::Key(if lines > 0.0 {
                     KeyCode::Equal
@@ -410,6 +416,7 @@ pub fn key_of_word(screen: Screen, word: &str) -> Option<KeyCode> {
         "ESP" | "ESPACE" => KeyCode::Space,
         "PGUP" => KeyCode::PageUp,
         "PGDN" => KeyCode::PageDown,
+        "SUPPR" => KeyCode::Delete,
         "F1" => KeyCode::F1,
         "F2" => KeyCode::F2,
         "F3" => KeyCode::F3,

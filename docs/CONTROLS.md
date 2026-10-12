@@ -10,6 +10,7 @@
 | Maj gauche (maintenir) | Boost : poussee x2.5, rotation x1.4, carburant x3 sur la poussee principale |
 | C (maintenir, carte fermee) | Frein : annule la vitesse relative a la cible (sinon au corps de reference, sinon au repere de l'etoile), partout et a toute vitesse, par RCS |
 | F7 | Visee souris ON/OFF : le mouvement relatif de la souris commande tangage et lacet (500 px/s = pleine deflexion), s'ajoute au clavier ; curseur capture en vol seulement |
+| Suppr | Vue externe / cockpit : camera a la troisieme personne qui orbite autour du vaisseau (coque et modules reels, eclaires par l'etoile ; flammes proportionnelles a la poussee, radiateurs rouges a chaud, bouclier, degats, train d'atterrissage a l'approche du sol, ombre et poussiere). En vue externe : glisser la souris = orbite, molette (ou +/-) = zoom, pave numerique 4/6/8/2 = orbite, 5 = camera suivant le vaisseau / libre, 0 = recentrer. Aussi dans le menu PILOTAGE (VUE EXTERNE) et par les mots cliquables en bas a gauche |
 | Tab | Cible suivante (la plus proche d'abord) |
 | R | Cibler le vaisseau PNJ le plus proche (cycle) |
 | T / Y | Cible : asteroide / station le(la) plus proche |

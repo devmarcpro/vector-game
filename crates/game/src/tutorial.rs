@@ -197,6 +197,7 @@ pub fn help_lines(screen: Screen) -> &'static [&'static str] {
             "Fleches : RCS lateral et vertical",
             "F : assistance de vol   Maj : boost   C : frein sur la cible",
             "F7 : visee souris (tangage et lacet)",
+            "Suppr : vue externe (camera autour du vaisseau : glisser = orbite, molette = zoom, 5 = suivi/libre, 0 = recentrer ; Suppr = cockpit)",
             "F11 : plier ou deplier le menu de pilotage (clic : menus et commandes)",
             "Tab T Y R : cibles (proche, asteroide, station, PNJ)",
             "V : laser de minage   Ctrl : tir   B : missiles",

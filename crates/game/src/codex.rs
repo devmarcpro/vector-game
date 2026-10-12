@@ -2,7 +2,7 @@
 //! weapon, faction, anomaly and condition, generated from the real data (no hand-written numbers).
 use vector_data::GameData;
 
-pub const CATEGORIES: [&str; 65] = [
+pub const CATEGORIES: [&str; 66] = [
     "RESSOURCES",
     "MODULES",
     "ARMES",
@@ -68,7 +68,96 @@ pub const CATEGORIES: [&str; 65] = [
     "CAPACITES",
     "DECOUVERTES",
     "PILOTAGE",
+    "CREATION DE PARTIE",
 ];
+
+/// The cards of the new-game options, generated from `data/start_options.ron`: the AI cores and
+/// personalities, crew backgrounds, start systems and places, difficulty presets.
+pub fn start_cards(data: &GameData) -> Vec<(String, Vec<String>)> {
+    let st = &data.start;
+    let mut v = Vec::new();
+    for c in &st.ai_cores {
+        v.push((
+            format!("Noyau d'IA : {}", c.name),
+            vec![
+                c.text.clone(),
+                format!(
+                    "Puissance de calcul +{:.0}, memoire +{}, cout {} point(s) d'IA (sur {}).",
+                    c.power,
+                    c.memory,
+                    c.cost,
+                    vector_sim::start_custom::AI_POINTS
+                ),
+            ],
+        ));
+    }
+    for t in &st.ai_traits {
+        let tasks: Vec<String> = data
+            .mind
+            .tasks
+            .iter()
+            .zip(&t.bias)
+            .filter(|(_, b)| **b != 0.0)
+            .map(|(k, b)| format!("{} {:+.0} %", k.name, b * 100.0))
+            .collect();
+        v.push((
+            format!("Personnalite d'IA : {}", t.name),
+            vec![
+                t.text.clone(),
+                if tasks.is_empty() {
+                    "Aucun bonus ni malus permanent.".to_string()
+                } else {
+                    format!("Effets permanents sur le calcul : {}.", tasks.join(", "))
+                },
+                format!(
+                    "Credits de depart x{:.2}, moral de l'equipage {:+.0} %.",
+                    t.credits_mult,
+                    t.crew_morale * 100.0
+                ),
+            ],
+        ));
+    }
+    for b in &st.backgrounds {
+        v.push((
+            format!("Historique : {}", b.name),
+            vec![
+                b.text.clone(),
+                format!(
+                    "Cout {} point(s) d'historique (sur {} par personne) ; credits {:+.0}.",
+                    b.cost,
+                    vector_sim::start_custom::BACKGROUND_BUDGET,
+                    b.credits
+                ),
+            ],
+        ));
+    }
+    for (i, k) in st.systems.iter().enumerate() {
+        v.push((
+            format!("Systeme de depart : {}", k.name),
+            vec![
+                k.text.clone(),
+                format!("Choix {} sur {} a l'etape MONDE.", i + 1, st.systems.len()),
+            ],
+        ));
+    }
+    for (i, k) in st.places.iter().enumerate() {
+        v.push((
+            format!("Position de depart : {}", k.name),
+            vec![
+                k.text.clone(),
+                format!("Choix {} sur {} a l'etape MONDE.", i + 1, st.places.len()),
+            ],
+        ));
+    }
+    for p in &st.presets {
+        let set: Vec<String> = p.settings.iter().map(|(k, x)| format!("{k} {x}")).collect();
+        v.push((
+            format!("Preset de difficulte : {}", p.name),
+            vec![p.text.clone(), format!("Reglages : {}.", set.join(", "))],
+        ));
+    }
+    v
+}
 
 /// The cards of the military codex: doctrines, secret operations and orders to the squadron,
 /// as (name, text) generated from the very constants the game plays with.
@@ -431,6 +520,7 @@ fn entries(data: &GameData, cat: usize) -> Vec<usize> {
         62 => (0..CAPACITY_TEXT.len()).collect(),
         63 => (0..finding_keys(data).len()).collect(),
         64 => (0..pilot_topics().len()).collect(),
+        65 => (0..start_cards(data).len()).collect(),
         _ => Vec::new(),
     }
 }
@@ -505,6 +595,7 @@ pub fn names(data: &GameData, cat: usize) -> Vec<String> {
             62 => CAPACITY_TEXT[i].1.to_string(),
             63 => finding_label(data, &finding_keys(data)[i]).0,
             64 => pilot_topics()[i].0.clone(),
+            65 => start_cards(data)[i].0.clone(),
             18 => format!(
                 "Appeler : {}",
                 vector_data::dialogue::ROLES[i].to_lowercase()
@@ -2615,6 +2706,11 @@ pub fn entry(data: &GameData, cat: usize, k: usize) -> Vec<String> {
             ));
         }
         64 => out.extend(pilot_topics()[i].1.iter().cloned()),
+        65 => {
+            let c = start_cards(data).swap_remove(i);
+            out.push(c.0);
+            out.extend(c.1);
+        }
         _ => {
             let n = &data.industries[i];
             out.push(n.name.clone());

@@ -491,12 +491,19 @@ fn snapshot(path: &str, scene: &str, data: Arc<GameData>) {
             }
             g.screen = Screen::Rogue;
         }
-        // The new-game flow, one scene per step: newgame0 .. newgame6 (newgame1_naufrage, ...).
+        // The new-game flow, one scene per step: newgame0 .. newgame8 (newgame1_naufrage, newgame2_catalogue, newgame2_conception, newgame3_equipage, ...).
         s if s.starts_with("newgame") => {
             let step: usize = s[7..8].parse().unwrap_or(0);
             g.open_new_game();
             if s.ends_with("naufrage") {
                 g.click_ng_scenario(g.data.scenario_index("naufrage").expect("scenario"));
+            } else if s.ends_with("catalogue") {
+                g.ng_set_ship_mode(vector_sim::start_custom::ShipMode::Catalog);
+            } else if s.ends_with("conception") {
+                g.ng_set_ship_mode(vector_sim::start_custom::ShipMode::Design);
+            } else if s.ends_with("equipage") {
+                g.ng.crew_focus = true;
+                g.ng.cursor = g.ng.picks[0].candidate;
             } else if s.ends_with("marchand") {
                 g.click_ng_scenario(g.data.scenario_index("marchand").expect("scenario"));
             }

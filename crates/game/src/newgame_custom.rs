@@ -1226,7 +1226,7 @@ impl Game {
                     let cid = d.cultures[cul].id.clone();
                     let name = format!(
                         "{} {}",
-                        vector_world::names::given_name(&cid, h % 2 == 0, h),
+                        vector_world::names::given_name(&cid, h.is_multiple_of(2), h),
                         vector_world::names::surname(&cid, h ^ 0x5A)
                     );
                     self.crew_change(|e| e.name = Some(name));
@@ -1422,7 +1422,7 @@ impl Game {
                                     .clone();
                                 c.name = format!(
                                     "{} {}",
-                                    vector_world::names::given_name(&cid, h % 2 == 0, h),
+                                    vector_world::names::given_name(&cid, h.is_multiple_of(2), h),
                                     vector_world::names::surname(&cid, h ^ 0x33)
                                 );
                             }
@@ -1622,7 +1622,7 @@ impl Game {
                     let def = vector_sim::rules::Rules::default();
                     let mut x = def.clone();
                     for _ in 0..(h % 4) {
-                        x.adjust(r, h % 3 != 0);
+                        x.adjust(r, !h.is_multiple_of(3));
                     }
                     // Only this rule moves: copy it back through the setters of `adjust`.
                     let mut cur = self.pending_rules.clone();
@@ -2138,7 +2138,7 @@ pub fn draw_ship_panel(fb: &mut Framebuffer, g: &Game, x: usize) {
                             fb,
                             &solids,
                             (x as i32 * 8, 270, x as i32 * 8 + 380, 640),
-                            0.6 + crate::proto_view::anim_time() as f32 * 0.5,
+                            0.6 + crate::proto_view::anim_time() * 0.5,
                             0.5,
                             None,
                         );

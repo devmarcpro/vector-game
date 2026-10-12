@@ -28,6 +28,9 @@ pub const STEPS: [&str; 9] = [
 const LAST: usize = STEPS.len() - 1;
 use crate::newgame_custom::{S_AI, S_CREW, S_OPTIONS, S_RECAP, S_SEED, S_SHIP, S_WORLD};
 
+/// The last analysed plan of the design mode, by its text.
+pub type PlanCache = Option<(String, Result<(Blueprint, Report), String>)>;
+
 #[derive(Default)]
 pub struct NewGameUi {
     pub step: usize,
@@ -61,7 +64,7 @@ pub struct NewGameUi {
     pub pool_key: Option<(u64, u32)>,
     pub world_key: Option<(u64, usize)>,
     pub world_preview: Option<(HomePreview, bool)>,
-    pub plan_cache: RefCell<Option<(String, Result<(Blueprint, Report), String>)>>,
+    pub plan_cache: RefCell<PlanCache>,
     pub review: RefCell<Option<(String, Review)>>,
 }
 

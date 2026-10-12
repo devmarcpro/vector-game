@@ -153,7 +153,7 @@ impl CrewCustom {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct AiCustom {
     /// Empty = a name drawn from the seed.
@@ -165,18 +165,6 @@ pub struct AiCustom {
     pub software: Vec<String>,
     /// Initial split of the computing budget; None = the personality's.
     pub alloc: Option<[u8; 5]>,
-}
-
-impl Default for AiCustom {
-    fn default() -> Self {
-        AiCustom {
-            name: String::new(),
-            personality: 0,
-            core: 0,
-            software: Vec::new(),
-            alloc: None,
-        }
-    }
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -432,7 +420,11 @@ pub fn apply_edit(data: &GameData, base: &Person, e: &CrewEdit, seed: u64) -> Pe
                 let cid = &data.cultures[c].id;
                 p.name = format!(
                     "{} {}",
-                    vector_world::names::given_name(cid, hash_coord(seed, 1, 2, 3) % 2 == 0, seed),
+                    vector_world::names::given_name(
+                        cid,
+                        hash_coord(seed, 1, 2, 3).is_multiple_of(2),
+                        seed
+                    ),
                     vector_world::names::surname(cid, seed ^ 0x5A)
                 );
             }
@@ -1002,7 +994,7 @@ pub fn review(data: &std::sync::Arc<GameData>, cfg: &StartConfig) -> Review {
 
 /// A whole creation configuration, as saved in `saves/presets/*.ron` and shared as a code.
 /// The scenario is named (its index may change), the crew is a list of (candidate, post).
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct StartPreset {
     pub name: String,
@@ -1012,20 +1004,6 @@ pub struct StartPreset {
     pub crew: Option<Vec<(usize, usize)>>,
     pub rules: Rules,
     pub custom: CustomStart,
-}
-
-impl Default for StartPreset {
-    fn default() -> Self {
-        StartPreset {
-            name: String::new(),
-            scenario: String::new(),
-            seed: 0,
-            ship: 0,
-            crew: None,
-            rules: Rules::default(),
-            custom: CustomStart::default(),
-        }
-    }
 }
 
 pub fn preset_of(data: &GameData, name: &str, cfg: &StartConfig) -> StartPreset {

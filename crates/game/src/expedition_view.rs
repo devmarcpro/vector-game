@@ -1,12 +1,10 @@
 //! Expedition preparation (E on the surface screen): choose who goes down and the rover, then land
 //! on the chosen cell. The exploration itself is the common one (see `rogue_view`).
 use crate::game::{Game, Screen};
-use crate::hud::{AMBER, DIM, GREEN};
+use crate::hud::{AMBER, DIM, GREEN, HOVER};
 use crate::mouse::Act;
 use vector_render::Framebuffer;
 use winit::keyboard::KeyCode;
-
-const HOVER: u32 = 0x00D0_FFD0;
 
 // ---- preparing the expedition ------------------------------------------------------------
 

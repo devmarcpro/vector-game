@@ -8,7 +8,7 @@ use vector_core::{hash_coord, Rng};
 use vector_data::{Exotic, GameData};
 
 /// Speed of light (m/s).
-pub const C: f64 = 299_792_458.0;
+pub use vector_core::units::C;
 /// Joules released inside the ship per hull point of damage (game scale).
 pub const J_PER_DAMAGE: f64 = 2.0e11;
 /// Fraction of the stored antimatter lost per second when the magnetic trap is unpowered.

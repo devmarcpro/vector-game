@@ -2,16 +2,12 @@
 //! text only, but screens built from clickable drawings and buttons instead of lists.
 //! 0 = the body (organs and implants on a wireframe silhouette), 1 = the station hall.
 use crate::game::Game;
-use crate::hud::{AMBER, DIM, GREEN, RED};
+use crate::hud::{AMBER, CYAN, DIM, GREEN, HOVER, RED, WIRE};
 use crate::mouse::Act;
 use std::sync::OnceLock;
 use std::time::Instant;
 use vector_render::Framebuffer;
 use winit::keyboard::KeyCode;
-
-const WIRE: u32 = 0x0040_7050;
-const HOVER: u32 = 0x00D0_FFD0;
-const CYAN: u32 = 0x0050_C0E0;
 
 /// Seconds since the first call: drives the little animations (interface only, never the sim).
 pub fn anim_time() -> f32 {
@@ -21,14 +17,6 @@ pub fn anim_time() -> f32 {
 fn phase() -> f32 {
     static START: OnceLock<Instant> = OnceLock::new();
     START.get_or_init(Instant::now).elapsed().as_secs_f32()
-}
-
-fn rect(fb: &mut Framebuffer, l: i32, t: i32, r: i32, b: i32, c: u32) {
-    let (l, t, r, b) = (l as f32, t as f32, r as f32, b as f32);
-    fb.line(l, t, r, t, c);
-    fb.line(r, t, r, b, c);
-    fb.line(r, b, l, b, c);
-    fb.line(l, b, l, t, c);
 }
 
 fn diamond(fb: &mut Framebuffer, x: i32, y: i32, r: i32, c: u32, filled: bool) {
@@ -210,8 +198,7 @@ fn body(fb: &mut Framebuffer, g: &Game) {
                 fb.circle(x, yy - 6.0, 14.0, c);
                 fb.line(x, yy - 20.0, x, yy + 8.0, c);
             }
-            "foie" => rect(
-                fb,
+            "foie" => fb.outline(
                 x as i32 - 14,
                 yy as i32 - 6,
                 x as i32 + 14,
@@ -269,7 +256,7 @@ fn body(fb: &mut Framebuffer, g: &Game) {
         };
         fb.text_at(x0 + 120, y0 + 7, kind, DIM);
         let w = (200.0 * v.clamp(0.0, 1.0)) as i32;
-        rect(fb, x0 + 8, y0 + 24, x0 + 208, y0 + 34, DIM);
+        fb.outline(x0 + 8, y0 + 24, x0 + 208, y0 + 34, DIM);
         for k in 0..w / 2 {
             fb.line(
                 (x0 + 9 + k * 2) as f32,

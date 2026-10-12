@@ -83,13 +83,19 @@ impl Market {
         self.updated = time;
     }
 
+    /// Price multiplier of the scarcity of `res` when the stock stands at `stock`: the one law
+    /// of the stock-driven price (the market and the exchange's reference curve both use it).
+    pub fn scarcity_at(&self, res: usize, stock: f64) -> f64 {
+        (self.reference[res] / stock.max(0.03 * self.reference[res]))
+            .powf(0.35)
+            .clamp(0.25, 4.0)
+    }
+
     /// Mid price (credits/kg).
     pub fn price(&self, data: &GameData, res: usize) -> f64 {
-        let scarcity =
-            (self.reference[res] / self.stock[res].max(0.03 * self.reference[res])).powf(0.35);
         data.resources[res].value
             * self.modifier[res]
-            * scarcity.clamp(0.25, 4.0)
+            * self.scarcity_at(res, self.stock[res])
             * self.world.get(res).copied().unwrap_or(1.0)
     }
     pub fn bid(&self, data: &GameData, res: usize) -> f64 {

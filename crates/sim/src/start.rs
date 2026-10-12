@@ -16,7 +16,7 @@ use vector_world::BodyKind;
 pub const POOL: usize = 12;
 /// Most people a start may begin with.
 pub const MAX_START_CREW: usize = 8;
-const DAY: f64 = 86_400.0;
+use vector_core::units::DAY;
 
 /// One person picked from the pool, and the post given to them.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

@@ -3,13 +3,11 @@
 //! mercenary contracts of the sector, and the spies of the player with their operations. Plus
 //! the squadron panel of the fleet screen (F3): orders, ammunition, prizes.
 use crate::game::Game;
-use crate::hud::{AMBER, DIM, GREEN, RED};
+use crate::hud::{AMBER, DIM, GREEN, RED, WHITE};
 use crate::mouse::Act;
 use vector_render::Framebuffer;
 use vector_sim::arms::{self, AgentState, SPY_OPS};
 use vector_sim::fleet::{FleetOrder, ORDERS};
-
-const WHITE: u32 = 0x00FF_FFFF;
 
 /// Codes of `click_war`: recruit, next agent, next target sector, infiltrate, the four
 /// operations (4..8), withdraw, drone, peace, then contract `k` = 20 + k.

@@ -93,7 +93,7 @@ use vector_world::galaxy::{Galaxy, StarEntry, StarRef};
 use vector_world::{BodyKind, System};
 use voyage::{JumpState, SystemDelta};
 
-pub const G0: f64 = 9.806_65;
+pub use vector_core::units::G0;
 /// Base fixed step (30 Hz).
 pub const SIM_DT: f64 = 1.0 / 30.0;
 /// Smallest sub-step used near surfaces.
@@ -201,7 +201,7 @@ impl Ship {
     }
     /// Remaining delta-v (m/s), Tsiolkovsky.
     pub fn delta_v(&self) -> f64 {
-        self.stats.isp * G0 * (self.mass() / self.dry_mass()).ln()
+        navigation::tsiolkovsky(self.stats.isp, self.mass(), self.dry_mass())
     }
 }
 
@@ -769,25 +769,6 @@ impl Sim {
             a = a + d * (b.gm / (r2 * r2.sqrt()));
         }
         a + self.environment_at(p).gravity
-    }
-
-    /// Gravity at `p` without the pull of body `skip`.
-    pub fn gravity_excluding(&self, p: Vec3, skip: usize) -> Vec3 {
-        let mut a = Vec3::ZERO;
-        for (i, b) in self.bodies.iter().enumerate() {
-            if i == skip
-                || matches!(
-                    b.kind,
-                    BodyKind::Station | BodyKind::Asteroid(_) | BodyKind::Anomaly(_)
-                )
-            {
-                continue;
-            }
-            let d = b.pos - p;
-            let r2 = d.dot(d).max(1.0);
-            a = a + d * (b.gm / (r2 * r2.sqrt()));
-        }
-        a
     }
 
     /// Share of the starlight the air above the ship lets through: the same law that dims the

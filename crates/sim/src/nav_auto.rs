@@ -334,7 +334,8 @@ enum Step {
     Again,
 }
 
-fn fmt_eta(s: f64) -> String {
+/// A duration as short text (S, MIN, H, J): the planner's and the screens' one format.
+pub fn fmt_eta(s: f64) -> String {
     if s < 120.0 {
         format!("{s:.0} S")
     } else if s < 7200.0 {

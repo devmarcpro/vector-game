@@ -143,7 +143,7 @@ impl Sim {
         let rel = self.ship.vel - self.bodies[target].vel;
         let dv = rel.length();
         let ship = &mut self.ship;
-        let burn = ship.mass() * (1.0 - (-dv / (ship.stats.isp.max(1.0) * crate::G0)).exp());
+        let burn = crate::navigation::propellant_for(dv, ship.stats.isp.max(1.0), ship.mass());
         if burn > ship.fuel {
             return Err("carburant insuffisant pour rattraper la cible");
         }

@@ -15,11 +15,7 @@ use serde::{Deserialize, Serialize};
 use vector_data::projects::ProjectDef;
 use vector_data::GameData;
 
-const DAY: f64 = 86_400.0;
-const YEAR: f64 = 31_557_600.0;
-const AU: f64 = 1.495_978_707e11;
-const R_EARTH: f64 = 6.371e6;
-const L_SUN: f64 = 3.828e26;
+use vector_core::units::{AU, DAY, L_SUN, R_EARTH};
 /// Share of the light a collector turns into a beam to the colony.
 pub const COLLECTOR_EFFICIENCY: f64 = 0.3;
 /// Safety factor on the stress of an elevator cable.
@@ -224,11 +220,6 @@ impl Colony {
             }
             _ => 0.0,
         }
-    }
-
-    /// Power sent by the collectors, W (before any use): for the empire's Kardashev figure.
-    pub fn beamed_power_w(&self, data: &GameData) -> f64 {
-        self.mega_effects(data).power * 1000.0
     }
 
     /// Advance the works by `days`: progress, materials, wear, upkeep, production of drillers
@@ -638,11 +629,6 @@ impl Sim {
 /// Sunlight on a square metre at a distance (m) from a star of luminosity `l` (solar units).
 pub fn irradiance(l: f64, distance: f64) -> f64 {
     SOLAR_CONSTANT * l * (AU / distance).powi(2)
-}
-
-/// Years a stage lasts at full speed (for the display).
-pub fn project_years(d: &ProjectDef) -> f64 {
-    d.total_days() * DAY / YEAR
 }
 
 #[cfg(test)]

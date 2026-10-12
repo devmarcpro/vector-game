@@ -600,7 +600,7 @@ pub fn analyze(data: &GameData, bp: &Blueprint) -> Report {
     // Delta-v (Tsiolkovsky) and thrust to weight.
     let dv = |m_dry: f64| {
         if r.isp > 0.0 && r.fuel_kg > 0.0 && m_dry > 0.0 {
-            r.isp * G0 * ((m_dry + r.fuel_kg) / m_dry).ln()
+            crate::navigation::tsiolkovsky(r.isp, m_dry + r.fuel_kg, m_dry)
         } else {
             0.0
         }
@@ -620,7 +620,7 @@ pub fn analyze(data: &GameData, bp: &Blueprint) -> Report {
         .filter_map(|f| data.module_index(&f.module))
         .map(|mi| data.modules[mi].radiate)
         .sum();
-    let rated = 30.0 + 0.004 * r.mass_dry + radiate;
+    let rated = crate::design::Systems::rated_radiation_kw(r.mass_dry, radiate);
     let (tc, tr) = (crate::design::T_COLD, crate::design::T_REF);
     r.temp_eq = (tc.powi(4) + heat_in / rated * (tr.powi(4) - tc.powi(4))).powf(0.25);
     // Flight in air: the centre of pressure against the centre of mass.

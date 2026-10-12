@@ -4,7 +4,8 @@
 //! shows the squad, what is carried and the log. One screen for every place: a planet's ground,
 //! a station, a wreck, a ruin, a portal, a dimension.
 use crate::game::{Game, Screen};
-use crate::hud::{AMBER, DIM, GREEN};
+use crate::hub::word;
+use crate::hud::{AMBER, DIM, DOWN, GREEN, UP, WHITE};
 use crate::mouse::Act;
 use vector_data::ROGUE_TERMINALS;
 use vector_render::Framebuffer;
@@ -14,9 +15,6 @@ use vector_sim::rogue::{
 };
 use winit::keyboard::KeyCode;
 
-const WHITE: u32 = 0x00FF_FFFF;
-const UP: u32 = 0x0040_E070;
-const DOWN: u32 = 0x00FF_5050;
 const WALL: u32 = 0x0030_5048;
 const FAR: u32 = 0x0020_3830;
 const WATER: u32 = 0x0040_80E0;
@@ -252,19 +250,6 @@ impl Game {
             Err(e) => self.say(e.to_uppercase()),
         }
     }
-}
-
-fn word(
-    fb: &mut Framebuffer,
-    g: &Game,
-    col: usize,
-    row: usize,
-    label: &str,
-    key: KeyCode,
-) -> usize {
-    let hov = g.hit_cells(col, row, label.len(), 1, Act::Key(key), None);
-    fb.text(col, row, label, if hov { AMBER } else { GREEN });
-    col + label.len() + 3
 }
 
 pub fn draw(fb: &mut Framebuffer, g: &Game) {

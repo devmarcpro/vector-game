@@ -1,7 +1,8 @@
 //! Portals, dimensions and time (Home key, in flight or docked): the portal within reach, the rules
 //! of the dimension you are in, the time anchors and the stasis chamber.
 use crate::game::{Game, Screen};
-use crate::hud::{AMBER, DIM, GREEN};
+use crate::hub::word;
+use crate::hud::{AMBER, DIM, DOWN, GREEN, UP, WHITE};
 use crate::mouse::Act;
 use vector_render::Framebuffer;
 use vector_sim::bourse::DAY;
@@ -9,10 +10,6 @@ use vector_sim::multiverse::{
     ANCHOR_FEE, MAX_ANCHORS, PORTAL_RANGE, REWIND_FEE, STASIS_COST, STASIS_MAX,
 };
 use winit::keyboard::KeyCode;
-
-const WHITE: u32 = 0x00FF_FFFF;
-const UP: u32 = 0x0040_E070;
-const DOWN: u32 = 0x00FF_5050;
 
 #[derive(Default)]
 pub struct CosmosUi {
@@ -122,19 +119,6 @@ impl Game {
             Err(e) => self.say(e.to_uppercase()),
         }
     }
-}
-
-fn word(
-    fb: &mut Framebuffer,
-    g: &Game,
-    col: usize,
-    row: usize,
-    label: &str,
-    key: KeyCode,
-) -> usize {
-    let hov = g.hit_cells(col, row, label.len(), 1, Act::Key(key), None);
-    fb.text(col, row, label, if hov { AMBER } else { GREEN });
-    col + label.len() + 3
 }
 
 pub fn draw(fb: &mut Framebuffer, g: &Game) {

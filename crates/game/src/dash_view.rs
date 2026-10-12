@@ -6,7 +6,8 @@
 //! the Pause key, a click on the ALERTES counter of the top bar, or the menu (F10, then 0).
 //! Alerts only inform: nothing here is ever compulsory.
 use crate::game::{Game, Screen};
-use crate::hub::{self, HOVER};
+use crate::hub::{self};
+use crate::hud::HOVER;
 use crate::hud::{fmt_dist, AMBER, DIM, GREEN, RED};
 use crate::mouse::Act;
 use std::cell::RefCell;

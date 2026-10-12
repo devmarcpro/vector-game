@@ -5,12 +5,13 @@
 //! computer or send the ship home. Everything here is a view of `vector_sim::nav_auto`: no rule
 //! lives in this file.
 use crate::game::{Game, Screen};
-use crate::hub::HOVER;
+use crate::hud::HOVER;
 use crate::hud::{fmt_dist, fmt_time, View, AMBER, DIM, GREEN, RED};
 use crate::mouse::Act;
 use std::cell::RefCell;
 use vector_core::Vec3;
 use vector_render::{Camera, Framebuffer};
+use vector_sim::nav_auto::fmt_eta;
 use vector_sim::nav_auto::{Cond, Order, Run, Status, MAX_ORDERS};
 use vector_sim::nav_plan::{PlanOption, Route};
 use vector_sim::nav_predict::{ManeuverNode, NodeWhen, PredKind, Prediction};
@@ -105,18 +106,6 @@ impl Default for NavUi {
             preview: false,
             cache: RefCell::new(PredCache::default()),
         }
-    }
-}
-
-fn fmt_eta(s: f64) -> String {
-    if s < 120.0 {
-        format!("{s:.0} S")
-    } else if s < 7200.0 {
-        format!("{:.0} MIN", s / 60.0)
-    } else if s < 172_800.0 {
-        format!("{:.1} H", s / 3600.0)
-    } else {
-        format!("{:.1} J", s / 86_400.0)
     }
 }
 

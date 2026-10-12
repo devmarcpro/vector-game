@@ -21,16 +21,6 @@ fn dimmed(c: u32, k: f32) -> u32 {
     (ch(16) << 16) | (ch(8) << 8) | ch(0)
 }
 
-fn ellipse(fb: &mut Framebuffer, cx: f32, cy: f32, rx: f32, ry: f32, c: u32) {
-    let mut prev = (cx + rx, cy);
-    for i in 1..=48 {
-        let a = i as f32 / 48.0 * std::f32::consts::TAU;
-        let p = (cx + rx * a.cos(), cy + ry * a.sin());
-        fb.line(prev.0, prev.1, p.0, p.1, c);
-        prev = p;
-    }
-}
-
 /// A circle of radius `r` in the reference plane around `centre`, in world space.
 fn circle3(fb: &mut Framebuffer, cam: &Camera, centre: Vec3, r: f64, col: u32) {
     let n = 64;
@@ -82,11 +72,11 @@ pub fn overlay(fb: &mut Framebuffer, cam: &Camera, v: &View, i: usize, x: f32, y
                 fb.circle(x, y, r, 0x0000_0000);
                 fb.circle(x, y, r * 0.8, 0x0008_0808);
                 // The photon ring and the halo of light bent around it.
-                ellipse(fb, x, y, r * 1.3, r * 1.3, HALO);
-                ellipse(fb, x, y, r * 2.2, r * 2.2, dimmed(HALO, 0.5));
+                fb.ellipse(x, y, r * 1.3, r * 1.3, HALO);
+                fb.ellipse(x, y, r * 2.2, r * 2.2, dimmed(HALO, 0.5));
                 if sys.accreting() {
                     for (k, f) in [(2.4, 1.0), (3.2, 0.7), (4.2, 0.4)] {
-                        ellipse(fb, x, y, r * k, r * k * 0.28, dimmed(DISC, f));
+                        fb.ellipse(x, y, r * k, r * k * 0.28, dimmed(DISC, f));
                     }
                 }
             }
@@ -109,7 +99,7 @@ pub fn overlay(fb: &mut Framebuffer, cam: &Camera, v: &View, i: usize, x: f32, y
                     fb.circle(x, y, r, BEAM);
                 }
             }
-            Some(StarStage::Rogue) => ellipse(fb, x, y, r * 1.5, r * 1.5, dimmed(0x00A0_3020, 0.7)),
+            Some(StarStage::Rogue) => fb.ellipse(x, y, r * 1.5, r * 1.5, dimmed(0x00A0_3020, 0.7)),
             _ => {}
         }
     }
@@ -125,6 +115,6 @@ pub fn map_overlay(fb: &mut Framebuffer, v: &View, i: usize, to_px: &dyn Fn(Vec3
     }
     if sim.system.ring_of(i).is_some() {
         let (x, y) = to_px(sim.bodies[i].pos);
-        ellipse(fb, x, y, 6.0, 6.0, dimmed(AMBER, 0.5));
+        fb.ellipse(x, y, 6.0, 6.0, dimmed(AMBER, 0.5));
     }
 }

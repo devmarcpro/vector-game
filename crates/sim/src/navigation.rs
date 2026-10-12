@@ -11,11 +11,11 @@ use vector_world::orbit::{AU, G};
 use vector_world::{BodyKind, StarClass};
 
 /// Speed of light (m/s).
-pub const C: f64 = 299_792_458.0;
+pub use vector_core::units::C;
 /// Stefan-Boltzmann constant in kW/(m^2 K^4).
-pub const SIGMA_KW: f64 = 5.670_374e-11;
+pub const SIGMA_KW: f64 = vector_core::units::SIGMA / 1000.0;
 /// Solar constant at 1 AU (kW/m^2).
-pub const SOLAR_CONSTANT_KW: f64 = 1.361;
+pub const SOLAR_CONSTANT_KW: f64 = vector_core::units::SOLAR_CONSTANT / 1000.0;
 /// Fraction of the sunlight a ship hull reflects.
 pub const SHIP_ALBEDO: f64 = 0.3;
 /// Mean density of a ship, tanks and voids included (kg/m^3): gives its size from its mass.
@@ -404,18 +404,16 @@ impl Sim {
 
     /// Infrared power (kW) the ship radiates: what a sensor sees from far away.
     pub fn ir_signature_kw(&self) -> f64 {
-        let rated = 30.0 + 0.004 * self.ship.stats.mass_dry + self.ship.stats.radiate_kw;
+        let rated = crate::design::Systems::rated_radiation_kw(
+            self.ship.stats.mass_dry,
+            self.ship.stats.radiate_kw,
+        );
         crate::design::Systems::radiated(rated, self.ship.sys.temp_k).max(0.0)
     }
 
     /// Distance (m) at which a sensor of `sensitivity` W/m^2 sees the ship's heat.
     pub fn ir_detection_range(&self, sensitivity: f64) -> f64 {
         (self.ir_signature_kw() * 1000.0 / (4.0 * PI * sensitivity.max(1e-30))).sqrt()
-    }
-
-    /// One-way light delay (s) to point `p`.
-    pub fn light_delay_to(&self, p: Vec3) -> f64 {
-        light_delay((p - self.ship.pos).length())
     }
 
     /// Natural radiation at `p`: cosmic rays, the particles of the star (more for an active class)

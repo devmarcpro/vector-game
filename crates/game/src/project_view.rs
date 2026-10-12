@@ -2,6 +2,7 @@
 //! megastructures), the catalogue of what can be started, and the state of the world's climate
 //! with the plants that crack its gases. Everything shown comes from the simulation.
 use crate::game::Game;
+use crate::hub::wrap;
 use crate::hud::{AMBER, DIM, GREEN, RED};
 use crate::mouse::Act;
 use vector_render::Framebuffer;
@@ -17,24 +18,6 @@ const ROWS: usize = 12;
 const LEFT: (usize, usize) = (1, 58);
 const MID: (usize, usize) = (61, 49);
 const RIGHT: (usize, usize) = (112, 47);
-
-fn wrap(text: &str, width: usize) -> Vec<String> {
-    let mut out = Vec::new();
-    let mut line = String::new();
-    for w in text.split_whitespace() {
-        if !line.is_empty() && line.chars().count() + 1 + w.chars().count() > width {
-            out.push(std::mem::take(&mut line));
-        }
-        if !line.is_empty() {
-            line.push(' ');
-        }
-        line.push_str(w);
-    }
-    if !line.is_empty() {
-        out.push(line);
-    }
-    out
-}
 
 fn big(v: f64) -> String {
     if v.abs() >= 1.0e4 || (v != 0.0 && v.abs() < 0.01) {
@@ -173,7 +156,10 @@ pub fn draw(fb: &mut Framebuffer, g: &Game) {
                 .map(|(r, kg)| {
                     let scale = match st.scale.as_str() {
                         "taper" => p.taper,
-                        "radius" => c.terra.as_ref().map_or(1.0, |t| t.snap.radius / 6.371e6),
+                        "radius" => c
+                            .terra
+                            .as_ref()
+                            .map_or(1.0, |t| t.snap.radius / vector_core::units::R_EARTH),
                         _ => 1.0,
                     };
                     format!("{} {}", r.to_uppercase(), big(kg * scale))
@@ -361,7 +347,8 @@ pub fn draw(fb: &mut Framebuffer, g: &Game) {
                             big(vector_sim::megastructure::swarm_power(
                                 &t.snap, 1.0, d.param
                             )),
-                            big(vector_sim::megastructure::swarm_radius(&t.snap) / 1.496e11)
+                            big(vector_sim::megastructure::swarm_radius(&t.snap)
+                                / vector_core::units::AU)
                         ),
                         GREEN,
                     );

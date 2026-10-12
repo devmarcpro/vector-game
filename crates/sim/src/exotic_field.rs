@@ -28,10 +28,8 @@ pub fn warp_antimatter_kg(mass_kg: f64, dist_ly: f64) -> f64 {
     warp_energy_j(mass_kg, warp_factor(dist_ly)) * WARP_SCALE / (2.0 * C * C)
 }
 
-/// Kardashev scale (Sagan interpolation) of a civilisation using `power_w` watts.
-pub fn kardashev(power_w: f64) -> f64 {
-    ((power_w.max(1.0)).log10() - 6.0) / 10.0
-}
+/// Kardashev scale: the one law of `megastructure`.
+pub use crate::megastructure::kardashev;
 
 /// Power (W) of a civilisation at a given Kardashev level (inverse of `kardashev`).
 pub fn power_of_kardashev(k: f64) -> f64 {

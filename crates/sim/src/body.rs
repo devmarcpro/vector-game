@@ -12,7 +12,7 @@ pub const NORMAL_CORE: f32 = 37.0;
 /// Blood volume (share of normal) under which a person bleeds to death.
 pub const BLOOD_FATAL: f32 = 0.3;
 /// Standard gravity, m/s^2.
-pub const G0: f64 = 9.806_65;
+pub use vector_core::units::G0;
 /// Overdose threshold of the drug pressure.
 pub const OVERDOSE: f32 = 1.6;
 

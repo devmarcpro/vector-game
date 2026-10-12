@@ -2,12 +2,11 @@
 //! separate them from the start), grouped by field inside a column, joined by lines from each
 //! prerequisite to what it unlocks. Arrows walk the graph, Enter starts a research.
 use crate::game::Game;
-use crate::hud::{AMBER, DIM, GREEN, RED};
+use crate::hud::{AMBER, DIM, GREEN, RED, WHITE};
 use crate::mouse::Act;
 use vector_data::GameData;
 use vector_render::Framebuffer;
 
-const WHITE: u32 = 0x00FF_FFFF;
 const BOX_W: usize = 23;
 const COL_GAP: usize = 4;
 const COL: usize = BOX_W + COL_GAP;
@@ -108,13 +107,6 @@ pub fn layout(data: &GameData) -> TechLayout {
         }
     }
     TechLayout { layer, row, layers }
-}
-
-fn rect(fb: &mut Framebuffer, l: f32, t: f32, r: f32, b: f32, c: u32) {
-    fb.line(l, t, r, t, c);
-    fb.line(l, b, r, b, c);
-    fb.line(l, t, l, b, c);
-    fb.line(r, t, r, b, c);
 }
 
 fn field_color(field: &str) -> u32 {
@@ -218,11 +210,11 @@ pub fn draw(fb: &mut Framebuffer, g: &Game) {
                 fb.px_set(px, py, 0);
             }
         }
-        rect(fb, l, tp, r, b, c);
+        fb.outline(l, tp, r, b, c);
         if t == sel {
-            rect(fb, l - 2.0, tp - 2.0, r + 2.0, b + 2.0, WHITE);
+            fb.outline(l - 2.0, tp - 2.0, r + 2.0, b + 2.0, WHITE);
         } else if hover {
-            rect(fb, l - 1.0, tp - 1.0, r + 1.0, b + 1.0, 0x0090_C0A0);
+            fb.outline(l - 1.0, tp - 1.0, r + 1.0, b + 1.0, 0x0090_C0A0);
         }
         // A bar in the colour of the field along the left edge.
         let fc = field_color(&tech.field);

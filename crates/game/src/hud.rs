@@ -14,6 +14,13 @@ pub const GREEN: u32 = 0x0030_E050;
 pub const DIM: u32 = 0x0010_6020;
 pub const AMBER: u32 = 0x00E0_A020;
 pub const RED: u32 = 0x00FF_3030;
+/// Shared accents of the screens (one definition each; the views import them).
+pub const WHITE: u32 = 0x00FF_FFFF;
+pub const UP: u32 = 0x0040_E070;
+pub const DOWN: u32 = 0x00FF_5050;
+pub const HOVER: u32 = 0x00D0_FFD0;
+pub const WIRE: u32 = 0x0040_7050;
+pub const CYAN: u32 = 0x0050_C0E0;
 pub const STAR: u32 = 0x0040_5060;
 pub const SUN: u32 = 0x00E0_D060;
 pub const MINER: u32 = 0x00C0_C040;
@@ -102,7 +109,7 @@ pub fn fmt_dist(m: f64) -> String {
     } else if a < 1.0e12 {
         format!("{:.2} Gm", m / 1e9)
     } else {
-        format!("{:.3} AU", m / 1.496e11)
+        format!("{:.3} AU", m / vector_core::units::AU)
     }
 }
 
@@ -497,7 +504,7 @@ fn draw_cockpit(fb: &mut Framebuffer, v: &View) {
                     use vector_world::PlanetKind as P;
                     let r = px as f32;
                     if matches!(k, P::Terran | P::Ocean | P::Venusian | P::Tundra) || k.is_giant() {
-                        ellipse(fb, x, y, r * 1.08, r * 1.08, dimmed(col, 0.5));
+                        fb.ellipse(x, y, r * 1.08, r * 1.08, dimmed(col, 0.5));
                     }
                 }
             }
@@ -1419,7 +1426,7 @@ fn draw_radar(fb: &mut Framebuffer, v: &View) {
     let (rx, ry) = (80.0f32, 26.0f32);
     let range = 20_000.0f64;
     for k in [1.0, 0.5] {
-        ellipse(fb, cx, cy, rx * k, ry * k, DIM);
+        fb.ellipse(cx, cy, rx * k, ry * k, DIM);
     }
     fb.line(cx - rx, cy, cx + rx, cy, DIM);
     fb.line(cx, cy - ry, cx, cy + ry, DIM);
@@ -1465,16 +1472,6 @@ fn radar_npcs(fb: &mut Framebuffer, v: &View, cx: f32, cy: f32, rx: f32, ry: f32
         fb.plot(px as i32, py as i32, col);
         fb.plot(px as i32 + 1, py as i32, col);
         fb.plot(px as i32, py as i32 + 1, col);
-    }
-}
-
-fn ellipse(fb: &mut Framebuffer, cx: f32, cy: f32, rx: f32, ry: f32, c: u32) {
-    let mut prev = (cx + rx, cy);
-    for i in 1..=48 {
-        let a = i as f32 / 48.0 * std::f32::consts::TAU;
-        let p = (cx + rx * a.cos(), cy + ry * a.sin());
-        fb.line(prev.0, prev.1, p.0, p.1, c);
-        prev = p;
     }
 }
 

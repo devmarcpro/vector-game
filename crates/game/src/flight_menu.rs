@@ -2,12 +2,10 @@
 //! screen and operates the ship's controls (a held click on a thrust, brake, boost or weapon
 //! word works like holding the key). F11 or a click on its title folds it.
 use crate::game::Game;
-use crate::hud::{AMBER, DIM, GREEN};
+use crate::hud::{AMBER, DIM, GREEN, HOVER};
 use crate::mouse::Act;
 use vector_render::Framebuffer;
 use winit::keyboard::KeyCode;
-
-const HOVER: u32 = 0x00D0_FFD0;
 
 /// (label, key shown, action)
 type Entry = (&'static str, &'static str, Act);

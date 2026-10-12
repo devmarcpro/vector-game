@@ -9,8 +9,7 @@ use std::sync::Arc;
 use vector_data::Hull;
 use vector_world::galaxy::StarRef;
 
-/// Seconds in a day.
-const DAY: f64 = 86_400.0;
+use vector_core::units::DAY;
 /// What a yard asks over the market price for the materials it has to fetch.
 pub const YARD_MARKUP: f64 = 1.3;
 /// A refit takes this share of the work of a new ship.

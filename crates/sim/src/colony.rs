@@ -3,7 +3,7 @@ use crate::colony_works::{
     Ops, LIMIT_INPUT, LIMIT_NONE, LIMIT_OFF, LIMIT_POWER, LIMIT_SPACE, LIMIT_STAFF, LIMIT_TOOLS,
     LIMIT_WORN, TOOLS_PER_JOB,
 };
-use crate::crew::DAY;
+use crate::crew::{DAY, FOOD_KG_PER_DAY, WATER_KG_PER_DAY};
 use crate::{Event, Sim};
 use serde::{Deserialize, Serialize};
 use vector_core::{hash_coord, Rng};
@@ -20,8 +20,6 @@ pub const COLONIST_KG: f64 = 80.0;
 /// Landing / docking reach of a colony spaceport above the surface (m).
 pub const PORT_RANGE: f64 = 100_000.0;
 const BASE_STORAGE: f64 = 5_000.0;
-const FOOD_KG_PER_DAY: f64 = 0.6;
-const WATER_KG_PER_DAY: f64 = 3.0;
 const GOODS_KG_PER_DAY: f64 = 0.04;
 const LOG_CAP: usize = 120;
 /// Colonies are simulated in steps of this many seconds (6 h), coarser for long absences.
@@ -42,7 +40,9 @@ pub fn wind_factor(pressure: f64, gust: f64) -> f64 {
 }
 /// Geothermal output factor: small worlds have cooled, big ones are hot inside.
 pub fn geo_factor(mass_kg: f64) -> f64 {
-    (mass_kg / 5.972e24).sqrt().clamp(0.2, 1.6)
+    (mass_kg / vector_core::units::M_EARTH)
+        .sqrt()
+        .clamp(0.2, 1.6)
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

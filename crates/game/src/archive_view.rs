@@ -2,24 +2,12 @@
 //! recent years told by politics) and, below, the finds of the digs on foot: date them, translate
 //! them, sell them, give them to a museum or hand them back to the heirs.
 use crate::game::Game;
+use crate::hub::word;
 use crate::hud::{AMBER, DIM, GREEN, RED};
 use crate::mouse::Act;
 use vector_render::Framebuffer;
 use vector_sim::archive::{artefact_line, Dest};
 use winit::keyboard::KeyCode;
-
-fn word(
-    fb: &mut Framebuffer,
-    g: &Game,
-    col: usize,
-    row: usize,
-    label: &str,
-    key: KeyCode,
-) -> usize {
-    let hov = g.hit_cells(col, row, label.len(), 1, Act::Key(key), None);
-    fb.text(col, row, label, if hov { AMBER } else { GREEN });
-    col + label.len() + 3
-}
 
 pub fn draw(fb: &mut Framebuffer, g: &Game) {
     let s = &g.sim;

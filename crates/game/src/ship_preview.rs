@@ -4,7 +4,7 @@
 //! ship (a third-person camera, a codex card) can reuse `draw_solids`.
 use vector_data::ship::CELL_M;
 use vector_data::GameData;
-use vector_render::Framebuffer;
+use vector_render::{scale_color as shade, Framebuffer};
 use vector_sim::shipwright::Blueprint;
 
 /// One solid: centre in cells (x forward, y starboard, z up), half sizes in cells, colour, and
@@ -70,11 +70,6 @@ pub fn solids_of(data: &GameData, bp: &Blueprint) -> Vec<Solid> {
             ))
         })
         .collect()
-}
-
-fn shade(c: u32, k: f32) -> u32 {
-    let ch = |s: u32| (((c >> s) & 255) as f32 * k).clamp(0.0, 255.0) as u32;
-    (ch(16) << 16) | (ch(8) << 8) | ch(0)
 }
 
 fn line_over(fb: &mut Framebuffer, a: (f32, f32), b: (f32, f32), c: u32) {

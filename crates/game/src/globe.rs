@@ -3,7 +3,7 @@
 //! screen (F8) and for the planets seen from the cockpit: the caller says how a point of the globe
 //! becomes a point of the screen and which ones face the viewer.
 use vector_core::Vec3;
-use vector_render::Framebuffer;
+use vector_render::{mix_color, scale_color, Framebuffer};
 use vector_sim::planet::PlanetMap;
 use vector_world::surface::{Surface, H, W};
 
@@ -127,17 +127,6 @@ impl Globe<'_> {
 use crate::terrain::Terrain;
 use vector_core::Mat3;
 use vector_render::Camera;
-
-fn mix_color(a: u32, b: u32, t: f32) -> u32 {
-    let ch = |c: u32, s: u32| ((c >> s) & 0xFF) as f32;
-    let m = |s: u32| (ch(a, s) * (1.0 - t) + ch(b, s) * t).clamp(0.0, 255.0) as u32;
-    (m(16) << 16) | (m(8) << 8) | m(0)
-}
-
-fn scale_color(c: u32, k: f32) -> u32 {
-    let ch = |s: u32| (((c >> s) & 0xFF) as f32 * k).clamp(0.0, 255.0) as u32;
-    (ch(16) << 16) | (ch(8) << 8) | ch(0)
-}
 
 /// What to paint on a world: its map and the colour of a cell.
 pub struct Paint<'a> {

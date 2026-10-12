@@ -7,7 +7,7 @@ use crate::{Event, Sim};
 use vector_core::hash_coord;
 use vector_data::GameData;
 
-pub const DAY: f64 = 86_400.0;
+pub use vector_core::units::DAY;
 pub(crate) const WEEK: f64 = 7.0 * DAY;
 /// Events last at most 90 days, so only the previous 14 weeks can still be running.
 const LOOKBACK_WEEKS: i64 = 14;
@@ -181,9 +181,7 @@ impl Sim {
             let t = now - (days - 1 - d) as f64 * DAY;
             let f = world_factors(&data, seed, pos, t);
             for (r, series) in out.iter_mut().enumerate() {
-                let scarcity = (m.reference[r] / m.target[r].max(0.03 * m.reference[r]))
-                    .powf(0.35)
-                    .clamp(0.25, 4.0);
+                let scarcity = m.scarcity_at(r, m.target[r]);
                 let lane = crate::lanes::good_factor(&data, &self.galaxy, pos, t, r);
                 series.push(data.resources[r].value * m.modifier[r] * scarcity * f[r] * lane);
             }

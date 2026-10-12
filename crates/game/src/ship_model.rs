@@ -5,7 +5,7 @@
 //! deterministic and changes whenever a module, a health value, the thrust or a deployment does.
 use vector_core::{hash_coord, Mat3, Vec3};
 use vector_data::{GameData, Module};
-use vector_render::{Camera, Framebuffer, NEAR};
+use vector_render::{mix_color as mix_col, scale_color as scale_col, Camera, Framebuffer, NEAR};
 use vector_sim::design::{ShipDesign, T_DAMAGE};
 use vector_sim::Sim;
 
@@ -48,16 +48,6 @@ fn perp(axis: V) -> (V, V) {
     };
     let u = nrm(cross(h, a));
     (u, cross(a, u))
-}
-
-fn scale_col(c: u32, k: f32) -> u32 {
-    let ch = |s: u32| (((c >> s) & 0xFF) as f32 * k).clamp(0.0, 255.0) as u32;
-    (ch(16) << 16) | (ch(8) << 8) | ch(0)
-}
-fn mix_col(a: u32, b: u32, t: f32) -> u32 {
-    let ch = |c: u32, s: u32| ((c >> s) & 0xFF) as f32;
-    let m = |s: u32| (ch(a, s) * (1.0 - t) + ch(b, s) * t).clamp(0.0, 255.0) as u32;
-    (m(16) << 16) | (m(8) << 8) | m(0)
 }
 
 /// One triangle of the model, in metres in the frame of the ship (x right, y up, z forward).

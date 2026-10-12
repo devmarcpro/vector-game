@@ -19,12 +19,7 @@ use vector_data::GameData;
 use vector_world::surface::{self, Surface, H, W};
 use vector_world::{BodyKind, PlanetKind, System};
 
-pub const DAY: f64 = 86_400.0;
-pub const YEAR: f64 = 31_557_600.0;
-/// Stefan-Boltzmann constant, W / (m^2 K^4).
-pub const SIGMA: f64 = 5.670e-8;
-/// Power of the sun on a square metre at 1 AU, W/m^2.
-pub const SOLAR_CONSTANT: f64 = 1361.0;
+pub use vector_core::units::{DAY, SIGMA, SOLAR_CONSTANT, YEAR};
 const L_VAP: f64 = 2.5e6;
 const R_VAPOUR: f64 = 461.5;
 const L_FUSION: f64 = 3.34e5;

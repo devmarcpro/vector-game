@@ -3,7 +3,8 @@
 //! construction. Everything the numbers say comes from `vector_sim::shipwright`; this file only
 //! draws and turns clicks and keys into calls.
 use crate::game::{Game, Screen};
-use crate::hud::{AMBER, DIM, GREEN, RED};
+use crate::hub::wrap;
+use crate::hud::{AMBER, CYAN, DIM, GREEN, HOVER, RED};
 use crate::mouse::Act;
 use crate::ship_preview;
 use vector_data::ship::{CELL_M, PORT_NX, PORT_NY, PORT_NZ, PORT_PX, PORT_PY, PORT_PZ};
@@ -14,8 +15,6 @@ use vector_sim::shipwright::{
 };
 use winit::keyboard::KeyCode;
 
-const HOVER: u32 = 0x00D0_FFD0;
-const CYAN: u32 = 0x0050_C0E0;
 /// Surface gravity the landing checks use when no world is chosen: the Earth's.
 const REF_G: f64 = 9.806_65;
 
@@ -150,24 +149,6 @@ fn frame(fb: &mut Framebuffer, x: i32, y: i32, w: i32, h: i32, c: u32) {
     fb.rect_over(x, y + h - 1, w, 1, c);
     fb.rect_over(x, y, 1, h, c);
     fb.rect_over(x + w - 1, y, 1, h, c);
-}
-
-fn wrap(s: &str, w: usize) -> Vec<String> {
-    let mut out = Vec::new();
-    let mut line = String::new();
-    for word in s.split_whitespace() {
-        if !line.is_empty() && line.chars().count() + 1 + word.chars().count() > w {
-            out.push(std::mem::take(&mut line));
-        }
-        if !line.is_empty() {
-            line.push(' ');
-        }
-        line.push_str(word);
-    }
-    if !line.is_empty() {
-        out.push(line);
-    }
-    out
 }
 
 fn window(sel: usize, n: usize, rows: usize) -> std::ops::Range<usize> {

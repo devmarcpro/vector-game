@@ -3,16 +3,13 @@
 //! the regular lines of cargo ships and the economic board of the jurisdictions around, with
 //! charts drawn in characters. Everything is a button: click, or use the arrows and Enter.
 use crate::game::Game;
-use crate::hud::{AMBER, DIM, GREEN, RED};
+use crate::hud::{AMBER, DIM, GREEN, RED, UP, WHITE};
 use crate::mouse::Act;
 use std::cell::RefCell;
 use vector_render::Framebuffer;
 use vector_sim::bourse::DAY;
 use vector_sim::lanes::LineView;
 use vector_sim::macroeco::Board;
-
-const WHITE: u32 = 0x00FF_FFFF;
-const UP: u32 = 0x0040_E070;
 
 type BoardCache = Option<((i64, [i64; 3]), Board)>;
 type LanesCache = Option<(i64, Vec<LineView>, Vec<(String, f64)>)>;

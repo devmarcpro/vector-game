@@ -3,24 +3,12 @@
 //! malware), encrypted data being broken, the other minds of the sector and the backups of oneself
 //! (the anchors of time).
 use crate::game::Game;
+use crate::hub::word;
 use crate::hud::{AMBER, DIM, GREEN, RED};
 use crate::mouse::Act;
 use vector_render::Framebuffer;
 use vector_sim::mind::{peer_line, N_TASKS, T_DEFENSE};
 use winit::keyboard::KeyCode;
-
-fn word(
-    fb: &mut Framebuffer,
-    g: &Game,
-    col: usize,
-    row: usize,
-    label: &str,
-    key: KeyCode,
-) -> usize {
-    let hov = g.hit_cells(col, row, label.len(), 1, Act::Key(key), None);
-    fb.text(col, row, label, if hov { AMBER } else { GREEN });
-    col + label.len() + 3
-}
 
 /// Rows of the selection list: the five tasks, then the software, then the other minds.
 pub fn rows_count(g: &Game) -> usize {

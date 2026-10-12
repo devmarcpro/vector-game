@@ -1,12 +1,7 @@
 //! Keplerian orbits on rails: position and velocity are analytic functions of time.
 use vector_core::{Mat3, Vec3};
 
-pub const G: f64 = 6.674e-11;
-pub const AU: f64 = 1.495_978_707e11;
-pub const M_SUN: f64 = 1.989e30;
-pub const R_SUN: f64 = 6.957e8;
-pub const M_EARTH: f64 = 5.972e24;
-pub const R_EARTH: f64 = 6.371e6;
+pub use vector_core::units::{AU, G, M_EARTH, M_SUN, R_EARTH, R_SUN};
 
 /// Orbit around `parent` (index into the system's body list). The reference plane is XZ (Y is "up").
 #[derive(Clone, Debug)]

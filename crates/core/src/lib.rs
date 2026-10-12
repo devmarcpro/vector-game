@@ -1,6 +1,34 @@
 //! Core math and deterministic RNG.
 use std::ops::{Add, Mul, Neg, Sub};
 
+/// The physical and calendar constants of the whole game: ONE definition each (SI units). Every
+/// crate re-exports or imports these instead of retyping them.
+pub mod units {
+    /// Seconds in a day.
+    pub const DAY: f64 = 86_400.0;
+    /// Seconds in a (Julian) year.
+    pub const YEAR: f64 = 31_557_600.0;
+    /// Astronomical unit, m.
+    pub const AU: f64 = 1.495_978_707e11;
+    /// Speed of light, m/s.
+    pub const C: f64 = 299_792_458.0;
+    /// Standard gravity, m/s^2.
+    pub const G0: f64 = 9.806_65;
+    /// Gravitational constant, m^3 / (kg s^2).
+    pub const G: f64 = 6.674e-11;
+    /// Stefan-Boltzmann constant, W / (m^2 K^4).
+    pub const SIGMA: f64 = 5.670_374e-8;
+    /// Power of the Sun on a square metre at 1 AU, W/m^2.
+    pub const SOLAR_CONSTANT: f64 = 1361.0;
+    /// Luminosity of the Sun, W.
+    pub const L_SUN: f64 = 3.828e26;
+    /// Mass and radius of the Sun and the Earth, kg and m.
+    pub const M_SUN: f64 = 1.989e30;
+    pub const R_SUN: f64 = 6.957e8;
+    pub const M_EARTH: f64 = 5.972e24;
+    pub const R_EARTH: f64 = 6.371e6;
+}
+
 #[derive(Clone, Copy, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Vec3 {
     pub x: f64,

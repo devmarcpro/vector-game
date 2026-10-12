@@ -2,14 +2,12 @@
 //! securities, sales, regular lines and the economic board (the last five live in `eco_view`),
 //! nine tabs chosen with the arrows or by clicking their names.
 use crate::game::{Game, Screen};
-use crate::hud::{AMBER, DIM, GREEN};
+use crate::hud::{AMBER, DIM, GREEN, UP, WHITE};
 use crate::mouse::Act;
 use vector_render::Framebuffer;
 use vector_sim::bourse::DAY;
 use winit::keyboard::KeyCode;
 
-const WHITE: u32 = 0x00FF_FFFF;
-const UP: u32 = 0x0040_E070;
 pub const TABS: [&str; 9] = [
     "RUMEURS",
     "ARBITRAGE",

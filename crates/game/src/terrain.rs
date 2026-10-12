@@ -4,7 +4,7 @@
 //! over a world and the first-person view of an expedition on foot: the nearer the ground, the
 //! finer the detail, and from orbit down to the soles of the squad it is the same ground.
 use crate::globe::elev_at;
-use vector_render::Framebuffer;
+use vector_render::{mix_color as mix, scale_color as scale, Framebuffer};
 use vector_sim::planet::PlanetMap;
 use vector_world::surface::{Surface, H, W};
 
@@ -232,17 +232,6 @@ pub struct Light {
     pub up: f64,
     pub east: f64,
     pub north: f64,
-}
-
-fn mix(a: u32, b: u32, t: f32) -> u32 {
-    let ch = |c: u32, s: u32| ((c >> s) & 0xFF) as f32;
-    let m = |s: u32| (ch(a, s) * (1.0 - t) + ch(b, s) * t).clamp(0.0, 255.0) as u32;
-    (m(16) << 16) | (m(8) << 8) | m(0)
-}
-
-fn scale(c: u32, k: f32) -> u32 {
-    let ch = |s: u32| (((c >> s) & 0xFF) as f32 * k).clamp(0.0, 255.0) as u32;
-    (ch(16) << 16) | (ch(8) << 8) | ch(0)
 }
 
 /// What the renderer left behind: the distance of what was drawn at each pixel of each column

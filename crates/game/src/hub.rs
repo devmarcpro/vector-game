@@ -5,13 +5,10 @@
 //! opened). The menu opens with F10 or a click on MENU at the top right of every screen, and it
 //! begins with an orientation: where the AI is, what is wrong, what it can do.
 use crate::game::{Game, Screen};
-use crate::hud::{AMBER, DIM, GREEN, RED};
+use crate::hud::{AMBER, DIM, GREEN, HOVER, RED};
 use crate::mouse::Act;
 use vector_render::Framebuffer;
 use winit::keyboard::KeyCode;
-
-/// Colour of a line or button under the pointer.
-pub const HOVER: u32 = 0x00D0_FFD0;
 
 /// The first entry of the menu that opens `screen` (space, line).
 pub fn find_entry(screen: Screen) -> Option<(usize, usize)> {
@@ -571,6 +568,20 @@ pub fn wrap(text: &str, w: usize) -> Vec<String> {
         rows.push(cur);
     }
     rows
+}
+
+/// A clickable word bound to a key: lit amber under the mouse; returns the column after it.
+pub fn word(
+    fb: &mut Framebuffer,
+    g: &Game,
+    col: usize,
+    row: usize,
+    label: &str,
+    key: KeyCode,
+) -> usize {
+    let hov = g.hit_cells(col, row, label.len(), 1, Act::Key(key), None);
+    fb.text(col, row, label, if hov { AMBER } else { GREEN });
+    col + label.len() + 3
 }
 
 /// A button: plain clickable text. Returns its width in cells.

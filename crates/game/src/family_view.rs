@@ -2,22 +2,13 @@
 //! by lines (grandparents as couples, parents, brothers and sisters, uncles and aunts with their
 //! children below them), and a second page (Tab) with the genes.
 use crate::game::Game;
-use crate::hud::{AMBER, DIM, GREEN, RED};
+use crate::hud::{AMBER, DIM, GREEN, RED, WHITE, WIRE};
 use crate::mouse::Act;
 use vector_render::Framebuffer;
 use vector_sim::genealogy::{Kin, Relative};
 use winit::keyboard::KeyCode;
 
-const WHITE: u32 = 0x00FF_FFFF;
-const WIRE: u32 = 0x0040_7050;
 const DEAD: u32 = 0x0060_806A;
-
-fn rect(fb: &mut Framebuffer, l: f32, t: f32, r: f32, b: f32, c: u32) {
-    fb.line(l, t, r, t, c);
-    fb.line(l, b, r, b, c);
-    fb.line(l, t, l, b, c);
-    fb.line(r, t, r, b, c);
-}
 
 fn fit(s: &str, w: usize) -> String {
     s.chars().take(w).collect()
@@ -35,9 +26,9 @@ fn draw_box(
 ) {
     let (l, t) = ((x * 8) as f32 - 3.0, (y * 10) as f32 - 3.0);
     let (r, b) = (((x + w) * 8) as f32 + 1.0, ((y + 3) * 10) as f32 + 1.0);
-    rect(fb, l, t, r, b, c);
+    fb.outline(l, t, r, b, c);
     if me {
-        rect(fb, l + 2.0, t + 2.0, r - 2.0, b - 2.0, c);
+        fb.outline(l + 2.0, t + 2.0, r - 2.0, b - 2.0, c);
     }
     fb.text(x, y, &fit(lines[0], w), c);
     fb.text(x, y + 1, &fit(lines[1], w), if me { c } else { DIM });

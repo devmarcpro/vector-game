@@ -2,11 +2,10 @@
 //! buildings that turn them into other resources in the middle, resources produced on the right,
 //! joined by lines. A red input is out of stock, a dim building is switched off.
 use crate::game::Game;
-use crate::hud::{AMBER, DIM, GREEN, RED};
+use crate::hud::{AMBER, DIM, GREEN, RED, WIRE};
 use crate::mouse::Act;
 use vector_render::Framebuffer;
 
-const WIRE: u32 = 0x0040_7050;
 const TOP: i32 = 84;
 const ROW_MAX: i32 = 560;
 

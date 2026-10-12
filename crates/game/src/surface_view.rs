@@ -2,6 +2,7 @@
 //! panel for the cursor cell, and a wireframe globe with contour lines.
 use crate::game::Game;
 use crate::globe::Globe;
+use crate::hub::wrap;
 use crate::hud::{AMBER, DIM, GREEN, RED};
 use crate::mouse::Act;
 use vector_core::{Mat3, Vec3};
@@ -456,25 +457,6 @@ pub fn draw(fb: &mut Framebuffer, g: &Game) {
     } else {
         draw_panel(fb, g, map, x0 + cols_map + 2, y0);
     }
-}
-
-/// Cut a line at word boundaries into lines of at most `w` characters.
-fn wrap(s: &str, w: usize) -> Vec<String> {
-    let mut out: Vec<String> = Vec::new();
-    let mut cur = String::new();
-    for word in s.split_whitespace() {
-        if !cur.is_empty() && cur.chars().count() + 1 + word.chars().count() > w {
-            out.push(std::mem::take(&mut cur));
-        }
-        if !cur.is_empty() {
-            cur.push(' ');
-        }
-        cur.push_str(word);
-    }
-    if !cur.is_empty() {
-        out.push(cur);
-    }
-    out
 }
 
 /// The BIOSPHERE panel: the life of the world (mass, air, chemistries), the shown species with

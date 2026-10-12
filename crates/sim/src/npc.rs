@@ -106,14 +106,6 @@ impl Npc {
     pub fn visible(&self) -> bool {
         !matches!(self.state, NpcState::Away { .. })
     }
-    pub fn color_class(&self) -> u8 {
-        match self.role {
-            NpcRole::Trader => 0,
-            NpcRole::Miner => 1,
-            NpcRole::Pirate => 2,
-            NpcRole::Patrol => 3,
-        }
-    }
 }
 
 fn smooth(u: f64) -> (f64, f64) {

@@ -2,14 +2,10 @@
 //! a big chart of the selected one (price, 7-day average, the world events that touched it) and
 //! the news of the period.
 use crate::game::{Game, BOURSE_RANGES};
-use crate::hud::{AMBER, DIM, GREEN, RED};
+use crate::hud::{AMBER, DIM, DOWN, GREEN, RED, UP, WHITE};
 use crate::mouse::Act;
 use vector_render::Framebuffer;
 use winit::keyboard::KeyCode;
-
-const WHITE: u32 = 0x00FF_FFFF;
-const UP: u32 = 0x0040_E070;
-const DOWN: u32 = 0x00FF_5050;
 
 fn sparkline(series: &[f64], width: usize) -> String {
     const LEVELS: &[u8] = b" .:-=+*#";

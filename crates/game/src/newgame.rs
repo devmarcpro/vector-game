@@ -2,7 +2,8 @@
 //! the galaxy, the options, the summary), reached from the main menu. Everything chosen here
 //! builds the real starting `Sim` (`vector_sim::start`): nothing is cosmetic.
 use crate::game::{parse_seed, Game, Screen, DEFAULT_SEED};
-use crate::hub::{button, wrap, HOVER};
+use crate::hub::{button, wrap};
+use crate::hud::HOVER;
 use crate::hud::{AMBER, DIM, GREEN, RED};
 use crate::mouse::Act;
 use std::cell::RefCell;

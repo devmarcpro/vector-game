@@ -4,7 +4,8 @@
 //! a value, `<` `>` and a random button); what a row changes is the `CustomStart` of
 //! `vector_sim::start_custom`, which builds the real starting `Sim`. Nothing is cosmetic.
 use crate::game::{Game, Screen};
-use crate::hub::{wrap, HOVER};
+use crate::hub::wrap;
+use crate::hud::HOVER;
 use crate::hud::{AMBER, DIM, GREEN, RED};
 use crate::mouse::Act;
 use std::path::PathBuf;

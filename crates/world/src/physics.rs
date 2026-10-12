@@ -13,11 +13,11 @@ use vector_core::hash_coord;
 /// Angular speed of the Earth, rad/s.
 const OMEGA_EARTH: f64 = TAU / 86_164.0;
 /// Luminosity of the Sun, W.
-const L_SUN: f64 = 3.828e26;
+use vector_core::units::L_SUN;
 /// Heat flowing out of the Earth's ground, W/m^2.
 const FLUX_EARTH: f64 = 0.09;
 /// Seconds in a year.
-pub const YEAR: f64 = 31_557_600.0;
+pub use vector_core::units::YEAR;
 
 /// What the ground of a world does with the heat of its inside.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

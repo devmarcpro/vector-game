@@ -1,11 +1,10 @@
 //! Text-grid screens: main menu, pause, station market, inventory.
 use crate::game::{Game, Screen, MAIN_MENU, PAUSE_MENU};
-use crate::hud::{AMBER, DIM, GREEN, RED};
+use crate::hud::{AMBER, DIM, GREEN, HOVER, RED};
 use crate::mouse::{key_of_word, Act};
 use winit::keyboard::KeyCode;
 
 /// Colour of a list line under the pointer.
-const HOVER: u32 = 0x00D0_FFD0;
 use vector_render::Framebuffer;
 use vector_sim::{G0, RESALE};
 

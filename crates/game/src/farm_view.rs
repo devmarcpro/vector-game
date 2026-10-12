@@ -1,15 +1,13 @@
 //! Two station screens: the livestock pens (L: buy, breed, harvest, with the genes drawn as
 //! bars) and the casino (A: roulette and a machine, stake and game chosen by clickable words).
 use crate::game::{Game, Screen};
-use crate::hud::{AMBER, DIM, GREEN};
+use crate::hub::word;
+use crate::hud::{AMBER, DIM, DOWN, GREEN, UP, WHITE};
 use crate::mouse::Act;
 use vector_render::Framebuffer;
 use vector_sim::casino::{self, Game as Bet};
 use winit::keyboard::KeyCode;
 
-const WHITE: u32 = 0x00FF_FFFF;
-const UP: u32 = 0x0040_E070;
-const DOWN: u32 = 0x00FF_5050;
 const STAKES: [f64; 6] = [10.0, 50.0, 100.0, 500.0, 1000.0, 5000.0];
 
 /// State of both screens.
@@ -145,19 +143,6 @@ impl Game {
             _ => {}
         }
     }
-}
-
-fn word(
-    fb: &mut Framebuffer,
-    g: &Game,
-    col: usize,
-    row: usize,
-    label: &str,
-    key: KeyCode,
-) -> usize {
-    let hov = g.hit_cells(col, row, label.len(), 1, Act::Key(key), None);
-    fb.text(col, row, label, if hov { AMBER } else { GREEN });
-    col + label.len() + 3
 }
 
 pub fn draw_livestock(fb: &mut Framebuffer, g: &Game) {

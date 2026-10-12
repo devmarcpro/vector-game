@@ -4,6 +4,19 @@ pub mod png;
 
 use vector_core::{Mat3, Vec3};
 
+/// A colour (0x00RRGGBB) with every channel scaled by `k` (clamped): shading and dimming.
+pub fn scale_color(c: u32, k: f32) -> u32 {
+    let ch = |s: u32| (((c >> s) & 0xFF) as f32 * k).clamp(0.0, 255.0) as u32;
+    (ch(16) << 16) | (ch(8) << 8) | ch(0)
+}
+
+/// Linear blend of two colours: `a` at t = 0, `b` at t = 1.
+pub fn mix_color(a: u32, b: u32, t: f32) -> u32 {
+    let ch = |c: u32, s: u32| ((c >> s) & 0xFF) as f32;
+    let m = |s: u32| (ch(a, s) * (1.0 - t) + ch(b, s) * t).clamp(0.0, 255.0) as u32;
+    (m(16) << 16) | (m(8) << 8) | m(0)
+}
+
 pub struct Framebuffer {
     pub w: usize,
     pub h: usize,
@@ -131,6 +144,29 @@ impl Framebuffer {
             for xx in x..x + w {
                 self.px_set(xx, yy, c);
             }
+        }
+    }
+    /// Outline of the rectangle from (l, t) to (r, b) in pixels (lines, additive like `line`).
+    pub fn outline<T: Into<f64>>(&mut self, l: T, t: T, r: T, b: T, c: u32) {
+        let (l, t, r, b) = (
+            l.into() as f32,
+            t.into() as f32,
+            r.into() as f32,
+            b.into() as f32,
+        );
+        self.line(l, t, r, t, c);
+        self.line(r, t, r, b, c);
+        self.line(r, b, l, b, c);
+        self.line(l, b, l, t, c);
+    }
+    /// Ellipse of radii (rx, ry) around (cx, cy), 48 segments.
+    pub fn ellipse(&mut self, cx: f32, cy: f32, rx: f32, ry: f32, c: u32) {
+        let mut prev = (cx + rx, cy);
+        for i in 1..=48 {
+            let a = i as f32 / 48.0 * std::f32::consts::TAU;
+            let p = (cx + rx * a.cos(), cy + ry * a.sin());
+            self.line(prev.0, prev.1, p.0, p.1, c);
+            prev = p;
         }
     }
     /// Text at an arbitrary pixel position.

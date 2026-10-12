@@ -2,39 +2,10 @@
 //! wireframe, who they are and how they speak, what they say, and numbered buttons for what the
 //! ship's AI can answer. 1-6, Up/Down + Enter or a click choose; Escape closes the channel.
 use crate::game::Game;
-use crate::hud::{AMBER, DIM, GREEN, RED};
+use crate::hub::wrap;
+use crate::hud::{AMBER, DIM, GREEN, HOVER, RED, WIRE};
 use crate::mouse::Act;
 use vector_render::Framebuffer;
-
-const WIRE: u32 = 0x0040_7050;
-const HOVER: u32 = 0x00D0_FFD0;
-
-fn rect(fb: &mut Framebuffer, l: i32, t: i32, r: i32, b: i32, c: u32) {
-    let (l, t, r, b) = (l as f32, t as f32, r as f32, b as f32);
-    fb.line(l, t, r, t, c);
-    fb.line(r, t, r, b, c);
-    fb.line(r, b, l, b, c);
-    fb.line(l, b, l, t, c);
-}
-
-/// Words wrapped to `w` characters.
-fn wrap(text: &str, w: usize) -> Vec<String> {
-    let mut out = Vec::new();
-    let mut cur = String::new();
-    for word in text.split_whitespace() {
-        if !cur.is_empty() && cur.chars().count() + 1 + word.chars().count() > w {
-            out.push(std::mem::take(&mut cur));
-        }
-        if !cur.is_empty() {
-            cur.push(' ');
-        }
-        cur.push_str(word);
-    }
-    if !cur.is_empty() {
-        out.push(cur);
-    }
-    out
-}
 
 pub fn draw(fb: &mut Framebuffer, g: &Game) {
     fb.text(1, 1, "COMMUNICATIONS", AMBER);
@@ -44,7 +15,7 @@ pub fn draw(fb: &mut Framebuffer, g: &Game) {
     };
     // Portrait: the ship of the other party, in wireframe, with a little signal animation.
     let (cx, cy) = (150.0f32, 190.0f32);
-    rect(fb, 30, 70, 270, 310, WIRE);
+    fb.outline(30, 70, 270, 310, WIRE);
     match view.role {
         "CIVILISATION" => {
             // A settlement: a dome, towers and a few lights.

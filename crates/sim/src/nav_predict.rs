@@ -862,7 +862,7 @@ impl Sim {
     /// ship's effective specific impulse, and the rules' fuel multiplier).
     pub fn fuel_for_dv(&self, dv: f64) -> f64 {
         let isp = self.nav_isp();
-        self.ship.mass() * (1.0 - (-dv / (isp * G0)).exp())
+        crate::navigation::propellant_for(dv, isp, self.ship.mass())
     }
 
     /// Specific impulse (s) that the planner counts on: what the engines give, divided by the

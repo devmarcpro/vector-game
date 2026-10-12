@@ -244,6 +244,12 @@ impl Systems {
         }
     }
 
+    /// Rated radiating power (kW) of a ship: the hull itself plus its radiator modules. One law for
+    /// the live ship, the shipyard report and the infrared signature.
+    pub fn rated_radiation_kw(mass_dry: f64, radiate_kw: f64) -> f64 {
+        30.0 + 0.004 * mass_dry + radiate_kw
+    }
+
     /// Radiated power (kW) at temperature `t` for a rated `rated_kw`.
     pub fn radiated(rated_kw: f64, t: f64) -> f64 {
         let num = t.powi(4) - T_COLD.powi(4);
@@ -346,8 +352,7 @@ impl Systems {
         // Heat: reactors dump a fraction of what they produce; every consumed kW ends up as heat.
         let reactor_out = produced_for_demand.min(supply);
         let heat_in = reactor_out * REACTOR_WASTE + demand + act.ext_heat_kw;
-        let base_rad = 30.0 + 0.004 * stats.mass_dry;
-        let rated = base_rad + stats.radiate_kw;
+        let rated = Self::rated_radiation_kw(stats.mass_dry, stats.radiate_kw);
         let c_kj_per_k = (mass_total * 0.5).max(1.0);
         // Sub-step the explicit integration: the thermal time constant can be ~100 s.
         let n = (dt / 5.0).ceil().max(1.0);

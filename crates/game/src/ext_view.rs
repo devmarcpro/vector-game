@@ -437,6 +437,8 @@ mod tests {
         let data = Arc::new(GameData::load(&dir).expect("data"));
         let mut g = Game::new(data, 5);
         g.new_game(5);
+        // SUPPR skips the tutorial while it runs; the tests are about the view.
+        g.tut_step = None;
         g
     }
 

@@ -18,7 +18,7 @@ pub const BACKFILL_DAYS: f64 = 25.0;
 /// Sectors listened to around the ship, and the speed of the couriers (ly per day) beyond the
 /// ship's own sector.
 pub const HEARING_CELLS: i64 = 2;
-pub const COURIER_LY_DAY: f64 = 4.0;
+pub const COURIER_LY_DAY: f64 = 24.0 / crate::voyage::HOURS_PER_LY;
 pub const TAGS: [&str; 8] = [
     "POLITIQUE",
     "GUERRE",

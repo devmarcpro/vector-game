@@ -349,7 +349,7 @@ fn draw_ball(fb: &mut Framebuffer, cam: &Camera, v: &View, i: usize, col: u32, b
                 // Bands by latitude, each a little lighter or darker than the base colour.
                 let band = (y / 4) as i64;
                 let h = vector_core::hash_coord(seed, band, 3, 1);
-                let k = 1.1 + 1.0 * ((h >> 11) as f64 / (1u64 << 53) as f64) as f32;
+                let k = 1.1 + 1.0 * vector_core::unit(h) as f32;
                 let wobble = 1.0 + 0.06 * (((x as f32) * 0.2 + band as f32).sin());
                 let ch =
                     |s: u32| ((((col >> s) & 0xFF) as f32) * k * wobble).clamp(0.0, 255.0) as u32;

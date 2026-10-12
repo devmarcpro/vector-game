@@ -197,7 +197,7 @@ pub struct Tectonics {
 }
 
 fn unit(seed: u64, a: i64, b: i64, c: i64) -> f64 {
-    (hash_coord(seed, a, b, c) >> 11) as f64 / (1u64 << 53) as f64
+    vector_core::unit(hash_coord(seed, a, b, c))
 }
 
 fn dot(a: [f64; 3], b: [f64; 3]) -> f64 {

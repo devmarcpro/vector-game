@@ -12,7 +12,7 @@ pub const FLEET_SPEED: f64 = 1.2e5;
 pub const LOADING_TIME: f64 = 6.0 * 3600.0;
 pub const UNLOADING_TIME: f64 = 4.0 * 3600.0;
 /// Hours of travel per light year between systems, plus a fixed hop overhead.
-pub const FTL_HOURS_PER_LY: f64 = 6.0;
+pub const FTL_HOURS_PER_LY: f64 = crate::voyage::HOURS_PER_LY;
 pub const HOP_OVERHEAD: f64 = 12.0 * 3600.0;
 /// Credits burnt per light year for each tonne of ship capacity (drive fuel, tolls).
 pub const FTL_COST_PER_LY_TONNE: f64 = 2.5;

@@ -48,9 +48,7 @@ pub fn make_fam(generation: u32, h: u64) -> u64 {
     (u64::from(generation) << 56) | (h & 0x00FF_FFFF_FFFF_FFFF)
 }
 
-fn unit(h: u64) -> f64 {
-    (h >> 11) as f64 / (1u64 << 53) as f64
-}
+use vector_core::unit;
 
 pub fn children_count(fams: &Families, fam: u64) -> u8 {
     fams.get(&fam)

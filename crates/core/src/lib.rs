@@ -1,6 +1,11 @@
 //! Core math and deterministic RNG.
 use std::ops::{Add, Mul, Neg, Sub};
 
+/// A hash as a number uniform in [0,1): the one conversion for every seeded draw.
+pub fn unit(h: u64) -> f64 {
+    (h >> 11) as f64 / (1u64 << 53) as f64
+}
+
 /// The physical and calendar constants of the whole game: ONE definition each (SI units). Every
 /// crate re-exports or imports these instead of retyping them.
 pub mod units {
@@ -201,7 +206,7 @@ impl Rng {
     }
     /// Uniform in [0,1).
     pub fn f64(&mut self) -> f64 {
-        (self.next_u64() >> 11) as f64 / (1u64 << 53) as f64
+        unit(self.next_u64())
     }
     pub fn range(&mut self, lo: f64, hi: f64) -> f64 {
         lo + (hi - lo) * self.f64()

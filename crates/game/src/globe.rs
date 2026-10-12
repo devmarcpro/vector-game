@@ -161,7 +161,7 @@ fn noise2(x: f64, y: f64) -> f32 {
     let (fx, fy) = (fx * fx * (3.0 - 2.0 * fx), fy * fy * (3.0 - 2.0 * fy));
     let v = |dx: i64, dy: i64| {
         let h = vector_core::hash_coord(11, ix as i64 + dx, iy as i64 + dy, 9);
-        ((h >> 11) as f64 / (1u64 << 53) as f64) as f32 * 2.0 - 1.0
+        vector_core::unit(h) as f32 * 2.0 - 1.0
     };
     let a = v(0, 0) + (v(1, 0) - v(0, 0)) * fx;
     let b = v(0, 1) + (v(1, 1) - v(0, 1)) * fx;

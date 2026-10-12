@@ -266,7 +266,7 @@ fn crosshair(fb: &mut Framebuffer, dir: i32) {
 fn texture(pattern: &str, u: f64, v: f64, cell: (i32, i32)) -> f64 {
     let grain = |k: i64| {
         let h = vector_core::hash_coord(11, i64::from(cell.0), i64::from(cell.1), k);
-        (h >> 11) as f64 / (1u64 << 53) as f64
+        vector_core::unit(h)
     };
     match pattern {
         "pierre" => {
@@ -299,7 +299,7 @@ fn texture(pattern: &str, u: f64, v: f64, cell: (i32, i32)) -> f64 {
                 i64::from(cell.1) * 6 + gy,
                 2,
             );
-            0.78 + 0.4 * ((h >> 11) as f64 / (1u64 << 53) as f64)
+            0.78 + 0.4 * vector_core::unit(h)
         }
         _ => 0.95 + 0.1 * (1.0 - v),
     }

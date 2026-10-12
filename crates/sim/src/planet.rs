@@ -87,9 +87,7 @@ pub struct Catastrophe {
 /// Cells per weather region (weather is the same across a region on a given day).
 const REGION: usize = 8;
 
-pub(crate) fn unit(h: u64) -> f64 {
-    (h >> 11) as f64 / (1u64 << 53) as f64
-}
+pub(crate) use vector_core::unit;
 
 /// The surface map of a solid planet or moon of system (None for anything else).
 pub fn build_map(

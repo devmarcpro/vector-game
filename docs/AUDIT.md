@@ -47,6 +47,9 @@ Les stations, colonies et le vaisseau lui-même deviennent des lieux du moteur d
 ## 6. Propriété (règle du joueur, 2026-10-11)
 Beaucoup de services n'avaient pas de logique de lieu (de l'élevage dans une station étrangère, par exemple). Règle : un service n'existe que chez celui à qui il appartient ou qui le vend. Voir `docs/DECISIONS.md`, « Chacun chez soi ». Appliqué : élevage (enclos à bord, marché aux bêtes en station), ancres temporelles (vaisseau seulement), gestion de colonie (colonies seulement), marche à pied dans une station (seulement amarré). À vérifier encore : casino interdit par certaines mœurs, banque propre à une faction, relais seulement entre colonies à soi.
 
+## 8. Audit des doublons (2026-10-12)
+Passe complète sur la sim, les données et les vues : voir [AUDIT_DOUBLONS.md](AUDIT_DOUBLONS.md) (14 doublons corrigés : constantes physiques uniques (core::units), delta-v, chaleur du vaisseau, rareté des prix, aides de dessin ; 18 restants, classés par gravité). Les points 3, 4, 7 et 11 du tableau du §1 y sont repris (B14, B3, B4, B15).
+
 ## 7. Une chose, une représentation (2026-10-11)
 - Planètes : `globe.rs` partagé (surface F8 + pilotage). Restent à unifier : carte système (disque), codex (texte).
 - Nouvelles : un fil unique `news.rs` ; politique par secteurs (`politics.rs`), incidents d'entreprises (`incidents.rs`), événements de bourse ; ticker + onglet du journal.

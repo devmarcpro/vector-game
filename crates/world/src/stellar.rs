@@ -60,7 +60,7 @@ impl StarStage {
 }
 
 fn unit(seed: u64, a: i64, b: i64) -> f64 {
-    (hash_coord(seed, a, b, 0x57E1) >> 11) as f64 / (1u64 << 53) as f64
+    vector_core::unit(hash_coord(seed, a, b, 0x57E1))
 }
 
 /// A white-dwarf draw becomes a neutron star (one in four) or a black hole (one in twelve):

@@ -111,7 +111,7 @@ pub struct StarPhysics {
 }
 
 fn unit(seed: u64, k: i64) -> f64 {
-    (hash_coord(seed, k, 11, 3) >> 11) as f64 / (1u64 << 53) as f64
+    vector_core::unit(hash_coord(seed, k, 11, 3))
 }
 
 impl System {

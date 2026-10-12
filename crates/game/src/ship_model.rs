@@ -465,7 +465,7 @@ fn hurt(color: u32, hp: f32) -> u32 {
 }
 
 fn hash01(seed: u64, a: i64, b: i64) -> f32 {
-    ((hash_coord(seed, a, b, 7) >> 11) as f64 / (1u64 << 53) as f64) as f32
+    vector_core::unit(hash_coord(seed, a, b, 7)) as f32
 }
 
 /// Angles (rad) where outside fittings sit, in the order they are used.

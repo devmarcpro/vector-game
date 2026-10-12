@@ -7,6 +7,7 @@ mod console;
 mod cosmos_view;
 mod crew_net_view;
 mod dialogue_view;
+mod eco_view;
 mod expedition_view;
 mod ext_view;
 mod faction_view;
@@ -565,6 +566,69 @@ fn snapshot(path: &str, scene: &str, data: Arc<GameData>) {
             g.sim.time = 120.0 * 86_400.0;
             g.screen = Screen::Trading;
             g.trade_ui.tab = 0;
+        }
+        "assurance" | "titres" | "ventes" | "lignes" | "economie" => {
+            let (st, _) = g.sim.nearest_station().expect("station");
+            g.sim.spawn_near(st, g.sim.bodies[st].radius + 200.0);
+            g.sim.try_dock().expect("dock");
+            g.sim.credits = 300_000.0;
+            g.sim.time = 400.0 * 86_400.0;
+            let data = std::sync::Arc::clone(&g.data);
+            for (id, kg) in [("gold", 150.0), ("iron", 4000.0), ("food", 900.0)] {
+                if let Some(r) = data.resource_index(id) {
+                    g.sim.ship.cargo.add(&data, r, kg);
+                }
+            }
+            g.screen = Screen::Trading;
+            g.trade_ui.tab = match scene {
+                "assurance" => 4,
+                "titres" => 5,
+                "ventes" => 6,
+                "lignes" => 7,
+                _ => 8,
+            };
+            let gold = data.resource_index("gold").unwrap_or(0);
+            match scene {
+                "assurance" => {
+                    let _ = g.sim.buy_insurance(true);
+                    let _ = g.sim.declare_loss(gold, 20.0);
+                }
+                "titres" => {
+                    let iron = data.resource_index("iron").unwrap_or(0);
+                    g.click_eco(100);
+                    g.click_eco(120);
+                    g.trade_ui.sel = iron;
+                    g.click_eco(130);
+                    g.click_eco(131);
+                }
+                "ventes" => {
+                    g.trade_ui.sel = gold;
+                    g.click_eco(200);
+                    g.click_eco(240);
+                }
+                "lignes" => {
+                    let galaxy = g.sim.galaxy;
+                    if let Some(hub) = galaxy
+                        .nearby([0.0; 3], 25.0)
+                        .into_iter()
+                        .find(|s| !vector_sim::lanes::lines_at(&data, &galaxy, s.pos).is_empty())
+                    {
+                        g.sim.here_pos = hub.pos;
+                    }
+                    let lines = g.sim.lines_here();
+                    if let Some(lv) = lines.first() {
+                        for k in 0..lv.convoys.len() {
+                            if g.sim
+                                .finance_convoy(lv.line.id, lv.convoys[k].k, 1000.0)
+                                .is_ok()
+                            {
+                                break;
+                            }
+                        }
+                    }
+                }
+                _ => {}
+            }
         }
         "elevage" | "casino" => {
             let (st, _) = g.sim.nearest_station().expect("station");

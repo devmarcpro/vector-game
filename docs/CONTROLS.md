@@ -147,7 +147,13 @@ Par défaut AZERTY : tangage Z/S, lacet Q/D, roulis A/E. Options > Clavier bascu
 
 - Station : L elevage (B acheter, P reproduire avec le meilleur partenaire, H abattre, Gauche/Droite espece), A casino (Gauche/Droite jeu, Haut/Bas mise, +/- numero, Entree jouer).
 
-- Station : D courtage (Gauche/Droite onglet : rumeurs, arbitrage, cartels, appels d'offres, assurance ; Haut/Bas choix ; +/- mise ; Entree agir).
+- Station : D courtage (Gauche/Droite ou clic sur le nom de l'onglet : rumeurs, arbitrage, cartels, appels d'offres, assurance, titres, ventes, lignes, economie ; Haut/Bas choix, PageHaut/PageBas par 10 ; +/- mise ; Entree agit : assurer la soute, acheter 1000 CR d'obligations, miser sur le premier lot, financer le premier convoi ; chaque texte vert d'un onglet est un bouton cliquable).
+  - Assurance : [ASSURER LA SOUTE], [ASSURER SOUTE ET COQUE] (prime selon le risque reel et le dossier), [DECLARER LA SOUTE PERDUE] (controle : fraude = police annulee et amende).
+  - Titres : [ACHETER 1000/5000 CR] d'obligations, [VENDRE] ; fonds actions et matieres [ACHETER 1000 CR] / [VENDRE] ; options d'achat et de vente sur le bien choisi (fleches).
+  - Ventes : [MISER] sur un lot d'enchere (+/- pour la mise), [EXPERTISE] et [ACHETER] aux puces, [VENDRE TOUT AUX PUCES], [CAMPAGNE DE PUBLICITE 2000 CR] pour le bien choisi.
+  - Lignes : fleches pour choisir une ligne du systeme, [FINANCER 1000 CR] sur un convoi encore a quai.
+  - Economie : clic sur une juridiction pour son tableau et ses courbes (24 mois).
+- Contrats (C) : les croisieres et pelerinages ont plusieurs escales ; Entree a chaque escale (dans l'ordre), puis a l'arrivee.
 
 - Accueil (vol ou quai) : portails, dimensions et temps (Entree portail, A ancre, R remonter, X lever, +/- jours, S stase).
 

@@ -1704,9 +1704,14 @@ fn draw_contracts(fb: &mut Framebuffer, g: &Game) {
         );
         let name = if c.pax > 0 {
             format!(
-                "{} {}",
+                "{} {}{}",
                 c.pax,
-                vector_sim::economy::PAX_KINDS[usize::from(c.pax_kind.min(3))].0
+                vector_sim::economy::PAX_KINDS[usize::from(c.pax_kind.min(5))].0,
+                if c.legs.is_empty() {
+                    String::new()
+                } else {
+                    format!(" +{} ESCALES", c.legs.len())
+                }
             )
         } else {
             g.data.resources[c.resource].name.clone()

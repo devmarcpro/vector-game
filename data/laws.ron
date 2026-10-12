@@ -10,6 +10,7 @@
  (id:"chirurgie", name:"Chirurgie interdite", text:"Operer un corps tenu pour sacre", when:[("corps","<",-0.4)], fine:800.0, severity:1),
  (id:"clonage", name:"Clonage", text:"Cloner un organe ou un etre vivant", when:[("corps","<",-0.4),("tradition",">",0.65)], fine:800.0, severity:1),
  (id:"prelevement", name:"Prelevement d'organe", text:"Prelever un organe sur une personne", when:[("corps","<",-0.4),("honneur",">",0.8)], fine:1500.0, severity:2),
+ (id:"fraude", name:"Fraude a l'assurance", text:"Declarer un sinistre qui n'a pas eu lieu", when:[], fine:900.0, severity:2),
  (id:"mutation", name:"Modification genetique", text:"Modifier le genome d'une personne", when:[("tradition",">",0.5),("corps","<",-0.4)], fine:1000.0, severity:2),
  (id:"quarantaine", name:"Violation de quarantaine", text:"Accoster avec un equipage malade", when:[("autorite",">",0.3),("corps","<",-0.3)], fine:700.0, severity:2),
 ]

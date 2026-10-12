@@ -3,11 +3,13 @@ pub mod chemistry;
 pub mod dialogue;
 pub mod medical;
 pub mod ship;
+pub mod startopts;
 pub mod surprise;
 pub use medical::{BodyPart, Drug, WoundKind};
 pub mod projects;
 use serde::{Deserialize, Serialize};
 pub use ship::{ShipPart, ShipPlanDef};
+pub use startopts::StartData;
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 
@@ -1146,6 +1148,7 @@ pub struct GameData {
     pub religions: Vec<Religion>,
     pub cartels: Vec<Cartel>,
     pub scenarios: Vec<Scenario>,
+    pub start: StartData,
     pub dimensions: Vec<Dimension>,
     pub exotics: Vec<Exotic>,
     pub rogue_monsters: Vec<RogueMonster>,
@@ -1359,6 +1362,7 @@ impl GameData {
             religions: read(&dir.join("religions.ron"))?,
             cartels: read(&dir.join("cartels.ron"))?,
             scenarios: read(&dir.join("scenarios.ron"))?,
+            start: read(&dir.join("start_options.ron"))?,
             dimensions: read(&dir.join("dimensions.ron"))?,
             exotics: read(&dir.join("exotic.ron"))?,
             rogue_monsters: read(&dir.join("rogue_monsters.ron"))?,
@@ -1952,6 +1956,7 @@ impl GameData {
         self.validate_society()?;
         self.validate_cartels()?;
         self.validate_scenarios()?;
+        self.validate_start_options()?;
         self.validate_dimensions()?;
         self.validate_exotics()?;
         self.validate_materials()?;

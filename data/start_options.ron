@@ -1,0 +1,61 @@
+// Options de creation d'une partie (voir crates/sim/src/start_custom.rs).
+// ai_cores: noyau de calcul de l'IA du vaisseau (cost en points d'IA, power = puissance ajoutee, memory = memoire ajoutee).
+// ai_traits: personnalite de l'IA. bias = bonus (+) / malus (-) permanent par tache [pilotage, analyse, traduction, simulation, defense] ;
+//   alloc = repartition initiale du budget de calcul ; credits_mult = multiplicateur des credits de depart ; crew_morale = moral initial de l'equipage.
+// backgrounds: historique d'un membre d'equipage. cost en points d'historique (negatif = en donne). skills: (competence, bonus).
+//   credits: dette (-) ou economies (+) apportees ; reputation: ("home" ou faction, valeur).
+// systems / places: ou commence la partie (kind connu du code, valide au chargement).
+// presets: reglages de difficulte par categories (cles connues, valeurs numeriques ; 1/0 pour les booleens).
+(
+ ai_cores: [
+  (id:"standard", name:"Noyau standard", power:0.0, memory:0, cost:0, text:"Le noyau de serie : sobre, fiable, sans prouesse."),
+  (id:"renforce", name:"Noyau renforce", power:25.0, memory:2, cost:2, text:"Un calculateur militaire reconditionne : un quart de puissance en plus et deux unites de memoire."),
+  (id:"quantique", name:"Noyau quantique", power:60.0, memory:4, cost:4, text:"Un prototype de laboratoire : tres puissant, tres cher en points de depart."),
+ ],
+ ai_traits: [
+  (id:"equilibree", name:"Equilibree", bias:[0.0,0.0,0.0,0.0,0.0], alloc:[4,4,4,4,4], credits_mult:1.0, crew_morale:0.0,
+   text:"Aucun penchant : le calcul se repartit a parts egales, sans bonus ni malus."),
+  (id:"prudente", name:"Prudente", bias:[-0.05,-0.05,0.0,-0.05,0.20], alloc:[3,3,3,3,8], credits_mult:1.0, crew_morale:0.0,
+   text:"Toujours un pare-feu de plus. Defense nettement meilleure, mais l'IA calcule moins vite ses trajectoires et ses analyses."),
+  (id:"curieuse", name:"Curieuse", bias:[-0.05,0.15,0.10,0.0,-0.10], alloc:[3,6,6,3,2], credits_mult:1.0, crew_morale:0.0,
+   text:"Elle veut tout comprendre : analyse et traduction accelerees, au prix d'une defense negligee."),
+  (id:"mercantile", name:"Mercantile", bias:[0.05,-0.10,-0.05,0.15,0.0], alloc:[4,3,3,6,4], credits_mult:1.15, crew_morale:0.0,
+   text:"Elle voit des marges partout : 15 % de credits en plus au depart, simulation avantagee, mais peu de gout pour la science pure."),
+  (id:"protectrice", name:"Protectrice", bias:[0.05,-0.05,0.0,-0.10,0.10], alloc:[5,3,2,2,8], credits_mult:1.0, crew_morale:0.10,
+   text:"Elle veille sur l'equipage : moral initial plus haut, pilotage et defense prudents, calculs abstraits en retrait."),
+  (id:"audacieuse", name:"Audacieuse", bias:[0.15,0.0,-0.05,0.05,-0.15], alloc:[8,3,2,5,2], credits_mult:1.0, crew_morale:-0.05,
+   text:"Les trajectoires risquees ne lui font pas peur : pilotage superbe, defense faible, equipage un peu tendu."),
+ ],
+ backgrounds: [
+  (id:"aucun", name:"Aucun", cost:0, skills:[], credits:0.0, reputation:[], text:"Un parcours sans histoire."),
+  (id:"ancien_militaire", name:"Ancien militaire", cost:1, skills:[("combat",1.5)], credits:0.0, reputation:[("home",-5.0)], text:"Formation de combat solide, mais un passe qui ne plait pas a tout le monde."),
+  (id:"fils_de_marchand", name:"Fils de marchand", cost:1, skills:[("commerce",1.5)], credits:300.0, reputation:[], text:"Le sens des affaires et un petit magot de famille."),
+  (id:"etudiant_brillant", name:"Etudiant brillant", cost:1, skills:[("science",1.5)], credits:0.0, reputation:[], text:"Sorti premier de sa promotion, jamais sorti de son laboratoire."),
+  (id:"mineur_endette", name:"Mineur endette", cost:-1, skills:[("minage",1.0)], credits:-400.0, reputation:[], text:"Il travaille dur, mais une dette pese sur l'equipage : des credits en moins, un point d'historique en plus."),
+  (id:"fugitif", name:"Fugitif", cost:-1, skills:[("pilotage",1.0)], credits:0.0, reputation:[("home",-15.0)], text:"Recherche dans le territoire de depart : bon pilote, mauvaise reputation."),
+ ],
+ systems: [
+  (id:"aleatoire", name:"Aleatoire", text:"Le systeme habituel de la graine : une station, une ceinture, quelques planetes."),
+  (id:"solaire", name:"Etoile de type solaire", text:"Une etoile naine jaune ou voisine (classe G ou K) et des planetes."),
+  (id:"monde_habitable", name:"Monde habitable proche", text:"Un systeme ou une planete est deja tres hospitaliere."),
+  (id:"isole", name:"Isole", text:"Un systeme sans voisin proche : le saut le plus court sera long."),
+  (id:"dense", name:"Amas dense", text:"Au moins cinq etoiles a quatre annees-lumiere : la galaxie est a vos portes."),
+ ],
+ places: [
+  (id:"station", name:"Station", text:"Amarre a la station du systeme : l'etat normal d'un depart."),
+  (id:"orbite", name:"Orbite", text:"En orbite basse d'un monde, loin de la station."),
+  (id:"sol", name:"Sol", text:"Pose sur un monde solide, pret a decoller."),
+  (id:"espace_profond", name:"Espace profond", text:"Loin de tout corps, a la derive : il faudra rejoindre un monde."),
+  (id:"epave", name:"Epave", text:"Le vaisseau est abime et pose sur un monde : voir le scenario Naufrage."),
+ ],
+ presets: [
+  (id:"bac_a_sable", name:"Bac a sable", text:"Rien ne vous presse et rien ne vous menace : decouvrez a votre rythme.",
+   settings:[("damage",0.5),("ai_aggression",0.5),("event_freq",0.5),("epidemics",0.5),("surprises",1.0),("permadeath",0.0),("save_mode",0.0)]),
+  (id:"standard", name:"Standard", text:"L'equilibre voulu : risques mesures, sauvegarde libre.",
+   settings:[("damage",1.0),("ai_aggression",1.0),("event_freq",1.0),("epidemics",1.0),("surprises",1.0),("permadeath",0.0),("save_mode",0.0)]),
+  (id:"dur", name:"Dur", text:"Moins de marge : plus de degats, plus d'embuscades, sauvegarde seulement a quai.",
+   settings:[("damage",1.5),("ai_aggression",1.5),("event_freq",1.5),("epidemics",1.5),("fuel_use",1.5),("save_mode",1.0)]),
+  (id:"survie", name:"Survie", text:"Tout est contre vous : mort permanente, maladies, sauvegarde sur un seul emplacement a quai.",
+   settings:[("damage",2.0),("ai_aggression",2.0),("event_freq",2.0),("epidemics",2.0),("fuel_use",1.5),("build_cost",1.5),("permadeath",1.0),("save_mode",2.0)]),
+ ],
+)

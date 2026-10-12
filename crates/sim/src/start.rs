@@ -6,7 +6,6 @@
 use crate::crew::{generate_person, Person};
 use crate::design::ShipDesign;
 use crate::rules::Rules;
-use crate::scene::base_sim;
 use crate::{Sim, SHIP_RADIUS};
 use std::sync::Arc;
 use vector_core::{hash_coord, Vec3};
@@ -16,7 +15,7 @@ use vector_world::BodyKind;
 /// Candidates offered when composing the starting crew.
 pub const POOL: usize = 12;
 /// Most people a start may begin with.
-pub const MAX_START_CREW: usize = 6;
+pub const MAX_START_CREW: usize = 8;
 const DAY: f64 = 86_400.0;
 
 /// One person picked from the pool, and the post given to them.
@@ -36,6 +35,9 @@ pub struct StartConfig {
     /// None = the default crew of the scenario.
     pub crew: Option<Vec<CrewPick>>,
     pub rules: Rules,
+    /// Everything the creation flow customises beyond the scenario (see `start_custom`); the
+    /// default changes nothing.
+    pub custom: crate::start_custom::CustomStart,
 }
 
 impl StartConfig {
@@ -47,6 +49,7 @@ impl StartConfig {
             ship: 0,
             crew: None,
             rules: Rules::default(),
+            custom: Default::default(),
         }
     }
 }
@@ -54,6 +57,16 @@ impl StartConfig {
 /// The people one can pick from, the same for every scenario of a seed: the first ones are
 /// each good at one of the skills the posts use, the rest are drawn freely.
 pub fn crew_pool(data: &GameData, seed: u64) -> Vec<Person> {
+    crew_pool_for(data, seed, 0)
+}
+
+/// The pool of a seed after `salt` global re-rolls (0 = the plain pool).
+pub fn crew_pool_for(data: &GameData, seed: u64, salt: u32) -> Vec<Person> {
+    let seed = if salt == 0 {
+        seed
+    } else {
+        vector_core::mix64(seed ^ (u64::from(salt) << 20) ^ 0x5A17)
+    };
     let post_skills: Vec<usize> = data
         .roles
         .iter()
@@ -120,6 +133,16 @@ pub fn crew_valid(
     pool: &[Person],
     picks: &[CrewPick],
 ) -> Result<(), &'static str> {
+    crew_valid_with(data, sc.crew_points, pool, picks)
+}
+
+/// The same with a budget of `points` (the scenario's or the one the player chose).
+pub fn crew_valid_with(
+    data: &GameData,
+    points: u32,
+    pool: &[Person],
+    picks: &[CrewPick],
+) -> Result<(), &'static str> {
     if picks.is_empty() {
         return Err("il faut au moins une personne a bord");
     }
@@ -136,7 +159,7 @@ pub fn crew_valid(
         }
         cost += pick_cost(&pool[p.candidate]);
     }
-    if cost > sc.crew_points {
+    if cost > points {
         return Err("budget de points depasse");
     }
     Ok(())
@@ -253,7 +276,7 @@ impl Sim {
 
 /// The world of the system where a wreck lies: the most hospitable solid one with ground to
 /// walk on (breathable first, then thick air, then any rock).
-fn crash_body(sim: &Sim) -> Option<usize> {
+pub(crate) fn crash_body(sim: &Sim) -> Option<usize> {
     let score = |i: usize| -> Option<f64> {
         let map = sim.planet_map(i)?;
         sim.default_landing(i)?;
@@ -371,20 +394,85 @@ pub fn difficulty_rating(sc: &Scenario, rules: &Rules) -> u8 {
     (i32::from(sc.difficulty) + shift).clamp(1, 5) as u8
 }
 
+/// Whether a configuration begins as a wreck on the ground (the scenario's, unless a start place
+/// was chosen).
+pub fn is_wreck(data: &GameData, cfg: &StartConfig) -> bool {
+    match cfg.custom.world.place {
+        Some(i) => data.start.places.get(i).is_some_and(|p| p.id == "epave"),
+        None => data.scenarios[cfg.scenario].wreck,
+    }
+}
+
 /// Build the world a configuration describes.
-pub fn new_sim_with(cfg: &StartConfig, data: Arc<GameData>) -> Result<Sim, &'static str> {
+pub fn new_sim_with(cfg: &StartConfig, data: Arc<GameData>) -> Result<Sim, String> {
+    use crate::start_custom as sc_;
     let sc = data.scenarios.get(cfg.scenario).ok_or("scenario inconnu")?;
-    let (design, _) = build_design(&data, sc, cfg.ship).ok_or("vaisseau inconnu")?;
-    let pool = crew_pool(&data, cfg.seed);
+    let custom = &cfg.custom;
+    // The ship is checked first: a design too dear for its budget is refused.
+    sc_::ship_check(&data, sc, &cfg.rules, &custom.ship)?;
+    let pool = crew_pool_for(&data, cfg.seed, custom.crew.salt);
     let picks = match &cfg.crew {
         Some(p) => p.clone(),
         None => default_crew(&data, sc, &pool),
     };
-    crew_valid(&data, sc, &pool, &picks)?;
+    crew_valid_with(&data, sc_::crew_points(&data, cfg), &pool, &picks)?;
+    for e in &custom.crew.edits {
+        if picks.iter().any(|p| p.candidate == e.candidate) {
+            sc_::crew_edit_valid(&data, &pool[e.candidate], e)?;
+        }
+    }
+    sc_::contacts_valid(&data, &custom.crew.contacts)?;
+    if custom.world.system >= data.start.systems.len()
+        || custom
+            .world
+            .place
+            .is_some_and(|i| i >= data.start.places.len())
+    {
+        return Err("systeme ou lieu de depart inconnu".into());
+    }
+    for m in [
+        custom.world.epidemics,
+        custom.world.surprises,
+        custom.world.provisions,
+    ] {
+        if !(0.0..=5.0).contains(&m) {
+            return Err("frequence du monde hors de 0..5".into());
+        }
+    }
+    if custom.save_mode > 2 {
+        return Err("mode de sauvegarde inconnu".into());
+    }
 
-    let mut sim = base_sim(cfg.seed, Arc::clone(&data));
+    let galaxy = vector_world::galaxy::Galaxy::new(cfg.seed);
+    let (home, _) = sc_::home_for(&galaxy, &data.start.systems[custom.world.system].id);
+    let mut sim = crate::scene::base_sim_at(galaxy, &home, Arc::clone(&data));
     sim.set_rules(cfg.rules.clone());
     // The ship.
+    let design = match custom.ship.mode {
+        sc_::ShipMode::Scenario => {
+            build_design(&data, sc, cfg.ship)
+                .ok_or("vaisseau inconnu")?
+                .0
+        }
+        sc_::ShipMode::Catalog => sc_::catalog_design(&data, &custom.ship)?,
+        sc_::ShipMode::Design => {
+            let (bp, _) = sc_::plan_report(&data, &custom.ship.plan)?;
+            let hull = sim.register_custom(&bp);
+            let d = crate::shipwright::design_of(&sim.data, &bp, hull);
+            // The plan stays in the shipyard's drawers: it can be refitted and copied later.
+            let _ = sim.import_blueprint(&custom.ship.plan);
+            d
+        }
+    };
+    let data = Arc::clone(&sim.data);
+    if custom.ship.mode != sc_::ShipMode::Scenario {
+        sc_::flyable(&data, &design)?;
+    }
+    let labs = design
+        .modules(&data)
+        .filter(|(_, m)| m.science > 0.0)
+        .count() as u32;
+    sc_::ai_valid(&data, &custom.ai, labs)?;
     sim.ship.design = design;
     sim.ship.sys = crate::design::Systems::new(&sim.ship.design, 0.0);
     sim.ship.cargo.cap_mass = 0.0;
@@ -397,7 +485,7 @@ pub fn new_sim_with(cfg: &StartConfig, data: Arc<GameData>) -> Result<Sim, &'sta
     sim.credits = sc.credits;
     for (id, kg) in &sc.cargo {
         if let Some(r) = data.resource_index(id) {
-            sim.ship.cargo.add(&data, r, *kg);
+            sim.ship.cargo.add(&data, r, *kg * custom.world.provisions);
         }
     }
     for t in &sc.techs {
@@ -419,12 +507,28 @@ pub fn new_sim_with(cfg: &StartConfig, data: Arc<GameData>) -> Result<Sim, &'sta
             sim.wanted_until.insert(f, sim.time + sc.wanted_days * DAY);
         }
     }
-    // The crew.
+    // The crew, as picked and as edited.
     for p in &picks {
-        sim.crew.hire(&data, pool[p.candidate].clone(), p.role, 0.0);
+        let base = &pool[p.candidate];
+        let person = match custom.crew.edit_of(p.candidate) {
+            Some(e) => sc_::apply_edit(
+                &data,
+                base,
+                e,
+                vector_core::hash_coord(cfg.seed, p.candidate as i64, 0xED17, 1),
+            ),
+            None => base.clone(),
+        };
+        sim.crew.hire(&data, person, p.role, 0.0);
     }
-    // A wreck: down on a world, the ship broken, the survivors outside.
-    if sc.wreck {
+    // Where the ship begins.
+    let place = match custom.world.place {
+        Some(i) => data.start.places[i].id.as_str(),
+        None if sc.wreck => "epave",
+        None => "station",
+    };
+    if place == "epave" {
+        // A wreck: down on a world, the ship broken, the survivors outside.
         wreck_ship(&mut sim);
         if let Some(body) = crash_body(&sim) {
             let b = &sim.bodies[body];
@@ -440,7 +544,10 @@ pub fn new_sim_with(cfg: &StartConfig, data: Arc<GameData>) -> Result<Sim, &'sta
                 let _ = sim.rogue_land(body, cx, cy, party, false);
             }
         }
+    } else {
+        sc_::place_ship(&mut sim, place);
     }
+    sc_::apply_after(&mut sim, cfg);
     Ok(sim)
 }
 

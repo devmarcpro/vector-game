@@ -146,6 +146,14 @@ pub struct Colony {
     /// Species just seeded, to bring into the food web of the territory (not saved).
     #[serde(skip)]
     pub introduced: Vec<usize>,
+    /// Multiplier on spontaneous outbreaks, set by the sim from the world setting of the start
+    /// (not saved).
+    #[serde(skip, default = "one_f64")]
+    pub epi_freq: f64,
+}
+
+fn one_f64() -> f64 {
+    1.0
 }
 
 /// Which site tags a body carries.
@@ -945,6 +953,7 @@ impl Colony {
                 crowd: (crowd + city.crowd).min(0.5),
                 food_sat,
                 water_sat,
+                freq: self.epi_freq,
             },
             &mut messages,
         );
@@ -1186,6 +1195,7 @@ impl Sim {
             log: Vec::new(),
             works: crate::colony_works::Works::default(),
             caps: 0,
+            epi_freq: 1.0,
             terra: Some(crate::terraform::Terra::new(
                 &self.system,
                 i,
@@ -1391,9 +1401,11 @@ impl Sim {
             }
         }
         let mut advanced = Vec::new();
+        let epi_freq = self.custom.epidemics;
         for (ci, c) in self.colonies.iter_mut().enumerate() {
             let (before, t0) = (c.log.len(), c.last_tick);
             c.caps = caps;
+            c.epi_freq = epi_freq;
             c.update(&data, now);
             if c.last_tick > t0 {
                 advanced.push((ci, t0, c.last_tick));

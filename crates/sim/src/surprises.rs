@@ -430,7 +430,7 @@ impl Sim {
             if last.is_some_and(|d| (day - d) as f64 <= s.cooldown) {
                 continue;
             }
-            let p = (DAILY_CHANCE * s.weight).min(1.0);
+            let p = (DAILY_CHANCE * s.weight * self.custom.surprises).min(1.0);
             let roll = unit(hash_coord(self.galaxy.seed ^ 0x5B5E, place, day, i as i64));
             if roll >= p {
                 continue;
@@ -947,5 +947,23 @@ pub(crate) mod tests {
         assert_eq!(t.surprises.fired, s.surprises.fired);
         assert_eq!(t.surprises.count, s.surprises.count);
         assert_eq!(t.relations, s.relations);
+    }
+
+    #[test]
+    fn the_start_setting_scales_the_surprises() {
+        let days = |k: f64| {
+            let mut s = sim();
+            let f = s.faction.expect("faction");
+            s.docked = Some(0);
+            s.relations.set(Entity::faction(f), 0.9);
+            s.custom.surprises = k;
+            let mut ctx = s.surprise_ctx();
+            (1..600)
+                .filter(|&d| s.surprise_of_day(d, &mut ctx).is_some())
+                .count()
+        };
+        assert_eq!(days(0.0), 0, "none at all");
+        assert!(days(1.0) > 0);
+        assert!(days(4.0) > days(1.0), "more often when asked");
     }
 }

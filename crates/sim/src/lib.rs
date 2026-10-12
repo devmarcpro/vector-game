@@ -64,6 +64,7 @@ pub mod securities;
 pub mod shipwright;
 pub mod society;
 pub mod start;
+pub mod start_custom;
 pub mod surgery;
 pub mod surprises;
 pub mod terraform;
@@ -359,6 +360,9 @@ pub struct Sim {
     pub intrusion_day: i64,
     /// The AI's computing budget, software, ciphers and relations with other minds.
     pub mind: mind::Mind,
+    /// What the new-game flow chose beyond the rules (names, personality, world frequencies,
+    /// save mode); not saved yet (see docs/DECISIONS.md).
+    pub custom: start_custom::Runtime,
     /// Finds of digs and their disposal.
     pub archive: archive::Archive,
     /// Animals kept aboard, a counter for the dealer's stock, and the last day they were fed.
@@ -550,6 +554,7 @@ impl Sim {
             last_dividend_month: i64::MIN,
             intrusion_day: i64::MIN,
             mind: Default::default(),
+            custom: Default::default(),
             archive: Default::default(),
             herd: Vec::new(),
             herd_counter: 0,

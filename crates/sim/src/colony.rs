@@ -1096,8 +1096,18 @@ impl Sim {
             ("food", KIT_FOOD),
             ("water", KIT_WATER),
         ];
+        // Colonists asleep in the caissons count as the colonists of the kit (and all of them wake).
+        let kit_heads = (KIT_COLONISTS_KG / COLONIST_KG).ceil() as u32;
+        let colon = data
+            .resource_index("colonists")
+            .ok_or("donnees incompletes")?;
+        let dormant = self.crew.cryo.colonists >= kit_heads
+            && self.ship.cargo.kg[colon] + 1e-6 < KIT_COLONISTS_KG;
         for (id, kg) in need {
             let r = data.resource_index(id).ok_or("donnees incompletes")?;
+            if dormant && r == colon {
+                continue;
+            }
             if self.ship.cargo.kg[r] + 1e-6 < kg {
                 return Err("kit de colonisation incomplet (materiaux, colons, vivres, eau)");
             }
@@ -1105,9 +1115,16 @@ impl Sim {
         if self.credits < PERMIT_COST {
             return Err("permis de colonisation : fonds insuffisants");
         }
+        let mut founders_pop = KIT_COLONISTS_KG / COLONIST_KG;
         for (id, kg) in need {
             let r = data.resource_index(id).ok_or("donnees incompletes")?;
+            if dormant && r == colon {
+                continue;
+            }
             self.ship.cargo.remove(&data, r, kg);
+        }
+        if dormant {
+            founders_pop = f64::from(self.cryo_thaw_colonists()).max(1.0);
         }
         self.credits -= PERMIT_COST;
         let mut tags = site_tags(&cb);
@@ -1166,7 +1183,7 @@ impl Sim {
             charge: 0.0,
             founded: self.time,
             last_tick: self.time,
-            pop: KIT_COLONISTS_KG / COLONIST_KG,
+            pop: founders_pop,
             happiness: 0.7,
             unrest: 0.0,
             pest: 0.0,

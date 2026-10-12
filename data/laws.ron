@@ -14,4 +14,6 @@
  (id:"fraude", name:"Fraude a l'assurance", text:"Declarer un sinistre qui n'a pas eu lieu", when:[], fine:900.0, severity:2),
  (id:"mutation", name:"Modification genetique", text:"Modifier le genome d'une personne", when:[("tradition",">",0.5),("corps","<",-0.4)], fine:1000.0, severity:2),
  (id:"quarantaine", name:"Violation de quarantaine", text:"Accoster avec un equipage malade", when:[("autorite",">",0.3),("corps","<",-0.3)], fine:700.0, severity:2),
+ (id:"cryo_forcee", name:"Cryogenisation non consentie", text:"Endormir en cryo quelqu'un qui ne le veut pas", when:[], fine:3000.0, severity:3),
+ (id:"cryo_interdite", name:"Cryogenisation interdite", text:"Congeler un etre vivant pour des annees", when:[("corps","<",-0.4)], fine:900.0, severity:1),
 ]

@@ -203,6 +203,11 @@ pub struct Effective {
     pub food_per_day: f64,
     pub medbay: f64,
     pub workshop: f64,
+    /// Sleepers the powered cryo modules can hold, and their mean reliability and temperature (C),
+    /// weighted by capacity (see `cryo`).
+    pub cryo_cap: f64,
+    pub cryo_rel: f64,
+    pub cryo_temp: f64,
 }
 
 /// Per-ship dynamic systems state.
@@ -387,6 +392,12 @@ impl Systems {
             };
             e.food_per_day += m.food * k * light;
             e.medbay += m.medical * k;
+            if m.cryo > 0.0 {
+                let c = m.cryo * k;
+                e.cryo_cap += c;
+                e.cryo_rel += c * m.reliability * k.sqrt();
+                e.cryo_temp += c * m.cryo_temp;
+            }
             e.workshop += m.repair * k;
             e.shield_cap += m.shield * k * SHIELD_PTS_PER_MJ;
             e.armor += m.armor * k;
@@ -394,6 +405,10 @@ impl Systems {
             if k > 0.5 {
                 e.jump_range = f64::max(e.jump_range, m.jump_range);
             }
+        }
+        if e.cryo_cap > 0.0 {
+            e.cryo_rel /= e.cryo_cap;
+            e.cryo_temp /= e.cryo_cap;
         }
         e.isp = if e.thrust > 0.0 {
             thrust_isp / e.thrust

@@ -222,6 +222,15 @@ pub struct Crew {
     /// Monotony of the diet, 0..1: it climbs while the crew lives on stored rations and falls
     /// with fresh food from greenhouses, hydroponics and tanks; it weighs on the nerves.
     pub monotony: f32,
+    /// What the player arranged for the sleepers: scheduled wakes, watch rotation, colonists
+    /// asleep in bulk (see `cryo`).
+    pub cryo: crate::cryo::CryoPlan,
+    /// What the ship offers the sleepers this update, and who just woke (set and read by the
+    /// sim, never saved).
+    #[serde(skip)]
+    pub cryo_ctx: crate::cryo::CryoCtx,
+    #[serde(skip)]
+    pub woken: Vec<crate::cryo::Woken>,
     /// What the cabin exposes the crew to (set by the sim every update, never saved).
     #[serde(skip)]
     pub env: Exposure,
@@ -385,8 +394,22 @@ impl Crew {
     pub fn count(&self) -> usize {
         self.alive().count()
     }
+    /// The sleepers cost only a retainer.
     pub fn daily_payroll(&self) -> f64 {
-        self.alive().map(|p| p.salary).sum()
+        self.alive()
+            .map(|p| {
+                if p.body.cryo {
+                    p.salary * crate::cryo::RETAINER
+                } else {
+                    p.salary
+                }
+            })
+            .sum()
+    }
+
+    /// People who are not in cryostasis: the ones who breathe, eat and need a berth.
+    pub fn awake_count(&self) -> usize {
+        self.alive().filter(|p| !p.body.cryo).count()
     }
 
     pub fn log_event(&mut self, time: f64, text: String) {
@@ -470,8 +493,11 @@ impl Crew {
                     + p.implant_effect(data, &format!("skill:{}", data.skills[s].id))
             });
             let ws = 1.0 + p.trait_sum(data, "work_speed");
-            let e =
-                (0.6 + 0.1 * skill) * ws * f64::from(p.health) * (1.0 - 0.4 * f64::from(p.fatigue));
+            let e = (0.6 + 0.1 * skill)
+                * ws
+                * f64::from(p.health)
+                * (1.0 - 0.4 * f64::from(p.fatigue))
+                * (1.0 - 0.5 * f64::from(p.body.cryo_sick));
             best = Some(best.map_or(e, |b: f64| b.max(e)));
         }
         best.unwrap_or(NO_CREW_EFF).clamp(0.3, 1.8)
@@ -513,6 +539,7 @@ impl Crew {
         let hours = (h / 3600.0) as f32;
         let days = h / DAY;
         let n_alive = self.count();
+        let n_awake = self.awake_count();
 
         // Pay at day boundaries.
         let day = (now / DAY).floor() as i64;
@@ -562,7 +589,7 @@ impl Crew {
         }
 
         // Air.
-        let air_ok = !ctx.needs || (ctx.life_ok && ctx.life_capacity >= n_alive as f64);
+        let air_ok = !ctx.needs || (ctx.life_ok && ctx.life_capacity >= n_awake as f64);
         let air_before = self.air;
         self.air = if air_ok {
             (self.air + hours * 1.0).min(1.0)
@@ -577,6 +604,7 @@ impl Crew {
         // Food and water drawn from the hold.
         let appetite: f64 = self
             .alive()
+            .filter(|p| !p.body.cryo)
             .map(|p| 1.0 + p.trait_sum(data, "appetite"))
             .sum();
         let (mut food_frac, mut water_frac) = (1.0, 1.0);
@@ -594,7 +622,7 @@ impl Crew {
             } else {
                 1.0
             };
-            let need = n_alive as f64 * WATER_KG_PER_DAY * days * loss;
+            let need = n_awake as f64 * WATER_KG_PER_DAY * days * loss;
             let got = ctx.cargo.remove(data, water, need);
             water_frac = if need > 0.0 { (got / need) as f32 } else { 1.0 };
         }
@@ -638,13 +666,44 @@ impl Crew {
         let medicine = data.resource_index("medicine");
         let mut medicine_used = 0.0;
 
-        let crowd = if (n_alive as f64) > ctx.crew_cap {
-            0.1 + 0.03 * (n_alive as f64 - ctx.crew_cap)
+        let crowd = if (n_awake as f64) > ctx.crew_cap {
+            0.1 + 0.03 * (n_awake as f64 - ctx.crew_cap)
         } else {
             0.0
         };
         let mut deaths: Vec<usize> = Vec::new();
         let mut log_lines: Vec<String> = Vec::new();
+        // Sleepers: the first ones (by date of sleep) fill the places that are powered; the
+        // others warm up. The caissons eat spare parts, or fail four times as often.
+        let slots = self.cryo_ctx.slots(ctx.medbay);
+        let mut sleepers: Vec<usize> = (0..self.members.len())
+            .filter(|&i| self.members[i].alive && self.members[i].body.cryo)
+            .collect();
+        sleepers.sort_by(|&a, &b| {
+            self.members[a]
+                .body
+                .cryo_since
+                .total_cmp(&self.members[b].body.cryo_since)
+                .then(a.cmp(&b))
+        });
+        let held_n = sleepers.len().min(slots);
+        let held_of = |idx: usize| {
+            sleepers
+                .iter()
+                .position(|&i| i == idx)
+                .is_some_and(|r| r < slots)
+        };
+        let maintained = if held_n == 0 || self.cryo_ctx.cap == 0 {
+            true
+        } else if let Some(sp) = data.resource_index("spare_parts") {
+            let need = held_n as f64 * self.cryo_ctx.upkeep * days;
+            need <= 0.0 || ctx.cargo.remove(data, sp, need) >= need * 0.999
+        } else {
+            true
+        };
+        let rel_now = self.cryo_ctx.reliability();
+        let rad_now = env0.rad_sv_day;
+        let mut woken: Vec<crate::cryo::Woken> = Vec::new();
         let mut contagion: Vec<(usize, f64)> = Vec::new();
 
         for (idx, p) in self.members.iter_mut().enumerate() {
@@ -674,20 +733,35 @@ impl Crew {
                 p.cyber_ok = true;
             }
             if p.body.cryo {
-                // Frozen: no needs, no age, no wounds. Without the powered infirmary it thaws badly.
-                let _ = p.body.step(
-                    data,
-                    &Exposure::CABIN,
-                    &Care::default(),
+                // Asleep: see `cryo`. No needs, slow ageing, wounds and diseases stand still,
+                // radiation adds up; the caisson may fail and the waking is a roll.
+                let cx = crate::cryo::SleepCx {
+                    held: held_of(idx),
                     hours,
-                    ctx.seed,
-                    now as i64,
-                );
-                if ctx.medbay <= 0.0 {
-                    p.health = sat(p.health - 0.03 * hours);
-                    if p.health <= 0.0 {
+                    days,
+                    now,
+                    seed: ctx.seed,
+                    rad_sv_day: rad_now,
+                    rel: rel_now,
+                    maintained,
+                    medic_skill,
+                    medbay: ctx.medbay,
+                };
+                let since = p.body.cryo_since;
+                match crate::cryo::tick_sleeper(p, &cx) {
+                    crate::cryo::Verdict::Sleeps => {}
+                    crate::cryo::Verdict::Died(cause) => {
                         deaths.push(idx);
-                        death_causes.push((idx, "decongelation"));
+                        death_causes.push((idx, cause));
+                    }
+                    crate::cryo::Verdict::Woke(line) => {
+                        log_lines.push(line);
+                        woken.push(crate::cryo::Woken {
+                            id: p.id,
+                            name: p.name.clone(),
+                            since,
+                            years: ((now - since).max(0.0)) / (365.25 * DAY),
+                        });
                     }
                 }
                 continue;
@@ -764,6 +838,12 @@ impl Crew {
                     death_causes.push((idx, "vieillesse"));
                 }
             }
+            // The after-effects of a waking.
+            if p.body.cryo_sick > 0.0 {
+                p.fatigue = sat(p.fatigue + 0.03 * p.body.cryo_sick * hours);
+                p.stress = sat(p.stress + 0.02 * p.body.cryo_sick * hours);
+                p.body.cryo_sick = (p.body.cryo_sick - 0.15 * days as f32).max(0.0);
+            }
             // Needs.
             p.fatigue = sat(p.fatigue
                 + hours
@@ -776,7 +856,7 @@ impl Crew {
                 sat(p.hunger
                     + hours * ((1.0 - food_frac) * 0.04 * bo.hunger_mult - food_frac * 0.15));
             p.thirst = sat(p.thirst + hours * ((1.0 - water_frac) * 0.08 - water_frac * 0.3));
-            let others = (n_alive as f32 - 1.0).min(2.0) / 2.0;
+            let others = (n_awake as f32 - 1.0).min(2.0) / 2.0;
             p.social = sat(p.social + hours * (0.02 * (1.0 + t_social).max(0.1) - 0.018 * others));
             let stress_target = (0.1
                 + 0.1 * monotony
@@ -953,7 +1033,7 @@ impl Crew {
         for p in self
             .members
             .iter()
-            .filter(|p| p.alive && p.on_duty(now) && p.disease.is_none())
+            .filter(|p| p.alive && !p.body.cryo && p.on_duty(now) && p.disease.is_none())
         {
             let rid = &data.roles[p.role].id;
             if rid == "engineer" || rid == "mechanic" {
@@ -990,8 +1070,16 @@ impl Crew {
                     .all(|(o, v)| !o.vital || *v > 0.05)
                     && brain.is_none_or(|b| p.organs[b] > 0.2);
                 let mut r = Rng::new(hash_coord(ctx.seed, i64::from(p.id), now as i64, 29));
-                let chance = if matches!(cause, Some("vieillesse" | "decongelation"))
-                    || !intact
+                let chance = if matches!(
+                    cause,
+                    Some(
+                        "vieillesse"
+                            | "decongelation"
+                            | "cristaux de glace"
+                            | "defaillance du caisson"
+                            | "reanimation ratee"
+                    )
+                ) || !intact
                     || !medic_on_duty
                 {
                     0.0
@@ -1065,7 +1153,7 @@ impl Crew {
         let mut quits: Vec<usize> = Vec::new();
         let mut rng = Rng::new(hash_coord(ctx.seed, now as i64, n_alive as i64, 3));
         for ai in 0..self.members.len() {
-            if !self.members[ai].alive {
+            if !self.members[ai].alive || self.members[ai].body.cryo {
                 continue;
             }
             let temper = self.members[ai].trait_sum(data, "temper");
@@ -1075,7 +1163,7 @@ impl Crew {
             }
             // Pick a partner and the eligible events.
             let others: Vec<usize> = (0..self.members.len())
-                .filter(|&i| i != ai && self.members[i].alive)
+                .filter(|&i| i != ai && self.members[i].alive && !self.members[i].body.cryo)
                 .collect();
             let bi = if others.is_empty() {
                 None
@@ -1146,6 +1234,7 @@ impl Crew {
                 log_lines.push(render(data, "quit", u64::from(p.id), &p.name, "", &[]));
             }
         }
+        self.woken.extend(woken);
         for t in log_lines {
             self.log_event(now, t);
         }

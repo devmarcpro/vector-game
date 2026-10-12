@@ -85,4 +85,5 @@
  (id:"dark_matter", name:"Matiere noire condensee", category:"exotic", density:12000.0, value:90000.0),
  (id:"exotic_matter", name:"Matiere exotique", category:"exotic", density:4000.0, value:400000.0),
  (id:"nanites", name:"Nanites", category:"exotic", density:2200.0, value:30000.0),
+ (id:"cryoprotectant", name:"Cryoprotecteur", category:"consumable", density:1100.0, value:140.0),
 ]

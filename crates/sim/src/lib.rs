@@ -22,6 +22,7 @@ pub mod colony_works;
 pub mod combat;
 pub mod companies;
 pub mod crew;
+pub mod cryo;
 pub mod design;
 pub mod dialogue;
 pub mod ecology;
@@ -908,6 +909,7 @@ impl Sim {
         }
         self.ship.refresh_stats(&self.data);
         self.update_crew();
+        self.cryo_tick();
         self.update_colonies();
         self.epidemic_tick();
         self.update_fleet();
@@ -950,6 +952,7 @@ impl Sim {
             accel_g: accel,
             ..crate::body::Exposure::CABIN
         };
+        self.crew.cryo_ctx = self.cryo_ctx_now();
         let mut ctx = CrewCtx {
             data: &data,
             cargo: &mut self.ship.cargo,

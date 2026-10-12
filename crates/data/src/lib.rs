@@ -124,6 +124,13 @@ pub struct Module {
     pub decoy: f64,
     /// Active sensor: radiated power (kW) that lights up the ship for any passive sensor.
     pub sensor: f64,
+    /// Cryostasis: sleepers one powered module holds, its service temperature (C, below zero),
+    /// its reliability 0..1 (the chance a long sleep ends well) and the spare parts (kg) it
+    /// eats per sleeper and per day.
+    pub cryo: f64,
+    pub cryo_temp: f64,
+    pub reliability: f64,
+    pub cryo_upkeep: f64,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -1596,6 +1603,18 @@ impl GameData {
             }
             if !(1..=4).contains(&m.size) || m.mass <= 0.0 || m.hp <= 0.0 || m.cost < 0.0 {
                 return bad(format!("module invalide: {}", m.id));
+            }
+            if m.cryo < 0.0
+                || m.cryo_upkeep < 0.0
+                || m.cryo > 0.0
+                    && (m.cryo_temp >= -20.0
+                        || !(0.5..=1.0).contains(&m.reliability)
+                        || m.power >= 0.0)
+            {
+                return bad(format!(
+                    "caisson cryo {}: froid (temperature < -20 C), fiabilite 0.5..1 et puissance consommee requis",
+                    m.id
+                ));
             }
             if !m.weapon.is_empty() {
                 if !["beam", "kinetic", "missile", "mine", "pd", "ecm", "decoy"]

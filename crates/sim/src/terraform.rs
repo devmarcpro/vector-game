@@ -1311,10 +1311,7 @@ pub(crate) mod tests {
     use vector_world::generate_system;
 
     pub(crate) fn data() -> Arc<GameData> {
-        Arc::new(
-            GameData::load(&std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../data"))
-                .expect("data"),
-        )
+        crate::test_support::data()
     }
 
     /// The first solid world (over many systems) that fits `pred`, with its map.

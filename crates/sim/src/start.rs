@@ -578,13 +578,9 @@ pub fn new_sim_with(cfg: &StartConfig, data: Arc<GameData>) -> Result<Sim, Strin
 mod tests {
     use super::*;
     use crate::ShipInput;
-    use std::path::Path;
 
     fn data() -> Arc<GameData> {
-        Arc::new(
-            GameData::load(&Path::new(env!("CARGO_MANIFEST_DIR")).join("../../data"))
-                .expect("data"),
-        )
+        crate::test_support::data()
     }
 
     fn cfg(d: &GameData, id: &str, seed: u64) -> StartConfig {

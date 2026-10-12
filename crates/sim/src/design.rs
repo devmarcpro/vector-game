@@ -446,10 +446,9 @@ impl Systems {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::path::Path;
 
     fn data() -> GameData {
-        GameData::load(&Path::new(env!("CARGO_MANIFEST_DIR")).join("../../data")).expect("data")
+        crate::test_support::load()
     }
 
     fn setup(d: &GameData) -> (ShipDesign, ShipStats, Systems) {

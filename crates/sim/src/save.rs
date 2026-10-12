@@ -576,10 +576,7 @@ mod tests {
     use crate::{ShipInput, SIM_DT};
 
     fn data() -> Arc<GameData> {
-        Arc::new(
-            GameData::load(&std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../data"))
-                .expect("data"),
-        )
+        crate::test_support::data()
     }
 
     #[test]

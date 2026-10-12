@@ -183,7 +183,16 @@ const RESIST_THR: f64 = 0.4;
 /// Radiation reaching the ground, 0..1: the air shields (the column halves it about every
 /// 0.1 bar), so an airless world is bathed in it and a thick air stops it.
 pub fn surface_radiation(pressure: f64) -> f64 {
-    (-pressure.max(0.0) * 6.9).exp()
+    radiation_through_air(pressure, vector_core::units::G0)
+}
+
+/// Share of the particle radiation that crosses an atmosphere of `pressure` bar on a world of
+/// surface gravity `gravity` (m/s^2): the column of air above (pressure / gravity, in g/cm^2)
+/// against a stopping length of 150 g/cm^2. The one law of the ground dose, the biosphere and
+/// the dose in flight under an atmosphere (audit B6).
+pub fn radiation_through_air(pressure: f64, gravity: f64) -> f64 {
+    let column = pressure.max(0.0) * 1.0e5 / gravity.max(0.05) * 0.1;
+    (-column / 150.0).exp()
 }
 
 /// One isolated population (a species in a biome of a world) and how far it has gone from its
@@ -457,10 +466,7 @@ mod tests {
     use std::sync::Arc;
 
     fn data() -> Arc<GameData> {
-        Arc::new(
-            GameData::load(&std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../data"))
-                .expect("data"),
-        )
+        crate::test_support::data()
     }
 
     fn sp(d: &GameData, id: &str) -> usize {

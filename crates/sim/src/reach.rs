@@ -15,7 +15,9 @@ mod tests {
 
     #[test]
     fn the_radii_are_nested_and_shared() {
-        assert!(SEEN_LY < LOCAL_LY && LOCAL_LY < REGION_LY && REGION_LY < SECTOR_LY);
+        const {
+            assert!(SEEN_LY < LOCAL_LY && LOCAL_LY < REGION_LY && REGION_LY < SECTOR_LY);
+        }
         assert_eq!(crate::bourse::REGION_LY, REGION_LY);
         assert_eq!(crate::surprises::SHOCK_RADIUS_LY, REGION_LY);
         assert_eq!(crate::exotic_field::QCOMM_RANGE_LY, REGION_LY);

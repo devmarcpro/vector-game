@@ -619,22 +619,14 @@ impl Sim {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::scene::new_sim;
     use std::sync::Arc;
 
     fn data() -> Arc<GameData> {
-        Arc::new(
-            GameData::load(&std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../data"))
-                .expect("data"),
-        )
+        crate::test_support::data()
     }
 
     fn docked() -> Sim {
-        let mut s = new_sim(5, data());
-        let (st, _) = s.nearest_station().expect("station");
-        s.spawn_near(st, s.bodies[st].radius + 200.0);
-        s.try_dock().expect("dock");
-        s.credits = 1.0e6;
+        let mut s = crate::test_support::docked_sim();
         s.time = 100.0 * DAY;
         s.ship.cargo.cap_mass = 1.0e7;
         s.ship.cargo.cap_vol = 1.0e7;

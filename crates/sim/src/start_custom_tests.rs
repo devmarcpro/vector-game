@@ -3,13 +3,10 @@
 use super::*;
 use crate::start::{self, new_sim_with};
 use crate::ShipInput;
-use std::path::Path;
 use std::sync::Arc;
 
 fn data() -> Arc<GameData> {
-    Arc::new(
-        GameData::load(&Path::new(env!("CARGO_MANIFEST_DIR")).join("../../data")).expect("data"),
-    )
+    crate::test_support::data()
 }
 
 fn plan_text(d: &GameData, id: &str) -> String {

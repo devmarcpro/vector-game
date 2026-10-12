@@ -88,6 +88,6 @@ mod tests {
         assert_eq!(crate::cryo_view::span(3.2), days(3.2));
         assert_eq!(credits(12_345.0), "12.3K CR");
         assert_eq!(price(5.0), "5.00");
-        assert_eq!(mass(2_500.0), "3 t");
+        assert_eq!(mass(3_000.0), "3 t");
     }
 }

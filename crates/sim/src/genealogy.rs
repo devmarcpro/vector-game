@@ -509,8 +509,7 @@ mod tests {
     use super::*;
 
     fn data() -> GameData {
-        GameData::load(&std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../data"))
-            .expect("data")
+        crate::test_support::load()
     }
 
     fn kin(i: u64) -> Kin {

@@ -535,8 +535,7 @@ mod tests {
     use std::sync::Arc;
 
     fn data() -> GameData {
-        GameData::load(&std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../data"))
-            .expect("data")
+        crate::test_support::load()
     }
 
     fn sim() -> Sim {

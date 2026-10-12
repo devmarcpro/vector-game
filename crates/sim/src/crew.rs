@@ -1396,7 +1396,7 @@ impl Crew {
                     } else {
                         parts[(mix64(h) % parts.len() as u64) as usize]
                     };
-                    p.body.add_wound(data, &data.wounds[k].id, part, vf as f32);
+                    p.body.add_wound(data, &data.wounds[k].id, part, vf);
                 }
             }
             f if f.starts_with("disease:") => {
@@ -1461,10 +1461,9 @@ pub fn hire_cost(p: &Person) -> f64 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::path::Path;
 
     fn data() -> GameData {
-        GameData::load(&Path::new(env!("CARGO_MANIFEST_DIR")).join("../../data")).expect("data")
+        crate::test_support::load()
     }
 
     fn cargo_with(d: &GameData, items: &[(&str, f64)]) -> Cargo {

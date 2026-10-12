@@ -1038,10 +1038,7 @@ mod tests {
     use vector_world::{generate_system, BodyKind};
 
     fn data() -> Arc<GameData> {
-        Arc::new(
-            GameData::load(&std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../data"))
-                .expect("data"),
-        )
+        crate::test_support::data()
     }
 
     /// A sim where the pirates exist (unclaimed space with a belt) and the ship is armed.
@@ -1528,7 +1525,9 @@ mod tests {
             "{} vs {expect}",
             s.credits
         );
-        assert!(crate::trading::REBUILD_SHARE_INSURED < crate::trading::REBUILD_SHARE);
+        const {
+            assert!(crate::trading::REBUILD_SHARE_INSURED < crate::trading::REBUILD_SHARE);
+        }
     }
 
     #[test]

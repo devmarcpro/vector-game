@@ -958,8 +958,7 @@ mod tests {
     use super::*;
 
     fn data() -> GameData {
-        GameData::load(&std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../data"))
-            .expect("data loads")
+        crate::test_support::load()
     }
 
     fn run(

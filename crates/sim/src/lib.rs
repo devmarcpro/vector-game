@@ -73,6 +73,8 @@ pub mod start_custom;
 pub mod surgery;
 pub mod surprises;
 pub mod terraform;
+#[cfg(test)]
+mod test_support;
 pub mod trading;
 pub mod treat;
 pub mod voyage;
@@ -1883,10 +1885,7 @@ mod tests {
     use vector_world::generate_system;
 
     fn data() -> Arc<GameData> {
-        Arc::new(
-            GameData::load(&std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../data"))
-                .expect("data"),
-        )
+        crate::test_support::data()
     }
 
     #[test]

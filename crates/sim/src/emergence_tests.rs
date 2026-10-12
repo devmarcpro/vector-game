@@ -11,10 +11,7 @@ use vector_data::surprise::{Cmp, Cond};
 use vector_data::GameData;
 
 fn data() -> Arc<GameData> {
-    Arc::new(
-        GameData::load(&std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../data"))
-            .expect("data"),
-    )
+    crate::test_support::data()
 }
 
 fn sim() -> Sim {

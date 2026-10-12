@@ -429,12 +429,13 @@ impl Sim {
             if self.system.star_class == StarClass::N {
                 dose *= 4.0;
             }
-            if self.docked.is_some() {
-                dose *= crate::navigation::DOCKED_COVER * 2.0;
-            } else if self.ship.sys.shield_pts > 0.3 * self.effective.shield_cap.max(1.0) {
-                dose *= 0.15;
+            // The same cover as any other dose (docked, behind the shield, behind the plating).
+            dose *= self.dose_protection();
+            if self.docked.is_none() && self.ship.sys.shield_pts > 0.0 {
                 self.ship.sys.shield_pts *= 0.5;
             }
+            // One counter of dose: the dosimeter of the ship reads the flares as well.
+            self.ship.sys.dose_gy += dose;
             self.irradiate(dose);
             if dose > 0.3 {
                 let pick = hash_coord(self.system.seed, day_hash(t), 3, 67);
@@ -563,10 +564,7 @@ mod tests {
     use vector_world::generate_system;
 
     fn data() -> Arc<GameData> {
-        Arc::new(
-            GameData::load(&std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../data"))
-                .expect("data"),
-        )
+        crate::test_support::data()
     }
 
     fn sim_with_anomaly(kind: Option<AnomalyKind>) -> (Sim, usize) {

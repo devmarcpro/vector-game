@@ -357,8 +357,7 @@ mod tests {
     use vector_data::GameData;
 
     fn data() -> Arc<GameData> {
-        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../data");
-        Arc::new(GameData::load(&dir).expect("data loads"))
+        crate::test_support::data()
     }
 
     /// A ship docked with room in the hold and credits.

@@ -1788,7 +1788,9 @@ mod tests {
         let mut bad = Vec::new();
         // Each screen in its plain state, with the help open, with the tutorial line, and with the
         // pointer resting on a zone (the tooltip).
-        for variant in 0..4 {
+        for variant in 0..8 {
+            g.settings.ui_new = variant < 4;
+            let variant = variant % 4;
             for s in crate::hub::ALL_SCREENS {
                 if matches!(s, Screen::NewGame | Screen::Destroyed) {
                     continue;

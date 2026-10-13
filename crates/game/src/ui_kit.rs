@@ -20,6 +20,10 @@ type Xf = (f32, i32, i32);
 thread_local! {
     /// Projection toile -> fenetre active pendant le dessin d'un ecran : (echelle, decalage x, y).
     static XF: std::cell::Cell<Option<Xf>> = const { std::cell::Cell::new(None) };
+    /// Decalage (x, y) de la zone de contenu classique dans la toile : ajoute aux zones cliquables.
+    static OFF: std::cell::Cell<(i32, i32)> = const { std::cell::Cell::new((0, 0)) };
+    /// Zone de contenu des ecrans classiques habilles du style NOUVEAU.
+    static SUB: std::cell::RefCell<Option<Framebuffer>> = const { std::cell::RefCell::new(None) };
     /// La toile, gardee d'une image a l'autre (aucune allocation par image).
     static CANVAS: std::cell::RefCell<Option<Framebuffer>> = const { std::cell::RefCell::new(None) };
     /// Table d'echantillonnage horizontale du dernier format de fenetre.
@@ -28,6 +32,8 @@ thread_local! {
 
 /// Un rectangle de la toile (x0, y0, x1, y1) vu depuis la fenetre : pour les zones cliquables.
 pub fn xf_rect(r: (i32, i32, i32, i32)) -> (i32, i32, i32, i32) {
+    let (dx, dy) = OFF.with(std::cell::Cell::get);
+    let r = (r.0 + dx, r.1 + dy, r.2 + dx, r.3 + dy);
     match XF.with(std::cell::Cell::get) {
         None => r,
         Some((s, ox, oy)) => (
@@ -108,6 +114,47 @@ fn blit(dst: &mut Framebuffer, src: &Framebuffer, (ox, oy, dw, dh): (usize, usiz
                 let x0 = x0 as usize;
                 let x1 = (x0 + 1).min(src.w - 1);
                 *d = lerp(lerp(r0[x0], r0[x1], wx), lerp(r1[x0], r1[x1], wx), wy);
+            }
+        }
+    });
+}
+
+/// Contenu classique (dessin en cellules) habille du style NOUVEAU : `f` dessine l'ecran sur une
+/// zone de `w` x `h` placee en (x, y) de la toile ; ses pixels non noirs sont recopies, ses zones
+/// cliquables decalees. Aucune allocation apres la premiere image.
+pub fn draw_hosted(
+    fb: &mut Framebuffer,
+    g: &Game,
+    (x, y, w, h): (i32, i32, usize, usize),
+    f: fn(&mut Framebuffer, &Game),
+) {
+    SUB.with(|c| {
+        let mut slot = c.borrow_mut();
+        let sub = slot.get_or_insert_with(|| Framebuffer::new(w, h));
+        if sub.w != w || sub.h != h {
+            *sub = Framebuffer::new(w, h);
+        }
+        sub.clear();
+        sub.clipped = 0;
+        sub.clipped_first = None;
+        OFF.with(|o| o.set((x, y)));
+        f(sub, g);
+        OFF.with(|o| o.set((0, 0)));
+        fb.clipped += sub.clipped;
+        if fb.clipped_first.is_none() {
+            fb.clipped_first = sub.clipped_first.take();
+        }
+        for row in 0..h {
+            let dy = y + row as i32;
+            if dy < 0 || dy >= fb.h as i32 {
+                continue;
+            }
+            for col in 0..w {
+                let p = sub.px[row * w + col];
+                let dx = x + col as i32;
+                if p != 0 && dx >= 0 && dx < fb.w as i32 {
+                    fb.px[dy as usize * fb.w + dx as usize] = p;
+                }
             }
         }
     });

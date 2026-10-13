@@ -37,9 +37,11 @@ pub fn refresh(g: &mut Game) {
 /// Does the NEW style draw the current state of the game? (Other states keep their classic look
 /// until their own new drawing exists.)
 pub fn handles(g: &Game) -> bool {
-    if !g.settings.ui_new {
-        return false;
-    }
+    g.settings.ui_new && (native(g) || shell_screen(g.screen))
+}
+
+/// States that have their own new drawing.
+fn native(g: &Game) -> bool {
     match g.screen {
         Screen::Hub | Screen::Dashboard => true,
         Screen::Colony => {
@@ -56,8 +58,77 @@ pub fn handles(g: &Game) -> bool {
     }
 }
 
+/// Screens drawn by the classic code inside the new style's shell (themed background, header,
+/// command bar). The full-screen maps, the editor, the cockpit and the first menus keep their own.
+fn shell_screen(s: Screen) -> bool {
+    !matches!(
+        s,
+        Screen::Flight
+            | Screen::Pause
+            | Screen::MainMenu
+            | Screen::NewGame
+            | Screen::Dialogue
+            | Screen::Cosmos
+            | Screen::Galaxy
+            | Screen::Designer
+            | Screen::Rogue
+            | Screen::Destroyed
+    )
+}
+
+/// Header of a screen: (title, breadcrumb) and its accent colour.
+fn heading(s: Screen) -> (String, String, u32) {
+    use crate::hub::{place_of, Place, SPACES};
+    match place_of(s) {
+        Place::Space(i) => {
+            let sp = &SPACES[i.min(7)];
+            let label = sp
+                .entries
+                .iter()
+                .find(|e| e.target == Some(s))
+                .map_or(sp.name, |e| e.label);
+            (
+                label.to_uppercase(),
+                format!("ESPACE {}", sp.name.to_uppercase()),
+                SPACE_COLORS[i.min(7)],
+            )
+        }
+        Place::System => (format!("{s:?}").to_uppercase(), "SYSTEME".into(), SPACE_COLORS[0]),
+    }
+}
+
+/// A classic screen inside the shell of the new style.
+fn draw_shell(fb: &mut Framebuffer, g: &Game) {
+    let (title, crumb, accent) = heading(g.screen);
+    let th = theme(accent);
+    backdrop(fb, &th);
+    topbar(fb, g, &th, &title, &crumb);
+    let (x, y, w, h) = (6, 32, LW - 12, LH - 32 - 26);
+    fill(fb, x - 1, y - 1, w as i32 + 2, h as i32 + 2, th.border);
+    fill(fb, x, y, w as i32, h as i32, 0x0003_0507);
+    draw_hosted(fb, g, (x, y, w, h), crate::ui::draw);
+    let line = g.settings.localize(&crate::tutorial::hint_line(g));
+    let mut items: Vec<(&str, &str)> = Vec::new();
+    let mut used = 10;
+    for seg in line.split("  ").filter(|s| !s.is_empty()) {
+        let (k, l) = seg.split_once(' ').unwrap_or((seg, ""));
+        let wseg = tw(k) + tw(l) + 30;
+        if used + wseg > LW as i32 - 10 {
+            break;
+        }
+        used += wseg;
+        items.push((k, l));
+    }
+    cmdbar(fb, g, &th, &items);
+}
+
 /// The whole screen in the new style, on the logical canvas.
 pub fn draw(fb: &mut Framebuffer, g: &Game) {
+    if !native(g) {
+        draw_shell(fb, g);
+        notice_strip(fb, g);
+        return;
+    }
     match g.screen {
         Screen::Hub => draw_hub(fb, g),
         Screen::Dashboard => draw_dash(fb, g),

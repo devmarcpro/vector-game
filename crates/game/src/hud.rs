@@ -389,6 +389,12 @@ fn draw_reticle(fb: &mut Framebuffer, x: f32, y: f32, r: f32) {
 }
 
 fn draw_cockpit(fb: &mut Framebuffer, v: &View) {
+    draw_cockpit_scene(fb, v);
+    draw_radar(fb, v);
+}
+
+/// The scene of the cockpit without the radar scope (the mock-ups of the cockpit draw their own).
+pub(crate) fn draw_cockpit_scene(fb: &mut Framebuffer, v: &View) {
     let ship = &v.sim.ship;
     // Third-person view: the same scene seen from a camera orbiting the ship.
     let ext = v.game.ext_active();
@@ -682,7 +688,6 @@ fn draw_cockpit(fb: &mut Framebuffer, v: &View) {
     if ext {
         crate::ext_view::overlay(fb, v.game);
     }
-    draw_radar(fb, v);
 }
 
 fn draw_map(fb: &mut Framebuffer, v: &View) {

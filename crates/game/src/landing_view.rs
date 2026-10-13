@@ -412,18 +412,18 @@ fn horizon(fb: &mut Framebuffer, cam: &Camera, up: Vec3, c: u32) {
     }
 }
 
-pub fn draw(fb: &mut Framebuffer, v: &View) {
+/// The markers over the scene (velocity, target, vertical, site, impact); false when nothing is shown.
+pub fn draw_markers(fb: &mut Framebuffer, v: &View) -> bool {
     if v.map {
-        return;
+        return false;
     }
     let sim = v.sim;
     let surf = sim.surface_state();
     let dock = sim.dock_readout().filter(|_| surf.is_none());
     let aids = sim.sas != Sas::Off || sim.pilot.is_some() || sim.gear_down || sim.throttle < 1.0;
     if surf.is_none() && dock.is_none() && !aids {
-        return;
+        return false;
     }
-    let (rows, cols) = (fb.rows(), fb.cols());
     let ship = &sim.ship;
     let cam = Camera {
         pos: ship.pos,
@@ -464,7 +464,18 @@ pub fn draw(fb: &mut Framebuffer, v: &View) {
             );
         }
     }
+    true
+}
 
+pub fn draw(fb: &mut Framebuffer, v: &View) {
+    if !draw_markers(fb, v) {
+        return;
+    }
+    let sim = v.sim;
+    let surf = sim.surface_state();
+    let dock = sim.dock_readout().filter(|_| surf.is_none());
+    let (rows, cols) = (fb.rows(), fb.cols());
+    let ship = &sim.ship;
     // The mode line.
     let pct = (sim.throttle * 100.0).round();
     let mut line = format!(

@@ -672,7 +672,7 @@ impl Game {
 // ---- the prediction ---------------------------------------------------------------------------
 
 /// The predicted path of the ship with the nodes of the queue (cached between frames).
-fn with_pred<R>(g: &Game, f: impl FnOnce(&Prediction) -> R) -> Option<R> {
+pub(crate) fn with_pred<R>(g: &Game, f: impl FnOnce(&Prediction) -> R) -> Option<R> {
     let sim = &g.sim;
     let nodes = sim.nav_nodes();
     if !g.nav_ui.preview && sim.nav.pending() == 0 {
@@ -688,7 +688,7 @@ fn with_pred<R>(g: &Game, f: impl FnOnce(&Prediction) -> R) -> Option<R> {
     c.pred.as_ref().map(f)
 }
 
-fn event_label(g: &Game, e: &vector_sim::nav_predict::PredEvent) -> (String, u32) {
+pub(crate) fn event_label(g: &Game, e: &vector_sim::nav_predict::PredEvent) -> (String, u32) {
     let sim = &g.sim;
     let name = |i: usize| {
         sim.bodies

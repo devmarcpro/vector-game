@@ -73,7 +73,7 @@ pub const BIOSPHERE: usize = 7;
 pub const GEOLOGIE: usize = 8;
 
 /// Metres per unit of relative elevation (peaks and trenches of a living world).
-const RELIEF_M: f64 = 8000.0;
+pub(crate) const RELIEF_M: f64 = 8000.0;
 
 fn rgb(r: f64, g: f64, b: f64) -> u32 {
     let c = |v: f64| (v.clamp(0.0, 1.0) * 255.0) as u32;
@@ -150,7 +150,7 @@ pub fn weather_glyph(w: Weather) -> (char, u32) {
 }
 
 /// Glyph and colour of a cell in the current layer.
-fn cell(g: &Game, map: &PlanetMap, x: usize, y: usize) -> (char, u32) {
+pub(crate) fn cell(g: &Game, map: &PlanetMap, x: usize, y: usize) -> (char, u32) {
     let i = Surface::idx(x, y);
     let s = &map.surface;
     match g.surf_layer {
@@ -338,7 +338,7 @@ fn season_name(map_phase: f64, south: bool) -> &'static str {
     ["printemps", "été", "automne", "hiver"][q]
 }
 
-fn lat_lon(x: usize, y: usize) -> String {
+pub(crate) fn lat_lon(x: usize, y: usize) -> String {
     let lat = Surface::lat(y).to_degrees();
     let lon = Surface::lon(x).to_degrees();
     format!(

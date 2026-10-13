@@ -30,6 +30,8 @@ mod hud;
 mod landing_view;
 mod medicine_view;
 mod mind_view;
+mod mock_cockpit;
+mod mock_ui;
 mod mouse;
 mod nav_view;
 mod newgame;
@@ -339,6 +341,8 @@ fn snapshot(path: &str, scene: &str, data: Arc<GameData>) {
         None => (scene, false),
     };
     let cam: Vec<f64> = cam.split(',').filter_map(|x| x.parse().ok()).collect();
+    let spec = mock_ui::resolve(scene);
+    let scene = spec.map_or(scene, |s| s.base);
     if let [yaw, pitch, zoom] = cam[..] {
         (g.ext_yaw, g.ext_pitch, g.ext_zoom) = (yaw, pitch, zoom);
     }
@@ -1787,8 +1791,14 @@ fn snapshot(path: &str, scene: &str, data: Arc<GameData>) {
             g.cycle_target(|_| true);
         }
     }
+    if let Some(spec) = &spec {
+        mock_ui::after_setup(&mut g, spec);
+    }
     let mut fb = Framebuffer::new(1280, 720);
-    draw_frame(&mut fb, &g);
+    match &spec {
+        Some(spec) => mock_ui::render(&mut fb, &g, spec),
+        None => draw_frame(&mut fb, &g),
+    }
     match std::fs::write(path, vector_render::png::encode(fb.w, fb.h, &fb.px)) {
         Ok(()) => println!("snapshot -> {path}"),
         Err(e) => eprintln!("write failed: {e}"),

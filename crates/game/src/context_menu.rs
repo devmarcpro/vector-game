@@ -243,9 +243,20 @@ pub fn items_for(g: &Game, ctx: Ctx) -> (String, Vec<Item>) {
                 .off_if(!flying, "DEJA AMARRE"),
             );
             let surveyed = s.scan[i] >= vector_sim::voyage::SCAN_SURVEYED;
+            let down = !flying || s.landed_on().is_some();
             it.push(
                 Item::new(
-                    "ATTERRIR / SURFACE",
+                    "ATTERRIR",
+                    "PAV4",
+                    vec![call(Game::click_body, i), call(Game::menu_land, 0)],
+                )
+                .off_if(!world, "PAS UN MONDE")
+                .off_if(world && !flying, "QUITTEZ D'ABORD LA STATION")
+                .off_if(world && flying && down, "DEJA AU SOL"),
+            );
+            it.push(
+                Item::new(
+                    "SURFACE (CARTE, CHOISIR LE SITE)",
                     "F8",
                     vec![call(Game::click_body, i), k(KeyCode::F8)],
                 )

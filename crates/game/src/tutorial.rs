@@ -239,13 +239,19 @@ pub fn hint_line(g: &Game) -> String {
 /// The landing lesson, shown above the flight help while the ship is low over a solid world.
 pub fn landing_help() -> &'static [&'static str] {
     &[
-        "== ATTERRIR EN 5 TEMPS ==",
+        "== ATTERRIR : UNE COMMANDE ==",
+        "ATTERRIR (PAV4, menu F11, clic droit sur le monde, F8 puis Entree sur une case) :",
+        "  d'ou que vous soyez, le vaisseau approche, freine, sort le train et se pose ;",
+        "  il finit AU SOL sur le terrain, tourne avec le monde. Toucher aux commandes = main reprise.",
+        "  Avertissements (carburant, pente, air dense) d'abord : repetez la commande pour confirmer.",
+        "  Au sol : PAV4 decolle vers l'orbite ; Fin / menu DEBARQUER sort a pied au meme endroit.",
+        "== OU A LA MAIN, EN 5 TEMPS ==",
         "1 Ralentir : 3 (SAS retrograde) puis ESPACE ; visez une vitesse horizontale proche de 0",
         "2 Site : pav. num. 7 marque la zone la plus plate ; la pente max est de 20 deg",
         "3 Train : PAV3 avant le sol (sans train, 1.5 m/s au plus ; avec, 6 m/s)",
         "4 Allumage : le panneau DESCENTE donne l'altitude du freinage ; allumez quand il clignote",
         "5 Contact : ~1 m/s, nez vertical (9), moteurs coupes (pav. 0) ; trop vite = coque perdue",
-        "PAV4 : le pilote fait tout (et se debraye a la moindre touche) ; il peut echouer",
+        "Le pilote peut echouer (carburant, pente) ; il le dit et rend la main",
         "Decollage : la poussee doit depasser le poids ; PAV4 ou ESPACE nez vers le haut",
         "Amarrage : PAV4 pres d'une station aligne le port ; sinon visez l'axe a moins de 2 m/s",
     ]

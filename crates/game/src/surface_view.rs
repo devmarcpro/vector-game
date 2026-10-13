@@ -431,6 +431,19 @@ pub fn draw(fb: &mut Framebuffer, g: &Game) {
         );
         x += l.len() + 2;
     }
+    {
+        let label = "[ENTREE] ATTERRIR ICI";
+        let col = fb.cols().saturating_sub(label.len() + 2);
+        let hov = g.hit_cells(
+            col,
+            1,
+            label.len(),
+            1,
+            Act::Key(winit::keyboard::KeyCode::Enter),
+            None,
+        );
+        fb.text(col, 1, label, if hov { 0x00D0_FFD0 } else { GREEN });
+    }
     let panel_w = 38;
     let (x0, y0) = (1usize, 4usize);
     let cols_map = fb.cols().saturating_sub(panel_w + 3).clamp(20, W);

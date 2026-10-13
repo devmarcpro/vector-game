@@ -681,6 +681,8 @@ impl Sim {
         if alt < 150.0 + 4.0 * (-v_up).max(0.0) {
             self.gear_down = true;
         }
+        let braking = v_h.length() > 40.0 && alt > 300.0;
+        let mut has_site = false;
         // Where the ground speed should be: zero, or towards the site.
         let mut v_des = Vec3::ZERO;
         if let Some(p) = self
@@ -691,8 +693,15 @@ impl Sim {
             let off = off - up * off.dot(up);
             let dist = off.length();
             if dist > 1.0 {
-                let vmax = (0.25 * a_max * dist).sqrt().min(80.0) * (alt / 150.0).clamp(0.0, 1.0);
+                // Never faster than the speed it already has (coming down from an orbit).
+                let vcap = if braking {
+                    v_h.length().max(80.0)
+                } else {
+                    80.0
+                };
+                let vmax = (0.3 * a_max * dist).sqrt().min(vcap) * (alt / 150.0).clamp(0.0, 1.0);
                 v_des = off * (vmax / dist);
+                has_site = true;
             }
         }
         let net = (a_max - s.g).max(0.05 * s.g.max(0.1));
@@ -700,7 +709,20 @@ impl Sim {
         let v_target = -(1.44 + 1.5 * net * (alt - 0.5).max(0.0)).sqrt();
         // Feed-forward: on the profile the deceleration is constant; the error term trims it.
         let feed = 0.75 * net * ((alt - 0.5) / 2.0).clamp(0.0, 1.0);
-        let thrust_up = (s.g + feed + (v_target - v_up) * 2.0).clamp(0.0, a_max);
+        // Coming down from an orbit: first take the speed off along the ground, high enough that
+        // the fall does not catch the burn (the speed itself carries part of the weight).
+        let thrust_up = if braking {
+            let r = (self.ship.pos - self.bodies[s.body].pos).length().max(1.0);
+            let v_des_up = ((400.0 - alt) * 0.02).clamp(-60.0, 5.0);
+            (s.g - v_h.dot(v_h) / r + (v_des_up - v_up)).clamp(0.0, a_max * 0.5)
+        } else {
+            (s.g + feed + (v_target - v_up) * 2.0).clamp(0.0, a_max)
+        };
+        let v_des = if braking && !has_site {
+            Vec3::ZERO
+        } else {
+            v_des
+        };
         let along_cap = if alt < 200.0 { thrust_up * 0.3 } else { a_max };
         let spare = (a_max * a_max - thrust_up * thrust_up).max(0.0).sqrt();
         let a_h = clamp_len((v_des - v_h) * 0.8, along_cap.min(spare));

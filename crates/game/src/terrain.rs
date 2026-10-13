@@ -8,6 +8,31 @@ use vector_render::{mix_color as mix, scale_color as scale, Framebuffer};
 use vector_sim::planet::PlanetMap;
 use vector_world::surface::{Surface, H, W};
 
+/// `f64::floor` without the call into the maths library (the march calls it millions of times):
+/// right for |x| below 9e18.
+#[inline]
+pub(crate) fn ffloor(x: f64) -> f64 {
+    let t = x as i64 as f64;
+    if t > x {
+        t - 1.0
+    } else {
+        t
+    }
+}
+
+/// `x` wrapped to [0, TAU), without `fmod`.
+#[inline]
+pub(crate) fn wrap_tau(x: f64) -> f64 {
+    let r = x - std::f64::consts::TAU * ffloor(x * (1.0 / std::f64::consts::TAU));
+    if r >= std::f64::consts::TAU {
+        r - std::f64::consts::TAU
+    } else if r < 0.0 {
+        r + std::f64::consts::TAU
+    } else {
+        r
+    }
+}
+
 /// Wavelength of the coarsest octave added to the map, and the ratio between octaves.
 const LAMBDA0: f64 = 800_000.0;
 const RATIO: f64 = 3.0;
@@ -40,7 +65,7 @@ pub const LAKE_COLOR: u32 = 0x0020_60A8;
 pub const RIVER_COLOR: u32 = 0x002A_6CB4;
 
 fn noise2(x: f64, y: f64) -> f32 {
-    let (ix, iy) = (x.floor(), y.floor());
+    let (ix, iy) = (ffloor(x), ffloor(y));
     let (fx, fy) = ((x - ix) as f32, (y - iy) as f32);
     let (fx, fy) = (fx * fx * (3.0 - 2.0 * fx), fy * fy * (3.0 - 2.0 * fy));
     let v = |dx: i64, dy: i64| {
@@ -49,6 +74,85 @@ fn noise2(x: f64, y: f64) -> f32 {
     };
     let a = v(0, 0) + (v(1, 0) - v(0, 0)) * fx;
     let b = v(0, 1) + (v(1, 1) - v(0, 1)) * fx;
+    a + (b - a) * fy
+}
+
+/// The four lattice values of the last cell of one octave of noise: along a ray the coarse
+/// octaves stay in the same cell for many steps, so their hashes are not made again.
+#[derive(Clone, Copy)]
+struct Lattice {
+    ix: i64,
+    iy: i64,
+    v: [f32; 4],
+}
+
+/// A crater: centre, radius and depth scale.
+#[derive(Clone, Copy, Default)]
+struct Crater {
+    cx: f64,
+    cy: f64,
+    r: f64,
+    dp: f64,
+}
+
+#[derive(Clone, Copy)]
+struct CraterCell {
+    ix: i64,
+    iy: i64,
+    n: usize,
+    list: [Crater; 9],
+}
+
+/// What `Terrain::sample_with` remembers from one call to the next (one per ray). The answers are
+/// the same with or without it, only faster.
+pub struct SampleCache {
+    oct: [Lattice; OCTAVES],
+    crat: [CraterCell; 4],
+    /// The three octaves of variation of the colour of the ground.
+    var: [Lattice; 3],
+}
+
+impl Default for SampleCache {
+    fn default() -> Self {
+        SampleCache {
+            oct: [Lattice {
+                ix: i64::MIN,
+                iy: i64::MIN,
+                v: [0.0; 4],
+            }; OCTAVES],
+            crat: [CraterCell {
+                ix: i64::MIN,
+                iy: i64::MIN,
+                n: 0,
+                list: [Crater::default(); 9],
+            }; 4],
+            var: [Lattice {
+                ix: i64::MIN,
+                iy: i64::MIN,
+                v: [0.0; 4],
+            }; 3],
+        }
+    }
+}
+
+fn noise2_cached(l: &mut Lattice, x: f64, y: f64) -> f32 {
+    let (ix, iy) = (ffloor(x), ffloor(y));
+    let (fx, fy) = ((x - ix) as f32, (y - iy) as f32);
+    let (fx, fy) = (fx * fx * (3.0 - 2.0 * fx), fy * fy * (3.0 - 2.0 * fy));
+    let (ixi, iyi) = (ix as i64, iy as i64);
+    if l.ix != ixi || l.iy != iyi {
+        let v = |dx: i64, dy: i64| {
+            let h = vector_core::hash_coord(13, ixi + dx, iyi + dy, 4);
+            ((h >> 11) as f64 / (1u64 << 53) as f64) as f32 * 2.0 - 1.0
+        };
+        *l = Lattice {
+            ix: ixi,
+            iy: iyi,
+            v: [v(0, 0), v(1, 0), v(0, 1), v(1, 1)],
+        };
+    }
+    let a = l.v[0] + (l.v[1] - l.v[0]) * fx;
+    let b = l.v[2] + (l.v[3] - l.v[2]) * fx;
     a + (b - a) * fy
 }
 
@@ -88,7 +192,7 @@ impl<'a> Terrain<'a> {
     /// pixel (`lod`, m) so that they stay visible from afar, and meander a little.
     pub fn inland_water(&self, lat: f64, lon: f64, lod: f64) -> Option<Inland> {
         let h = &self.map.surface.hydro;
-        let fx = lon.rem_euclid(std::f64::consts::TAU) / std::f64::consts::TAU * W as f64 - 0.5;
+        let fx = wrap_tau(lon) * (W as f64 / std::f64::consts::TAU) - 0.5;
         let fy = (0.5 - lat / std::f64::consts::PI) * H as f64 - 0.5;
         let (wx, wy) = (lon * self.radius, lat * self.radius);
         let lake = h.lake_at(fx, fy);
@@ -111,7 +215,7 @@ impl<'a> Terrain<'a> {
 
     /// The cell of the map a point belongs to.
     pub fn cell(lat: f64, lon: f64) -> (usize, usize) {
-        let lon = lon.rem_euclid(std::f64::consts::TAU);
+        let lon = wrap_tau(lon);
         (
             ((lon / std::f64::consts::TAU * W as f64) as usize).min(W - 1),
             (((0.5 - lat / std::f64::consts::PI) * H as f64).max(0.0) as usize).min(H - 1),
@@ -122,7 +226,12 @@ impl<'a> Terrain<'a> {
     /// there (negative under the sea), with the octaves of detail the distance `lod` (the size
     /// of what can still be told apart, m) deserves.
     pub fn sample(&self, lat: f64, lon: f64, lod: f64) -> (f32, f32) {
-        let fx = lon.rem_euclid(std::f64::consts::TAU) / std::f64::consts::TAU * W as f64 - 0.5;
+        self.sample_with(lat, lon, lod, &mut SampleCache::default())
+    }
+
+    /// `sample`, remembering the lattice cells between calls (see `SampleCache`).
+    pub fn sample_with(&self, lat: f64, lon: f64, lod: f64, cache: &mut SampleCache) -> (f32, f32) {
+        let fx = wrap_tau(lon) * (W as f64 / std::f64::consts::TAU) - 0.5;
         let fy = (0.5 - lat / std::f64::consts::PI) * H as f64 - 0.5;
         let e = elev_at(self.map, fx, fy);
         let base = f64::from(e) * self.relief;
@@ -131,65 +240,80 @@ impl<'a> Terrain<'a> {
         let mut h = base;
         let mut lambda = LAMBDA0;
         let mut amp = 0.22 * self.relief * rugged;
-        for _ in 0..OCTAVES {
+        for l in cache.oct.iter_mut() {
             if lambda < lod * 2.5 {
                 break;
             }
-            h += f64::from(noise2(x / lambda, y / lambda)) * amp;
+            let inv = 1.0 / lambda;
+            h += f64::from(noise2_cached(l, x * inv, y * inv)) * amp;
             lambda /= RATIO;
             amp *= 0.45;
         }
         if self.craters {
-            h += self.crater_height(x, y, lod);
+            h += self.crater_height(x, y, lod, &mut cache.crat);
         }
         (h as f32, e)
     }
 
     /// Height of the craters at a point (m, negative in the bowls, positive on the rims): three
     /// sizes of them, each on a grid with at most one crater per square.
-    fn crater_height(&self, x: f64, y: f64, lod: f64) -> f64 {
+    fn crater_height(&self, x: f64, y: f64, lod: f64, cache: &mut [CraterCell; 4]) -> f64 {
         let mut sum = 0.0;
-        for (cell, depth) in [
+        for (k, (cell, depth)) in [
             (900_000.0, 0.16),
             (220_000.0, 0.14),
             (50_000.0, 0.12),
             (11_000.0, 0.10),
-        ] {
+        ]
+        .into_iter()
+        .enumerate()
+        {
             // A crater smaller than what can be told apart at this distance is not drawn.
             if cell * 0.3 < lod * 2.0 {
                 continue;
             }
-            let (ix, iy) = ((x / cell).floor(), (y / cell).floor());
-            for dx in -1..=1 {
-                for dy in -1..=1 {
-                    let (gx, gy) = (ix as i64 + dx, iy as i64 + dy);
-                    let h = |k: i64| {
-                        (vector_core::hash_coord(
-                            self.seed ^ 0xC8A7,
-                            gx,
-                            gy,
-                            k + (cell as i64 % 97),
-                        ) >> 11) as f64
-                            / (1u64 << 53) as f64
-                    };
-                    if h(0) > 0.45 {
-                        continue;
+            let (ix, iy) = (ffloor(x / cell), ffloor(y / cell));
+            let (ixi, iyi) = (ix as i64, iy as i64);
+            let cc = &mut cache[k];
+            if cc.ix != ixi || cc.iy != iyi {
+                cc.ix = ixi;
+                cc.iy = iyi;
+                cc.n = 0;
+                for dx in -1..=1 {
+                    for dy in -1..=1 {
+                        let (gx, gy) = (ixi + dx, iyi + dy);
+                        let h = |k: i64| {
+                            (vector_core::hash_coord(
+                                self.seed ^ 0xC8A7,
+                                gx,
+                                gy,
+                                k + (cell as i64 % 97),
+                            ) >> 11) as f64
+                                / (1u64 << 53) as f64
+                        };
+                        if h(0) > 0.45 {
+                            continue;
+                        }
+                        let r = cell * (0.12 + 0.18 * h(3));
+                        cc.list[cc.n] = Crater {
+                            cx: (gx as f64 + 0.2 + 0.6 * h(1)) * cell,
+                            cy: (gy as f64 + 0.2 + 0.6 * h(2)) * cell,
+                            r,
+                            dp: depth * r * 0.4,
+                        };
+                        cc.n += 1;
                     }
-                    let r = cell * (0.12 + 0.18 * h(3));
-                    let (cx, cy) = (
-                        (gx as f64 + 0.2 + 0.6 * h(1)) * cell,
-                        (gy as f64 + 0.2 + 0.6 * h(2)) * cell,
-                    );
-                    let d = ((x - cx).powi(2) + (y - cy).powi(2)).sqrt() / r;
-                    let dp = depth * r * 0.4;
-                    sum += if d < 1.0 {
-                        -dp * (1.0 - d * d)
-                    } else if d < 1.5 {
-                        0.35 * dp * (1.0 - (d - 1.0) / 0.5).powi(2)
-                    } else {
-                        0.0
-                    };
                 }
+            }
+            for c in &cc.list[..cc.n] {
+                let d = ((x - c.cx).powi(2) + (y - c.cy).powi(2)).sqrt() / c.r;
+                sum += if d < 1.0 {
+                    -c.dp * (1.0 - d * d)
+                } else if d < 1.5 {
+                    0.35 * c.dp * (1.0 - (d - 1.0) / 0.5).powi(2)
+                } else {
+                    0.0
+                };
             }
         }
         sum
@@ -252,44 +376,34 @@ impl Depth {
     }
 }
 
-/// March the ground from the nearest to the farthest and paint it. `color_of` gives the colour
-/// of a cell of the map; the steps grow with the distance, so that the detail and the cost fall
-/// with it.
-#[allow(clippy::too_many_arguments)]
-pub fn render(
-    fb: &mut Framebuffer,
-    t: &Terrain,
-    color_of: &dyn Fn(usize, usize) -> u32,
-    local: &dyn Fn(f64, f64) -> Option<u32>,
-    eye: &Eye,
-    fr: &Frame,
-    sky: &Sky,
-    light: &Light,
+/// The unpainted marker of a pixel of the marched columns.
+const NONE: u32 = u32::MAX;
+
+/// Everything the march of a column reads.
+struct March<'a> {
+    t: &'a Terrain<'a>,
+    eye: &'a Eye,
+    fr: &'a Frame,
+    sky: &'a Sky,
+    light: &'a Light,
     far: f64,
-) -> Depth {
-    let (cx, cy) = (f64::from(fr.w) / 2.0, f64::from(fr.h) / 2.0);
-    let horizon = cy + fr.focal * eye.pitch.tan().clamp(-1.4, 1.4);
-    let cols = fr.w / 2;
-    let mut depth = Depth {
-        cols,
-        rows: fr.h,
-        d: vec![f32::MAX; (cols * fr.h) as usize],
-    };
-    let overcast = |c: u32| mix(c, 0x0098_A0A8, (sky.cloud * 0.75).clamp(0.0, 0.75));
-    let horizon_color = sky.air.map_or(0, |a| overcast(a.1));
-    // The sky above the horizon.
-    if let Some((top, low)) = sky.air.map(|(t, l)| (overcast(t), overcast(l))) {
-        for y in 0..fr.h {
-            let up = ((horizon - f64::from(y)) / (fr.focal * 0.9)).clamp(0.0, 1.0) as f32;
-            let c = mix(low, top, up.sqrt());
-            for x in 0..fr.w {
-                fb.plot(fr.x0 + x, fr.y0 + y, c);
-            }
-        }
-    }
-    let cos_lat = eye.lat.cos().abs().max(0.05);
-    for col in 0..cols {
-        let theta = ((f64::from(col) * 2.0 + 1.0 - cx) / fr.focal).atan();
+    horizon: f64,
+    cx: f64,
+    horizon_color: u32,
+    cos_lat: f64,
+}
+
+impl March<'_> {
+    /// March one column: the colour (NONE: sky) and the distance of each pixel from the top.
+    fn column(
+        &self,
+        col: i32,
+        out: &mut [(u32, f32)],
+        color_of: &dyn Fn(usize, usize) -> u32,
+        local: &dyn Fn(f64, f64) -> Option<u32>,
+    ) {
+        let (t, eye, fr, sky, light) = (self.t, self.eye, self.fr, self.sky, self.light);
+        let theta = ((f64::from(col) * 2.0 + 1.0 - self.cx) / fr.focal).atan();
         let yaw = eye.yaw + theta;
         let (de, dn) = (yaw.sin(), yaw.cos());
         let cos_t = theta.cos();
@@ -298,10 +412,11 @@ pub fn render(
         let mut ymin = fr.h;
         let mut d = 1.0f64;
         let mut prev: Option<(f64, f32)> = None;
-        while d < far && ymin > 0 {
+        let mut cache = SampleCache::default();
+        while d < self.far && ymin > 0 {
             let lat = eye.lat + dn * d / t.radius;
-            let lon = eye.lon + de * d / (t.radius * cos_lat);
-            let (h_raw, e) = t.sample(lat, lon, d / fr.focal * 2.0);
+            let lon = eye.lon + de * d / (t.radius * self.cos_lat);
+            let (h_raw, e) = t.sample_with(lat, lon, d / fr.focal * 2.0, &mut cache);
             let sea = e <= 0.0 && h_raw <= 0.0;
             let inland = if sea {
                 None
@@ -317,7 +432,7 @@ pub fn render(
             };
             let drop = d * d / (2.0 * t.radius);
             let dz = h - eye.height - drop;
-            let ytop = (horizon - fr.focal * dz / (d * cos_t)).floor() as i32;
+            let ytop = ffloor(self.horizon - fr.focal * dz / (d * cos_t)) as i32;
             if ytop < ymin {
                 let (ci, ri) = Terrain::cell(lat, lon);
                 // Near the squad the ground is what the cells of the grid are made of.
@@ -325,10 +440,14 @@ pub fn render(
                 // Variation from place to place, snow and bare rock on the heights, water.
                 let (wx, wy) = (lon * t.radius, lat * t.radius);
                 let near = 1.0 / (1.0 + d / 600.0) as f32;
-                let var = 1.0
-                    + 0.10 * noise2(wx / 400.0, wy / 400.0)
-                    + near
-                        * (0.10 * noise2(wx / 3.0, wy / 3.0) + 0.07 * noise2(wx / 30.0, wy / 30.0));
+                let [v0, v1, v2] = &mut cache.var;
+                let mut var = 1.0 + 0.10 * noise2_cached(v0, wx / 400.0, wy / 400.0);
+                // Far away the fine variation is below what a pixel can show.
+                if near > 0.002 {
+                    var += near
+                        * (0.10 * noise2_cached(v1, wx / 3.0, wy / 3.0)
+                            + 0.07 * noise2_cached(v2, wx / 30.0, wy / 30.0));
+                }
                 let iced = t.is_ice(ci, ri);
                 let k = if sea {
                     base = if iced {
@@ -370,21 +489,177 @@ pub fn render(
                     let mean = (eye.height.max(0.0) + h.max(0.0)) / 2.0;
                     let density = (-mean / sky.scale.max(100.0)).exp();
                     let fog = (1.0 - (-d * density / sky.haze).exp()) as f32;
-                    color = mix(color, horizon_color, fog);
+                    color = mix(color, self.horizon_color, fog);
                 }
                 for yy in ytop.max(0)..ymin {
-                    let (x, y) = (fr.x0 + col * 2, fr.y0 + yy);
-                    fb.plot(x, y, color);
-                    fb.plot(x + 1, y, color);
-                    depth.d[(col * fr.h + yy) as usize] = d as f32;
+                    out[yy as usize] = (color, d as f32);
                 }
                 ymin = ytop.max(0);
             }
             prev = Some((d, h as f32));
-            d += d * 0.03 + 0.5;
+            // Far from the eye the steps are longer than a pixel anyway.
+            d += d * if d < 8000.0 { 0.03 } else { 0.045 } + 0.5;
         }
     }
+}
+
+enum Colors<'a> {
+    Serial(
+        &'a dyn Fn(usize, usize) -> u32,
+        &'a dyn Fn(f64, f64) -> Option<u32>,
+    ),
+    Table(&'a [u32]),
+}
+
+/// March the ground from the nearest to the farthest and paint it. `color_of` gives the colour
+/// of a cell of the map; the steps grow with the distance, so that the detail and the cost fall
+/// with it. One thread: the closures need not be `Sync`.
+#[allow(clippy::too_many_arguments)]
+pub fn render(
+    fb: &mut Framebuffer,
+    t: &Terrain,
+    color_of: &dyn Fn(usize, usize) -> u32,
+    local: &dyn Fn(f64, f64) -> Option<u32>,
+    eye: &Eye,
+    fr: &Frame,
+    sky: &Sky,
+    light: &Light,
+    far: f64,
+) -> Depth {
+    render_with(
+        fb,
+        t,
+        Colors::Serial(color_of, local),
+        eye,
+        fr,
+        sky,
+        light,
+        far,
+    )
+}
+
+/// The same on all the cores, for a ground coloured by a table of the cells of the map (row by
+/// row, `W * H` colours) and nothing local. The picture is the same as `render`'s.
+#[allow(clippy::too_many_arguments)]
+pub fn render_par(
+    fb: &mut Framebuffer,
+    t: &Terrain,
+    cell_colors: &[u32],
+    eye: &Eye,
+    fr: &Frame,
+    sky: &Sky,
+    light: &Light,
+    far: f64,
+) -> Depth {
+    render_with(fb, t, Colors::Table(cell_colors), eye, fr, sky, light, far)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn render_with(
+    fb: &mut Framebuffer,
+    t: &Terrain,
+    colors: Colors,
+    eye: &Eye,
+    fr: &Frame,
+    sky: &Sky,
+    light: &Light,
+    far: f64,
+) -> Depth {
+    let _p = crate::perf::span("terrain_render");
+    let (cx, cy) = (f64::from(fr.w) / 2.0, f64::from(fr.h) / 2.0);
+    let horizon = cy + fr.focal * eye.pitch.tan().clamp(-1.4, 1.4);
+    let cols = fr.w / 2;
+    let ncols = cols.max(0) as usize;
+    let rows = fr.h.max(1) as usize;
+    let overcast = |c: u32| mix(c, 0x0098_A0A8, (sky.cloud * 0.75).clamp(0.0, 0.75));
+    let horizon_color = sky.air.map_or(0, |a| overcast(a.1));
+    let m = March {
+        t,
+        eye,
+        fr,
+        sky,
+        light,
+        far,
+        horizon,
+        cx,
+        horizon_color,
+        cos_lat: eye.lat.cos().abs().max(0.05),
+    };
+    // March every column into its own strip of `rows` pixels.
+    let mut strips = vec![(NONE, f32::MAX); ncols * rows];
+    let march = |c0: usize,
+                 band: &mut [(u32, f32)],
+                 cf: &dyn Fn(usize, usize) -> u32,
+                 lf: &dyn Fn(f64, f64) -> Option<u32>| {
+        for (k, strip) in band.chunks_mut(rows).enumerate() {
+            m.column((c0 + k) as i32, strip, cf, lf);
+        }
+    };
+    {
+        let _p = crate::perf::span("terrain_march");
+        match colors {
+            Colors::Serial(cf, lf) => march(0, &mut strips, cf, lf),
+            Colors::Table(table) => {
+                crate::ball::bands(&mut strips, rows, ncols, |c0, band| {
+                    march(c0, band, &|x, y| table[y * W + x], &|_, _| None);
+                });
+            }
+        }
+    }
+    // The sky above the horizon, then the ground over it, row by row.
+    let _p = crate::perf::span("terrain_compose");
+    let sky_cols = sky.air.map(|(t, l)| (overcast(t), overcast(l)));
+    let (fbw, fbh) = (fb.w as i32, fb.h as i32);
+    let (y_a, y_b) = (fr.y0.max(0), (fr.y0 + fr.h).min(fbh));
+    if y_a < y_b {
+        let strips = &strips;
+        let rows_n = (y_b - y_a) as usize;
+        let w_line = fb.w;
+        let start = y_a as usize * w_line;
+        let region = &mut fb.px[start..start + rows_n * w_line];
+        crate::ball::bands(region, w_line, rows_n, |r0, band| {
+            for (k, line) in band.chunks_mut(w_line).enumerate() {
+                let yy = y_a + (r0 + k) as i32 - fr.y0;
+                let sky_c = sky_cols.map(|(top, low)| {
+                    let up = ((horizon - f64::from(yy)) / (fr.focal * 0.9)).clamp(0.0, 1.0) as f32;
+                    mix(low, top, up.sqrt())
+                });
+                for x in 0..fr.w {
+                    let sx = fr.x0 + x;
+                    if sx < 0 || sx >= fbw {
+                        continue;
+                    }
+                    let p = &mut line[sx as usize];
+                    if let Some(c) = sky_c {
+                        add_px(p, c);
+                    }
+                    if x / 2 < cols {
+                        let (c, _) = strips[(x / 2) as usize * rows + yy as usize];
+                        if c != NONE {
+                            add_px(p, c);
+                        }
+                    }
+                }
+            }
+        });
+    }
+    let mut depth = Depth {
+        cols,
+        rows: fr.h,
+        d: Vec::with_capacity(strips.len()),
+    };
+    depth.d.extend(strips.iter().map(|s| s.1));
     depth
+}
+
+/// Additive plot of one colour on a pixel (saturating per channel).
+#[inline]
+fn add_px(p: &mut u32, c: u32) {
+    let add = |a: u32, b: u32| (a + b).min(255);
+    let r = add((*p >> 16) & 255, (c >> 16) & 255);
+    let g = add((*p >> 8) & 255, (c >> 8) & 255);
+    let b = add(*p & 255, c & 255);
+    *p = (r << 16) | (g << 8) | b;
 }
 
 #[cfg(test)]
@@ -540,5 +815,79 @@ mod tests {
             .filter(|x| fb.px[(190 * 320 + *x) as usize] != 0)
             .count();
         assert!(painted > 300);
+    }
+
+    #[test]
+    fn the_cached_sample_is_the_same_and_the_parallel_march_paints_the_same() {
+        let (s, i) = world();
+        let mut map = s.planet_map(i).unwrap();
+        // With and without craters (an airless world), the cache changes nothing.
+        for airless in [false, true] {
+            if airless {
+                map.pressure = 0.0;
+            }
+            let t = Terrain::new(&map, s.bodies[i].radius);
+            let mut cache = SampleCache::default();
+            let mut d = 1.0f64;
+            while d < 400_000.0 {
+                let (lat, lon) = (0.3 + d * 0.6 / t.radius, 1.1 + d * 0.8 / t.radius);
+                let lod = d / 500.0 * 2.0;
+                assert_eq!(
+                    t.sample(lat, lon, lod),
+                    t.sample_with(lat, lon, lod, &mut cache)
+                );
+                d += d * 0.03 + 0.5;
+            }
+        }
+        // One thread or many, serial closures or a table of colours: the same picture.
+        let t = Terrain::new(&map, s.bodies[i].radius);
+        let table: Vec<u32> = (0..W * H)
+            .map(|k| 0x0010_0000 * (1 + (k % 7) as u32))
+            .collect();
+        let eye = Eye {
+            lat: 0.2,
+            lon: 2.0,
+            height: 800.0,
+            yaw: 0.5,
+            pitch: -0.1,
+        };
+        let fr = Frame {
+            x0: 3,
+            y0: 2,
+            w: 300,
+            h: 180,
+            focal: 200.0,
+        };
+        let sky = Sky {
+            cloud: 0.2,
+            air: Some((0x0040_70C0, 0x00B0_D0F0)),
+            haze: 40_000.0,
+            scale: 8000.0,
+        };
+        let light = Light {
+            up: 0.7,
+            east: 0.5,
+            north: 0.5,
+        };
+        let mut a = Framebuffer::new(320, 190);
+        let da = render(
+            &mut a,
+            &t,
+            &|x, y| table[y * W + x],
+            &|_, _| None,
+            &eye,
+            &fr,
+            &sky,
+            &light,
+            150_000.0,
+        );
+        for threads in [1, 4] {
+            crate::ball::set_local_threads(threads);
+            let mut b = Framebuffer::new(320, 190);
+            let db = render_par(&mut b, &t, &table, &eye, &fr, &sky, &light, 150_000.0);
+            assert!(a.px == b.px, "{threads} threads change the picture");
+            assert!(da.d == db.d, "{threads} threads change the depth");
+        }
+        crate::ball::set_local_threads(0);
     }
 }

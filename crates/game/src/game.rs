@@ -345,6 +345,10 @@ pub struct Game {
     pub surf: Option<vector_sim::planet::PlanetMap>,
     /// Maps of the planets of the system, built when first seen from the cockpit (drawn as
     /// topographic globes): the system they belong to, and one per body.
+    /// The glyph and colour of every cell of the surface map in the layer shown, kept while
+    /// nothing it depends on has changed (key, W * H cells): the layers of weather and life are
+    /// costly to compute and the map is drawn many times a second.
+    pub surf_grid: std::cell::RefCell<(u64, Vec<(char, u32)>)>,
     pub flight_maps: std::cell::RefCell<(
         u64,
         std::collections::HashMap<usize, std::rc::Rc<vector_sim::planet::PlanetMap>>,
@@ -557,6 +561,7 @@ impl Game {
             codex_sel: 0,
             codex_back: Vec::new(),
             flight_maps: Default::default(),
+            surf_grid: Default::default(),
             surf: None,
             surf_cx: 0,
             surf_cy: 0,

@@ -149,6 +149,41 @@ pub fn weather_glyph(w: Weather) -> (char, u32) {
     }
 }
 
+/// Everything the colours of the map depend on, as one number: the layer, the world, the hour of
+/// the game, the species shown and the state of the food web.
+fn grid_key(g: &Game, map: &PlanetMap) -> u64 {
+    let mut h = vector_core::hash_coord(map.seed, g.surf_layer as i64, map.body as i64, 5);
+    let mut mix = |v: u64| h = vector_core::hash_coord(h, v as i64, 1, 2);
+    mix((g.sim.time / 1800.0) as u64);
+    mix(g.sim.terra_stamp());
+    if g.surf_layer == BIOSPHERE || g.surf_layer == 5 {
+        mix(g.surf_species as u64);
+        if let Some(e) = g.surf_eco.as_ref() {
+            mix(e
+                .bio
+                .iter()
+                .fold(0u64, |a, v| a.rotate_left(7) ^ v.to_bits()));
+        }
+    }
+    h
+}
+
+/// Make sure the cache holds the cells of the layer shown.
+fn ensure_grid(g: &Game, map: &PlanetMap) {
+    let _p = crate::perf::span("surface_grid");
+    let key = grid_key(g, map);
+    let mut cache = g.surf_grid.borrow_mut();
+    if cache.0 != key || cache.1.len() != W * H {
+        let _p = crate::perf::span("surface_grid_build");
+        cache.1 = (0..W * H).map(|k| cell(g, map, k % W, k / W)).collect();
+        cache.0 = key;
+    }
+}
+
+fn cell_at(g: &Game, x: usize, y: usize) -> (char, u32) {
+    g.surf_grid.borrow().1[Surface::idx(x, y)]
+}
+
 /// Glyph and colour of a cell in the current layer.
 fn cell(g: &Game, map: &PlanetMap, x: usize, y: usize) -> (char, u32) {
     let i = Surface::idx(x, y);
@@ -356,6 +391,7 @@ pub fn draw(fb: &mut Framebuffer, g: &Game) {
         return;
     };
     let body = &g.sim.system.bodies[map.body];
+    ensure_grid(g, map);
     fb.text(2, 1, &format!("== SURFACE : {} ==", body.name), AMBER);
     if let Some(c) = &g.surf_civ {
         fb.text(
@@ -415,7 +451,7 @@ pub fn draw(fb: &mut Framebuffer, g: &Game) {
             let my = r * H / rows_map;
             for c in 0..cols_map {
                 let mx = c * W / cols_map;
-                let (ch, col) = cell(g, map, mx, my);
+                let (ch, col) = cell_at(g, mx, my);
                 fb.text(x0 + c, y0 + r, &ch.to_string(), col);
             }
         }
@@ -424,7 +460,7 @@ pub fn draw(fb: &mut Framebuffer, g: &Game) {
             (g.surf_cx * cols_map / W).min(cols_map - 1),
             (g.surf_cy * rows_map / H).min(rows_map - 1),
         );
-        let (ch, col) = cell(g, map, g.surf_cx, g.surf_cy);
+        let (ch, col) = cell_at(g, g.surf_cx, g.surf_cy);
         fill_cell(fb, x0 + cc, y0 + cr, 0x0060_4010);
         fb.text(
             x0 + cc,
@@ -1029,7 +1065,7 @@ fn draw_globe(
         project: &project,
     };
     // One dot per visible cell, coloured by the current layer, then the graticule and contours.
-    globe.dots(fb, 1, 2, &|x, y, _| cell(g, map, x, y).1);
+    globe.dots(fb, 1, 2, &|x, y, _| cell_at(g, x, y).1);
     globe.graticule(fb, 0x0018_3040);
     globe.contours(fb, 1);
     // Limb.

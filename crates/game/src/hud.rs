@@ -125,11 +125,15 @@ pub fn fmt_time(s: f64) -> String {
 
 pub fn draw(fb: &mut Framebuffer, v: &View) {
     fb.clear();
-    if v.map {
-        draw_map(fb, v);
-    } else {
-        draw_cockpit(fb, v);
+    {
+        let _p = crate::perf::span("scene");
+        if v.map {
+            draw_map(fb, v);
+        } else {
+            draw_cockpit(fb, v);
+        }
     }
+    let _p = crate::perf::span("hud");
     draw_status(fb, v);
     crate::landing_view::draw(fb, v);
     crate::nav_view::draw_panel(fb, v);
@@ -186,6 +190,7 @@ fn dimmed(c: u32, k: f32) -> u32 {
 /// Draw solid world `i` as seen from the cockpit: a lit ball in the colours of its biomes with
 /// its relief shaded and its air at the rim. Returns false when the world has no surface to show.
 fn draw_world(fb: &mut Framebuffer, cam: &Camera, v: &View, i: usize) -> bool {
+    let _p = crate::perf::span("world");
     let Some(map) = v.game.flight_map(i) else {
         return false;
     };
@@ -198,7 +203,14 @@ fn draw_world(fb: &mut Framebuffer, cam: &Camera, v: &View, i: usize) -> bool {
     if terrain_view(fb, cam, v, i, &map, &orient) {
         return true;
     }
-    // The ball itself, in plain colours: lit by the star, relief shaded, air at the rim.
+    // The ball itself, in plain colours: lit by the star, relief shaded, air at the rim. The
+    // ground is baked into a texture (see ball.rs); the clouds are read from the map once.
+    let world =
+        vector_core::hash_coord(v.sim.system.seed, i as i64, v.sim.terra_stamp() as i64, 77);
+    let atmo = v.sim.atmo(&map);
+    let surf = &map.surface;
+    let clouds =
+        move |lat: f64, lon: f64| vector_world::climate::cloud_cover(surf, &atmo, lat, lon);
     crate::globe::fill_world(
         fb,
         cam,
@@ -210,7 +222,10 @@ fn draw_world(fb: &mut Framebuffer, cam: &Camera, v: &View, i: usize) -> bool {
             map: Some(&map),
             color: &|x, y| crate::surface_view::ground_color(v.sim, &map, x, y),
             air: map.pressure,
-            clouds: Some(&|lat, lon| v.sim.cloud_cover(&map, lat, lon)),
+            clouds: Some(&clouds),
+            world,
+            colors: (v.sim.season_phase(map.body) * 48.0) as u64,
+            cloud_stamp: (v.sim.time / 3600.0) as u64,
         },
     );
     true
@@ -252,17 +267,23 @@ fn terrain_view(
     // Straight down the heightfield degenerates: look at it from a steep angle instead.
     let pitch = pitch.max(-1.45);
     let yaw = fwd.dot(east).atan2(fwd.dot(north));
+    let _p = crate::perf::span("terrain_view");
     let sun = (b.pos * -1.0).normalized();
     let air = map.pressure;
     let t = crate::terrain::Terrain::new(map, b.radius).with_season(v.sim.season_phase(map.body));
     let data = &v.sim.data;
     let focal = fb.h as f64 * 0.5 / (cam.fov_y * 0.5).tan();
     let horizon_dist = (2.0 * b.radius * alt.max(10.0)).sqrt();
-    crate::terrain::render(
+    let table: Vec<u32> = (0..vector_world::surface::W * vector_world::surface::H)
+        .map(|k| {
+            let (x, y) = (k % vector_world::surface::W, k / vector_world::surface::W);
+            data.biomes[map.biome_at(x, y)].color
+        })
+        .collect();
+    crate::terrain::render_par(
         fb,
         &t,
-        &|x, y| data.biomes[map.biome_at(x, y)].color,
-        &|_, _| None,
+        &table,
         &crate::terrain::Eye {
             lat,
             lon,
@@ -327,6 +348,7 @@ fn sky_view(v: &View) -> (f64, Option<(&'static str, f64)>) {
 
 /// A world as a lit ball of one colour, or with the bands of a gas giant.
 fn draw_ball(fb: &mut Framebuffer, cam: &Camera, v: &View, i: usize, col: u32, bands: bool) {
+    let _p = crate::perf::span("ball");
     let b = &v.sim.bodies[i];
     let sys = &v.sim.system.bodies[i];
     let angle = std::f64::consts::TAU * v.sim.time / v.sim.system.spin_period(i).max(60.0);
@@ -357,6 +379,14 @@ fn draw_ball(fb: &mut Framebuffer, cam: &Camera, v: &View, i: usize, col: u32, b
             },
             air: if bands { 1.0 } else { sys.pressure },
             clouds: None,
+            world: vector_core::hash_coord(
+                seed,
+                i as i64,
+                u64::from(col) as i64,
+                u64::from(bands) as i64,
+            ),
+            colors: 0,
+            cloud_stamp: 0,
         },
     );
 }
@@ -420,7 +450,10 @@ fn draw_cockpit(fb: &mut Framebuffer, v: &View) {
     if let Some((name, p)) = layer {
         fb.text(1, 12, &format!("ATMOSPHERE : {name}  {p:.4} BAR"), AMBER);
     }
-    draw_dust(fb, &cam, v);
+    {
+        let _p = crate::perf::span("dust");
+        draw_dust(fb, &cam, v);
+    }
     for (i, b) in v.sim.bodies.iter().enumerate() {
         if v.sim.scan[i] == 0 {
             continue;

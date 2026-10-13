@@ -305,3 +305,11 @@ des vaisseaux a torche de fusion/antimatiere (impulsion specifique 150 a 340 ks,
 jours et un systeme en quelques semaines, ce qui rend le jeu jouable sans temps mort. Diviser les
 impulsions par dix ramenerait la portee a 0,7 UA. L'interstellaire passe par les sauts FTL. Les moteurs
 exotiques (Bussard, antimatiere) restent sous 0,1 c, le delta-v s'affiche en km/s partout.
+
+## Performance
+
+- Mesurer avant d'optimiser : `--bench-planet`, `--bench-all`, `--profile` / Scroll Lock (voir `docs/PERFORMANCE.md`). Regle de projet : toute modification du rendu, de la simulation par pas ou du chargement relance les deux bancs avant fusion ; un cas qui passe sous 60 images/s (> 16,7 ms un fil / coeurs) ou un pic > 50 ms se justifie dans `docs/PERFORMANCE.md`.
+- Ce qui ne change pas d'une image a l'autre ne se recalcule pas par image : le sol d'un monde (couleur des cases decalee par le bruit, relief, pente) est cuit dans une texture par monde et par taille (`ball.rs`), les nuages dans une texture rafraichie a l'heure de jeu, l'ecran de surface garde sa grille par (couche, monde, heure, espece), le tableau de bord garde le prix du portefeuille une heure. La cle d'invalidation est toujours un etat de jeu (terraformation, saison, heure), jamais une horloge reelle.
+- Parallelisme : `std::thread::scope` seulement, sans dependance ; des bandes independantes tirees dans une file ; la sortie est identique pour tout nombre de fils (test). Un code de rendu qui veut etre parallele ne capture pas `Sim` (non `Sync`) : il recoit des tables et des donnees pures.
+- Le niveau fin d'une texture se cuit sur plusieurs images pendant qu'un niveau grossier est affiche : un accroc de construction ne depasse pas quelques millisecondes.
+- `terrain::render` garde sa signature (closures non `Sync` de la vue a pied) ; `render_par` est la version parallele pour un sol colore par table.

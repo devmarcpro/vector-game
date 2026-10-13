@@ -48,6 +48,9 @@ pub struct DashUi {
     pub link: usize,
     pub from: Screen,
     cache: RefCell<Option<(f64, Vec<Alert>)>>,
+    /// Net worth and value of the portfolio (priced from the markets: costly), kept an hour of
+    /// game time (and until the credits change).
+    worth: RefCell<Option<(f64, f64, f64, f64)>>,
 }
 
 impl Default for DashUi {
@@ -57,6 +60,7 @@ impl Default for DashUi {
             link: 0,
             from: Screen::Flight,
             cache: RefCell::new(None),
+            worth: RefCell::new(None),
         }
     }
 }
@@ -189,6 +193,23 @@ impl Game {
                 let list = self.sim.alerts();
                 *c = Some((t, list.clone()));
                 list
+            }
+        }
+    }
+
+    /// (net worth, value of the portfolio), recomputed at most once an hour of game time.
+    fn finance_values(&self) -> (f64, f64) {
+        let t = self.sim.time;
+        let mut c = self.dash.worth.borrow_mut();
+        match *c {
+            Some((at, cr, nw, folio)) if (t - at).abs() < 3600.0 && cr == self.sim.credits => {
+                (nw, folio)
+            }
+            _ => {
+                let _p = crate::perf::span("dash_prices");
+                let (nw, folio) = (self.sim.net_worth(), self.sim.portfolio_value());
+                *c = Some((t, self.sim.credits, nw, folio));
+                (nw, folio)
             }
         }
     }
@@ -970,7 +991,7 @@ fn draw_finance(fb: &mut Framebuffer, g: &Game, (x, y, w, h): Rect) {
         put(fb, x, r, wi, "HYPOTHEQUE NON", DIM);
     }
     r += 1;
-    let nw = s.net_worth();
+    let (nw, folio) = g.finance_values();
     put(
         fb,
         x,
@@ -994,7 +1015,6 @@ fn draw_finance(fb: &mut Framebuffer, g: &Game, (x, y, w, h): Rect) {
         if s.insured() { GREEN } else { DIM },
     );
     r += 2;
-    let folio = s.portfolio_value();
     put(
         fb,
         x,
@@ -1821,15 +1841,42 @@ pub fn draw(fb: &mut Framebuffer, g: &Game) {
         Act::Key(KeyCode::Escape),
     );
     let r = layout(cols, fb.rows());
-    draw_ship(fb, g, r[VAISSEAU]);
-    draw_crew(fb, g, r[EQUIPAGE]);
-    draw_finance(fb, g, r[FINANCES]);
-    draw_world(fb, g, &alerts, r[MONDE]);
-    draw_contracts(fb, g, r[CONTRATS]);
-    draw_alerts(fb, g, &alerts, r[ALERTES]);
-    draw_colonies(fb, g, r[COLONIES]);
-    draw_foot(fb, g, r[EXPLORATION]);
-    draw_mind(fb, g, r[ESPRIT]);
+    {
+        let _p = crate::perf::span("dash_ship");
+        draw_ship(fb, g, r[VAISSEAU]);
+    }
+    {
+        let _p = crate::perf::span("dash_crew");
+        draw_crew(fb, g, r[EQUIPAGE]);
+    }
+    {
+        let _p = crate::perf::span("dash_finance");
+        draw_finance(fb, g, r[FINANCES]);
+    }
+    {
+        let _p = crate::perf::span("dash_world");
+        draw_world(fb, g, &alerts, r[MONDE]);
+    }
+    {
+        let _p = crate::perf::span("dash_contracts");
+        draw_contracts(fb, g, r[CONTRATS]);
+    }
+    {
+        let _p = crate::perf::span("dash_alerts");
+        draw_alerts(fb, g, &alerts, r[ALERTES]);
+    }
+    {
+        let _p = crate::perf::span("dash_colonies");
+        draw_colonies(fb, g, r[COLONIES]);
+    }
+    {
+        let _p = crate::perf::span("dash_foot");
+        draw_foot(fb, g, r[EXPLORATION]);
+    }
+    {
+        let _p = crate::perf::span("dash_mind");
+        draw_mind(fb, g, r[ESPRIT]);
+    }
     crate::context_menu::draw_banner_line(fb, g, 1, 2, cols.saturating_sub(2));
 }
 

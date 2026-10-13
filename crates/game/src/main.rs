@@ -1,5 +1,7 @@
 mod archive_view;
 mod audio;
+mod ball;
+mod bench;
 mod bourse_view;
 mod codex;
 mod codex_sky;
@@ -34,6 +36,7 @@ mod mouse;
 mod nav_view;
 mod newgame;
 mod newgame_custom;
+mod perf;
 mod power_view;
 mod project_view;
 mod proto_view;
@@ -115,6 +118,9 @@ struct App {
     mouse_acc: (f64, f64),
     grabbed: bool,
     started: Instant,
+    /// The profiler overlay (ScrollLock, or `--profile`): lines refreshed every 30 images.
+    perf_lines: Vec<String>,
+    perf_n: u32,
 }
 
 /// Full turn demand at this many pixels of raw mouse motion per second.
@@ -184,6 +190,13 @@ impl ApplicationHandler for App {
                 let pressed = event.state == ElementState::Pressed;
                 if let PhysicalKey::Code(code) = event.physical_key {
                     let code = self.game.settings.translate(code);
+                    if code == KeyCode::ScrollLock {
+                        if pressed {
+                            perf::set(!perf::enabled());
+                            self.perf_lines.clear();
+                        }
+                        return;
+                    }
                     self.game.key(code, event.text.as_deref(), pressed);
                     if self.game.quit {
                         el.exit();
@@ -235,6 +248,7 @@ impl ApplicationHandler for App {
                 let dt = (now - self.last).as_secs_f64().min(0.25);
                 self.last = now;
                 self.sync_mouse(dt);
+                let sim_t = Instant::now();
                 if self.game.running() {
                     if self.game.timescale <= 1.0 {
                         self.acc += dt * self.game.timescale;
@@ -245,6 +259,7 @@ impl ApplicationHandler for App {
                         self.game.advance(dt);
                     }
                 }
+                perf::add("sim_advance", sim_t.elapsed().as_secs_f64() * 1000.0);
                 let (Some(win), Some(surf)) = (&self.window, &mut self.surface) else {
                     return;
                 };
@@ -258,7 +273,19 @@ impl ApplicationHandler for App {
                     self.fb = Framebuffer::new(w.get() as usize, h.get() as usize);
                 }
                 self.audio.update(&self.game);
+                let draw_t = Instant::now();
                 draw_frame(&mut self.fb, &self.game);
+                if perf::enabled() {
+                    perf::add("draw_total", draw_t.elapsed().as_secs_f64() * 1000.0);
+                    self.perf_n += 1;
+                    if self.perf_n >= 30 {
+                        self.perf_lines = perf::overlay_lines(self.perf_n);
+                        self.perf_n = 0;
+                    }
+                    for (i, l) in self.perf_lines.iter().enumerate() {
+                        self.fb.text_at(8, 60 + 12 * i as i32, l, 0x00FF_FF40);
+                    }
+                }
                 let st = &self.game.settings;
                 if st.scanlines || st.glow || st.scheme > 0 {
                     let tint = match st.scheme {
@@ -330,7 +357,7 @@ fn landing_scene(g: &mut Game, stage: &str) {
     }
 }
 
-fn snapshot(path: &str, scene: &str, data: Arc<GameData>) {
+fn scene_game(scene: &str, data: Arc<GameData>) -> Game {
     let mut g = Game::new(data, DEFAULT_SEED);
     // "ext_<scene>[@yaw,pitch,zoom]": the same scene seen from the third-person camera.
     let (scene, cam) = scene.split_once('@').unwrap_or((scene, ""));
@@ -1787,6 +1814,11 @@ fn snapshot(path: &str, scene: &str, data: Arc<GameData>) {
             g.cycle_target(|_| true);
         }
     }
+    g
+}
+
+fn snapshot(path: &str, scene: &str, data: Arc<GameData>) {
+    let g = scene_game(scene, data);
     let mut fb = Framebuffer::new(1280, 720);
     draw_frame(&mut fb, &g);
     match std::fs::write(path, vector_render::png::encode(fb.w, fb.h, &fb.px)) {
@@ -2015,6 +2047,17 @@ fn main() {
         }
         return;
     }
+    if args.iter().any(|a| a == "--bench-planet") {
+        bench::planet(data, &args);
+        return;
+    }
+    if args.iter().any(|a| a == "--bench-all") {
+        bench::all(data, &args);
+        return;
+    }
+    if args.iter().any(|a| a == "--profile") {
+        perf::set(true);
+    }
     if args.iter().any(|a| a == "--bench") {
         bench(data);
         return;
@@ -2038,6 +2081,8 @@ fn main() {
         mouse_acc: (0.0, 0.0),
         grabbed: false,
         started: Instant::now(),
+        perf_lines: Vec::new(),
+        perf_n: 0,
     };
     if let Err(e) = el.run_app(&mut app) {
         eprintln!("run failed: {e}");

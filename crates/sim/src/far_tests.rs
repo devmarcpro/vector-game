@@ -61,7 +61,7 @@ fn star_near(s: &Sim, p: [f64; 3]) -> StarRef {
 /// The ship has no magnetic trap: antimatter would leak away, keep the stock up for the test.
 fn topup_antimatter(s: &mut Sim) {
     if let Some(r) = s.data.resource_index("antimatter") {
-        if s.galaxy_id != 0 || s.ship.cargo.kg[r] > 0.0 {
+        if s.galaxy_id != vector_world::universe::GalaxyId::HOME || s.ship.cargo.kg[r] > 0.0 {
             let have = s.ship.cargo.kg[r];
             if have < 300.0 {
                 let data = std::sync::Arc::clone(&s.data);
@@ -226,10 +226,10 @@ fn an_intergalactic_trip_goes_and_comes_back() {
     let rep0 = s.reputation_with(Some(0));
     let (home_here, home_seed) = (s.here, s.galaxy.seed);
     let uni = vector_world::universe::Universe::new(s.universe_seed);
-    let near = uni.galaxies_near([0.0; 3], 3.0e6);
+    let near = uni.galaxies_near([0.0; 3], 3.0);
     let other = near
         .iter()
-        .find(|g| g.id != 0)
+        .find(|g| g.id != vector_world::universe::GalaxyId::HOME)
         .expect("a neighbour galaxy")
         .id;
     let plan = s.voyage_plan(Dest::Galaxy(other)).expect("plan");
@@ -246,13 +246,16 @@ fn an_intergalactic_trip_goes_and_comes_back() {
     assert_eq!(s.galaxy.seed, uni.galaxy_seed(other));
     assert_ne!(s.galaxy.seed, home_seed);
     assert_eq!(s.reputation_with(Some(0)), 0.0, "a stranger far from home");
-    assert!(s.galaxy_stash.contains_key(&0));
+    assert!(s
+        .galaxy_stash
+        .contains_key(&vector_world::universe::GalaxyId::HOME));
     // And back.
     s.ship.fuel = s.ship.stats.fuel_cap;
-    s.voyage_go(Dest::Galaxy(0)).expect("back");
+    s.voyage_go(Dest::Galaxy(vector_world::universe::GalaxyId::HOME))
+        .expect("back");
     run_voyage(&mut s, 20_000);
     assert!(s.voyage.as_ref().unwrap().done);
-    assert_eq!(s.galaxy_id, 0);
+    assert_eq!(s.galaxy_id, vector_world::universe::GalaxyId::HOME);
     assert_eq!(s.galaxy.seed, home_seed);
     assert_eq!(s.here, home_here, "back where we left");
     assert!(s.reputation_with(Some(0)) > 0.25 * rep0, "home remembers");

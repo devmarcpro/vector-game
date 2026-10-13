@@ -714,7 +714,7 @@ impl Game {
 // ---- the prediction ---------------------------------------------------------------------------
 
 /// The predicted path of the ship with the nodes of the queue (cached between frames).
-fn with_pred<R>(g: &Game, f: impl FnOnce(&Prediction) -> R) -> Option<R> {
+pub(crate) fn with_pred<R>(g: &Game, f: impl FnOnce(&Prediction) -> R) -> Option<R> {
     let sim = &g.sim;
     let nodes = sim.nav_nodes();
     if !g.nav_ui.preview && sim.nav.pending() == 0 {
@@ -730,7 +730,7 @@ fn with_pred<R>(g: &Game, f: impl FnOnce(&Prediction) -> R) -> Option<R> {
     c.pred.as_ref().map(f)
 }
 
-fn event_label(g: &Game, e: &vector_sim::nav_predict::PredEvent) -> (String, u32) {
+pub(crate) fn event_label(g: &Game, e: &vector_sim::nav_predict::PredEvent) -> (String, u32) {
     let sim = &g.sim;
     let name = |i: usize| {
         sim.bodies
@@ -1481,6 +1481,7 @@ impl Game {
     /// and the way home.
     pub fn voyage_refresh(&mut self) {
         use vector_sim::far::Dest;
+        use vector_world::universe::GalaxyId;
         let s = &self.sim;
         let mut v: Vec<(String, Dest)> = Vec::new();
         if let Some(t) = self.gal_cache.get(self.gal_sel) {
@@ -1508,30 +1509,33 @@ impl Game {
             }
         }
         let uni = s.universe();
-        let here = uni.galaxy(s.galaxy_id);
-        if s.galaxy_id != 0 {
-            let home = uni.galaxy(0);
+        let here = uni.galaxy(s.galaxy_id).expect("current galaxy");
+        let ly = |a: [f64; 3], b: [f64; 3]| {
+            ((a[0] - b[0]).powi(2) + (a[1] - b[1]).powi(2) + (a[2] - b[2]).powi(2)).sqrt()
+        };
+        if s.galaxy_id != GalaxyId::HOME {
+            let home = uni.galaxy(GalaxyId::HOME).expect("home galaxy");
             v.push((
                 format!(
                     "RETOUR A LA GALAXIE D'ORIGINE : {} ({:.1} MAL)",
-                    home.name().to_uppercase(),
-                    here.distance_to(home.pos) / 1.0e6
+                    home.name.to_uppercase(),
+                    ly(here.pos, home.pos)
                 ),
-                Dest::Galaxy(0),
+                Dest::Galaxy(GalaxyId::HOME),
             ));
         }
         for gx in uni
-            .galaxies_near(here.pos, 9.0e6)
+            .galaxies_near(here.pos, 9.0)
             .into_iter()
-            .filter(|g| g.id != s.galaxy_id && g.id != 0)
+            .filter(|g| g.id != s.galaxy_id && g.id != GalaxyId::HOME)
             .take(8)
         {
             v.push((
                 format!(
                     "GALAXIE {} ({}, {:.1} MAL)",
-                    gx.name().to_uppercase(),
+                    gx.name.to_uppercase(),
                     gx.kind.label(),
-                    here.distance_to(gx.pos) / 1.0e6
+                    ly(here.pos, gx.pos)
                 ),
                 Dest::Galaxy(gx.id),
             ));

@@ -29,8 +29,18 @@ pub const PAUSE_MENU: [&str; 8] = [
     "MENU PRINCIPAL",
     "QUITTER",
 ];
-const TIME_LADDER: [f64; 10] = [
-    0.25, 0.5, 1.0, 2.0, 5.0, 10.0, 100.0, 1000.0, 10_000.0, 100_000.0,
+const TIME_LADDER: [f64; 11] = [
+    0.25,
+    0.5,
+    1.0,
+    2.0,
+    5.0,
+    10.0,
+    100.0,
+    1000.0,
+    10_000.0,
+    100_000.0,
+    1_000_000.0,
 ];
 
 /// Sort orders of the market list (`V` cycles them).
@@ -89,6 +99,8 @@ pub enum Screen {
     Dashboard,
     /// The navigation computer: the queue of orders, the planner, the thresholds (see `nav_view`).
     NavAuto,
+    /// The creative panel (ScrollLock): the one API of `Sim::creative_*`, by keys and mouse.
+    Creative,
 }
 
 /// The tabs of the one crew screen (`Screen::Crew`): the list with the sheet of the chosen
@@ -167,6 +179,8 @@ pub struct Game {
     pub data: Arc<GameData>,
     pub sim: Sim,
     pub stars: Vec<Vec3>,
+    /// The real sky of the current sector (cached; rebuilt when the sector changes).
+    pub sky: std::cell::RefCell<vector_world::sky::SkyCache>,
     pub keys: HashSet<KeyCode>,
     /// Mouse look (F7): turn demand in [-1, 1] as (yaw, pitch), fed each frame by the window.
     pub mouse_look: bool,
@@ -216,6 +230,8 @@ pub struct Game {
     /// The screen of the navigation computer and the editor of its orders.
     pub nav_ui: crate::nav_view::NavUi,
     pub gal_zoom: f64,
+    /// The universe map: orbit camera, filter, search, caches.
+    pub umap: crate::umap::UMap,
     pub offers: Vec<vector_sim::economy::Contract>,
     pub contract_sel: usize,
     pub emp_sel: usize,
@@ -317,6 +333,8 @@ pub struct Game {
     pub rules_sel: usize,
     /// Rules for the next new game (edited live when opened from the pause menu).
     pub pending_rules: vector_sim::rules::Rules,
+    pub cx: crate::creative_view::CxState,
+    pub cx_back: Screen,
     /// Where the rules / options / codex screens return to.
     pub back_to: Screen,
     pub settings: crate::settings::Settings,
@@ -329,6 +347,10 @@ pub struct Game {
     pub surf: Option<vector_sim::planet::PlanetMap>,
     /// Maps of the planets of the system, built when first seen from the cockpit (drawn as
     /// topographic globes): the system they belong to, and one per body.
+    /// The glyph and colour of every cell of the surface map in the layer shown, kept while
+    /// nothing it depends on has changed (key, W * H cells): the layers of weather and life are
+    /// costly to compute and the map is drawn many times a second.
+    pub surf_grid: std::cell::RefCell<(u64, Vec<(char, u32)>)>,
     pub flight_maps: std::cell::RefCell<(
         u64,
         std::collections::HashMap<usize, std::rc::Rc<vector_sim::planet::PlanetMap>>,
@@ -421,6 +443,7 @@ impl Game {
             data,
             sim,
             stars: scene::star_field(seed, 900),
+            sky: Default::default(),
             keys: HashSet::new(),
             mouse_look: false,
             pointer: Default::default(),
@@ -459,6 +482,7 @@ impl Game {
             gal_sel: 0,
             nav_ui: Default::default(),
             gal_zoom: 14.0,
+            umap: Default::default(),
             offers: Vec::new(),
             contract_sel: 0,
             emp_sel: 0,
@@ -531,6 +555,8 @@ impl Game {
             tech_sel: 0,
             rules_sel: 0,
             pending_rules: vector_sim::rules::Rules::default(),
+            cx: Default::default(),
+            cx_back: Screen::Flight,
             back_to: Screen::MainMenu,
             settings: crate::settings::Settings::load(&PathBuf::from("saves").join("settings.cfg")),
             opt_sel: 0,
@@ -538,6 +564,7 @@ impl Game {
             codex_sel: 0,
             codex_back: Vec::new(),
             flight_maps: Default::default(),
+            surf_grid: Default::default(),
             surf: None,
             surf_cx: 0,
             surf_cy: 0,
@@ -1078,7 +1105,7 @@ impl Game {
     fn step_time(&mut self, up: bool) {
         let top = TIME_LADDER
             .iter()
-            .rposition(|&t| t <= self.sim.rules.max_timescale)
+            .rposition(|&t| t <= self.sim.rules.max_ts())
             .unwrap_or(2);
         let i = TIME_LADDER
             .iter()
@@ -1272,6 +1299,20 @@ impl Game {
             self.say("TUTORIEL IGNORE (REACTIVABLE DANS OPTIONS)");
             return;
         }
+        if code == KeyCode::ScrollLock
+            && !matches!(
+                self.screen,
+                Screen::MainMenu | Screen::NewGame | Screen::Destroyed
+            )
+        {
+            self.help_open = false;
+            if self.screen == Screen::Creative {
+                self.screen = self.cx_back;
+            } else {
+                self.open_creative();
+            }
+            return;
+        }
         // The menu is one key away from every screen of the game.
         if code == KeyCode::F10
             && !matches!(
@@ -1310,7 +1351,7 @@ impl Game {
             Screen::Designer => self.designer_key(code, text),
             Screen::Crew => self.crew_key(code),
             Screen::Journal => self.journal_key(code),
-            Screen::Galaxy => self.galaxy_key(code),
+            Screen::Galaxy => self.galaxy_key(code, text),
             Screen::Contracts => self.contracts_key(code),
             Screen::Bank => self.bank_key(code),
             Screen::Livestock => self.livestock_key(code),
@@ -1322,6 +1363,7 @@ impl Game {
             Screen::Fleet => self.fleet_key(code),
             Screen::Tech => self.tech_key(code),
             Screen::Rules => self.rules_key(code),
+            Screen::Creative => self.creative_key(code, text),
             Screen::Options => self.options_key(code),
             Screen::Codex => self.codex_key(code),
             Screen::Surface => self.surface_key(code),
@@ -3275,15 +3317,16 @@ impl Game {
         self.screen = Screen::Galaxy;
     }
 
-    fn galaxy_key(&mut self, code: KeyCode) {
+    fn galaxy_key(&mut self, code: KeyCode, text: Option<&str>) {
+        if self.umap_key(code, text) {
+            return;
+        }
         let n = self.gal_cache.len().max(1);
         match code {
             KeyCode::ArrowUp => self.gal_sel = (self.gal_sel + n - 1) % n,
             KeyCode::ArrowDown | KeyCode::Tab => self.gal_sel = (self.gal_sel + 1) % n,
-            KeyCode::Equal | KeyCode::NumpadAdd => self.gal_zoom = (self.gal_zoom * 1.4).min(80.0),
-            KeyCode::Minus | KeyCode::NumpadSubtract => {
-                self.gal_zoom = (self.gal_zoom / 1.4).max(2.0)
-            }
+            KeyCode::Equal | KeyCode::NumpadAdd => self.umap_zoom_by(1.4),
+            KeyCode::Minus | KeyCode::NumpadSubtract => self.umap_zoom_by(1.0 / 1.4),
             KeyCode::Enter => {
                 if let Some(target) = self.gal_cache.get(self.gal_sel).cloned() {
                     match self.sim.jump_or_run(&target) {

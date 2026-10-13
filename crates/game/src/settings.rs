@@ -27,6 +27,12 @@ pub struct Settings {
     pub flight_menu: bool,
     /// Scrolling banner of the news along the bottom of the screen.
     pub ticker: bool,
+    /// Limiting magnitude of the sky: 5.0 + 0.5 * this (0..=6).
+    pub sky_mag: u8,
+    /// Galactic band, constellations and their names in the sky.
+    pub sky_band: bool,
+    pub sky_const: bool,
+    pub sky_names: bool,
 }
 
 impl Default for Settings {
@@ -42,12 +48,21 @@ impl Default for Settings {
             lang: 0,
             flight_menu: true,
             ticker: true,
+            sky_mag: 3,
+            sky_band: true,
+            sky_const: true,
+            sky_names: true,
         }
     }
 }
 
 impl Settings {
-    pub const COUNT: usize = 10;
+    pub const COUNT: usize = 14;
+
+    /// Limiting magnitude of the sky.
+    pub fn sky_mag_limit(&self) -> f64 {
+        5.0 + 0.5 * f64::from(self.sky_mag.min(6))
+    }
 
     pub fn describe(&self) -> Vec<(&'static str, String)> {
         let yn = |b: bool| if b { "OUI" } else { "NON" }.to_string();
@@ -68,6 +83,13 @@ impl Settings {
             ("Langue", LANGS[self.lang.min(LANGS.len() - 1)].to_string()),
             ("Menu de pilotage (cockpit)", yn(self.flight_menu)),
             ("Bandeau d'informations", yn(self.ticker)),
+            (
+                "Ciel : magnitude limite",
+                format!("{:.1}", self.sky_mag_limit()),
+            ),
+            ("Ciel : bande galactique", yn(self.sky_band)),
+            ("Ciel : constellations", yn(self.sky_const)),
+            ("Ciel : noms des constellations", yn(self.sky_names)),
         ]
     }
 
@@ -90,6 +112,16 @@ impl Settings {
             7 => self.lang = cycle(self.lang, LANGS.len()),
             8 => self.flight_menu = !self.flight_menu,
             9 => self.ticker = !self.ticker,
+            10 => {
+                self.sky_mag = if up {
+                    (self.sky_mag + 1).min(6)
+                } else {
+                    self.sky_mag.saturating_sub(1)
+                }
+            }
+            11 => self.sky_band = !self.sky_band,
+            12 => self.sky_const = !self.sky_const,
+            13 => self.sky_names = !self.sky_names,
             _ => {}
         }
     }
@@ -151,7 +183,7 @@ impl Settings {
 
     pub fn to_text(&self) -> String {
         format!(
-            "scanlines={}\nglow={}\nscheme={}\nvolume={}\ntutorial={}\nhints={}\nazerty={}\nlang={}\nmenu={}\nticker={}\n",
+            "scanlines={}\nglow={}\nscheme={}\nvolume={}\ntutorial={}\nhints={}\nazerty={}\nlang={}\nmenu={}\nticker={}\nskymag={}\nskyband={}\nskyconst={}\nskynames={}\n",
             u8::from(self.scanlines),
             u8::from(self.glow),
             self.scheme,
@@ -161,7 +193,11 @@ impl Settings {
             u8::from(self.azerty),
             self.lang,
             u8::from(self.flight_menu),
-            u8::from(self.ticker)
+            u8::from(self.ticker),
+            self.sky_mag,
+            u8::from(self.sky_band),
+            u8::from(self.sky_const),
+            u8::from(self.sky_names)
         )
     }
 
@@ -183,6 +219,10 @@ impl Settings {
                 "azerty" => s.azerty = n != 0,
                 "menu" => s.flight_menu = n != 0,
                 "ticker" => s.ticker = n != 0,
+                "skymag" => s.sky_mag = n.min(6) as u8,
+                "skyband" => s.sky_band = n != 0,
+                "skyconst" => s.sky_const = n != 0,
+                "skynames" => s.sky_names = n != 0,
                 "lang" => s.lang = n.min(LANGS.len() - 1),
                 "volume" => s.volume = n.min(10) as u8,
                 _ => {}

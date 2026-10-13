@@ -312,3 +312,24 @@ exotiques (Bussard, antimatiere) restent sous 0,1 c, le delta-v s'affiche en km/
 - Les classes de propulseurs sont des donnees (`modules.ron`) : un champ a zero vaut le propulseur classique, donc rien ne change pour les anciens Mk1-Mk4. Le carburant du jump long/galactique/intergalactique est le carburant ordinaire (coefficient `jump_fuel_mult`) ; l'intergalactique brule aussi de l'antimatiere.
 - Une galaxie = une graine derivee de l'univers (`Universe::galaxy_seed`) ; la galaxie 0 garde la graine de depart : les parties existantes sont inchangees. Changer de galaxie met de cote visites, deltas de systemes et relations (`GalaxyStash`) et charge ceux de la cible : on y est un etranger, et le retour retrouve l'etat laisse.
 - Temps : un saut long est franchi en pas de `total/40` (600 s a 6 h) au lieu de 600 s fixes ; sans cela une traversee de plusieurs mois coutait des dizaines de milliers de pas.
+## Ciel reel et univers (wt-univ)
+- `vector_world::sky`: catalogue des etoiles a 90 al (magnitude apparente m = M + 5 log10(d/10 pc), couleur par classe) et bande galactique (directions tirees selon la densite en colonne de `Galaxy::density`), mis en cache par secteur (`SkyCache`), dessine en pixels opaques dans `hud::draw_real_sky`. Reglages : `Game::sky_mag_limit`, `Game::sky_band` (non sauvegardes).
+- `vector_world::universe`: galaxies voisines deterministes (`Universe::galaxies_near/galaxy/galaxy_seed`); la galaxie d'origine garde la graine de l'univers. Aucune structure sauvegardee modifiee.
+- Reste: carte zoomable multi-echelles, constellations, nebuleuses dans le ciel, menu contextuel (non faits).
+## Performance: regle de projet
+
+Le jeu doit etre hyper optimise (demande explicite). Budget: >= 60 images/s en release a 1280x720 (>= 30 au
+pire cas), cout de simulation borne par pas, aucune allocation par image dans les boucles de rendu, caches
+avec invalidation correcte (textures de planete, cartes de surface, catalogues d'etoiles par secteur), rendu
+logiciel en bandes paralleles (std::thread::scope, sans dependance). Toute fonctionnalite livre sa mesure
+(profileur `--profile`, benchmarks headless, docs/PERFORMANCE.md) et ne fait pas regresser le budget.
+
+- Carte de l'univers : l'ecran Galaxie (L) est etendu, pas double. Le zoom est en pixels par annee-lumiere (`gal_zoom`, 5e-6 a 80), les cinq echelles sont les touches 1 a 5. Aux grandes echelles la camera tourne autour du centre de la galaxie. Le ciel est un cache par secteur (`SkyCache`), jamais recalcule a l'image. Non fait : phases des planetes dans le ciel (draw_world appartient a wt-perf), filaments de l'univers, voyage vers une autre galaxie (wt-far).
+Mode creatif : une seule API `Sim::creative_*` (jamais une 2e logique) et des accesseurs de `Rules` qui levent les restrictions des systemes normaux ; tous les drapeaux sont ignores si `Rules.creative` est faux, donc aucune incidence sur les parties normales.
+## Performance
+
+- Mesurer avant d'optimiser : `--bench-planet`, `--bench-all`, `--profile` / Scroll Lock (voir `docs/PERFORMANCE.md`). Regle de projet : toute modification du rendu, de la simulation par pas ou du chargement relance les deux bancs avant fusion ; un cas qui passe sous 60 images/s (> 16,7 ms un fil / coeurs) ou un pic > 50 ms se justifie dans `docs/PERFORMANCE.md`.
+- Ce qui ne change pas d'une image a l'autre ne se recalcule pas par image : le sol d'un monde (couleur des cases decalee par le bruit, relief, pente) est cuit dans une texture par monde et par taille (`ball.rs`), les nuages dans une texture rafraichie a l'heure de jeu, l'ecran de surface garde sa grille par (couche, monde, heure, espece), le tableau de bord garde le prix du portefeuille une heure. La cle d'invalidation est toujours un etat de jeu (terraformation, saison, heure), jamais une horloge reelle.
+- Parallelisme : `std::thread::scope` seulement, sans dependance ; des bandes independantes tirees dans une file ; la sortie est identique pour tout nombre de fils (test). Un code de rendu qui veut etre parallele ne capture pas `Sim` (non `Sync`) : il recoit des tables et des donnees pures.
+- Le niveau fin d'une texture se cuit sur plusieurs images pendant qu'un niveau grossier est affiche : un accroc de construction ne depasse pas quelques millisecondes.
+- `terrain::render` garde sa signature (closures non `Sync` de la vue a pied) ; `render_par` est la version parallele pour un sol colore par table.

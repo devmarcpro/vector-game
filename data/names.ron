@@ -83,6 +83,7 @@
   (kind:"station", voice:"stellar", forms:[("Station {host}",6),("{w:station_noun} {root}",3),("{w:station_noun} de {host}",2),("{host} {w:station_suffix}",1),("Station {surname}",2),("{w:station_noun} {gr}",1)]),
   (kind:"anomaly", voice:"deep", forms:[("{label} {host}-{n}",5),("{label} de {root}",3),("{label} {gr}-{n}",2),("{w:anom_noun} de {root}",2)]),
   (kind:"nebula", voice:"deep", forms:[("Nébuleuse {root}",4),("Nébuleuse du {w:neb_noun}",3),("Nébuleuse {w:neb_adj} de {root}",2),("{w:neb_noun} de {root}",2),("Nébuleuse {cat}",1)]),
+  (kind:"constellation", voice:"deep", forms:[("Constellation {root}",4),("Constellation du {w:neb_noun}",3),("{w:neb_noun} de {root}",2)]),
   (kind:"cluster", voice:"deep", forms:[("Amas {root}",4),("Amas du {w:neb_noun}",2),("Amas {gr} {root}",2),("Amas {cat}",2),("Essaim {root}",1)]),
   (kind:"sector", voice:"stellar", forms:[("Secteur {root}",5),("{w:sector_noun} de {root}",4),("Secteur {gr}-{n}",1)]),
   (kind:"galaxy", voice:"deep", forms:[("Galaxie {root}",3),("NGC {n4}",3),("UGC {n4}",2),("Galaxie du {w:neb_noun}",1),("{root} {rom}",1),("Galaxie {cat}",1)]),

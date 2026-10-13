@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use vector_core::{hash_coord, Rng};
 use vector_world::galaxy::{Galaxy, StarEntry, StarRef, SECTOR_LY};
-use vector_world::universe::Universe;
+use vector_world::universe::{GalaxyId, Universe};
 use vector_world::StarClass;
 
 /// Time acceleration the voyage asks for while it runs without trouble.
@@ -78,7 +78,7 @@ pub struct GalaxyStash {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Dest {
     Star(StarRef),
-    Galaxy(i64),
+    Galaxy(GalaxyId),
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -89,7 +89,7 @@ pub struct Leg {
     pub name: String,
     pub dist: f64,
     /// Set for an intergalactic jump: the galaxy this leg arrives in.
-    pub galaxy: Option<i64>,
+    pub galaxy: Option<GalaxyId>,
     /// The ship scoops fuel from this star on arrival.
     pub scoop: bool,
 }
@@ -215,7 +215,7 @@ impl Sim {
 
     /// The star a ship arrives at when it enters galaxy `g`: where we left it if we were there
     /// before, otherwise a quiet star picked from the galaxy's seed.
-    pub fn galaxy_entry_star(&self, g: i64) -> Option<StarEntry> {
+    pub fn galaxy_entry_star(&self, g: GalaxyId) -> Option<StarEntry> {
         let gal = Galaxy::new(self.universe().galaxy_seed(g));
         if let Some(h) = self.galaxy_stash.get(&g).and_then(|s| s.here) {
             return gal.star(h);
@@ -262,7 +262,7 @@ impl Sim {
 
     /// Leave the current galaxy for `g`: stash what this one remembers, load what `g` remembered
     /// (nothing the first time: the ship is a stranger there, with no standing).
-    pub(crate) fn switch_galaxy(&mut self, g: i64) {
+    pub(crate) fn switch_galaxy(&mut self, g: GalaxyId) {
         if g == self.galaxy_id {
             return;
         }
@@ -384,7 +384,7 @@ impl Sim {
 
     fn plan_galaxies(
         &self,
-        g: i64,
+        g: GalaxyId,
         prof: &DriveProfile,
         plan: &mut VoyagePlan,
     ) -> Result<(), String> {
@@ -395,22 +395,26 @@ impl Sim {
             return Err("IL FAUT UN PROPULSEUR INTERGALACTIQUE".into());
         }
         let uni = self.universe();
-        let goal = uni.galaxy(g);
-        plan.dest_name = goal.name();
-        let mut cur = uni.galaxy(self.galaxy_id);
+        let goal = uni.galaxy(g).ok_or("GALAXIE INCONNUE")?;
+        plan.dest_name = goal.name.clone();
+        let mut cur = uni
+            .galaxy(self.galaxy_id)
+            .ok_or("GALAXIE COURANTE INCONNUE")?;
         let range = prof.range * 0.98;
+        // Galaxy positions are in millions of light years: distances here are in light years.
+        let dly = |a: [f64; 3], b: [f64; 3]| dist3(a, b) * 1.0e6;
         for _ in 0..64 {
-            let dg = cur.distance_to(goal.pos);
+            let dg = dly(cur.pos, goal.pos);
             let next = if dg <= range {
-                goal
+                goal.clone()
             } else {
                 // The neighbour in reach that gets closest to the goal.
-                uni.galaxies_near(cur.pos, range)
+                uni.galaxies_near(cur.pos, range / 1.0e6)
                     .into_iter()
-                    .filter(|n| n.id != cur.id && n.distance_to(goal.pos) < dg - range * 0.2)
+                    .filter(|n| n.id != cur.id && dly(n.pos, goal.pos) < dg - range * 0.2)
                     .min_by(|a, b| {
-                        a.distance_to(goal.pos)
-                            .total_cmp(&b.distance_to(goal.pos))
+                        dly(a.pos, goal.pos)
+                            .total_cmp(&dly(b.pos, goal.pos))
                             .then(a.id.cmp(&b.id))
                     })
                     .ok_or("AUCUNE GALAXIE A PORTEE SUR LA ROUTE")?
@@ -422,8 +426,8 @@ impl Sim {
                 star: entry.id,
                 pos: entry.pos,
                 seed: entry.seed,
-                name: format!("{} / {}", next.name(), entry.header.name),
-                dist: cur.distance_to(next.pos),
+                name: format!("{} / {}", next.name, entry.header.name),
+                dist: dly(cur.pos, next.pos),
                 galaxy: Some(next.id),
                 scoop: false,
             });

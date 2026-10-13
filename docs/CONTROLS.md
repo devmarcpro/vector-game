@@ -26,7 +26,7 @@
 | I | Soute / inventaire (J = jeter la ressource, F = verser le carburant de la soute dans le reservoir) |
 | K | Equipage : UN écran à onglets (barre cliquable au-dessus de la ligne de commandes : LISTE, MEDECINE M, CRYO C, ORGANES O, EQUIPEMENT E, RESEAU V, ARBRE G, RECRUTEMENT N à quai) ; Gauche/Droite poste, T quart, X débarquer à quai, J journal ; K ou Échap revient à la liste puis quitte |
 | J | Journal de bord (Tab : nouvelles du monde, puis ARCHIVES : histoire du secteur et artefacts ; D dater, C collectionneur, M musée, R restituer, T fouille prudente) |
-| L | Carte galactique (Haut/Bas étoile, +/- zoom, Entrée = saut FTL) ; Retour arrière annule une charge de saut |
+| L | Carte de l'univers (Haut/Bas étoile, molette ou +/- zoom, glisser = tourner, 1-5 = les cinq échelles, F filtre, C centrer, R vaisseau, / recherche par nom, Entrée = saut FTL, clic droit = menu) ; Retour arrière annule une charge de saut |
 | F2 | Empire (colonies) ; Entrée = détail ; F3 = Flotte |
 | O | Fonder une colonie sur le corps ciblé (kit en soute) |
 | F4 | Arbre technologique (Entrée lance une recherche ; une recherche peut exiger des découvertes : ressource détenue, anomalie explorée, artefact traduit, épave récupérée, étude, affichées en rouge tant qu'elles manquent) ; E = panneau ESPRIT (budget de calcul de l'IA, logiciels, autres IA : Gauche/Droite budget, Entrée installer, C/A/L contacter/allier/libérer, S ancre) |
@@ -47,6 +47,7 @@
 | ~ (Backquote) | Console de debug : help, list, tp, tpbody, stop, speed, fuel, repair, assist, time |
 | F1 | Aide contextuelle de l'ecran courant (re-appuyer pour fermer) |
 | F6 | Codex (Gauche/Droite categorie, Haut/Bas entree ; categorie REACTIONS = laboratoire : L ou Entree lance un lot de 100 kg de reactifs tires de la soute) |
+| Arret defil (ScrollLock) ; aussi mot CREATIF du HUD et menu clic droit | PANNEAU CREATIF (onglets MONDE, TEMPS, VAISSEAU, EQUIPAGE, ECONOMIE, SAVOIR, COLONIES, EXPLORATION, DEBUG ; l'activer desactive succes et classement) ; console `~` : credits, flag, alltech, reveal, service, days |
 | F10 (tutoriel en cours) | Ignorer le tutoriel |
 | F10 | Ignorer le tutoriel |
 | F6 | Codex (Gauche/Droite categorie, Haut/Bas entree) |

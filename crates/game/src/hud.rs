@@ -21,7 +21,6 @@ pub const DOWN: u32 = 0x00FF_5050;
 pub const HOVER: u32 = 0x00D0_FFD0;
 pub const WIRE: u32 = 0x0040_7050;
 pub const CYAN: u32 = 0x0050_C0E0;
-pub const STAR: u32 = 0x0040_5060;
 pub const SUN: u32 = 0x00E0_D060;
 pub const MINER: u32 = 0x00C0_C040;
 pub const PATROL: u32 = 0x0040_80FF;
@@ -39,6 +38,8 @@ pub struct View<'a> {
     /// The game, for the clickable zones the view declares.
     pub game: &'a Game,
     pub sim: &'a Sim,
+    /// Old random fill, replaced by the real catalogue sky (`vector_world::sky`).
+    #[allow(dead_code)]
     pub stars: &'a [Vec3],
     pub timescale: f64,
     pub paused: bool,
@@ -125,11 +126,15 @@ pub fn fmt_time(s: f64) -> String {
 
 pub fn draw(fb: &mut Framebuffer, v: &View) {
     fb.clear();
-    if v.map {
-        draw_map(fb, v);
-    } else {
-        draw_cockpit(fb, v);
+    {
+        let _p = crate::perf::span("scene");
+        if v.map {
+            draw_map(fb, v);
+        } else {
+            draw_cockpit(fb, v);
+        }
     }
+    let _p = crate::perf::span("hud");
     draw_status(fb, v);
     crate::landing_view::draw(fb, v);
     crate::nav_view::draw_panel(fb, v);
@@ -186,6 +191,7 @@ fn dimmed(c: u32, k: f32) -> u32 {
 /// Draw solid world `i` as seen from the cockpit: a lit ball in the colours of its biomes with
 /// its relief shaded and its air at the rim. Returns false when the world has no surface to show.
 fn draw_world(fb: &mut Framebuffer, cam: &Camera, v: &View, i: usize) -> bool {
+    let _p = crate::perf::span("world");
     let Some(map) = v.game.flight_map(i) else {
         return false;
     };
@@ -198,7 +204,14 @@ fn draw_world(fb: &mut Framebuffer, cam: &Camera, v: &View, i: usize) -> bool {
     if terrain_view(fb, cam, v, i, &map, &orient) {
         return true;
     }
-    // The ball itself, in plain colours: lit by the star, relief shaded, air at the rim.
+    // The ball itself, in plain colours: lit by the star, relief shaded, air at the rim. The
+    // ground is baked into a texture (see ball.rs); the clouds are read from the map once.
+    let world =
+        vector_core::hash_coord(v.sim.system.seed, i as i64, v.sim.terra_stamp() as i64, 77);
+    let atmo = v.sim.atmo(&map);
+    let surf = &map.surface;
+    let clouds =
+        move |lat: f64, lon: f64| vector_world::climate::cloud_cover(surf, &atmo, lat, lon);
     crate::globe::fill_world(
         fb,
         cam,
@@ -210,7 +223,10 @@ fn draw_world(fb: &mut Framebuffer, cam: &Camera, v: &View, i: usize) -> bool {
             map: Some(&map),
             color: &|x, y| crate::surface_view::ground_color(v.sim, &map, x, y),
             air: map.pressure,
-            clouds: Some(&|lat, lon| v.sim.cloud_cover(&map, lat, lon)),
+            clouds: Some(&clouds),
+            world,
+            colors: (v.sim.season_phase(map.body) * 48.0) as u64,
+            cloud_stamp: (v.sim.time / 3600.0) as u64,
         },
     );
     true
@@ -252,17 +268,23 @@ fn terrain_view(
     // Straight down the heightfield degenerates: look at it from a steep angle instead.
     let pitch = pitch.max(-1.45);
     let yaw = fwd.dot(east).atan2(fwd.dot(north));
+    let _p = crate::perf::span("terrain_view");
     let sun = (b.pos * -1.0).normalized();
     let air = map.pressure;
     let t = crate::terrain::Terrain::new(map, b.radius).with_season(v.sim.season_phase(map.body));
     let data = &v.sim.data;
     let focal = fb.h as f64 * 0.5 / (cam.fov_y * 0.5).tan();
     let horizon_dist = (2.0 * b.radius * alt.max(10.0)).sqrt();
-    crate::terrain::render(
+    let table: Vec<u32> = (0..vector_world::surface::W * vector_world::surface::H)
+        .map(|k| {
+            let (x, y) = (k % vector_world::surface::W, k / vector_world::surface::W);
+            data.biomes[map.biome_at(x, y)].color
+        })
+        .collect();
+    crate::terrain::render_par(
         fb,
         &t,
-        &|x, y| data.biomes[map.biome_at(x, y)].color,
-        &|_, _| None,
+        &table,
         &crate::terrain::Eye {
             lat,
             lon,
@@ -327,6 +349,7 @@ fn sky_view(v: &View) -> (f64, Option<(&'static str, f64)>) {
 
 /// A world as a lit ball of one colour, or with the bands of a gas giant.
 fn draw_ball(fb: &mut Framebuffer, cam: &Camera, v: &View, i: usize, col: u32, bands: bool) {
+    let _p = crate::perf::span("ball");
     let b = &v.sim.bodies[i];
     let sys = &v.sim.system.bodies[i];
     let angle = std::f64::consts::TAU * v.sim.time / v.sim.system.spin_period(i).max(60.0);
@@ -357,6 +380,14 @@ fn draw_ball(fb: &mut Framebuffer, cam: &Camera, v: &View, i: usize, col: u32, b
             },
             air: if bands { 1.0 } else { sys.pressure },
             clouds: None,
+            world: vector_core::hash_coord(
+                seed,
+                i as i64,
+                u64::from(col) as i64,
+                u64::from(bands) as i64,
+            ),
+            colors: 0,
+            cloud_stamp: 0,
         },
     );
 }
@@ -389,6 +420,12 @@ fn draw_reticle(fb: &mut Framebuffer, x: f32, y: f32, r: f32) {
 }
 
 fn draw_cockpit(fb: &mut Framebuffer, v: &View) {
+    draw_cockpit_scene(fb, v);
+    draw_radar(fb, v);
+}
+
+/// The scene of the cockpit without the radar scope (the mock-ups of the cockpit draw their own).
+pub(crate) fn draw_cockpit_scene(fb: &mut Framebuffer, v: &View) {
     let ship = &v.sim.ship;
     // Third-person view: the same scene seen from a camera orbiting the ship.
     let ext = v.game.ext_active();
@@ -411,16 +448,15 @@ fn draw_cockpit(fb: &mut Framebuffer, v: &View) {
     // Low in a thick air by day the sky hides the stars and the worlds beyond.
     let (clear, layer) = sky_view(v);
     if clear > 0.3 {
-        for s in v.stars {
-            if let Some((x, y)) = cam.project_dir(*s, fb) {
-                fb.plot(x as i32, y as i32, scale_rgb(STAR, clear as f32));
-            }
-        }
+        draw_real_sky(fb, &cam, v, clear as f32);
     }
     if let Some((name, p)) = layer {
         fb.text(1, 12, &format!("ATMOSPHERE : {name}  {p:.4} BAR"), AMBER);
     }
-    draw_dust(fb, &cam, v);
+    {
+        let _p = crate::perf::span("dust");
+        draw_dust(fb, &cam, v);
+    }
     for (i, b) in v.sim.bodies.iter().enumerate() {
         if v.sim.scan[i] == 0 {
             continue;
@@ -682,7 +718,6 @@ fn draw_cockpit(fb: &mut Framebuffer, v: &View) {
     if ext {
         crate::ext_view::overlay(fb, v.game);
     }
-    draw_radar(fb, v);
 }
 
 fn draw_map(fb: &mut Framebuffer, v: &View) {
@@ -826,7 +861,9 @@ fn draw_status(fb: &mut Framebuffer, v: &View) {
         ),
         if ship.assist { GREEN } else { AMBER },
     );
-    if sim.rules.is_modified() {
+    if sim.rules.creative {
+        fb.text(cols.saturating_sub(24), 1, "CREATIF (ARRET DEFIL)", RED);
+    } else if sim.rules.is_modified() {
         fb.text(cols.saturating_sub(18), 1, "PARTIE MODIFIEE", AMBER);
     }
     if let Some(ap) = &sim.autopilot {
@@ -1515,4 +1552,124 @@ pub fn draw_console(fb: &mut Framebuffer, c: &Console) {
         fb.text(1, i, l, DIM);
     }
     fb.text(1, c.log.len(), &format!("> {}_", c.line), GREEN);
+}
+
+/// The real sky: nebulae, the galactic band, far galaxies and quasars, the catalogue stars with
+/// their colour, magnitude and a subtle twinkle, constellations and their names. Opaque pixels
+/// and dim additive glows (never saturated white); no allocation: it walks the cached lists.
+fn draw_real_sky(fb: &mut Framebuffer, cam: &Camera, v: &View, clear: f32) {
+    let sim = v.sim;
+    let mut cache = v.game.sky.borrow_mut();
+    cache.update(&sim.galaxy, sim.here_pos);
+    let set = &v.game.settings;
+    let lim = set.sky_mag_limit();
+    let tint = |rgb: [u8; 3], k: f32| -> u32 {
+        let c = |x: u8| (f32::from(x) * k).clamp(0.0, 255.0) as u32;
+        (c(rgb[0]) << 16) | (c(rgb[1]) << 8) | c(rgb[2])
+    };
+    let dir = |d: [f64; 3]| Vec3::new(d[0], d[1], d[2]);
+    let t = sim.time as f32;
+    let focal = fb.h as f32 * 0.5 / (cam.fov_y as f32 * 0.5).tan();
+    let sky = &cache.sky;
+    // Nebulae and clusters: a soft patch of dim points inside their angular radius.
+    for (n, nb) in sky.nebulae.iter().enumerate() {
+        if let Some((cx, cy)) = cam.project_dir(dir(nb.dir), fb) {
+            let r = nb.ang * focal;
+            if !(2.0..=4.0 * fb.h as f32).contains(&r) {
+                continue;
+            }
+            for k in 0..70u32 {
+                let h = vector_core::mix64(u64::from(k) * 7919 + n as u64 * 104_729);
+                let a = (h & 0xFFFF) as f32 / 65535.0 * std::f32::consts::TAU;
+                let rr = ((h >> 16) & 0xFFFF) as f32 / 65535.0;
+                let (x, y) = (cx + a.cos() * rr.sqrt() * r, cy + a.sin() * rr.sqrt() * r);
+                fb.plot(
+                    x as i32,
+                    y as i32,
+                    tint(nb.rgb, 0.16 * clear * (1.0 - rr * 0.6)),
+                );
+            }
+        }
+    }
+    if set.sky_band {
+        for s in &sky.band {
+            if let Some((x, y)) = cam.project_dir(dir(s.dir), fb) {
+                let k = (0.10 + 0.32 * s.mag) * clear;
+                fb.px_set(x as i32, y as i32, tint(s.rgb, k));
+            }
+        }
+    }
+    for s in &sky.galaxies {
+        if let Some((x, y)) = cam.project_dir(dir(s.dir), fb) {
+            let r = (s.mag.min(10.0) * 0.5).max(1.0) as i32;
+            for dx in -r..=r {
+                for dy in -(r / 2)..=(r / 2) {
+                    fb.plot(x as i32 + dx, y as i32 + dy, tint(s.rgb, 0.10 * clear));
+                }
+            }
+        }
+    }
+    for s in &sky.quasars {
+        if let Some((x, y)) = cam.project_dir(dir(s.dir), fb) {
+            fb.px_set(x as i32, y as i32, tint(s.rgb, 0.5 * clear));
+        }
+    }
+    for (i, s) in sky.stars.iter().enumerate() {
+        let b = vector_world::sky::brightness(f64::from(s.mag), lim) as f32;
+        if b <= 0.0 {
+            continue;
+        }
+        let Some((x, y)) = cam.project_dir(dir(s.dir), fb) else {
+            continue;
+        };
+        let (x, y) = (x as i32, y as i32);
+        let twinkle = 1.0 + 0.06 * (t * 1.7 + i as f32 * 2.399).sin();
+        let k = (0.25 + 0.75 * b) * clear * twinkle;
+        fb.px_set(x, y, tint(s.rgb, k));
+        if b > 0.55 {
+            let h = tint(s.rgb, k * 0.45);
+            for (dx, dy) in [(1, 0), (-1, 0), (0, 1), (0, -1)] {
+                fb.px_set(x + dx, y + dy, h);
+            }
+        }
+        if b > 0.8 {
+            let h = tint(s.rgb, k * 0.2);
+            for (dx, dy) in [
+                (2, 0),
+                (-2, 0),
+                (0, 2),
+                (0, -2),
+                (1, 1),
+                (-1, -1),
+                (1, -1),
+                (-1, 1),
+            ] {
+                fb.px_set(x + dx, y + dy, h);
+            }
+        }
+    }
+    if set.sky_const {
+        for c in &sky.constellations {
+            for &(a, b) in &c.lines {
+                let (sa, sb) = (&sky.stars[usize::from(a)], &sky.stars[usize::from(b)]);
+                if let (Some((x0, y0)), Some((x1, y1))) = (
+                    cam.project_dir(dir(sa.dir), fb),
+                    cam.project_dir(dir(sb.dir), fb),
+                ) {
+                    fb.line(x0, y0, x1, y1, tint([70, 110, 170], 0.45 * clear));
+                }
+            }
+            if set.sky_names {
+                let s = &sky.stars[usize::from(c.label)];
+                if let Some((x, y)) = cam.project_dir(dir(s.dir), fb) {
+                    fb.text_at(
+                        x as i32 + 6,
+                        y as i32 + 4,
+                        &c.name.to_uppercase(),
+                        tint([90, 130, 190], 0.7 * clear),
+                    );
+                }
+            }
+        }
+    }
 }

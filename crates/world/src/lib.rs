@@ -7,6 +7,7 @@ pub mod hydro;
 pub mod names;
 pub mod orbit;
 pub mod physics;
+pub mod sky;
 pub mod stellar;
 pub mod surface;
 pub mod universe;

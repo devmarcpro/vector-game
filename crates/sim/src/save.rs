@@ -6,7 +6,7 @@ use vector_data::GameData;
 use vector_world::generate_system;
 
 pub const MAGIC: [u8; 4] = *b"VECT";
-pub const VERSION: u32 = 45;
+pub const VERSION: u32 = 46;
 
 #[derive(Debug)]
 pub enum SaveError {
@@ -95,8 +95,8 @@ pub struct SaveGame {
     pub multiverse: crate::multiverse::Multiverse,
     /// Universe seed, current galaxy, the galaxies left behind and the voyage under way.
     pub universe_seed: u64,
-    pub galaxy_id: i64,
-    pub galaxy_stash: Vec<(i64, crate::far::GalaxyStash)>,
+    pub galaxy_id: vector_world::universe::GalaxyId,
+    pub galaxy_stash: Vec<(vector_world::universe::GalaxyId, crate::far::GalaxyStash)>,
     pub voyage: Option<crate::far::Voyage>,
     pub rogue: Option<crate::rogue::Rogue>,
     pub rogue_visits: Vec<(u64, u32)>,

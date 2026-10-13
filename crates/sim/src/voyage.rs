@@ -37,7 +37,7 @@ pub struct JumpState {
     pub in_transit: bool,
     pub mishap: bool,
     /// Set for an intergalactic jump: the galaxy (id) the ship arrives in.
-    pub galaxy: Option<i64>,
+    pub galaxy: Option<vector_world::universe::GalaxyId>,
 }
 
 /// What changed in a system the player has left (everything else is regenerated from the seed).
@@ -215,7 +215,7 @@ impl Sim {
         &mut self,
         target: &StarEntry,
         d: f64,
-        galaxy: Option<i64>,
+        galaxy: Option<vector_world::universe::GalaxyId>,
     ) -> Result<(), &'static str> {
         if self.docked.is_some() {
             return Err("decollez d'abord");
@@ -226,19 +226,20 @@ impl Sim {
         if galaxy.is_none() && target.id == self.here {
             return Err("deja dans ce systeme");
         }
+        let free = self.rules.free_travel();
         let range = self.jump_range();
-        if range <= 0.0 {
+        if range <= 0.0 && !free {
             return Err("aucun propulseur FTL installe");
         }
-        if d > range {
+        if d > range && !free {
             return Err("hors de portee de saut");
         }
-        if self.near_well() {
+        if self.near_well() && !free {
             return Err("trop pres d'un corps massif");
         }
         let prof = self.drive_profile();
-        let cost = self.jump_fuel_cost(d);
-        if self.warp_cost_kg(d) > self.antimatter_stored() {
+        let cost = if free { 0.0 } else { self.jump_fuel_cost(d) };
+        if !free && self.warp_cost_kg(d) > self.antimatter_stored() {
             return Err("antimatiere insuffisante pour la bulle");
         }
         if cost > self.ship.fuel {
@@ -279,10 +280,14 @@ impl Sim {
 
     /// Called every flight step while a jump is charging.
     pub(crate) fn charge_tick(&mut self, dt: f64) {
-        let warp_kg = self
-            .jump
-            .as_ref()
-            .map_or(0.0, |j| self.warp_cost_kg(j.dist_ly));
+        let free = self.rules.free_travel();
+        let warp_kg = if free {
+            0.0
+        } else {
+            self.jump
+                .as_ref()
+                .map_or(0.0, |j| self.warp_cost_kg(j.dist_ly))
+        };
         let short = warp_kg > self.antimatter_stored();
         let prof = self.drive_profile();
         let pilot = self.pilot_risk_factor();
@@ -290,7 +295,9 @@ impl Sim {
         if j.in_transit {
             return;
         }
-        if !self.effective.jump_range.max(0.0).is_finite() || self.effective.jump_range < j.dist_ly
+        if !free
+            && (!self.effective.jump_range.max(0.0).is_finite()
+                || self.effective.jump_range < j.dist_ly)
         {
             // The drive is not delivering power (shed, damaged or out of range): abort.
             self.jump = None;
@@ -329,7 +336,7 @@ impl Sim {
             17,
             3,
         ));
-        j.mishap = rng.f64() < risk;
+        j.mishap = !free && rng.f64() < risk;
         j.in_transit = true;
         self.ship.vel = Vec3::ZERO;
         self.ship.ang = Vec3::ZERO;

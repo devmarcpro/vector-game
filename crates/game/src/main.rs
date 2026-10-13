@@ -1,11 +1,14 @@
 mod archive_view;
 mod audio;
+mod ball;
+mod bench;
 mod bourse_view;
 mod codex;
 mod codex_sky;
 mod console;
 mod context_menu;
 mod cosmos_view;
+mod creative_view;
 mod crew_net_view;
 mod cryo_view;
 mod dash_view;
@@ -30,10 +33,13 @@ mod hud;
 mod landing_view;
 mod medicine_view;
 mod mind_view;
+mod mock_cockpit;
+mod mock_ui;
 mod mouse;
 mod nav_view;
 mod newgame;
 mod newgame_custom;
+mod perf;
 mod power_view;
 mod project_view;
 mod proto_view;
@@ -52,6 +58,7 @@ mod terrain;
 mod trade_view;
 mod tutorial;
 mod ui;
+mod umap;
 mod war_view;
 mod wire_shape;
 mod works_view;
@@ -115,6 +122,9 @@ struct App {
     mouse_acc: (f64, f64),
     grabbed: bool,
     started: Instant,
+    /// The profiler overlay (ScrollLock, or `--profile`): lines refreshed every 30 images.
+    perf_lines: Vec<String>,
+    perf_n: u32,
 }
 
 /// Full turn demand at this many pixels of raw mouse motion per second.
@@ -184,6 +194,13 @@ impl ApplicationHandler for App {
                 let pressed = event.state == ElementState::Pressed;
                 if let PhysicalKey::Code(code) = event.physical_key {
                     let code = self.game.settings.translate(code);
+                    if code == KeyCode::ScrollLock {
+                        if pressed {
+                            perf::set(!perf::enabled());
+                            self.perf_lines.clear();
+                        }
+                        return;
+                    }
                     self.game.key(code, event.text.as_deref(), pressed);
                     if self.game.quit {
                         el.exit();
@@ -235,6 +252,7 @@ impl ApplicationHandler for App {
                 let dt = (now - self.last).as_secs_f64().min(0.25);
                 self.last = now;
                 self.sync_mouse(dt);
+                let sim_t = Instant::now();
                 if self.game.running() {
                     if self.game.timescale <= 1.0 {
                         self.acc += dt * self.game.timescale;
@@ -245,6 +263,7 @@ impl ApplicationHandler for App {
                         self.game.advance(dt);
                     }
                 }
+                perf::add("sim_advance", sim_t.elapsed().as_secs_f64() * 1000.0);
                 let (Some(win), Some(surf)) = (&self.window, &mut self.surface) else {
                     return;
                 };
@@ -258,7 +277,19 @@ impl ApplicationHandler for App {
                     self.fb = Framebuffer::new(w.get() as usize, h.get() as usize);
                 }
                 self.audio.update(&self.game);
+                let draw_t = Instant::now();
                 draw_frame(&mut self.fb, &self.game);
+                if perf::enabled() {
+                    perf::add("draw_total", draw_t.elapsed().as_secs_f64() * 1000.0);
+                    self.perf_n += 1;
+                    if self.perf_n >= 30 {
+                        self.perf_lines = perf::overlay_lines(self.perf_n);
+                        self.perf_n = 0;
+                    }
+                    for (i, l) in self.perf_lines.iter().enumerate() {
+                        self.fb.text_at(8, 60 + 12 * i as i32, l, 0x00FF_FF40);
+                    }
+                }
                 let st = &self.game.settings;
                 if st.scanlines || st.glow || st.scheme > 0 {
                     let tint = match st.scheme {
@@ -330,7 +361,7 @@ fn landing_scene(g: &mut Game, stage: &str) {
     }
 }
 
-fn snapshot(path: &str, scene: &str, data: Arc<GameData>) {
+fn scene_game(scene: &str, data: Arc<GameData>) -> Game {
     let mut g = Game::new(data, DEFAULT_SEED);
     // "ext_<scene>[@yaw,pitch,zoom]": the same scene seen from the third-person camera.
     let (scene, cam) = scene.split_once('@').unwrap_or((scene, ""));
@@ -339,6 +370,8 @@ fn snapshot(path: &str, scene: &str, data: Arc<GameData>) {
         None => (scene, false),
     };
     let cam: Vec<f64> = cam.split(',').filter_map(|x| x.parse().ok()).collect();
+    let spec = mock_ui::resolve(scene);
+    let scene = spec.map_or(scene, |s| s.base);
     if let [yaw, pitch, zoom] = cam[..] {
         (g.ext_yaw, g.ext_pitch, g.ext_zoom) = (yaw, pitch, zoom);
     }
@@ -1825,6 +1858,31 @@ fn snapshot(path: &str, scene: &str, data: Arc<GameData>) {
                 g.dz.column = 2;
             }
         }
+        "sky" | "sky_far" | "sky_core" | "sky_edge" => {
+            // The cockpit, looking at the real sky from the start, after a jump, near the centre
+            // of the galaxy and at the rim.
+            g.sim.undock();
+            g.screen = Screen::Flight;
+            let home = g.sim.here_pos;
+            g.sim.here_pos = match scene {
+                "sky_far" => [home[0] + 2400.0, home[1] + 40.0, home[2] - 1800.0],
+                "sky_core" => [-26_000.0 + 600.0, 30.0, 200.0],
+                "sky_edge" => [30_000.0, 100.0, 5_000.0],
+                _ => home,
+            };
+            g.ext_view = false;
+        }
+        s if s.starts_with("umap") => {
+            // The map of the universe at one of its five scales (umap1 to umap5), optionally
+            // "@yaw,pitch" to turn it.
+            g.sim.reveal_all();
+            g.open_galaxy();
+            let n: usize = s[4..5].parse().unwrap_or(1);
+            g.gal_zoom = umap::PRESETS[(n - 1).min(4)];
+            if n == 3 {
+                g.umap.pitch = 0.9;
+            }
+        }
         s if s.starts_with("ctx_") || s.starts_with("tip_") => {
             context_menu::snapshot_scene(&mut g, s);
         }
@@ -1833,8 +1891,23 @@ fn snapshot(path: &str, scene: &str, data: Arc<GameData>) {
             g.cycle_target(|_| true);
         }
     }
+    if let Some(spec) = &spec {
+        mock_ui::after_setup(&mut g, spec);
+    }
+    g
+}
+
+fn snapshot(path: &str, scene: &str, data: Arc<GameData>) {
+    let g = scene_game(scene, data);
+    let spec = {
+        let base = scene.split_once('@').map_or(scene, |x| x.0);
+        mock_ui::resolve(base.strip_prefix("ext_").unwrap_or(base))
+    };
     let mut fb = Framebuffer::new(1280, 720);
-    draw_frame(&mut fb, &g);
+    match &spec {
+        Some(spec) => mock_ui::render(&mut fb, &g, spec),
+        None => draw_frame(&mut fb, &g),
+    }
     match std::fs::write(path, vector_render::png::encode(fb.w, fb.h, &fb.px)) {
         Ok(()) => println!("snapshot -> {path}"),
         Err(e) => eprintln!("write failed: {e}"),
@@ -1854,6 +1927,50 @@ fn bench(data: Arc<GameData>) {
         "render 1280x720: {:.2} ms/frame",
         t.elapsed().as_secs_f64() * 1000.0 / 200.0
     );
+    // The sky and the map of the universe: rebuild at a sector change, then per frame.
+    {
+        let galaxy = g.sim.galaxy;
+        let t = Instant::now();
+        let mut sector = 0;
+        for i in 0..5 {
+            let sky = vector_world::sky::build(&galaxy, (i * 40, 0, 0));
+            sector += sky.stars.len();
+        }
+        println!(
+            "sky catalogue rebuild: {:.1} ms ({} stars/sector)",
+            t.elapsed().as_secs_f64() * 200.0,
+            sector / 5
+        );
+        g.sim.undock();
+        g.screen = Screen::Flight;
+        g.map = false;
+        draw_frame(&mut fb, &g);
+        let t = Instant::now();
+        for _ in 0..200 {
+            draw_frame(&mut fb, &g);
+        }
+        println!(
+            "cockpit with the real sky: {:.2} ms/frame",
+            t.elapsed().as_secs_f64() * 1000.0 / 200.0
+        );
+        g.sim.reveal_all();
+        g.open_galaxy();
+        for (i, z) in umap::PRESETS.iter().enumerate() {
+            g.gal_zoom = *z;
+            draw_frame(&mut fb, &g);
+            let t = Instant::now();
+            for _ in 0..50 {
+                draw_frame(&mut fb, &g);
+            }
+            println!(
+                "universe map, scale {} ({}): {:.2} ms/frame",
+                i + 1,
+                umap::scale_name(*z),
+                t.elapsed().as_secs_f64() * 1000.0 / 50.0
+            );
+        }
+        g.screen = Screen::Flight;
+    }
     let t = Instant::now();
     for _ in 0..30_000 {
         g.sim.step(&ShipInput::default());
@@ -2061,6 +2178,17 @@ fn main() {
         }
         return;
     }
+    if args.iter().any(|a| a == "--bench-planet") {
+        bench::planet(data, &args);
+        return;
+    }
+    if args.iter().any(|a| a == "--bench-all") {
+        bench::all(data, &args);
+        return;
+    }
+    if args.iter().any(|a| a == "--profile") {
+        perf::set(true);
+    }
     if args.iter().any(|a| a == "--bench") {
         bench(data);
         return;
@@ -2084,6 +2212,8 @@ fn main() {
         mouse_acc: (0.0, 0.0),
         grabbed: false,
         started: Instant::now(),
+        perf_lines: Vec::new(),
+        perf_n: 0,
     };
     if let Err(e) = el.run_app(&mut app) {
         eprintln!("run failed: {e}");

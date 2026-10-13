@@ -999,6 +999,9 @@ pub struct Scenario {
     pub wanted_days: f64,
     /// The ship starts as a wreck on the ground of a world, the crew alone with the planet.
     pub wreck: bool,
+    /// Sandbox scenario: the game starts in creative mode.
+    #[serde(default)]
+    pub creative: bool,
     pub text: String,
 }
 

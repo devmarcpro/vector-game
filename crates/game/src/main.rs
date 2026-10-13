@@ -52,6 +52,7 @@ mod terrain;
 mod trade_view;
 mod tutorial;
 mod ui;
+mod umap;
 mod war_view;
 mod wire_shape;
 mod works_view;
@@ -1779,6 +1780,31 @@ fn snapshot(path: &str, scene: &str, data: Arc<GameData>) {
                 g.dz.column = 2;
             }
         }
+        "sky" | "sky_far" | "sky_core" | "sky_edge" => {
+            // The cockpit, looking at the real sky from the start, after a jump, near the centre
+            // of the galaxy and at the rim.
+            g.sim.undock();
+            g.screen = Screen::Flight;
+            let home = g.sim.here_pos;
+            g.sim.here_pos = match scene {
+                "sky_far" => [home[0] + 2400.0, home[1] + 40.0, home[2] - 1800.0],
+                "sky_core" => [-26_000.0 + 600.0, 30.0, 200.0],
+                "sky_edge" => [30_000.0, 100.0, 5_000.0],
+                _ => home,
+            };
+            g.ext_view = false;
+        }
+        s if s.starts_with("umap") => {
+            // The map of the universe at one of its five scales (umap1 to umap5), optionally
+            // "@yaw,pitch" to turn it.
+            g.sim.reveal_all();
+            g.open_galaxy();
+            let n: usize = s[4..5].parse().unwrap_or(1);
+            g.gal_zoom = umap::PRESETS[(n - 1).min(4)];
+            if n == 3 {
+                g.umap.pitch = 0.9;
+            }
+        }
         s if s.starts_with("ctx_") || s.starts_with("tip_") => {
             context_menu::snapshot_scene(&mut g, s);
         }
@@ -1808,6 +1834,50 @@ fn bench(data: Arc<GameData>) {
         "render 1280x720: {:.2} ms/frame",
         t.elapsed().as_secs_f64() * 1000.0 / 200.0
     );
+    // The sky and the map of the universe: rebuild at a sector change, then per frame.
+    {
+        let galaxy = g.sim.galaxy;
+        let t = Instant::now();
+        let mut sector = 0;
+        for i in 0..5 {
+            let sky = vector_world::sky::build(&galaxy, (i * 40, 0, 0));
+            sector += sky.stars.len();
+        }
+        println!(
+            "sky catalogue rebuild: {:.1} ms ({} stars/sector)",
+            t.elapsed().as_secs_f64() * 200.0,
+            sector / 5
+        );
+        g.sim.undock();
+        g.screen = Screen::Flight;
+        g.map = false;
+        draw_frame(&mut fb, &g);
+        let t = Instant::now();
+        for _ in 0..200 {
+            draw_frame(&mut fb, &g);
+        }
+        println!(
+            "cockpit with the real sky: {:.2} ms/frame",
+            t.elapsed().as_secs_f64() * 1000.0 / 200.0
+        );
+        g.sim.reveal_all();
+        g.open_galaxy();
+        for (i, z) in umap::PRESETS.iter().enumerate() {
+            g.gal_zoom = *z;
+            draw_frame(&mut fb, &g);
+            let t = Instant::now();
+            for _ in 0..50 {
+                draw_frame(&mut fb, &g);
+            }
+            println!(
+                "universe map, scale {} ({}): {:.2} ms/frame",
+                i + 1,
+                umap::scale_name(*z),
+                t.elapsed().as_secs_f64() * 1000.0 / 50.0
+            );
+        }
+        g.screen = Screen::Flight;
+    }
     let t = Instant::now();
     for _ in 0..30_000 {
         g.sim.step(&ShipInput::default());

@@ -61,12 +61,100 @@ pub fn brightness(mag: f64, mag_limit: f64) -> f64 {
     ((mag_limit + 1.5 - mag) / (mag_limit + 3.0)).clamp(0.0, 1.0)
 }
 
+/// A figure joining bright stars: `lines` are pairs of indices into `Sky::stars`.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Constellation {
+    pub name: String,
+    pub lines: Vec<(u16, u16)>,
+    /// The star the name is written beside.
+    pub label: u16,
+}
+
+/// A nebula or cluster of the medium, seen as a soft patch of angular radius `ang` (radians).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct SkyNebula {
+    pub dir: [f64; 3],
+    pub ang: f32,
+    pub rgb: [u8; 3],
+}
+
 #[derive(Clone, Debug, Default)]
 pub struct Sky {
     /// Bright stars, brightest first.
     pub stars: Vec<SkyStar>,
     /// Faint points of the galactic band.
     pub band: Vec<SkyStar>,
+    pub constellations: Vec<Constellation>,
+    pub nebulae: Vec<SkyNebula>,
+    /// Quasars (blue pinpricks): `mag` is the size in pixels.
+    pub quasars: Vec<SkyStar>,
+    /// Neighbouring galaxies as smudges: `mag` is the size in pixels.
+    pub galaxies: Vec<SkyStar>,
+}
+
+fn unit(v: [f64; 3]) -> [f64; 3] {
+    let n = (v[0] * v[0] + v[1] * v[1] + v[2] * v[2]).sqrt().max(1e-12);
+    [v[0] / n, v[1] / n, v[2] / n]
+}
+
+fn dot(a: [f64; 3], b: [f64; 3]) -> f64 {
+    a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
+}
+
+/// Group the brightest stars into figures: seeds in order of brightness, each taking its nearest
+/// unused neighbours within 24 degrees, joined by a minimal spanning tree.
+pub fn constellations(stars: &[SkyStar], seed: u64) -> Vec<Constellation> {
+    let n = stars.iter().take_while(|s| s.mag < 5.0).count().min(90);
+    let mut used = vec![false; n];
+    let mut out = Vec::new();
+    let cos_max = 24f64.to_radians().cos();
+    for i in 0..n {
+        if used[i] || out.len() >= 14 {
+            continue;
+        }
+        let mut near: Vec<(f64, usize)> = (0..n)
+            .filter(|&j| j != i && !used[j] && dot(stars[i].dir, stars[j].dir) > cos_max)
+            .map(|j| (-dot(stars[i].dir, stars[j].dir), j))
+            .collect();
+        near.sort_by(|a, b| a.0.total_cmp(&b.0));
+        let mut group = vec![i];
+        group.extend(near.iter().take(6).map(|p| p.1));
+        if group.len() < 3 {
+            continue;
+        }
+        for &g in &group {
+            used[g] = true;
+        }
+        // Prim over the angular distance.
+        let mut inside = vec![group[0]];
+        let mut lines = Vec::new();
+        while inside.len() < group.len() {
+            let mut best: Option<(f64, usize, usize)> = None;
+            for &a in &inside {
+                for &b in group.iter().filter(|b| !inside.contains(b)) {
+                    let d = -dot(stars[a].dir, stars[b].dir);
+                    if best.is_none_or(|x| d < x.0) {
+                        best = Some((d, a, b));
+                    }
+                }
+            }
+            let Some((_, a, b)) = best else { break };
+            lines.push((a as u16, b as u16));
+            inside.push(b);
+        }
+        let name = crate::names::Spec::new("constellation").name(hash_coord(
+            seed ^ 0xC057,
+            i as i64,
+            group.len() as i64,
+            5,
+        ));
+        out.push(Constellation {
+            name,
+            lines,
+            label: i as u16,
+        });
+    }
+    out
 }
 
 /// Column density of the far disc along `dir` from `p` (sum of `Galaxy::density`).
@@ -148,7 +236,79 @@ pub fn build(galaxy: &Galaxy, sector: SectorCoord) -> Sky {
             });
         }
     }
-    Sky { stars, band }
+    let constellations = constellations(
+        &stars,
+        galaxy.seed ^ hash_coord(0, sector.0, sector.1, sector.2),
+    );
+    let nebulae = galaxy
+        .features_near(p, 600.0)
+        .into_iter()
+        .take(12)
+        .filter_map(|f| {
+            let v = [f.pos[0] - p[0], f.pos[1] - p[1], f.pos[2] - p[2]];
+            let d = (v[0] * v[0] + v[1] * v[1] + v[2] * v[2]).sqrt();
+            if d < 1.0 {
+                return None;
+            }
+            let c = feature_rgb(f.kind);
+            Some(SkyNebula {
+                dir: unit(v),
+                ang: (f.radius / d).atan().min(1.2) as f32,
+                rgb: c,
+            })
+        })
+        .collect();
+    let quasars = galaxy
+        .quasars()
+        .into_iter()
+        .map(|q| SkyStar {
+            dir: unit(q.dir),
+            mag: 1.0 + (q.log_lum - 11.0) as f32,
+            rgb: [190, 220, 255],
+            dist_ly: 0.0,
+        })
+        .collect();
+    let galaxies = crate::universe::Universe::new(galaxy.seed)
+        .galaxies_near([0.0; 3], 4.0)
+        .into_iter()
+        .filter(|g| g.id != crate::universe::GalaxyId::HOME)
+        .take(8)
+        .map(|g| {
+            let v = [
+                g.pos[0] * 1.0e6 - crate::galaxy::R_SUN_LY - p[0],
+                g.pos[1] * 1.0e6 - p[1],
+                g.pos[2] * 1.0e6 - p[2],
+            ];
+            let d = (v[0] * v[0] + v[1] * v[1] + v[2] * v[2]).sqrt();
+            SkyStar {
+                dir: unit(v),
+                mag: ((g.radius_kly * 2000.0 / d).atan().to_degrees() * 8.0 + 2.0).min(14.0) as f32,
+                rgb: [230, 215, 190],
+                dist_ly: d as f32,
+            }
+        })
+        .collect();
+    Sky {
+        stars,
+        band,
+        constellations,
+        nebulae,
+        quasars,
+        galaxies,
+    }
+}
+
+fn feature_rgb(k: crate::cosmos::FeatureKind) -> [u8; 3] {
+    use crate::cosmos::FeatureKind::*;
+    match k {
+        EmissionNebula => [255, 64, 80],
+        ReflectionNebula => [96, 160, 255],
+        PlanetaryNebula => [64, 255, 192],
+        SupernovaRemnant => [255, 160, 48],
+        OpenCluster => [160, 192, 255],
+        GlobularCluster => [255, 224, 128],
+        StarFormingRegion => [255, 112, 192],
+    }
 }
 
 /// A sky kept until the viewer leaves its sector.
@@ -235,6 +395,24 @@ mod tests {
         for s in [(-2600, 0, 0), (3400, 0, 0), (0, 5000, 0), (900_000, 0, 0)] {
             assert!(build(&g, s).band.len() <= BAND_SAMPLES);
         }
+    }
+
+    #[test]
+    fn constellations_join_bright_stars_and_are_named() {
+        let g = Galaxy::new(7);
+        let sky = build(&g, (0, 0, 0));
+        assert!(!sky.constellations.is_empty());
+        for c in &sky.constellations {
+            assert!(!c.name.is_empty());
+            assert!(c.lines.len() >= 2);
+            assert!(c
+                .lines
+                .iter()
+                .all(|l| usize::from(l.0.max(l.1)) < sky.stars.len()));
+        }
+        assert_eq!(sky.quasars.len(), 12);
+        assert!(!sky.galaxies.is_empty());
+        assert_eq!(build(&g, (0, 0, 0)).constellations, sky.constellations);
     }
 
     #[test]

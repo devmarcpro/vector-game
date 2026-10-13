@@ -1787,7 +1787,7 @@ fn draw_news(fb: &mut Framebuffer, g: &Game) {
     );
 }
 
-fn class_color(c: vector_world::StarClass) -> u32 {
+pub(crate) fn class_color(c: vector_world::StarClass) -> u32 {
     use vector_world::StarClass::*;
     match c {
         O | B => 0x0070_90FF,
@@ -1847,19 +1847,29 @@ fn draw_galaxy(fb: &mut Framebuffer, g: &Game) {
     );
     let (cx, cy) = (fb.w as f32 * 0.42, fb.h as f32 * 0.52);
     let zoom = g.gal_zoom as f32;
-    let proj = |p: [f64; 3]| -> (f32, f32) {
-        (
-            cx + (p[0] - s.here_pos[0]) as f32 * zoom,
-            cy + (p[2] - s.here_pos[2]) as f32 * zoom,
-        )
-    };
-    // Jump range ring and axes.
-    if range > 0.0 {
+    let cam = g.umap.cam(s.here_pos, g.gal_zoom, cx, cy);
+    let proj = |p: [f64; 3]| -> (f32, f32) { cam.project(p) };
+    crate::umap::draw_backdrop(fb, g, &cam);
+    // Journal of the visited stars, jump range ring and the ship.
+    if zoom > 0.02 {
+        for p in s.visited.values() {
+            let (vx, vy) = proj(*p);
+            fb.circle(vx, vy, 3.0, dim_color(GREEN, 0.6));
+        }
+    }
+    let (cx, cy) = proj(s.here_pos);
+    if range > 0.0 && zoom > 0.01 {
         fb.circle(cx, cy, range as f32 * zoom, DIM);
     }
     fb.line(cx - 6.0, cy, cx + 6.0, cy, RED);
     fb.line(cx, cy - 6.0, cx, cy + 6.0, RED);
     fb.text_at(cx as i32 + 8, cy as i32 + 6, "ICI", RED);
+    // The route to the selected star.
+    if let Some(e) = g.gal_cache.get(g.gal_sel) {
+        let (ex, ey) = proj(e.pos);
+        let ok = e.distance_to(s.here_pos) <= range;
+        fb.line(cx, cy, ex, ey, if ok { GREEN } else { dim_color(RED, 0.6) });
+    }
     if let Some(sg) = s.here_besieged() {
         fb.text(
             1,
@@ -1927,8 +1937,12 @@ fn draw_galaxy(fb: &mut Framebuffer, g: &Game) {
         );
     }
     for (k, e) in g.gal_cache.iter().enumerate() {
+        if k != g.gal_sel && !crate::umap::passes(g.umap.filter, e, s.visited.contains_key(&e.id)) {
+            continue;
+        }
         let (x, y) = proj(e.pos);
-        let h = (e.pos[1] - s.here_pos[1]) as f32 * zoom * 0.5;
+        let h = 0.0f32;
+        let (sx0, sy0) = proj([e.pos[0], cam.target[1], e.pos[2]]);
         // Click selects the star, double click starts the jump.
         g.hit(
             (
@@ -1941,7 +1955,9 @@ fn draw_galaxy(fb: &mut Framebuffer, g: &Game) {
             Some(Act::Key(KeyCode::Enter)),
         );
         let col = class_color(e.class());
-        fb.line(x, y, x, y - h, DIM);
+        if cam.pitch < 1.45 {
+            fb.line(x, y, sx0, sy0, dim_color(DIM, 0.5));
+        }
         fb.circle(x, y - h, 2.0, col);
         let visited = s.visited.contains_key(&e.id);
         if visited {
@@ -1976,7 +1992,9 @@ fn draw_galaxy(fb: &mut Framebuffer, g: &Game) {
     }
     // Info panel.
     let x = (fb.w as f32 * 0.78) as usize / 8;
-    if let Some(e) = g.gal_cache.get(g.gal_sel) {
+    let gpanel = crate::umap::draw_galaxy_panel(fb, g, x);
+    if gpanel {
+    } else if let Some(e) = g.gal_cache.get(g.gal_sel) {
         let d = e.distance_to(s.here_pos);
         let ok = d <= range;
         fb.text(x, 4, &e.header.name, AMBER);
@@ -2104,12 +2122,20 @@ fn draw_galaxy(fb: &mut Framebuffer, g: &Game) {
         DIM,
     );
     let b = fb.rows() - 4;
+    crate::umap::draw_status(fb, g, b - 2);
+    foot(
+        fb,
+        g,
+        1,
+        b - 1,
+        "MOLETTE/+/-:ZOOM  GLISSER:TOURNER  1-5:ECHELLE  F:FILTRE  C:CENTRER  R:VAISSEAU  /:RECHERCHE",
+    );
     foot(
         fb,
         g,
         1,
         b,
-        "HAUT/BAS:ETOILE  +/-:ZOOM  ENTREE:SAUTER (HORS DE TOUT CHAMP DE GRAVITE)  L/ECHAP:FERMER",
+        "HAUT/BAS:ETOILE  ENTREE:SAUTER (HORS DE TOUT CHAMP DE GRAVITE)  L/ECHAP:FERMER",
     );
     for (i, msg) in g.messages.iter().rev().take(2).enumerate() {
         fb.text(1, b + 1 + i, msg, if i == 0 { AMBER } else { DIM });

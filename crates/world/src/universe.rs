@@ -104,9 +104,7 @@ impl Universe {
                     ]
                 };
                 let roll = rng.f64();
-                let kind = if id == GalaxyId::HOME {
-                    GalaxyKind::Spiral
-                } else if roll < 0.35 {
+                let kind = if id == GalaxyId::HOME || roll < 0.35 {
                     GalaxyKind::Spiral
                 } else if roll < 0.55 {
                     GalaxyKind::Barred

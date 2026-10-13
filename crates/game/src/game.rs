@@ -169,9 +169,6 @@ pub struct Game {
     pub stars: Vec<Vec3>,
     /// The real sky of the current sector (cached; rebuilt when the sector changes).
     pub sky: std::cell::RefCell<vector_world::sky::SkyCache>,
-    /// Sky settings: limiting magnitude and the band on or off.
-    pub sky_mag_limit: f64,
-    pub sky_band: bool,
     pub keys: HashSet<KeyCode>,
     /// Mouse look (F7): turn demand in [-1, 1] as (yaw, pitch), fed each frame by the window.
     pub mouse_look: bool,
@@ -219,6 +216,8 @@ pub struct Game {
     /// The screen of the navigation computer and the editor of its orders.
     pub nav_ui: crate::nav_view::NavUi,
     pub gal_zoom: f64,
+    /// The universe map: orbit camera, filter, search, caches.
+    pub umap: crate::umap::UMap,
     pub offers: Vec<vector_sim::economy::Contract>,
     pub contract_sel: usize,
     pub emp_sel: usize,
@@ -425,8 +424,6 @@ impl Game {
             sim,
             stars: scene::star_field(seed, 900),
             sky: Default::default(),
-            sky_mag_limit: 6.5,
-            sky_band: true,
             keys: HashSet::new(),
             mouse_look: false,
             pointer: Default::default(),
@@ -464,6 +461,7 @@ impl Game {
             gal_sel: 0,
             nav_ui: Default::default(),
             gal_zoom: 14.0,
+            umap: Default::default(),
             offers: Vec::new(),
             contract_sel: 0,
             emp_sel: 0,
@@ -1309,7 +1307,7 @@ impl Game {
             Screen::Designer => self.designer_key(code, text),
             Screen::Crew => self.crew_key(code),
             Screen::Journal => self.journal_key(code),
-            Screen::Galaxy => self.galaxy_key(code),
+            Screen::Galaxy => self.galaxy_key(code, text),
             Screen::Contracts => self.contracts_key(code),
             Screen::Bank => self.bank_key(code),
             Screen::Livestock => self.livestock_key(code),
@@ -3274,15 +3272,16 @@ impl Game {
         self.screen = Screen::Galaxy;
     }
 
-    fn galaxy_key(&mut self, code: KeyCode) {
+    fn galaxy_key(&mut self, code: KeyCode, text: Option<&str>) {
+        if self.umap_key(code, text) {
+            return;
+        }
         let n = self.gal_cache.len().max(1);
         match code {
             KeyCode::ArrowUp => self.gal_sel = (self.gal_sel + n - 1) % n,
             KeyCode::ArrowDown | KeyCode::Tab => self.gal_sel = (self.gal_sel + 1) % n,
-            KeyCode::Equal | KeyCode::NumpadAdd => self.gal_zoom = (self.gal_zoom * 1.4).min(80.0),
-            KeyCode::Minus | KeyCode::NumpadSubtract => {
-                self.gal_zoom = (self.gal_zoom / 1.4).max(2.0)
-            }
+            KeyCode::Equal | KeyCode::NumpadAdd => self.umap_zoom_by(1.4),
+            KeyCode::Minus | KeyCode::NumpadSubtract => self.umap_zoom_by(1.0 / 1.4),
             KeyCode::Enter => {
                 if let Some(target) = self.gal_cache.get(self.gal_sel).cloned() {
                     match self.sim.jump_or_run(&target) {

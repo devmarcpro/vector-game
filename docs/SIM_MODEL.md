@@ -414,3 +414,7 @@ Modules : `cryo` (places), `cryo_temp` (C), `reliability` (0,5..1), `cryo_upkeep
 - Colons : 80 kg de colons en soute = 1 dormeur en masse, 1 kg de cryoprotecteur ; ils prennent les places laissees par l'equipage ; survivants au reveil = tirage par colon avec la meme probabilite (age 30) ; `found_colony` consomme des colons endormis au lieu du kit de colons et la population de depart est celle des survivants.
 - Naissances : la gestation est suspendue (la date d'echeance recule chaque jour), un dormeur ne concoit pas. Passagers de contrat : les places libres s'ajoutent aux couchettes libres, la paie des passagers est reduite de 25 % x part en caisson.
 - Alertes : CRITIQUE si des dormeurs depassent les places alimentees ; ATTENTION sans pieces detachees.
+
+## Ciel reel et univers (`sky.rs`, `universe.rs`)
+- Magnitude apparente `m = M + 5 log10(d / 10 pc)` avec `M = 4,83 - 2,5 log10(L/Lsol)` : 100 fois plus pres = 10 magnitudes de plus (teste). Couleurs par classe spectrale (O bleu, M orange). La bande galactique est la densite en colonne le long de chaque direction.
+- Univers : cellules de 2 millions d'al, 0 a 2 galaxies par cellule (hash de la graine), type spirale / barree / elliptique / irreguliere, rayon 10 a 150 kal, etoiles en milliards, graine propre `hash(seed, cellule) ^ index` ; la galaxie d'origine garde la graine de l'univers.

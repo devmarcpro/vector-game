@@ -317,3 +317,5 @@ pire cas), cout de simulation borne par pas, aucune allocation par image dans le
 avec invalidation correcte (textures de planete, cartes de surface, catalogues d'etoiles par secteur), rendu
 logiciel en bandes paralleles (std::thread::scope, sans dependance). Toute fonctionnalite livre sa mesure
 (profileur `--profile`, benchmarks headless, docs/PERFORMANCE.md) et ne fait pas regresser le budget.
+
+- Carte de l'univers : l'ecran Galaxie (L) est etendu, pas double. Le zoom est en pixels par annee-lumiere (`gal_zoom`, 5e-6 a 80), les cinq echelles sont les touches 1 a 5. Aux grandes echelles la camera tourne autour du centre de la galaxie. Le ciel est un cache par secteur (`SkyCache`), jamais recalcule a l'image. Non fait : phases des planetes dans le ciel (draw_world appartient a wt-perf), filaments de l'univers, voyage vers une autre galaxie (wt-far).

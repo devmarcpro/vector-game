@@ -1514,35 +1514,77 @@ pub fn draw_console(fb: &mut Framebuffer, c: &Console) {
     fb.text(1, c.log.len(), &format!("> {}_", c.line), GREEN);
 }
 
-/// The real sky: the catalogue stars with their colour and magnitude, and the galactic band.
-/// Opaque pixels (no saturating white), no allocation: it walks the cached lists.
+/// The real sky: nebulae, the galactic band, far galaxies and quasars, the catalogue stars with
+/// their colour, magnitude and a subtle twinkle, constellations and their names. Opaque pixels
+/// and dim additive glows (never saturated white); no allocation: it walks the cached lists.
 fn draw_real_sky(fb: &mut Framebuffer, cam: &Camera, v: &View, clear: f32) {
     let sim = v.sim;
     let mut cache = v.game.sky.borrow_mut();
     cache.update(&sim.galaxy, sim.here_pos);
-    let lim = v.game.sky_mag_limit;
+    let set = &v.game.settings;
+    let lim = set.sky_mag_limit();
     let tint = |rgb: [u8; 3], k: f32| -> u32 {
         let c = |x: u8| (f32::from(x) * k).clamp(0.0, 255.0) as u32;
         (c(rgb[0]) << 16) | (c(rgb[1]) << 8) | c(rgb[2])
     };
-    if v.game.sky_band {
-        for s in &cache.sky.band {
-            if let Some((x, y)) = cam.project_dir(Vec3::new(s.dir[0], s.dir[1], s.dir[2]), fb) {
+    let dir = |d: [f64; 3]| Vec3::new(d[0], d[1], d[2]);
+    let t = sim.time as f32;
+    let focal = fb.h as f32 * 0.5 / (cam.fov_y as f32 * 0.5).tan();
+    let sky = &cache.sky;
+    // Nebulae and clusters: a soft patch of dim points inside their angular radius.
+    for (n, nb) in sky.nebulae.iter().enumerate() {
+        if let Some((cx, cy)) = cam.project_dir(dir(nb.dir), fb) {
+            let r = nb.ang * focal;
+            if !(2.0..=4.0 * fb.h as f32).contains(&r) {
+                continue;
+            }
+            for k in 0..70u32 {
+                let h = vector_core::mix64(u64::from(k) * 7919 + n as u64 * 104_729);
+                let a = (h & 0xFFFF) as f32 / 65535.0 * std::f32::consts::TAU;
+                let rr = ((h >> 16) & 0xFFFF) as f32 / 65535.0;
+                let (x, y) = (cx + a.cos() * rr.sqrt() * r, cy + a.sin() * rr.sqrt() * r);
+                fb.plot(
+                    x as i32,
+                    y as i32,
+                    tint(nb.rgb, 0.16 * clear * (1.0 - rr * 0.6)),
+                );
+            }
+        }
+    }
+    if set.sky_band {
+        for s in &sky.band {
+            if let Some((x, y)) = cam.project_dir(dir(s.dir), fb) {
                 let k = (0.10 + 0.32 * s.mag) * clear;
                 fb.px_set(x as i32, y as i32, tint(s.rgb, k));
             }
         }
     }
-    for s in &cache.sky.stars {
+    for s in &sky.galaxies {
+        if let Some((x, y)) = cam.project_dir(dir(s.dir), fb) {
+            let r = (s.mag.min(10.0) * 0.5).max(1.0) as i32;
+            for dx in -r..=r {
+                for dy in -(r / 2)..=(r / 2) {
+                    fb.plot(x as i32 + dx, y as i32 + dy, tint(s.rgb, 0.10 * clear));
+                }
+            }
+        }
+    }
+    for s in &sky.quasars {
+        if let Some((x, y)) = cam.project_dir(dir(s.dir), fb) {
+            fb.px_set(x as i32, y as i32, tint(s.rgb, 0.5 * clear));
+        }
+    }
+    for (i, s) in sky.stars.iter().enumerate() {
         let b = vector_world::sky::brightness(f64::from(s.mag), lim) as f32;
         if b <= 0.0 {
             continue;
         }
-        let Some((x, y)) = cam.project_dir(Vec3::new(s.dir[0], s.dir[1], s.dir[2]), fb) else {
+        let Some((x, y)) = cam.project_dir(dir(s.dir), fb) else {
             continue;
         };
         let (x, y) = (x as i32, y as i32);
-        let k = (0.25 + 0.75 * b) * clear;
+        let twinkle = 1.0 + 0.06 * (t * 1.7 + i as f32 * 2.399).sin();
+        let k = (0.25 + 0.75 * b) * clear * twinkle;
         fb.px_set(x, y, tint(s.rgb, k));
         if b > 0.55 {
             let h = tint(s.rgb, k * 0.45);
@@ -1563,6 +1605,30 @@ fn draw_real_sky(fb: &mut Framebuffer, cam: &Camera, v: &View, clear: f32) {
                 (-1, 1),
             ] {
                 fb.px_set(x + dx, y + dy, h);
+            }
+        }
+    }
+    if set.sky_const {
+        for c in &sky.constellations {
+            for &(a, b) in &c.lines {
+                let (sa, sb) = (&sky.stars[usize::from(a)], &sky.stars[usize::from(b)]);
+                if let (Some((x0, y0)), Some((x1, y1))) = (
+                    cam.project_dir(dir(sa.dir), fb),
+                    cam.project_dir(dir(sb.dir), fb),
+                ) {
+                    fb.line(x0, y0, x1, y1, tint([70, 110, 170], 0.45 * clear));
+                }
+            }
+            if set.sky_names {
+                let s = &sky.stars[usize::from(c.label)];
+                if let Some((x, y)) = cam.project_dir(dir(s.dir), fb) {
+                    fb.text_at(
+                        x as i32 + 6,
+                        y as i32 + 4,
+                        &c.name.to_uppercase(),
+                        tint([90, 130, 190], 0.7 * clear),
+                    );
+                }
             }
         }
     }

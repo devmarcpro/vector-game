@@ -104,6 +104,9 @@ impl Game {
         if self.ext_active() {
             self.ext_orbit(-f64::from(dx) * 0.008, f64::from(dy) * 0.008);
         }
+        if self.screen == Screen::Galaxy {
+            self.umap_drag(dx, dy);
+        }
         if self.screen == Screen::Designer {
             self.dz_drag(dx, dy);
         }
@@ -465,7 +468,9 @@ impl Game {
         }
         let steps = lines.abs().ceil().max(1.0) as usize;
         for _ in 0..steps.min(5) {
-            if self.ext_active() {
+            if self.screen == Screen::Galaxy {
+                self.umap_zoom_by(if lines > 0.0 { 1.25 } else { 0.8 });
+            } else if self.ext_active() {
                 // In the third-person view the wheel zooms the camera.
                 self.ext_zoom_by(if lines > 0.0 { 0.88 } else { 1.0 / 0.88 });
             } else if self.screen == Screen::Flight && self.map {

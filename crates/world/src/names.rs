@@ -83,7 +83,7 @@ pub struct NameBook {
 }
 
 /// Every kind of place or thing the grammar must be able to name.
-pub const KINDS: [&str; 27] = [
+pub const KINDS: [&str; 28] = [
     "star",
     "planet_dead",
     "planet_living",
@@ -94,6 +94,7 @@ pub const KINDS: [&str; 27] = [
     "anomaly",
     "nebula",
     "cluster",
+    "constellation",
     "sector",
     "galaxy",
     "city",

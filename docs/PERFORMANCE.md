@@ -184,3 +184,18 @@ Les 75 a 110 ms restants en vue externe pres d'un monde et en cockpit face a une
 
 ## Menus du style NOUVEAU (toile 1280x720)
 Mesure (release, machine chargee, menu F10, une image) : 1024x576 11 ms (reduction bilineaire), 1280x720 4,6 ms (direct), 1920x1080 8,4 ms et 2560x1440 12,3 ms (agrandissement au plus proche voisin : un simple parcours de table). Le bilineaire en agrandissement coutait 35 ms a 1920x1080 : abandonne. Toile, table d echantillonnage et zone d accueil des ecrans classiques sont gardees d une image a l autre. Test : `cargo test --release ui_frame_cost -- --ignored --nocapture`.
+
+## Cockpit (wt-cockpit)
+
+`vector-game --bench` (release, machine partagee donc bruitee), image complete (scene + console) : dans l'espace vide (la scene ne coute rien : c'est la console) puis en vol libre au-dessus d'un monde (le terrain domine, voir wt-perf).
+
+| Mesure | 1024x576 | 1280x720 | 1920x1080 |
+|---|---|---|---|
+| Ancien HUD, espace vide | 1,5 ms | 1,5 ms | 2,2 ms |
+| A, espace vide | 3-7 ms | 3,1 ms | 8,3 ms |
+| B, espace vide | 3,0 ms | 4,5 ms | 9,9 ms |
+| C replie / ouvert, espace vide | 1,0 / 1,6 ms | 1,3 / 2,5 ms | 2,0 / 3,9 ms |
+| Ancien HUD au-dessus d'un monde | 140 ms | 253 ms | 277 ms |
+| A / B au-dessus d'un monde | 141 / 79 ms | 182 / 135 ms | 227 / 161 ms |
+
+La console ajoute 2 a 3 ms a 1280x720 et reste sous 17 ms jusqu'en 1080p ; au-dessus d'un monde le cout est celui du terrain (A et B dessinent une verriere plus petite, donc moins de pixels de terrain que l'ancien HUD). Techniques : tampon de scene conserve (aucune allocation par image), aplats par tranches de lignes, horizon par table de couleurs, halos par table, chiffres lents (delta-v plein, radiation, alertes) en cache 2,5 fois par seconde, zones et organes dans des vecteurs reutilises. `cockpit::prof` ventile le temps par partie (affiche par `--bench`). Test de budget tolerant : `cockpit::tests::the_console_stays_cheap`.

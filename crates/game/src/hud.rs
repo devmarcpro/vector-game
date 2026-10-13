@@ -21,7 +21,6 @@ pub const DOWN: u32 = 0x00FF_5050;
 pub const HOVER: u32 = 0x00D0_FFD0;
 pub const WIRE: u32 = 0x0040_7050;
 pub const CYAN: u32 = 0x0050_C0E0;
-pub const STAR: u32 = 0x0040_5060;
 pub const SUN: u32 = 0x00E0_D060;
 pub const MINER: u32 = 0x00C0_C040;
 pub const PATROL: u32 = 0x0040_80FF;
@@ -39,6 +38,8 @@ pub struct View<'a> {
     /// The game, for the clickable zones the view declares.
     pub game: &'a Game,
     pub sim: &'a Sim,
+    /// Old random fill, replaced by the real catalogue sky (`vector_world::sky`).
+    #[allow(dead_code)]
     pub stars: &'a [Vec3],
     pub timescale: f64,
     pub paused: bool,
@@ -411,11 +412,7 @@ fn draw_cockpit(fb: &mut Framebuffer, v: &View) {
     // Low in a thick air by day the sky hides the stars and the worlds beyond.
     let (clear, layer) = sky_view(v);
     if clear > 0.3 {
-        for s in v.stars {
-            if let Some((x, y)) = cam.project_dir(*s, fb) {
-                fb.plot(x as i32, y as i32, scale_rgb(STAR, clear as f32));
-            }
-        }
+        draw_real_sky(fb, &cam, v, clear as f32);
     }
     if let Some((name, p)) = layer {
         fb.text(1, 12, &format!("ATMOSPHERE : {name}  {p:.4} BAR"), AMBER);
@@ -1515,4 +1512,58 @@ pub fn draw_console(fb: &mut Framebuffer, c: &Console) {
         fb.text(1, i, l, DIM);
     }
     fb.text(1, c.log.len(), &format!("> {}_", c.line), GREEN);
+}
+
+/// The real sky: the catalogue stars with their colour and magnitude, and the galactic band.
+/// Opaque pixels (no saturating white), no allocation: it walks the cached lists.
+fn draw_real_sky(fb: &mut Framebuffer, cam: &Camera, v: &View, clear: f32) {
+    let sim = v.sim;
+    let mut cache = v.game.sky.borrow_mut();
+    cache.update(&sim.galaxy, sim.here_pos);
+    let lim = v.game.sky_mag_limit;
+    let tint = |rgb: [u8; 3], k: f32| -> u32 {
+        let c = |x: u8| (f32::from(x) * k).clamp(0.0, 255.0) as u32;
+        (c(rgb[0]) << 16) | (c(rgb[1]) << 8) | c(rgb[2])
+    };
+    if v.game.sky_band {
+        for s in &cache.sky.band {
+            if let Some((x, y)) = cam.project_dir(Vec3::new(s.dir[0], s.dir[1], s.dir[2]), fb) {
+                let k = (0.10 + 0.32 * s.mag) * clear;
+                fb.px_set(x as i32, y as i32, tint(s.rgb, k));
+            }
+        }
+    }
+    for s in &cache.sky.stars {
+        let b = vector_world::sky::brightness(f64::from(s.mag), lim) as f32;
+        if b <= 0.0 {
+            continue;
+        }
+        let Some((x, y)) = cam.project_dir(Vec3::new(s.dir[0], s.dir[1], s.dir[2]), fb) else {
+            continue;
+        };
+        let (x, y) = (x as i32, y as i32);
+        let k = (0.25 + 0.75 * b) * clear;
+        fb.px_set(x, y, tint(s.rgb, k));
+        if b > 0.55 {
+            let h = tint(s.rgb, k * 0.45);
+            for (dx, dy) in [(1, 0), (-1, 0), (0, 1), (0, -1)] {
+                fb.px_set(x + dx, y + dy, h);
+            }
+        }
+        if b > 0.8 {
+            let h = tint(s.rgb, k * 0.2);
+            for (dx, dy) in [
+                (2, 0),
+                (-2, 0),
+                (0, 2),
+                (0, -2),
+                (1, 1),
+                (-1, -1),
+                (1, -1),
+                (-1, 1),
+            ] {
+                fb.px_set(x + dx, y + dy, h);
+            }
+        }
+    }
 }

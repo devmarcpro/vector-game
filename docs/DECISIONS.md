@@ -305,3 +305,8 @@ des vaisseaux a torche de fusion/antimatiere (impulsion specifique 150 a 340 ks,
 jours et un systeme en quelques semaines, ce qui rend le jeu jouable sans temps mort. Diviser les
 impulsions par dix ramenerait la portee a 0,7 UA. L'interstellaire passe par les sauts FTL. Les moteurs
 exotiques (Bussard, antimatiere) restent sous 0,1 c, le delta-v s'affiche en km/s partout.
+
+## Ciel reel et univers (wt-univ)
+- `vector_world::sky`: catalogue des etoiles a 90 al (magnitude apparente m = M + 5 log10(d/10 pc), couleur par classe) et bande galactique (directions tirees selon la densite en colonne de `Galaxy::density`), mis en cache par secteur (`SkyCache`), dessine en pixels opaques dans `hud::draw_real_sky`. Reglages : `Game::sky_mag_limit`, `Game::sky_band` (non sauvegardes).
+- `vector_world::universe`: galaxies voisines deterministes (`Universe::galaxies_near/galaxy/galaxy_seed`); la galaxie d'origine garde la graine de l'univers. Aucune structure sauvegardee modifiee.
+- Reste: carte zoomable multi-echelles, constellations, nebuleuses dans le ciel, menu contextuel (non faits).

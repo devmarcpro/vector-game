@@ -167,6 +167,11 @@ pub struct Game {
     pub data: Arc<GameData>,
     pub sim: Sim,
     pub stars: Vec<Vec3>,
+    /// The real sky of the current sector (cached; rebuilt when the sector changes).
+    pub sky: std::cell::RefCell<vector_world::sky::SkyCache>,
+    /// Sky settings: limiting magnitude and the band on or off.
+    pub sky_mag_limit: f64,
+    pub sky_band: bool,
     pub keys: HashSet<KeyCode>,
     /// Mouse look (F7): turn demand in [-1, 1] as (yaw, pitch), fed each frame by the window.
     pub mouse_look: bool,
@@ -419,6 +424,9 @@ impl Game {
             data,
             sim,
             stars: scene::star_field(seed, 900),
+            sky: Default::default(),
+            sky_mag_limit: 6.5,
+            sky_band: true,
             keys: HashSet::new(),
             mouse_look: false,
             pointer: Default::default(),

@@ -31,6 +31,7 @@ pub mod economy;
 pub mod epidemic;
 pub mod exotic;
 pub mod exotic_field;
+pub mod far;
 pub mod fleet;
 pub mod futures;
 pub mod gear;
@@ -432,6 +433,13 @@ pub struct Sim {
     pub effective: Effective,
     pub crew: Crew,
     pub galaxy: Galaxy,
+    /// Seed of the universe (the home galaxy's seed) and id of the galaxy we are in now.
+    pub universe_seed: u64,
+    pub galaxy_id: vector_world::universe::GalaxyId,
+    /// What the galaxies we left remember (visited stars, system deltas, standings).
+    pub galaxy_stash: BTreeMap<vector_world::universe::GalaxyId, far::GalaxyStash>,
+    /// The long voyage under way (route, halts, log), if any.
+    pub voyage: Option<far::Voyage>,
     /// The star whose system is currently loaded, and its position (ly).
     pub here: StarRef,
     pub here_pos: [f64; 3],
@@ -607,6 +615,10 @@ impl Sim {
             effective: Effective::default(),
             crew: Crew::new(),
             galaxy: Galaxy::new(0),
+            universe_seed: 0,
+            galaxy_id: vector_world::universe::GalaxyId::HOME,
+            galaxy_stash: BTreeMap::new(),
+            voyage: None,
             here: StarRef {
                 sector: (0, 0, 0),
                 index: 0,
@@ -684,6 +696,7 @@ impl Sim {
     pub fn new_in_galaxy(galaxy: Galaxy, entry: &StarEntry, data: Arc<GameData>) -> Self {
         let mut s = Sim::new(vector_world::generate_system(entry.seed), data);
         s.galaxy = galaxy;
+        s.universe_seed = galaxy.seed;
         s.visited.clear();
         s.here = entry.id;
         s.here_pos = entry.pos;
@@ -817,8 +830,9 @@ impl Sim {
 
     /// Largest step that keeps integration accurate near attractors and surfaces.
     pub fn safe_dt(&self) -> f64 {
-        if self.in_transit() {
-            return 600.0;
+        if let Some(j) = self.jump.as_ref().filter(|j| j.in_transit) {
+            // Long crossings take bigger steps (the crew layer integrates days at a time).
+            return (j.total_transit / 40.0).clamp(600.0, 21_600.0);
         }
         if self.combat_active() {
             return SIM_DT;
@@ -847,6 +861,9 @@ impl Sim {
         // Under the autopilot the ship follows an analytic plan: long steps are exact.
         let longest = if self.autopilot.is_some() {
             1_800.0
+        } else if self.voyage_running() && self.jump.is_none() && self.jump_run.is_none() {
+            // A voyage halts (scooping fuel, mending the drive) far from any world: long steps.
+            21_600.0
         } else {
             self.nav_longest_dt()
         };
@@ -1041,6 +1058,9 @@ impl Sim {
         if self.in_transit() {
             self.transit_step(dt);
             return;
+        }
+        if self.voyage.is_some() {
+            self.voyage_tick(dt);
         }
         if self.jump_run.is_some() && !self.near_well() {
             // Clear of every gravity well: charge the drive now.
@@ -2485,3 +2505,6 @@ mod tests {
         assert_eq!(s.ship.stats.fuel_cap, 0.0, "empty hull has no tanks");
     }
 }
+
+#[cfg(test)]
+mod far_tests;

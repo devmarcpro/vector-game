@@ -525,7 +525,24 @@ fn draw_ship(fb: &mut Framebuffer, g: &Game, (x, y, w, h): Rect) {
         (_, n) if n > 0 => "  AUTOMATE PRET",
         _ => "",
     };
-    put(fb, x, r, wi, &format!("ETAT : {state}{auto}"), GREEN);
+    let voy = s
+        .voyage
+        .as_ref()
+        .filter(|v| !v.done)
+        .map(|v| {
+            format!(
+                "  VOYAGE {}/{} {}",
+                v.next,
+                v.plan.legs.len(),
+                if v.paused.is_some() {
+                    "ARRETE"
+                } else {
+                    "EN COURS"
+                }
+            )
+        })
+        .unwrap_or_default();
+    put(fb, x, r, wi, &format!("ETAT : {state}{auto}{voy}"), GREEN);
     r += 1;
     let hf = ship.hull / ship.stats.hull_max.max(1.0);
     meter(

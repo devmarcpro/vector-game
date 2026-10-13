@@ -221,6 +221,8 @@ pub struct Game {
     pub tech_mind: bool,
     pub mind_sel: usize,
     pub log_seen: usize,
+    /// Lines of the voyage log already said.
+    pub voyage_seen: usize,
     pub gal_cache: Vec<StarEntry>,
     /// Nebulae, clusters and remnants within reach of the galactic map (see `vector_world::cosmos`).
     pub gal_features: Vec<vector_world::cosmos::Feature>,
@@ -476,6 +478,7 @@ impl Game {
             tech_mind: false,
             mind_sel: 0,
             log_seen: 0,
+            voyage_seen: 0,
             gal_cache: Vec::new(),
             gal_features: Vec::new(),
             gal_sel: 0,
@@ -782,6 +785,9 @@ impl Game {
         if self.sim.in_transit() {
             self.timescale = self.timescale.max(10_000.0);
         }
+        if let Some(w) = self.sim.voyage_warp() {
+            self.timescale = self.timescale.max(w.min(self.sim.rules.max_timescale));
+        }
         if self.sim.combat_active() {
             self.timescale = 1.0;
         }
@@ -811,6 +817,7 @@ impl Game {
         }
         self.handle_events();
         self.forward_log();
+        self.forward_voyage();
     }
 
     /// Show the newest crew journal lines in the HUD message area.
@@ -885,7 +892,9 @@ impl Game {
                     self.timescale = 10_000.0;
                 }
                 Event::JumpArrived { .. } => {
-                    self.timescale = 1.0;
+                    if !self.sim.voyage_running() {
+                        self.timescale = 1.0;
+                    }
                     self.stars = scene::star_field(self.sim.system.seed, 900);
                     self.fit_map();
                     self.map = false;
@@ -3337,6 +3346,11 @@ impl Game {
                         }
                         Err(e) => self.say(format!("SAUT IMPOSSIBLE: {}", e.to_uppercase())),
                     }
+                }
+            }
+            KeyCode::KeyV => {
+                if let Some(target) = self.gal_cache.get(self.gal_sel).cloned() {
+                    self.voyage_to(vector_sim::far::Dest::Star(target.id));
                 }
             }
             KeyCode::Escape | KeyCode::KeyL => self.screen = Screen::Flight,

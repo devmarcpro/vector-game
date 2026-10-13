@@ -104,7 +104,7 @@ impl Sim {
         if self.warp_drive_installed() {
             warp_antimatter_kg(self.ship.mass(), dist_ly)
         } else {
-            0.0
+            self.drive_profile().antimatter_per_ly * dist_ly
         }
     }
 

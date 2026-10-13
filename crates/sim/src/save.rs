@@ -93,6 +93,11 @@ pub struct SaveGame {
     pub casino_round: i64,
     pub trade: crate::trading::TradeState,
     pub multiverse: crate::multiverse::Multiverse,
+    /// Universe seed, current galaxy, the galaxies left behind and the voyage under way.
+    pub universe_seed: u64,
+    pub galaxy_id: vector_world::universe::GalaxyId,
+    pub galaxy_stash: Vec<(vector_world::universe::GalaxyId, crate::far::GalaxyStash)>,
+    pub voyage: Option<crate::far::Voyage>,
     pub rogue: Option<crate::rogue::Rogue>,
     pub rogue_visits: Vec<(u64, u32)>,
     pub births_day: i64,
@@ -286,6 +291,15 @@ pub fn diff_fields(x: &[u8], y: &[u8]) -> Vec<&'static str> {
     if enc(&a.multiverse) != enc(&b.multiverse) {
         out.push("multiverse");
     }
+    if enc(&a.galaxy_id) != enc(&b.galaxy_id) {
+        out.push("galaxy_id");
+    }
+    if enc(&a.galaxy_stash) != enc(&b.galaxy_stash) {
+        out.push("galaxy_stash");
+    }
+    if enc(&a.voyage) != enc(&b.voyage) {
+        out.push("voyage");
+    }
     if enc(&a.rogue) != enc(&b.rogue) {
         out.push("rogue");
     }
@@ -405,6 +419,14 @@ impl Sim {
             casino_round: self.casino_round,
             trade: self.trade.clone(),
             multiverse: self.multiverse.clone(),
+            universe_seed: self.universe_seed,
+            galaxy_id: self.galaxy_id,
+            galaxy_stash: self
+                .galaxy_stash
+                .iter()
+                .map(|(k, v)| (*k, v.clone()))
+                .collect(),
+            voyage: self.voyage.clone(),
             rogue: self.rogue.clone(),
             rogue_visits: self.rogue_visits.clone(),
             births_day: self.births_day,
@@ -467,6 +489,10 @@ impl Sim {
         sim.next_order = save.next_order;
         sim.bought_plans = save.bought_plans;
         sim.galaxy = vector_world::galaxy::Galaxy::new(save.galaxy_seed);
+        sim.universe_seed = save.universe_seed;
+        sim.galaxy_id = save.galaxy_id;
+        sim.galaxy_stash = save.galaxy_stash.into_iter().collect();
+        sim.voyage = save.voyage;
         sim.here = save.here;
         sim.here_pos = save.here_pos;
         sim.visited = save.visited.into_iter().collect();

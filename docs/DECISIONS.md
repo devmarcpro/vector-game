@@ -306,6 +306,12 @@ jours et un systeme en quelques semaines, ce qui rend le jeu jouable sans temps 
 impulsions par dix ramenerait la portee a 0,7 UA. L'interstellaire passe par les sauts FTL. Les moteurs
 exotiques (Bussard, antimatiere) restent sous 0,1 c, le delta-v s'affiche en km/s partout.
 
+## Voyages de galaxie en galaxie (wt-far)
+
+- Le voyage long est un etat de la simulation (`Sim::voyage`), pas une file d'ordres de `nav_auto` : il survit a la sauvegarde, se reprend apres un arret et ne depend pas du pilote automatique orbital. Le planificateur n'utilise pas le Dijkstra de `nav_plan` (limite aux etoiles « vues », quelques centaines de nœuds) : il avance etoile par etoile vers le but en choisissant, autour du point vise a 90 % de la portee, l'etoile qui rapproche le plus (penalites : danger de l'etoile, reservoir bas sans scoop, territoire hostile). Glouton, deterministe, cout lineaire en nombre de sauts.
+- Les classes de propulseurs sont des donnees (`modules.ron`) : un champ a zero vaut le propulseur classique, donc rien ne change pour les anciens Mk1-Mk4. Le carburant du jump long/galactique/intergalactique est le carburant ordinaire (coefficient `jump_fuel_mult`) ; l'intergalactique brule aussi de l'antimatiere.
+- Une galaxie = une graine derivee de l'univers (`Universe::galaxy_seed`) ; la galaxie 0 garde la graine de depart : les parties existantes sont inchangees. Changer de galaxie met de cote visites, deltas de systemes et relations (`GalaxyStash`) et charge ceux de la cible : on y est un etranger, et le retour retrouve l'etat laisse.
+- Temps : un saut long est franchi en pas de `total/40` (600 s a 6 h) au lieu de 600 s fixes ; sans cela une traversee de plusieurs mois coutait des dizaines de milliers de pas.
 ## Ciel reel et univers (wt-univ)
 - `vector_world::sky`: catalogue des etoiles a 90 al (magnitude apparente m = M + 5 log10(d/10 pc), couleur par classe) et bande galactique (directions tirees selon la densite en colonne de `Galaxy::density`), mis en cache par secteur (`SkyCache`), dessine en pixels opaques dans `hud::draw_real_sky`. Reglages : `Game::sky_mag_limit`, `Game::sky_band` (non sauvegardes).
 - `vector_world::universe`: galaxies voisines deterministes (`Universe::galaxies_near/galaxy/galaxy_seed`); la galaxie d'origine garde la graine de l'univers. Aucune structure sauvegardee modifiee.

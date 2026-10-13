@@ -192,7 +192,7 @@ pub fn hint_line(g: &Game) -> String {
         }
         Screen::Factions => "GAUCHE/DROITE PEUPLE  P AMENDES  B POT-DE-VIN  L AVOCAT  TAB RELATIONS  S SOCIETE  G GUERRE  X RETOUR",
         Screen::Galaxy => {
-            "HAUT/BAS ETOILE  MOLETTE ZOOM  GLISSER TOURNER  1-5 ECHELLE  F FILTRE  C CENTRER  / RECHERCHE  ENTREE SAUT FTL  L RETOUR"
+            "HAUT/BAS ETOILE  MOLETTE ZOOM  GLISSER TOURNER  1-5 ECHELLE  F FILTRE  C CENTRER  / RECHERCHE  ENTREE SAUT FTL  V ALLER A (VOYAGE COMPLET)  L RETOUR"
         }
         Screen::Contracts => "HAUT/BAS CONTRAT  ENTREE ACCEPTER/LIVRER  X ABANDONNER  ECHAP RETOUR",
         Screen::Bank => {
@@ -370,7 +370,7 @@ pub fn help_lines(screen: Screen) -> &'static [&'static str] {
             "X ou Echap : retour",
         ],
         Screen::Galaxy => &[
-            "Haut/Bas : etoile   +/- : zoom   Entree : saut FTL",
+            "Haut/Bas : etoile   +/- : zoom   Entree : saut FTL   V : ALLER A l'etoile (tout le trajet : route, ravitaillement, cryosommeil, temps accelere)",
             "Retour arriere : annuler une charge de saut",
             "La lettre est la classe stellaire (O B A F G K M, D naine blanche, N neutrons, X trou noir, R monde errant).",
             "Les cercles sont des nebuleuses, amas et restes de supernova (rayonnement, capteurs brouilles, labos plus efficaces).",
@@ -492,6 +492,7 @@ pub fn help_lines(screen: Screen) -> &'static [&'static str] {
             "SEUILS : carburant, coque, rayonnement : sous le seuil l'ordinateur rentre a la station. Collision, puits de gravite imprevu, tir, surchauffe : il rend la main.",
             "Toucher aux commandes met le plan en pause. Le temps peut etre accelere : les allumages ne sont pas manques.",
             "La touche * du pave numerique (ou F10, espace NAVIGATION) ouvre cet ecran depuis le cockpit ; le trace de la trajectoire s'affiche sur la carte (M) et dans le ciel.",
+            "VOYAGE : choisissez une destination (etoile de la carte, centre galactique, galaxie voisine, retour a la galaxie d'origine), Entree calcule (sauts, duree, carburant, cout), Espace part : le voyage est automatique et s'arrete sur danger (P reprend, X annule).",
         ],
         Screen::Destroyed => &["Entree : continuer (selon les regles de mort permanente)"],
     }

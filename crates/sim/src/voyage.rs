@@ -36,6 +36,8 @@ pub struct JumpState {
     pub fuel_cost: f64,
     pub in_transit: bool,
     pub mishap: bool,
+    /// Set for an intergalactic jump: the galaxy (id) the ship arrives in.
+    pub galaxy: Option<vector_world::universe::GalaxyId>,
 }
 
 /// What changed in a system the player has left (everything else is regenerated from the seed).
@@ -124,7 +126,7 @@ impl Sim {
         if self.warp_drive_installed() {
             return 0.0;
         }
-        FUEL_PER_LY_PER_KG * self.ship.mass() * dist_ly
+        FUEL_PER_LY_PER_KG * self.drive_profile().fuel_mult * self.ship.mass() * dist_ly
     }
 
     /// Fuel of the fly-out that comes before the jump when the ship is inside the well of a
@@ -203,13 +205,25 @@ impl Sim {
 
     /// Begin charging the FTL drive toward `target`.
     pub fn start_jump(&mut self, target: &StarEntry) -> Result<(), &'static str> {
+        let d = target.distance_to(self.here_pos);
+        self.start_jump_to(target, d, None)
+    }
+
+    /// Begin charging toward `target`, `d` light years away; `galaxy` is set for an
+    /// intergalactic crossing (the target is then the entry star of that galaxy).
+    pub(crate) fn start_jump_to(
+        &mut self,
+        target: &StarEntry,
+        d: f64,
+        galaxy: Option<vector_world::universe::GalaxyId>,
+    ) -> Result<(), &'static str> {
         if self.docked.is_some() {
             return Err("decollez d'abord");
         }
         if self.jump.is_some() {
             return Err("saut deja engage");
         }
-        if target.id == self.here {
+        if galaxy.is_none() && target.id == self.here {
             return Err("deja dans ce systeme");
         }
         let free = self.rules.free_travel();
@@ -217,13 +231,13 @@ impl Sim {
         if range <= 0.0 && !free {
             return Err("aucun propulseur FTL installe");
         }
-        let d = target.distance_to(self.here_pos);
         if d > range && !free {
             return Err("hors de portee de saut");
         }
         if self.near_well() && !free {
             return Err("trop pres d'un corps massif");
         }
+        let prof = self.drive_profile();
         let cost = if free { 0.0 } else { self.jump_fuel_cost(d) };
         if !free && self.warp_cost_kg(d) > self.antimatter_stored() {
             return Err("antimatiere insuffisante pour la bulle");
@@ -237,12 +251,13 @@ impl Sim {
             target_pos: target.pos,
             target_seed: target.seed,
             dist_ly: d,
-            charge_left: CHARGE_TIME,
-            transit_left: d * HOURS_PER_LY * 3600.0,
-            total_transit: d * HOURS_PER_LY * 3600.0,
+            charge_left: prof.charge,
+            transit_left: d * prof.hours_per_ly * 3600.0,
+            total_transit: d * prof.hours_per_ly * 3600.0,
             fuel_cost: cost,
             in_transit: false,
             mishap: false,
+            galaxy,
         });
         self.events.push(Event::JumpCharging);
         Ok(())
@@ -274,6 +289,8 @@ impl Sim {
                 .map_or(0.0, |j| self.warp_cost_kg(j.dist_ly))
         };
         let short = warp_kg > self.antimatter_stored();
+        let prof = self.drive_profile();
+        let pilot = self.pilot_risk_factor();
         let Some(j) = self.jump.as_mut() else { return };
         if j.in_transit {
             return;
@@ -312,7 +329,7 @@ impl Sim {
             .filter(|(_, m)| m.jump_range > 0.0)
             .map(|(i, _)| self.ship.sys.health[i])
             .fold(1.0f64, f64::min);
-        let risk = (0.01 * j.dist_ly * (1.6 - wear)).min(0.5);
+        let risk = (prof.risk * j.dist_ly * (1.6 - wear) * pilot).min(0.5);
         let mut rng = Rng::new(hash_coord(
             self.system.seed,
             (self.time * 10.0) as i64,
@@ -361,6 +378,9 @@ impl Sim {
             self.multiverse.dimension = 0;
         }
         self.visited.insert(self.here, self.here_pos);
+        if let Some(g) = j.galaxy {
+            self.switch_galaxy(g);
+        }
         self.visited.insert(j.target, j.target_pos);
         self.here = j.target;
         self.here_pos = j.target_pos;
@@ -391,6 +411,7 @@ impl Sim {
             self.warp_wake(j.dist_ly);
         }
         self.events.push(Event::JumpArrived { dist_ly: j.dist_ly });
+        self.voyage_arrived(j.mishap, j.dist_ly);
     }
 
     /// Replace the active system (used on arrival and when loading a save), restoring any saved delta.

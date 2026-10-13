@@ -224,6 +224,7 @@ impl Sim {
                     fuel_cost: 0.0,
                     in_transit: true,
                     mishap,
+                    galaxy: None,
                 });
                 let name = star.header.name.clone();
                 self.arrive();
@@ -527,6 +528,7 @@ impl Sim {
             fuel_cost: 0.0,
             in_transit: true,
             mishap: false,
+            galaxy: None,
         });
         self.arrive();
         Ok(format!(

@@ -140,7 +140,7 @@ pub struct Route {
 /// Extra cost (ly) of a route through a system: the remnants and giants are dangerous in
 /// themselves, and any star adds what its flares add to the dose (`science::flare_activity`, the
 /// same table as `navigation::stellar_dose`; a G dwarf adds nothing).
-fn star_danger(c: StarClass) -> f64 {
+pub(crate) fn star_danger(c: StarClass) -> f64 {
     let own = match c {
         StarClass::X => 8.0,
         StarClass::N => 4.0,

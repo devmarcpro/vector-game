@@ -93,7 +93,11 @@ fn heading(s: Screen) -> (String, String, u32) {
                 SPACE_COLORS[i.min(7)],
             )
         }
-        Place::System => (format!("{s:?}").to_uppercase(), "SYSTEME".into(), SPACE_COLORS[0]),
+        Place::System => (
+            format!("{s:?}").to_uppercase(),
+            "SYSTEME".into(),
+            SPACE_COLORS[0],
+        ),
     }
 }
 
@@ -3285,6 +3289,33 @@ mod tests {
                     crate::draw_frame(&mut fb, &g);
                 }
             }
+        }
+    }
+
+    /// Cost of one frame of the hub per window size: `cargo test ui_frame_cost -- --ignored --nocapture`.
+    #[test]
+    #[ignore]
+    fn ui_frame_cost() {
+        let data = std::sync::Arc::new(
+            vector_data::GameData::load(
+                &std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../data"),
+            )
+            .expect("data"),
+        );
+        let mut g = Game::new(data, 7);
+        g.new_game(7);
+        g.screen = Screen::Hub;
+        for (w, h) in [(1024, 576), (1280, 720), (1920, 1080), (2560, 1440)] {
+            let mut fb = Framebuffer::new(w, h);
+            crate::draw_frame(&mut fb, &g);
+            let t = std::time::Instant::now();
+            for _ in 0..30 {
+                crate::draw_frame(&mut fb, &g);
+            }
+            println!(
+                "COST {w}x{h}: {:.2} ms",
+                t.elapsed().as_secs_f64() * 1000.0 / 30.0
+            );
         }
     }
 }

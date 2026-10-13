@@ -89,8 +89,10 @@ fn lerp(a: u32, b: u32, t: u32) -> u32 {
     rb | g
 }
 
-/// Copy `src` (1280x720) into the rectangle (x, y, w, h) of `dst`, bilinear.
+/// Copy `src` (1280x720) into the rectangle (x, y, w, h) of `dst`: bilinear when it shrinks,
+/// nearest (a table lookup, several times cheaper) when it grows.
 fn blit(dst: &mut Framebuffer, src: &Framebuffer, (ox, oy, dw, dh): (usize, usize, usize, usize)) {
+    let nearest = dw > src.w;
     XTAB.with(|t| {
         let mut t = t.borrow_mut();
         if t.0 != dw {
@@ -98,18 +100,32 @@ fn blit(dst: &mut Framebuffer, src: &Framebuffer, (ox, oy, dw, dh): (usize, usiz
             t.1.clear();
             let fx = ((src.w as u64 - 1) << 16) / (dw as u64 - 1).max(1);
             for x in 0..dw {
-                let p = x as u64 * fx;
-                t.1.push(((p >> 16) as u32, ((p & 0xFFFF) >> 8) as u32));
+                if nearest {
+                    t.1.push(((x * src.w / dw) as u32, 0));
+                } else {
+                    let p = x as u64 * fx;
+                    t.1.push(((p >> 16) as u32, ((p & 0xFFFF) >> 8) as u32));
+                }
             }
         }
         let fy = ((src.h as u64 - 1) << 16) / (dh as u64 - 1).max(1);
         for y in 0..dh {
-            let p = y as u64 * fy;
-            let (y0, wy) = ((p >> 16) as usize, ((p & 0xFFFF) >> 8) as u32);
+            let (y0, wy) = if nearest {
+                (y * src.h / dh, 0)
+            } else {
+                let p = y as u64 * fy;
+                ((p >> 16) as usize, ((p & 0xFFFF) >> 8) as u32)
+            };
             let y1 = (y0 + 1).min(src.h - 1);
             let r0 = &src.px[y0 * src.w..(y0 + 1) * src.w];
             let r1 = &src.px[y1 * src.w..(y1 + 1) * src.w];
             let row = &mut dst.px[(oy + y) * dst.w + ox..(oy + y) * dst.w + ox + dw];
+            if nearest {
+                for (d, &(x0, _)) in row.iter_mut().zip(t.1.iter()) {
+                    *d = r0[x0 as usize];
+                }
+                continue;
+            }
             for (d, &(x0, wx)) in row.iter_mut().zip(t.1.iter()) {
                 let x0 = x0 as usize;
                 let x1 = (x0 + 1).min(src.w - 1);

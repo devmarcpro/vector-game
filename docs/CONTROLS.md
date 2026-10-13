@@ -227,3 +227,5 @@ Barre d'onglets en haut du chantier : COQUES, CONCEPTION, EQUIPEMENT, PLANS ET C
 | X puis G | Page GUERRE : fronts, blocus, batteries, paix (P), contrats de mercenaires (M), agents : R recruter, A agent suivant, C secteur vise, I infiltrer, 1-4 sabotage / vol de plans / ecoutes / rumeur, W rappeler, D drone ; Gauche/Droite change de peuple ; G ou Echap revient |
 | F3 (flotte) | O ordre du vaisseau choisi (commerce, suivre, attaquer, defendre, patrouiller), R ravitailler l'escadre, V reparer (a quai), 1-4 sort des prisonniers d'une prise (enroler, liberer, rancon, executer) |
 | Exploration : T / E / G | Tirer (armes a feu), recharger depuis la soute, lancer une grenade |
+
+- **Style de l'interface** (Options, derniere ligne) : NOUVEAU (defaut : fonds teintes par espace, en-tete commun avec credits, alertes, ? AIDE et MENU, barre de commandes cliquable) ou CLASSIQUE (ancien rendu). Les clics, touches, clic droit et infobulles sont identiques. Fenetre redimensionnable : le style NOUVEAU s'adapte (1024x576 minimum).

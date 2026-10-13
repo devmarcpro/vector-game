@@ -133,6 +133,19 @@ pub struct Module {
     pub cryo_temp: f64,
     pub reliability: f64,
     pub cryo_upkeep: f64,
+    /// FTL drive class: "" (short), "long", "galactic" or "intergalactic". The five values
+    /// below default to the classic drive (0 = default) so only the new classes list them.
+    pub jump_class: String,
+    /// Game hours of transit per light year (default 6).
+    pub jump_hours_per_ly: f64,
+    /// Multiplier of the propellant per light year (default 1).
+    pub jump_fuel_mult: f64,
+    /// Mishap chance per light year with a perfect drive and pilot (default 0.01).
+    pub jump_risk: f64,
+    /// Seconds of charge before the jump (default 20).
+    pub jump_charge: f64,
+    /// Antimatter (kg) burnt per light year (default 0).
+    pub jump_antimatter: f64,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -986,6 +999,9 @@ pub struct Scenario {
     pub wanted_days: f64,
     /// The ship starts as a wreck on the ground of a world, the crew alone with the planet.
     pub wreck: bool,
+    /// Sandbox scenario: the game starts in creative mode.
+    #[serde(default)]
+    pub creative: bool,
     pub text: String,
 }
 

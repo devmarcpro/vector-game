@@ -76,14 +76,13 @@ pub fn place_of(s: Screen) -> Place {
         Rogue | Expedition => Place::Space(EXPLORATION),
         Empire | Colony | Fleet | Factions => Place::Space(COLONIES),
         Journal | Codex | Tech | Proto => Place::Space(CODEX),
-        MainMenu | NewGame | Hub | Dashboard | Pause | Options | Rules | Destroyed | Designer => {
-            Place::System
-        }
+        MainMenu | NewGame | Hub | Dashboard | Pause | Options | Rules | Destroyed | Designer
+        | Creative => Place::System,
     }
 }
 
 /// Every screen of the game (the menu's test walks it; the help of a screen is found by its place).
-pub const ALL_SCREENS: [Screen; 34] = [
+pub const ALL_SCREENS: [Screen; 35] = [
     Screen::Dashboard,
     Screen::Designer,
     Screen::MainMenu,
@@ -118,6 +117,7 @@ pub const ALL_SCREENS: [Screen; 34] = [
     Screen::Dialogue,
     Screen::Expedition,
     Screen::NavAuto,
+    Screen::Creative,
 ];
 
 /// The place of a screen in `ALL_SCREENS` (a number a zone can carry).
@@ -177,6 +177,18 @@ pub static SPACES: [Space; 8] = [
                         g.screen = Screen::Flight;
                         g.map = false;
                     }
+                },
+            ),
+            entry(
+                "ATTERRIR / DECOLLER",
+                "PAV4",
+                "Une commande : approche, descente, pose sur le terrain ; au sol, decollage vers l'orbite.",
+                None,
+                Need::Flying,
+                false,
+                |g| {
+                    g.screen = Screen::Flight;
+                    g.pilot_key();
                 },
             ),
             entry(

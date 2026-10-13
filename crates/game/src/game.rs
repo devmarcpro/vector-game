@@ -29,8 +29,18 @@ pub const PAUSE_MENU: [&str; 8] = [
     "MENU PRINCIPAL",
     "QUITTER",
 ];
-const TIME_LADDER: [f64; 10] = [
-    0.25, 0.5, 1.0, 2.0, 5.0, 10.0, 100.0, 1000.0, 10_000.0, 100_000.0,
+const TIME_LADDER: [f64; 11] = [
+    0.25,
+    0.5,
+    1.0,
+    2.0,
+    5.0,
+    10.0,
+    100.0,
+    1000.0,
+    10_000.0,
+    100_000.0,
+    1_000_000.0,
 ];
 
 /// Sort orders of the market list (`V` cycles them).
@@ -89,6 +99,8 @@ pub enum Screen {
     Dashboard,
     /// The navigation computer: the queue of orders, the planner, the thresholds (see `nav_view`).
     NavAuto,
+    /// The creative panel (ScrollLock): the one API of `Sim::creative_*`, by keys and mouse.
+    Creative,
 }
 
 /// The tabs of the one crew screen (`Screen::Crew`): the list with the sheet of the chosen
@@ -209,6 +221,8 @@ pub struct Game {
     pub tech_mind: bool,
     pub mind_sel: usize,
     pub log_seen: usize,
+    /// Lines of the voyage log already said.
+    pub voyage_seen: usize,
     pub gal_cache: Vec<StarEntry>,
     /// Nebulae, clusters and remnants within reach of the galactic map (see `vector_world::cosmos`).
     pub gal_features: Vec<vector_world::cosmos::Feature>,
@@ -321,6 +335,8 @@ pub struct Game {
     pub rules_sel: usize,
     /// Rules for the next new game (edited live when opened from the pause menu).
     pub pending_rules: vector_sim::rules::Rules,
+    pub cx: crate::creative_view::CxState,
+    pub cx_back: Screen,
     /// Where the rules / options / codex screens return to.
     pub back_to: Screen,
     pub settings: crate::settings::Settings,
@@ -333,6 +349,10 @@ pub struct Game {
     pub surf: Option<vector_sim::planet::PlanetMap>,
     /// Maps of the planets of the system, built when first seen from the cockpit (drawn as
     /// topographic globes): the system they belong to, and one per body.
+    /// The glyph and colour of every cell of the surface map in the layer shown, kept while
+    /// nothing it depends on has changed (key, W * H cells): the layers of weather and life are
+    /// costly to compute and the map is drawn many times a second.
+    pub surf_grid: std::cell::RefCell<(u64, Vec<(char, u32)>)>,
     pub flight_maps: std::cell::RefCell<(
         u64,
         std::collections::HashMap<usize, std::rc::Rc<vector_sim::planet::PlanetMap>>,
@@ -387,6 +407,8 @@ pub struct Game {
     pub ctx_menu: Option<crate::context_menu::Menu>,
     /// The cockpit looks astern (at the ground of a ship landing tail first).
     pub rear_view: bool,
+    /// A landing whose warnings were shown: asking again confirms it (body, cell).
+    pub land_confirm: Option<(usize, Option<(usize, usize)>)>,
     pub tut_step: Option<usize>,
     /// Target whose autopilot cost was shown: the next G engages the economy plan.
     pub ap_pending: Option<usize>,
@@ -458,6 +480,7 @@ impl Game {
             tech_mind: false,
             mind_sel: 0,
             log_seen: 0,
+            voyage_seen: 0,
             gal_cache: Vec::new(),
             gal_features: Vec::new(),
             gal_sel: 0,
@@ -537,6 +560,8 @@ impl Game {
             tech_sel: 0,
             rules_sel: 0,
             pending_rules: vector_sim::rules::Rules::default(),
+            cx: Default::default(),
+            cx_back: Screen::Flight,
             back_to: Screen::MainMenu,
             settings: crate::settings::Settings::load(&PathBuf::from("saves").join("settings.cfg")),
             opt_sel: 0,
@@ -544,6 +569,7 @@ impl Game {
             codex_sel: 0,
             codex_back: Vec::new(),
             flight_maps: Default::default(),
+            surf_grid: Default::default(),
             surf: None,
             surf_cx: 0,
             surf_cy: 0,
@@ -585,6 +611,7 @@ impl Game {
             help_for: None,
             ctx_menu: None,
             rear_view: false,
+            land_confirm: None,
             tut_step: None,
             ap_pending: None,
             tut_keys: Vec::new(),
@@ -761,6 +788,9 @@ impl Game {
         if self.sim.in_transit() {
             self.timescale = self.timescale.max(10_000.0);
         }
+        if let Some(w) = self.sim.voyage_warp() {
+            self.timescale = self.timescale.max(w.min(self.sim.rules.max_timescale));
+        }
         if self.sim.combat_active() {
             self.timescale = 1.0;
         }
@@ -790,6 +820,7 @@ impl Game {
         }
         self.handle_events();
         self.forward_log();
+        self.forward_voyage();
     }
 
     /// Show the newest crew journal lines in the HUD message area.
@@ -847,6 +878,7 @@ impl Game {
                 Event::Toppled { .. }
                 | Event::PilotDone(_)
                 | Event::PilotFailed(_)
+                | Event::LandingEnded(_)
                 | Event::TooHeavy
                 | Event::HardDock { .. } => {}
                 Event::OutOfFuel => self.say("CARBURANT EPUISE"),
@@ -863,7 +895,9 @@ impl Game {
                     self.timescale = 10_000.0;
                 }
                 Event::JumpArrived { .. } => {
-                    self.timescale = 1.0;
+                    if !self.sim.voyage_running() {
+                        self.timescale = 1.0;
+                    }
                     self.stars = scene::star_field(self.sim.system.seed, 900);
                     self.fit_map();
                     self.map = false;
@@ -1078,7 +1112,7 @@ impl Game {
     fn step_time(&mut self, up: bool) {
         let top = TIME_LADDER
             .iter()
-            .rposition(|&t| t <= self.sim.rules.max_timescale)
+            .rposition(|&t| t <= self.sim.rules.max_ts())
             .unwrap_or(2);
         let i = TIME_LADDER
             .iter()
@@ -1272,6 +1306,20 @@ impl Game {
             self.say("TUTORIEL IGNORE (REACTIVABLE DANS OPTIONS)");
             return;
         }
+        if code == KeyCode::ScrollLock
+            && !matches!(
+                self.screen,
+                Screen::MainMenu | Screen::NewGame | Screen::Destroyed
+            )
+        {
+            self.help_open = false;
+            if self.screen == Screen::Creative {
+                self.screen = self.cx_back;
+            } else {
+                self.open_creative();
+            }
+            return;
+        }
         // The menu is one key away from every screen of the game.
         if code == KeyCode::F10
             && !matches!(
@@ -1322,6 +1370,7 @@ impl Game {
             Screen::Fleet => self.fleet_key(code),
             Screen::Tech => self.tech_key(code),
             Screen::Rules => self.rules_key(code),
+            Screen::Creative => self.creative_key(code, text),
             Screen::Options => self.options_key(code),
             Screen::Codex => self.codex_key(code),
             Screen::Surface => self.surface_key(code),
@@ -1752,6 +1801,8 @@ impl Game {
             // Zoom in: from the map of the region to the grid of the ground, on foot.
             KeyCode::KeyE | KeyCode::Equal | KeyCode::NumpadAdd => self.open_expedition(),
             KeyCode::KeyF => self.open_codex(Screen::Surface),
+            // Land on the chosen cell (Enter, outside the BIOSPHERE layer, or the word on screen).
+            KeyCode::Enter | KeyCode::KeyL => self.land_from_surface(),
             KeyCode::Escape | KeyCode::F8 => self.screen = Screen::Flight,
             _ => {}
         }
@@ -3298,6 +3349,11 @@ impl Game {
                         }
                         Err(e) => self.say(format!("SAUT IMPOSSIBLE: {}", e.to_uppercase())),
                     }
+                }
+            }
+            KeyCode::KeyV => {
+                if let Some(target) = self.gal_cache.get(self.gal_sel).cloned() {
+                    self.voyage_to(vector_sim::far::Dest::Star(target.id));
                 }
             }
             KeyCode::Escape | KeyCode::KeyL => self.screen = Screen::Flight,

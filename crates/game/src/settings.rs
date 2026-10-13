@@ -33,6 +33,8 @@ pub struct Settings {
     pub sky_band: bool,
     pub sky_const: bool,
     pub sky_names: bool,
+    /// Style de l'interface : NOUVEAU (true, defaut) ou CLASSIQUE.
+    pub ui_new: bool,
     /// Arrangement of the cockpit: 0 A, 1 B, 2 C, 3 the old HUD (see `cockpit::Disposition`).
     pub cockpit: u8,
     /// Arrangement C: the console is unfolded.
@@ -56,6 +58,7 @@ impl Default for Settings {
             sky_band: true,
             sky_const: true,
             sky_names: true,
+            ui_new: !cfg!(test), // the tests of clicks read the classic cell layout
             cockpit: 0,
             cockpit_open: false,
         }
@@ -63,7 +66,7 @@ impl Default for Settings {
 }
 
 impl Settings {
-    pub const COUNT: usize = 15;
+    pub const COUNT: usize = 16;
 
     /// Limiting magnitude of the sky.
     pub fn sky_mag_limit(&self) -> f64 {
@@ -96,6 +99,10 @@ impl Settings {
             ("Ciel : bande galactique", yn(self.sky_band)),
             ("Ciel : constellations", yn(self.sky_const)),
             ("Ciel : noms des constellations", yn(self.sky_names)),
+            (
+                "Style de l'interface",
+                if self.ui_new { "NOUVEAU" } else { "CLASSIQUE" }.to_string(),
+            ),
             (
                 "Disposition du cockpit",
                 crate::cockpit::Disposition::from_index(self.cockpit)
@@ -134,7 +141,8 @@ impl Settings {
             11 => self.sky_band = !self.sky_band,
             12 => self.sky_const = !self.sky_const,
             13 => self.sky_names = !self.sky_names,
-            14 => {
+            14 => self.ui_new = !self.ui_new,
+            15 => {
                 let n = crate::cockpit::Disposition::ALL.len();
                 let i = usize::from(self.cockpit.min(3));
                 self.cockpit = (if up { (i + 1) % n } else { (i + n - 1) % n }) as u8;
@@ -200,7 +208,7 @@ impl Settings {
 
     pub fn to_text(&self) -> String {
         format!(
-            "scanlines={}\nglow={}\nscheme={}\nvolume={}\ntutorial={}\nhints={}\nazerty={}\nlang={}\nmenu={}\nticker={}\nskymag={}\nskyband={}\nskyconst={}\nskynames={}\ncockpit={}\ncockpitopen={}\n",
+            "scanlines={}\nglow={}\nscheme={}\nvolume={}\ntutorial={}\nhints={}\nazerty={}\nlang={}\nmenu={}\nticker={}\nskymag={}\nskyband={}\nskyconst={}\nskynames={}\nuistyle={}\ncockpit={}\ncockpitopen={}\n",
             u8::from(self.scanlines),
             u8::from(self.glow),
             self.scheme,
@@ -215,6 +223,7 @@ impl Settings {
             u8::from(self.sky_band),
             u8::from(self.sky_const),
             u8::from(self.sky_names),
+            u8::from(self.ui_new),
             self.cockpit,
             u8::from(self.cockpit_open)
         )
@@ -242,6 +251,7 @@ impl Settings {
                 "skyband" => s.sky_band = n != 0,
                 "skyconst" => s.sky_const = n != 0,
                 "skynames" => s.sky_names = n != 0,
+                "uistyle" => s.ui_new = n != 0,
                 "cockpit" => s.cockpit = n.min(3) as u8,
                 "cockpitopen" => s.cockpit_open = n != 0,
                 "lang" => s.lang = n.min(LANGS.len() - 1),

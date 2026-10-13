@@ -567,10 +567,14 @@ fn console_a(fb: &mut Framebuffer, g: &Game, tel: &Tel, rc: Rc) {
     // Radar and navigation / descent.
     plate(fb, (x, my, w1, top_h), "");
     let rr = ((w1 - 24) / 2).min((top_h - 34) / 2).max(24);
-    prof::time(6, || radar(fb, g, tel, x + w1 / 2, my + 4 + (top_h - 14) / 2, rr));
+    prof::time(6, || {
+        radar(fb, g, tel, x + w1 / 2, my + 4 + (top_h - 14) / 2, rr)
+    });
     txt_c(fb, x + w1 / 2, my + 2, "SCANNER", LABEL);
     plate(fb, (x + w1 + 5, my, w2, top_h), "");
-    prof::time(7, || nav_slot(fb, g, tel, (x + w1 + 11, my + 6, w2 - 12, top_h - 12)));
+    prof::time(7, || {
+        nav_slot(fb, g, tel, (x + w1 + 11, my + 6, w2 - 12, top_h - 12))
+    });
     // Target and plan / pilot.
     let w3 = (rw * 190 / 364).max(150);
     let w4 = rw - w3 - 5;
@@ -597,11 +601,13 @@ fn layout_a(fb: &mut Framebuffer, v: &View, tel: &Tel, top: i32, bot: i32) {
     let ch = (area_h * 49 / 100).clamp(236, 420).min(area_h - 100);
     let wh = area_h - ch;
     let win = (0, top, w, wh);
-    scene(fb, v, win);
+    prof::time(1, || scene(fb, v, win));
     let ext = g.ext_active();
     let margin = if ext { 12 } else { (w / 9).min(150) + 8 };
-    glass_texts(fb, g, win, margin);
-    glass_messages(fb, g, w / 2, top + wh - 44, w - 2 * margin);
+    prof::time(2, || {
+        glass_texts(fb, g, win, margin);
+        glass_messages(fb, g, w / 2, top + wh - 44, w - 2 * margin);
+    });
     if !ext {
         canopy(fb, 0, top, w, wh);
     }

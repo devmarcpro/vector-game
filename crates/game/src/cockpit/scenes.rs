@@ -61,7 +61,11 @@ pub fn resolve(name: &str) -> Option<Spec> {
     };
     let mut extra = None;
     let mut rest = rest;
-    for (tag, kind) in [("_tip_", Extra::Tip), ("_menu_", Extra::Menu), ("_help_", Extra::Help)] {
+    for (tag, kind) in [
+        ("_tip_", Extra::Tip),
+        ("_menu_", Extra::Menu),
+        ("_help_", Extra::Help),
+    ] {
         if let Some((a, b)) = rest.split_once(tag) {
             extra = Some((kind, organ_named(b)?));
             rest = a;

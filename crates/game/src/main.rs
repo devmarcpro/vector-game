@@ -1,5 +1,7 @@
 mod archive_view;
 mod audio;
+mod ball;
+mod bench;
 mod bourse_view;
 mod cockpit;
 mod codex;
@@ -7,6 +9,7 @@ mod codex_sky;
 mod console;
 mod context_menu;
 mod cosmos_view;
+mod creative_view;
 mod crew_net_view;
 mod cryo_view;
 mod dash_view;
@@ -36,11 +39,13 @@ mod mouse;
 mod nav_view;
 mod newgame;
 mod newgame_custom;
+mod perf;
 mod power_view;
 mod project_view;
 mod proto_view;
 mod rogue_view;
 mod scene;
+mod scene_render;
 mod script;
 mod settings;
 mod ship_model;
@@ -51,9 +56,12 @@ mod sprites;
 mod surface_view;
 mod tech_view;
 mod terrain;
+mod theme;
 mod trade_view;
 mod tutorial;
 mod ui;
+mod ui_kit;
+mod ui_new;
 mod umap;
 mod war_view;
 mod wire_shape;
@@ -91,6 +99,13 @@ fn load_data() -> Option<Arc<GameData>> {
 /// Render whichever screen is active.
 fn draw_frame(fb: &mut Framebuffer, g: &Game) {
     g.begin_frame();
+    if ui_new::handles(g) {
+        ui_kit::draw_canvas(fb, g, ui_new::draw);
+        hud::draw_console(fb, &g.console);
+        context_menu::draw(fb, g);
+        context_menu::draw_tooltip(fb, g);
+        return;
+    }
     match g.screen {
         Screen::Flight => hud::draw(fb, &g.view()),
         Screen::Pause => {
@@ -118,6 +133,9 @@ struct App {
     mouse_acc: (f64, f64),
     grabbed: bool,
     started: Instant,
+    /// The profiler overlay (ScrollLock, or `--profile`): lines refreshed every 30 images.
+    perf_lines: Vec<String>,
+    perf_n: u32,
 }
 
 /// Full turn demand at this many pixels of raw mouse motion per second.
@@ -187,6 +205,13 @@ impl ApplicationHandler for App {
                 let pressed = event.state == ElementState::Pressed;
                 if let PhysicalKey::Code(code) = event.physical_key {
                     let code = self.game.settings.translate(code);
+                    if code == KeyCode::ScrollLock {
+                        if pressed {
+                            perf::set(!perf::enabled());
+                            self.perf_lines.clear();
+                        }
+                        return;
+                    }
                     self.game.key(code, event.text.as_deref(), pressed);
                     if self.game.quit {
                         el.exit();
@@ -238,6 +263,7 @@ impl ApplicationHandler for App {
                 let dt = (now - self.last).as_secs_f64().min(0.25);
                 self.last = now;
                 self.sync_mouse(dt);
+                let sim_t = Instant::now();
                 if self.game.running() {
                     if self.game.timescale <= 1.0 {
                         self.acc += dt * self.game.timescale;
@@ -248,6 +274,7 @@ impl ApplicationHandler for App {
                         self.game.advance(dt);
                     }
                 }
+                perf::add("sim_advance", sim_t.elapsed().as_secs_f64() * 1000.0);
                 let (Some(win), Some(surf)) = (&self.window, &mut self.surface) else {
                     return;
                 };
@@ -261,7 +288,20 @@ impl ApplicationHandler for App {
                     self.fb = Framebuffer::new(w.get() as usize, h.get() as usize);
                 }
                 self.audio.update(&self.game);
+                let draw_t = Instant::now();
+                ui_new::refresh(&mut self.game);
                 draw_frame(&mut self.fb, &self.game);
+                if perf::enabled() {
+                    perf::add("draw_total", draw_t.elapsed().as_secs_f64() * 1000.0);
+                    self.perf_n += 1;
+                    if self.perf_n >= 30 {
+                        self.perf_lines = perf::overlay_lines(self.perf_n);
+                        self.perf_n = 0;
+                    }
+                    for (i, l) in self.perf_lines.iter().enumerate() {
+                        self.fb.text_at(8, 60 + 12 * i as i32, l, 0x00FF_FF40);
+                    }
+                }
                 let st = &self.game.settings;
                 if st.scanlines || st.glow || st.scheme > 0 {
                     let tint = match st.scheme {
@@ -293,7 +333,12 @@ fn landing_scene(g: &mut Game, stage: &str) {
     g.sim.reveal_all();
     let i = (0..g.sim.bodies.len())
         .filter(|&i| g.sim.landable(i))
-        .max_by(|&a, &b| g.sim.bodies[a].radius.total_cmp(&g.sim.bodies[b].radius))
+        .max_by(|&a, &b| {
+            let thin = |i: usize| g.sim.system.bodies[i].pressure < 0.05;
+            thin(a)
+                .cmp(&thin(b))
+                .then(g.sim.bodies[a].radius.total_cmp(&g.sim.bodies[b].radius))
+        })
         .expect("a solid world");
     let b = g.sim.bodies[i].clone();
     let up = Vec3::new(0.3, 0.8, 0.5).normalized();
@@ -312,6 +357,43 @@ fn landing_scene(g: &mut Game, stage: &str) {
     }
     g.sim.gear_down = true;
     g.sim.ship.assist = false;
+    if stage.starts_with("command") {
+        // From a low orbit: the ATTERRIR command, flown to the end.
+        let r = b.radius * 1.04;
+        // On the side of the world that faces the star, so that the ground is lit.
+        let sun = (b.pos * -1.0).normalized();
+        let tangent = sun.cross(Vec3::new(0.0, 1.0, 0.0)).normalized();
+        // Starting a third of a turn before the sub-solar point: the sun stays high but oblique.
+        let a: f64 = -0.6;
+        let d1 = sun * a.cos() + tangent * a.sin();
+        let v1 = tangent * a.cos() - sun * a.sin();
+        g.sim.ship.pos = b.pos + d1 * r;
+        g.sim.ship.vel = b.vel + v1 * (b.gm / r).sqrt();
+        g.sim.ship.rot = Mat3::IDENTITY;
+        g.sim.gear_down = false;
+        g.sim.ship.assist = true;
+        g.sim.update_ref_pub();
+        g.menu_land(0);
+        if g.sim.land_goal.is_none() {
+            g.menu_land(0);
+        }
+        for _ in 0..60_000 {
+            g.advance(0.1);
+            if g.sim.land_goal.is_none() {
+                break;
+            }
+        }
+        g.advance(2.0);
+        g.timescale = 1.0;
+        if stage == "command_ext" {
+            g.tut_step = None;
+            g.key(KeyCode::Delete, None, true);
+            g.advance(0.2);
+        } else {
+            g.rear_view = true;
+        }
+        return;
+    }
     match stage {
         "descent" => {
             g.sim.ship.vel = g.sim.ship.vel - up * 45.0;
@@ -333,7 +415,18 @@ fn landing_scene(g: &mut Game, stage: &str) {
     }
 }
 
-fn snapshot(path: &str, scene: &str, size: &str, data: Arc<GameData>) {
+/// The window size of a snapshot: `VECTOR_SNAP_SIZE=1024x576` (default 1280x720).
+fn snap_size() -> (usize, usize) {
+    std::env::var("VECTOR_SNAP_SIZE")
+        .ok()
+        .and_then(|v| {
+            let (a, b) = v.split_once('x')?;
+            Some((a.parse().ok()?, b.parse().ok()?))
+        })
+        .unwrap_or((1280, 720))
+}
+
+fn scene_game(scene: &str, data: Arc<GameData>) -> Game {
     let mut g = Game::new(data, DEFAULT_SEED);
     // "ext_<scene>[@yaw,pitch,zoom]": the same scene seen from the third-person camera.
     let (scene, cam) = scene.split_once('@').unwrap_or((scene, ""));
@@ -371,6 +464,11 @@ fn snapshot(path: &str, scene: &str, size: &str, data: Arc<GameData>) {
         }
     }
     match scene {
+        // The shared scene of the cockpit and of the third-person view ("ext_sc_station").
+        s if s.starts_with("sc_") => {
+            scene_render::setup(&mut g, &s[3..]);
+            g.ext_view = ext;
+        }
         "map" => {
             g.map = true;
             g.cycle_target(|_| true);
@@ -450,6 +548,52 @@ fn snapshot(path: &str, scene: &str, size: &str, data: Arc<GameData>) {
                 "nav_limits" => {
                     g.open_nav_auto();
                     g.nav_ui.page = 2;
+                }
+                "nav_voyage" | "nav_voyage_run" => {
+                    // A long-range drive in the FTL slot, the voyage page with a plan (or the
+                    // voyage under way, a few jumps in).
+                    let slot = g
+                        .sim
+                        .ship
+                        .design
+                        .modules(&g.sim.data)
+                        .find(|(_, m)| m.jump_range > 0.0)
+                        .map(|(i, _)| i);
+                    if let Some(slot) = slot {
+                        g.sim.ship.design.slots[slot] = g.sim.data.module_index("ftl_mk5");
+                        let data = std::sync::Arc::clone(&g.sim.data);
+                        g.sim.ship.refresh_stats(&data);
+                        g.sim.ship.fuel = g.sim.ship.stats.fuel_cap;
+                    }
+                    // Enough power for the drive: the void reactor in every core reactor slot.
+                    let void = g.sim.data.module_index("exo_void_reactor");
+                    for i in 0..g.sim.ship.design.slots.len() {
+                        let hull = &g.sim.data.hulls[g.sim.ship.design.hull];
+                        let reactor = g.sim.ship.design.slots[i].is_some_and(|m| {
+                            g.sim.data.modules[m].category == "reactor" && hull.slots[i].1 >= 2
+                        });
+                        if reactor {
+                            g.sim.ship.design.slots[i] = void;
+                        }
+                    }
+                    let data = std::sync::Arc::clone(&g.sim.data);
+                    g.sim.ship.refresh_stats(&data);
+                    g.sim.ship.fuel = g.sim.ship.stats.fuel_cap;
+                    g.sim.docked = None;
+                    g.sim.ship.pos = vector_core::Vec3::new(4.0e11, 0.0, 0.0);
+                    g.gal_cache.clear();
+                    g.open_nav_auto();
+                    g.nav_ui.page = 4;
+                    g.voyage_refresh();
+                    g.nav_ui.vy_sel = g.nav_ui.vy_dests.len().min(3).saturating_sub(1);
+                    g.voyage_compute();
+                    if scene == "nav_voyage_run" {
+                        g.voyage_start();
+                        g.screen = Screen::NavAuto;
+                        for _ in 0..30 {
+                            g.sim.advance(50_000.0, &ShipInput::default());
+                        }
+                    }
                 }
                 _ => {}
             }
@@ -1823,23 +1967,55 @@ fn snapshot(path: &str, scene: &str, size: &str, data: Arc<GameData>) {
     if let Some(spec) = &spec {
         mock_ui::after_setup(&mut g, spec);
     }
-    // Size: `--snapshot file scene WxH` (default 1280x720).
-    let (sw, sh) = size.split_once('x').map_or((1280, 720), |(a, b)| {
-        (a.parse().unwrap_or(1280), b.parse().unwrap_or(720))
-    });
     // The snapshots of the other scenes keep the old HUD; the cockpit scenes choose their own.
     match &cockpit_spec {
-        Some(c) => cockpit::scenes::after_setup(&mut g, c, (sw, sh)),
+        Some(c) => cockpit::scenes::after_setup(&mut g, c, snap_size()),
         None => g.settings.cockpit = cockpit::Disposition::Old.index(),
     }
+    g
+}
+
+fn snapshot(path: &str, scene: &str, data: Arc<GameData>) {
+    let mut g = scene_game(scene, data);
+    let spec = {
+        let base = scene.split_once('@').map_or(scene, |x| x.0);
+        mock_ui::resolve(base.strip_prefix("ext_").unwrap_or(base))
+    };
+    let (sw, sh) = snap_size();
     let mut fb = Framebuffer::new(sw, sh);
     match &spec {
-        Some(spec) => mock_ui::render(&mut fb, &g, spec),
+        Some(spec) => mock_ui::render(&mut fb, &mut g, spec),
         None => draw_frame(&mut fb, &g),
     }
     match std::fs::write(path, vector_render::png::encode(fb.w, fb.h, &fb.px)) {
         Ok(()) => println!("snapshot -> {path}"),
         Err(e) => eprintln!("write failed: {e}"),
+    }
+}
+
+/// Cockpit and third-person view over the same five situations (ms per frame).
+fn bench_scene(data: Arc<GameData>) {
+    for kind in ["empty", "station", "ships20", "belt", "planet"] {
+        for ext in [false, true] {
+            let mut g = Game::new(data.clone(), DEFAULT_SEED);
+            g.new_game(DEFAULT_SEED);
+            // The old HUD: this measures the scene objects, not the console.
+            g.settings.cockpit = cockpit::Disposition::Old.index();
+            scene_render::setup(&mut g, kind);
+            g.ext_view = ext;
+            let mut fb = Framebuffer::new(1280, 720);
+            draw_frame(&mut fb, &g);
+            let t = Instant::now();
+            for _ in 0..100 {
+                draw_frame(&mut fb, &g);
+            }
+            let frame = t.elapsed().as_secs_f64() * 10.0;
+            let objects = scene_render::bench_objects(&g, &mut fb, ext, 100);
+            println!(
+                "{kind:8} {}: {frame:.2} ms/frame (objets seuls {objects:.2} ms)",
+                if ext { "externe" } else { "cockpit" },
+            );
+        }
     }
 }
 
@@ -1911,6 +2087,13 @@ fn bench(data: Arc<GameData>) {
                         "cockpit {name} {w}x{h} ({scene}): {:.2} ms/frame",
                         t.elapsed().as_secs_f64() * 1000.0 / f64::from(frames)
                     );
+                    if d == cockpit::Disposition::A && w == 1280 {
+                        let parts: Vec<String> = cockpit::prof::take()
+                            .iter()
+                            .map(|(n, ms)| format!("{n} {:.2}", ms / f64::from(frames + 1)))
+                            .collect();
+                        println!("    A 1280x720 by part (ms/frame): {}", parts.join(", "));
+                    }
                 }
             }
         }
@@ -2119,8 +2302,7 @@ fn main() {
             .map(String::as_str)
             .unwrap_or("snapshot.png");
         let scene = args.get(i + 2).map(String::as_str).unwrap_or("cockpit");
-        let size = args.get(i + 3).map(String::as_str).unwrap_or("1280x720");
-        snapshot(path, scene, size, data);
+        snapshot(path, scene, data);
         return;
     }
     if let Some(i) = args.iter().position(|a| a == "--script") {
@@ -2139,6 +2321,21 @@ fn main() {
                 std::process::exit(2);
             }
         }
+        return;
+    }
+    if args.iter().any(|a| a == "--bench-planet") {
+        bench::planet(data, &args);
+        return;
+    }
+    if args.iter().any(|a| a == "--bench-all") {
+        bench::all(data, &args);
+        return;
+    }
+    if args.iter().any(|a| a == "--profile") {
+        perf::set(true);
+    }
+    if args.iter().any(|a| a == "--bench-scene") {
+        bench_scene(data);
         return;
     }
     if args.iter().any(|a| a == "--bench") {
@@ -2164,6 +2361,8 @@ fn main() {
         mouse_acc: (0.0, 0.0),
         grabbed: false,
         started: Instant::now(),
+        perf_lines: Vec::new(),
+        perf_n: 0,
     };
     if let Err(e) = el.run_app(&mut app) {
         eprintln!("run failed: {e}");

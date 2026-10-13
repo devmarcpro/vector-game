@@ -21,6 +21,7 @@ pub mod colony_life;
 pub mod colony_works;
 pub mod combat;
 pub mod companies;
+pub mod creative;
 pub mod crew;
 pub mod cryo;
 pub mod design;
@@ -30,6 +31,7 @@ pub mod economy;
 pub mod epidemic;
 pub mod exotic;
 pub mod exotic_field;
+pub mod far;
 pub mod fleet;
 pub mod futures;
 pub mod gear;
@@ -38,6 +40,7 @@ pub mod geo;
 pub mod history;
 pub mod incidents;
 pub mod intrusion;
+pub mod land_cmd;
 pub mod landing;
 pub mod lanes;
 pub mod law;
@@ -244,6 +247,8 @@ pub enum Event {
     /// A pilot (landing, ascent, docking) finished, or was taken back by the player.
     PilotDone(&'static str),
     PilotFailed(&'static str),
+    /// The ATTERRIR command ended (the ship stands on the world, or the computer gave up).
+    LandingEnded(String),
     /// The engines cannot lift the ship off the ground.
     TooHeavy,
     /// The port was captured too fast or crooked.
@@ -369,6 +374,8 @@ pub struct Sim {
     pub ground: Option<landing::Ground>,
     pub site: Option<landing::Site>,
     pub pilot: Option<landing::Pilot>,
+    /// The landing the ATTERRIR command is carrying out (not saved).
+    pub land_goal: Option<land_cmd::LandGoal>,
     /// The autopilot's plan for this step: (target, position and velocity relative to it).
     pub ride: Option<(usize, Vec3, Vec3)>,
     /// How every faction, people, cartel, contact and company feels about the player.
@@ -432,6 +439,13 @@ pub struct Sim {
     pub effective: Effective,
     pub crew: Crew,
     pub galaxy: Galaxy,
+    /// Seed of the universe (the home galaxy's seed) and id of the galaxy we are in now.
+    pub universe_seed: u64,
+    pub galaxy_id: vector_world::universe::GalaxyId,
+    /// What the galaxies we left remember (visited stars, system deltas, standings).
+    pub galaxy_stash: BTreeMap<vector_world::universe::GalaxyId, far::GalaxyStash>,
+    /// The long voyage under way (route, halts, log), if any.
+    pub voyage: Option<far::Voyage>,
     /// The star whose system is currently loaded, and its position (ly).
     pub here: StarRef,
     pub here_pos: [f64; 3],
@@ -576,6 +590,7 @@ impl Sim {
             ground: None,
             site: None,
             pilot: None,
+            land_goal: None,
             ride: None,
             relations: relations::Relations::default(),
             surprises: surprises::SurpriseState::default(),
@@ -609,6 +624,10 @@ impl Sim {
             effective: Effective::default(),
             crew: Crew::new(),
             galaxy: Galaxy::new(0),
+            universe_seed: 0,
+            galaxy_id: vector_world::universe::GalaxyId::HOME,
+            galaxy_stash: BTreeMap::new(),
+            voyage: None,
             here: StarRef {
                 sector: (0, 0, 0),
                 index: 0,
@@ -686,6 +705,7 @@ impl Sim {
     pub fn new_in_galaxy(galaxy: Galaxy, entry: &StarEntry, data: Arc<GameData>) -> Self {
         let mut s = Sim::new(vector_world::generate_system(entry.seed), data);
         s.galaxy = galaxy;
+        s.universe_seed = galaxy.seed;
         s.visited.clear();
         s.here = entry.id;
         s.here_pos = entry.pos;
@@ -819,8 +839,9 @@ impl Sim {
 
     /// Largest step that keeps integration accurate near attractors and surfaces.
     pub fn safe_dt(&self) -> f64 {
-        if self.in_transit() {
-            return 600.0;
+        if let Some(j) = self.jump.as_ref().filter(|j| j.in_transit) {
+            // Long crossings take bigger steps (the crew layer integrates days at a time).
+            return (j.total_transit / 40.0).clamp(600.0, 21_600.0);
         }
         if self.combat_active() {
             return SIM_DT;
@@ -849,6 +870,9 @@ impl Sim {
         // Under the autopilot the ship follows an analytic plan: long steps are exact.
         let longest = if self.autopilot.is_some() {
             1_800.0
+        } else if self.voyage_running() && self.jump.is_none() && self.jump_run.is_none() {
+            // A voyage halts (scooping fuel, mending the drive) far from any world: long steps.
+            21_600.0
         } else {
             self.nav_longest_dt()
         };
@@ -996,7 +1020,7 @@ impl Sim {
             workshop: eff.workshop,
             overheating: self.ship.sys.overheating,
             seed: self.system.seed,
-            needs: self.rules.crew_needs,
+            needs: self.rules.needs(),
             event_freq: self.rules.event_freq,
         };
         let out = self.crew.update(&mut ctx, self.time);
@@ -1047,6 +1071,9 @@ impl Sim {
         if self.in_transit() {
             self.transit_step(dt);
             return;
+        }
+        if self.voyage.is_some() {
+            self.voyage_tick(dt);
         }
         if self.jump_run.is_some() && !self.near_well() {
             // Clear of every gravity well: charge the drive now.
@@ -1212,6 +1239,9 @@ impl Sim {
         if cmd.z > 0.0 {
             acc_b.z = cmd.z * main_a;
         }
+        if self.rules.fly_free() {
+            acc_b = acc_b * crate::rules::FLY_FREE_MULT;
+        }
         // Propellant: main engine at its own isp, RCS-class motion at RCS isp.
         let main_force = if acc_b.z > 0.0 || z_max == main_a {
             acc_b.z.abs() * mass
@@ -1299,6 +1329,7 @@ impl Sim {
         if riding.is_none() {
             self.collide();
         }
+        self.land_tick();
         self.charge_tick(dt);
         self.scan_tick(dt);
         self.expire_contracts();
@@ -1440,7 +1471,7 @@ impl Sim {
     /// Damage to the hull (scaled by the rules), to the modules and to the crew; none when
     /// invulnerable.
     pub(crate) fn hurt_ship(&mut self, damage: f64, source: usize) {
-        if self.rules.invulnerable {
+        if self.rules.invuln() {
             return;
         }
         let damage = damage * self.rules.damage;
@@ -1694,7 +1725,7 @@ impl Sim {
         if got > accepted {
             self.market(st).stock[res] += got - accepted;
         }
-        if !self.rules.infinite_resources {
+        if !self.rules.free() {
             self.credits -= cost - refund;
         }
         self.change_reputation(self.faction, ((cost - refund) / 20_000.0) as f32);
@@ -1717,7 +1748,7 @@ impl Sim {
         }
         let (got, cost) = self.market(st).buy(&data, fuel, kg, edge);
         self.ship.fuel += got;
-        if !self.rules.infinite_resources {
+        if !self.rules.free() {
             self.credits -= cost;
         }
         Ok((got, cost))
@@ -1816,7 +1847,7 @@ impl Sim {
         if !self.is_unlocked("module", &module.id) {
             return Err("technologie non recherchee (F4, ou regle: technologies)");
         }
-        let cost = if self.rules.infinite_resources {
+        let cost = if self.rules.free() {
             0.0
         } else {
             module.cost * self.rules.build_cost
@@ -1915,7 +1946,7 @@ impl Sim {
             return Err("videz la soute d'abord");
         }
         let trade_in = self.data.hulls[self.ship.design.hull].cost * RESALE;
-        let price = if self.rules.infinite_resources {
+        let price = if self.rules.free() {
             0.0
         } else {
             new.cost * self.rules.build_cost - trade_in
@@ -2487,3 +2518,6 @@ mod tests {
         assert_eq!(s.ship.stats.fuel_cap, 0.0, "empty hull has no tanks");
     }
 }
+
+#[cfg(test)]
+mod far_tests;

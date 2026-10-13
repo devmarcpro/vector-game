@@ -48,6 +48,7 @@
 | ~ (Backquote) | Console de debug : help, list, tp, tpbody, stop, speed, fuel, repair, assist, time |
 | F1 | Aide contextuelle de l'ecran courant (re-appuyer pour fermer) |
 | F6 | Codex (Gauche/Droite categorie, Haut/Bas entree ; categorie REACTIONS = laboratoire : L ou Entree lance un lot de 100 kg de reactifs tires de la soute) |
+| Arret defil (ScrollLock) ; aussi mot CREATIF du HUD et menu clic droit | PANNEAU CREATIF (onglets MONDE, TEMPS, VAISSEAU, EQUIPAGE, ECONOMIE, SAVOIR, COLONIES, EXPLORATION, DEBUG ; l'activer desactive succes et classement) ; console `~` : credits, flag, alltech, reveal, service, days |
 | F10 (tutoriel en cours) | Ignorer le tutoriel |
 | F10 | Ignorer le tutoriel |
 | F6 | Codex (Gauche/Droite categorie, Haut/Bas entree) |
@@ -246,3 +247,11 @@ Barre d'onglets en haut du chantier : COQUES, CONCEPTION, EQUIPEMENT, PLANS ET C
 | X puis G | Page GUERRE : fronts, blocus, batteries, paix (P), contrats de mercenaires (M), agents : R recruter, A agent suivant, C secteur vise, I infiltrer, 1-4 sabotage / vol de plans / ecoutes / rumeur, W rappeler, D drone ; Gauche/Droite change de peuple ; G ou Echap revient |
 | F3 (flotte) | O ordre du vaisseau choisi (commerce, suivre, attaquer, defendre, patrouiller), R ravitailler l'escadre, V reparer (a quai), 1-4 sort des prisonniers d'une prise (enroler, liberer, rancon, executer) |
 | Exploration : T / E / G | Tirer (armes a feu), recharger depuis la soute, lancer une grenade |
+
+## Voyages longue distance
+
+- Carte galactique (L) : V = ALLER A l'etoile choisie (route complete, ravitaillements, cryosommeil et temps accelere automatiques).
+- Clic droit sur une etoile : VOYAGER ICI (ROUTE AUTOMATIQUE).
+- NAVIGATION AUTO (pave num. *, F10 espace NAVIGATION) page VOYAGE : Haut/Bas choisit la destination (etoile choisie, reperes galactiques, galaxies voisines, retour a la galaxie d'origine), Entree calcule le plan (sauts, duree, carburant, antimatiere, cout), Espace PART, P reprend apres un arret, X annule, R actualise ; la page montre la progression, les haltes et le journal du voyage.
+- Le tableau de bord (panneau VAISSEAU) affiche VOYAGE n/m EN COURS ou ARRETE.
+- **Style de l'interface** (Options, derniere ligne) : NOUVEAU (defaut : fonds teintes par espace, en-tete commun avec credits, alertes, ? AIDE et MENU, barre de commandes cliquable) ou CLASSIQUE (ancien rendu). Les clics, touches, clic droit et infobulles sont identiques. Fenetre redimensionnable : le style NOUVEAU s'adapte (1024x576 minimum).

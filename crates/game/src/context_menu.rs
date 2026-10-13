@@ -243,9 +243,20 @@ pub fn items_for(g: &Game, ctx: Ctx) -> (String, Vec<Item>) {
                 .off_if(!flying, "DEJA AMARRE"),
             );
             let surveyed = s.scan[i] >= vector_sim::voyage::SCAN_SURVEYED;
+            let down = !flying || s.landed_on().is_some();
             it.push(
                 Item::new(
-                    "ATTERRIR / SURFACE",
+                    "ATTERRIR",
+                    "PAV4",
+                    vec![call(Game::click_body, i), call(Game::menu_land, 0)],
+                )
+                .off_if(!world, "PAS UN MONDE")
+                .off_if(world && !flying, "QUITTEZ D'ABORD LA STATION")
+                .off_if(world && flying && down, "DEJA AU SOL"),
+            );
+            it.push(
+                Item::new(
+                    "SURFACE (CARTE, CHOISIR LE SITE)",
                     "F8",
                     vec![call(Game::click_body, i), k(KeyCode::F8)],
                 )
@@ -289,6 +300,14 @@ pub fn items_for(g: &Game, ctx: Ctx) -> (String, Vec<Item>) {
                     "ALLER / ITINERAIRE (SAUT FTL)",
                     "ENTREE",
                     vec![call(Game::click_star, n), k(KeyCode::Enter)],
+                )
+                .off_if(!s.readiness().can_fly(), "LE VAISSEAU NE PEUT PAS VOLER"),
+            );
+            it.push(
+                Item::new(
+                    "VOYAGER ICI (ROUTE AUTOMATIQUE)",
+                    "V",
+                    vec![call(Game::click_star, n), k(KeyCode::KeyV)],
                 )
                 .off_if(!s.readiness().can_fly(), "LE VAISSEAU NE PEUT PAS VOLER"),
             );
@@ -681,6 +700,7 @@ pub fn items_for(g: &Game, ctx: Ctx) -> (String, Vec<Item>) {
         // A body or a ship that no longer exists.
         Ctx::Body(_) | Ctx::Npc(_) => {}
     }
+    crate::creative_view::context_items(g, ctx, &mut it);
     tail(g, &mut it);
     (title, it)
 }
@@ -1807,7 +1827,9 @@ mod tests {
         let mut bad = Vec::new();
         // Each screen in its plain state, with the help open, with the tutorial line, and with the
         // pointer resting on a zone (the tooltip).
-        for variant in 0..4 {
+        for variant in 0..8 {
+            g.settings.ui_new = variant < 4;
+            let variant = variant % 4;
             for s in crate::hub::ALL_SCREENS {
                 if matches!(s, Screen::NewGame | Screen::Destroyed) {
                     continue;

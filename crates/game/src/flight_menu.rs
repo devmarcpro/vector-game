@@ -94,9 +94,15 @@ fn controls(g: &Game) -> Vec<Entry> {
             Act::Key(KeyCode::Numpad3),
         ),
         (
-            "PILOTE SOL / STATION",
+            "ATTERRIR (CIBLE)",
             "PAV4".into(),
-            Act::Key(KeyCode::Numpad4),
+            Act::Call(Game::menu_land, 0),
+        ),
+        ("DECOLLER", "PAV4".into(), Act::Call(Game::menu_takeoff, 0)),
+        (
+            "DEBARQUER A PIED ICI",
+            "FIN".into(),
+            Act::Call(Game::menu_disembark, 0),
         ),
         ("SITE PLAT", "PAV7".into(), Act::Key(KeyCode::Numpad7)),
         ("TANGAGE HAUT (MAINT.)", nm(mv[0]), Act::Hold(mv[0])),
@@ -175,6 +181,11 @@ pub fn draw(fb: &mut Framebuffer, g: &Game) {
     fb.text(x, 3, title, if hover { HOVER } else { AMBER });
     if !unfolded(g) {
         return;
+    }
+    // Over the console the list gets its own dark backing.
+    if g.cockpit.last.get().is_some() {
+        let h = (fb.rows().saturating_sub(4) * 10) as i32;
+        fb.rect_over((x * 8) as i32 - 4, 28, (w * 8) as i32 + 8, h, 0x0006_0A10);
     }
     let mut row = 5;
     for (heading, entries) in [("MENUS", menus()), ("COMMANDES", controls(g))] {

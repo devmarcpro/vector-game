@@ -55,6 +55,7 @@ impl Game {
     /// Declare a clickable zone in pixels; returns whether the pointer is over it right now (so
     /// the drawing can light it up).
     pub fn hit(&self, rect: (i32, i32, i32, i32), act: Act, double: Option<Act>) -> bool {
+        let rect = crate::ui_kit::xf_rect(rect);
         self.pointer
             .hits
             .borrow_mut()

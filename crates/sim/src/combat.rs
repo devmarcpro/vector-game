@@ -219,10 +219,11 @@ impl Sim {
 
     /// The player counts as a criminal in the current territory.
     pub fn is_wanted(&self) -> bool {
-        self.reputation_with(self.faction) <= -40.0
-            || self
-                .faction
-                .is_some_and(|f| self.wanted_until.get(&f).is_some_and(|&t| t > self.time))
+        !self.rules.no_law()
+            && (self.reputation_with(self.faction) <= -40.0
+                || self
+                    .faction
+                    .is_some_and(|f| self.wanted_until.get(&f).is_some_and(|&t| t > self.time)))
     }
 
     fn mark_wanted(&mut self, faction: Option<usize>, days: f64) {
@@ -245,7 +246,7 @@ impl Sim {
     /// modules and the cabins by how much energy the hit carries (`arms::split_hit`).
     pub fn damage_player_hit(&mut self, dmg: f64, kind: HitKind) {
         let dmg = dmg * self.rules.damage;
-        if dmg <= 0.0 || self.destroyed || self.rules.invulnerable {
+        if dmg <= 0.0 || self.destroyed || self.rules.invuln() {
             return;
         }
         let screen = self.escort_screen();
@@ -282,6 +283,7 @@ impl Sim {
 
     /// Hit NPC `k`; returns true if it was destroyed (and removed).
     pub fn damage_npc(&mut self, k: usize, dmg: f64) -> bool {
+        let dmg = if self.rules.one_hit_kill() { 1e12 } else { dmg };
         let dmg = if self.is_ambush(k) {
             self.note_ambush();
             dmg * arms::AMBUSH_MULT
@@ -512,7 +514,7 @@ impl Sim {
             return;
         }
         let data = std::sync::Arc::clone(&self.data);
-        if !self.rules.infinite_resources {
+        if !self.rules.free() {
             self.ship.cargo.remove(&data, ammo, m.ammo_use);
         }
         if let Some(cd) = self.weapon_cd.get_mut(slot) {

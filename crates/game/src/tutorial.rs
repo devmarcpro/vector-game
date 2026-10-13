@@ -192,7 +192,7 @@ pub fn hint_line(g: &Game) -> String {
         }
         Screen::Factions => "GAUCHE/DROITE PEUPLE  P AMENDES  B POT-DE-VIN  L AVOCAT  TAB RELATIONS  S SOCIETE  G GUERRE  X RETOUR",
         Screen::Galaxy => {
-            "HAUT/BAS ETOILE  MOLETTE ZOOM  GLISSER TOURNER  1-5 ECHELLE  F FILTRE  C CENTRER  / RECHERCHE  ENTREE SAUT FTL  L RETOUR"
+            "HAUT/BAS ETOILE  MOLETTE ZOOM  1-5 ECHELLE  F FILTRE  / RECHERCHE  ENTREE SAUT  V VOYAGE  L RETOUR"
         }
         Screen::Contracts => "HAUT/BAS CONTRAT  ENTREE ACCEPTER/LIVRER  X ABANDONNER  ECHAP RETOUR",
         Screen::Bank => {
@@ -222,6 +222,7 @@ pub fn hint_line(g: &Game) -> String {
         }
         Screen::Destroyed => "ENTREE CONTINUER",
         Screen::Tech => "FLECHES GRAPHE (GAUCHE PREREQUIS, DROITE SUITE)  TAB RECHERCHE OU SUIVANTE  ENTREE RECHERCHER  E ESPRIT (CALCUL)  ECHAP RETOUR",
+        Screen::Creative => "HAUT/BAS CHOISIR  GAUCHE/DROITE ONGLET  ENTREE EXECUTER  ECHAP RETOUR",
         Screen::Rules => "HAUT/BAS REGLE  GAUCHE/DROITE MODIFIER  R DEFAUTS  ECHAP RETOUR",
         Screen::Options => "HAUT/BAS REGLAGE  GAUCHE/DROITE CHANGER  ENTREE/ECHAP RETOUR",
         Screen::Codex => "GAUCHE/DROITE CATEGORIE  HAUT/BAS ENTREE  ECHAP RETOUR",
@@ -238,13 +239,19 @@ pub fn hint_line(g: &Game) -> String {
 /// The landing lesson, shown above the flight help while the ship is low over a solid world.
 pub fn landing_help() -> &'static [&'static str] {
     &[
-        "== ATTERRIR EN 5 TEMPS ==",
+        "== ATTERRIR : UNE COMMANDE ==",
+        "ATTERRIR (PAV4, menu F11, clic droit sur le monde, F8 puis Entree sur une case) :",
+        "  d'ou que vous soyez, le vaisseau approche, freine, sort le train et se pose ;",
+        "  il finit AU SOL sur le terrain, tourne avec le monde. Toucher aux commandes = main reprise.",
+        "  Avertissements (carburant, pente, air dense) d'abord : repetez la commande pour confirmer.",
+        "  Au sol : PAV4 decolle vers l'orbite ; Fin / menu DEBARQUER sort a pied au meme endroit.",
+        "== OU A LA MAIN, EN 5 TEMPS ==",
         "1 Ralentir : 3 (SAS retrograde) puis ESPACE ; visez une vitesse horizontale proche de 0",
         "2 Site : pav. num. 7 marque la zone la plus plate ; la pente max est de 20 deg",
         "3 Train : PAV3 avant le sol (sans train, 1.5 m/s au plus ; avec, 6 m/s)",
         "4 Allumage : le panneau DESCENTE donne l'altitude du freinage ; allumez quand il clignote",
         "5 Contact : ~1 m/s, nez vertical (9), moteurs coupes (pav. 0) ; trop vite = coque perdue",
-        "PAV4 : le pilote fait tout (et se debraye a la moindre touche) ; il peut echouer",
+        "Le pilote peut echouer (carburant, pente) ; il le dit et rend la main",
         "Decollage : la poussee doit depasser le poids ; PAV4 ou ESPACE nez vers le haut",
         "Amarrage : PAV4 pres d'une station aligne le port ; sinon visez l'axe a moins de 2 m/s",
     ]
@@ -365,7 +372,7 @@ pub fn help_lines(screen: Screen) -> &'static [&'static str] {
             "X ou Echap : retour",
         ],
         Screen::Galaxy => &[
-            "Haut/Bas : etoile   +/- : zoom   Entree : saut FTL",
+            "Haut/Bas : etoile   +/- : zoom   Entree : saut FTL   V : ALLER A l'etoile (tout le trajet : route, ravitaillement, cryosommeil, temps accelere)",
             "Retour arriere : annuler une charge de saut",
             "La lettre est la classe stellaire (O B A F G K M, D naine blanche, N neutrons, X trou noir, R monde errant).",
             "Les cercles sont des nebuleuses, amas et restes de supernova (rayonnement, capteurs brouilles, labos plus efficaces).",
@@ -427,6 +434,11 @@ pub fn help_lines(screen: Screen) -> &'static [&'static str] {
             "E : panneau ESPRIT (vous etes l'IA) : budget de calcul, logiciels, autres IA, ancres",
             "ESPRIT : Gauche/Droite regle le budget, Entree installe/met a jour, C/A/L contacter/allier/liberer une IA, S ancre",
         ],
+        Screen::Creative => &[
+            "Arret defil : panneau creatif (tout essayer sans limite).",
+            "Gauche/Droite : onglet   Entree : executer   Clic : tout est cliquable.",
+            "Activer le creatif desactive succes et classement ; la partie reste sauvegardable.",
+        ],
         Screen::Rules => &[
             "Gauche/Droite : modifier   R : valeurs par defaut",
             "Depuis la pause, les changements sont immediats.",
@@ -482,6 +494,7 @@ pub fn help_lines(screen: Screen) -> &'static [&'static str] {
             "SEUILS : carburant, coque, rayonnement : sous le seuil l'ordinateur rentre a la station. Collision, puits de gravite imprevu, tir, surchauffe : il rend la main.",
             "Toucher aux commandes met le plan en pause. Le temps peut etre accelere : les allumages ne sont pas manques.",
             "La touche * du pave numerique (ou F10, espace NAVIGATION) ouvre cet ecran depuis le cockpit ; le trace de la trajectoire s'affiche sur la carte (M) et dans le ciel.",
+            "VOYAGE : choisissez une destination (etoile de la carte, centre galactique, galaxie voisine, retour a la galaxie d'origine), Entree calcule (sauts, duree, carburant, cout), Espace part : le voyage est automatique et s'arrete sur danger (P reprend, X annule).",
         ],
         Screen::Destroyed => &["Entree : continuer (selon les regles de mort permanente)"],
     }

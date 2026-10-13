@@ -3,7 +3,7 @@ use crate::console::Console;
 use crate::game::Game;
 use crate::mouse::Act;
 use vector_core::{Mat3, Vec3};
-use vector_render::{Camera, Framebuffer, Wireframe};
+use vector_render::{Camera, Framebuffer};
 use vector_sim::design::{T_DAMAGE, T_SCRAM};
 use vector_sim::npc::NpcRole;
 use vector_sim::voyage::{SCAN_FULL, SCAN_SURVEYED};
@@ -132,11 +132,15 @@ pub fn draw(fb: &mut Framebuffer, v: &View) {
         draw_console(fb, v.console);
         return;
     }
-    if v.map {
-        draw_map(fb, v);
-    } else {
-        draw_cockpit(fb, v);
+    {
+        let _p = crate::perf::span("scene");
+        if v.map {
+            draw_map(fb, v);
+        } else {
+            draw_cockpit(fb, v);
+        }
     }
+    let _p = crate::perf::span("hud");
     draw_status(fb, v);
     crate::landing_view::draw(fb, v);
     crate::nav_view::draw_panel(fb, v);
@@ -193,6 +197,7 @@ fn dimmed(c: u32, k: f32) -> u32 {
 /// Draw solid world `i` as seen from the cockpit: a lit ball in the colours of its biomes with
 /// its relief shaded and its air at the rim. Returns false when the world has no surface to show.
 fn draw_world(fb: &mut Framebuffer, cam: &Camera, v: &View, i: usize) -> bool {
+    let _p = crate::perf::span("world");
     let Some(map) = v.game.flight_map(i) else {
         return false;
     };
@@ -205,7 +210,14 @@ fn draw_world(fb: &mut Framebuffer, cam: &Camera, v: &View, i: usize) -> bool {
     if terrain_view(fb, cam, v, i, &map, &orient) {
         return true;
     }
-    // The ball itself, in plain colours: lit by the star, relief shaded, air at the rim.
+    // The ball itself, in plain colours: lit by the star, relief shaded, air at the rim. The
+    // ground is baked into a texture (see ball.rs); the clouds are read from the map once.
+    let world =
+        vector_core::hash_coord(v.sim.system.seed, i as i64, v.sim.terra_stamp() as i64, 77);
+    let atmo = v.sim.atmo(&map);
+    let surf = &map.surface;
+    let clouds =
+        move |lat: f64, lon: f64| vector_world::climate::cloud_cover(surf, &atmo, lat, lon);
     crate::globe::fill_world(
         fb,
         cam,
@@ -217,7 +229,10 @@ fn draw_world(fb: &mut Framebuffer, cam: &Camera, v: &View, i: usize) -> bool {
             map: Some(&map),
             color: &|x, y| crate::surface_view::ground_color(v.sim, &map, x, y),
             air: map.pressure,
-            clouds: Some(&|lat, lon| v.sim.cloud_cover(&map, lat, lon)),
+            clouds: Some(&clouds),
+            world,
+            colors: (v.sim.season_phase(map.body) * 48.0) as u64,
+            cloud_stamp: (v.sim.time / 3600.0) as u64,
         },
     );
     true
@@ -259,17 +274,23 @@ fn terrain_view(
     // Straight down the heightfield degenerates: look at it from a steep angle instead.
     let pitch = pitch.max(-1.45);
     let yaw = fwd.dot(east).atan2(fwd.dot(north));
+    let _p = crate::perf::span("terrain_view");
     let sun = (b.pos * -1.0).normalized();
     let air = map.pressure;
     let t = crate::terrain::Terrain::new(map, b.radius).with_season(v.sim.season_phase(map.body));
     let data = &v.sim.data;
     let focal = fb.h as f64 * 0.5 / (cam.fov_y * 0.5).tan();
     let horizon_dist = (2.0 * b.radius * alt.max(10.0)).sqrt();
-    crate::terrain::render(
+    let table: Vec<u32> = (0..vector_world::surface::W * vector_world::surface::H)
+        .map(|k| {
+            let (x, y) = (k % vector_world::surface::W, k / vector_world::surface::W);
+            data.biomes[map.biome_at(x, y)].color
+        })
+        .collect();
+    crate::terrain::render_par(
         fb,
         &t,
-        &|x, y| data.biomes[map.biome_at(x, y)].color,
-        &|_, _| None,
+        &table,
         &crate::terrain::Eye {
             lat,
             lon,
@@ -334,6 +355,7 @@ fn sky_view(v: &View) -> (f64, Option<(&'static str, f64)>) {
 
 /// A world as a lit ball of one colour, or with the bands of a gas giant.
 fn draw_ball(fb: &mut Framebuffer, cam: &Camera, v: &View, i: usize, col: u32, bands: bool) {
+    let _p = crate::perf::span("ball");
     let b = &v.sim.bodies[i];
     let sys = &v.sim.system.bodies[i];
     let angle = std::f64::consts::TAU * v.sim.time / v.sim.system.spin_period(i).max(60.0);
@@ -364,11 +386,19 @@ fn draw_ball(fb: &mut Framebuffer, cam: &Camera, v: &View, i: usize, col: u32, b
             },
             air: if bands { 1.0 } else { sys.pressure },
             clouds: None,
+            world: vector_core::hash_coord(
+                seed,
+                i as i64,
+                u64::from(col) as i64,
+                u64::from(bands) as i64,
+            ),
+            colors: 0,
+            cloud_stamp: 0,
         },
     );
 }
 
-fn body_color(v: &View, i: usize) -> u32 {
+pub(crate) fn body_color(v: &View, i: usize) -> u32 {
     if v.sim.scan[i] >= SCAN_SURVEYED {
         kind_color(v.sim.bodies[i].kind)
     } else {
@@ -410,15 +440,7 @@ pub(crate) fn draw_cockpit_scene(fb: &mut Framebuffer, v: &View) {
     } else {
         None
     };
-    let cam = if ext {
-        crate::ext_view::camera(v.game, v.sim, gr.as_ref())
-    } else {
-        Camera {
-            pos: ship.pos,
-            rot: v.game.view_rot(&ship.rot),
-            fov_y: if v.boost { 1.4 } else { 1.2 },
-        }
-    };
+    let cam = crate::scene_render::camera(v, ext, gr.as_ref());
     let focal = fb.h as f64 * 0.5 / (cam.fov_y * 0.5).tan();
 
     // Low in a thick air by day the sky hides the stars and the worlds beyond.
@@ -434,7 +456,10 @@ pub(crate) fn draw_cockpit_scene(fb: &mut Framebuffer, v: &View) {
             AMBER,
         );
     }
-    draw_dust(fb, &cam, v);
+    {
+        let _p = crate::perf::span("dust");
+        draw_dust(fb, &cam, v);
+    }
     for (i, b) in v.sim.bodies.iter().enumerate() {
         if v.sim.scan[i] == 0 {
             continue;
@@ -482,16 +507,11 @@ pub(crate) fn draw_cockpit_scene(fb: &mut Framebuffer, v: &View) {
                 let pulse = 1.0 + 0.08 * (v.sim.time * 0.7).sin();
                 cam.draw_sphere(fb, b.pos, b.radius * pulse, &spin, 3, 5, 0x00C0_60FF);
             }
-            BodyKind::Asteroid(_) if ext && px > 3.0 => draw_ball(fb, &cam, v, i, col, false),
-            BodyKind::Asteroid(_) => cam.draw_sphere(fb, b.pos, b.radius, &spin, 4, 6, col),
-            // Solid stations are drawn with the ships, below.
-            BodyKind::Station if ext => {}
-            BodyKind::Station => {
-                let r = Mat3::rot_y(v.sim.time * 0.2);
-                Wireframe::cube(b.radius * 0.5).draw(&cam, fb, &r, b.pos, col);
-                let ring = Mat3::rot_x(std::f64::consts::FRAC_PI_2).mul(&r);
-                cam.draw_sphere(fb, b.pos, b.radius * 0.9, &ring, 2, 0, col);
-            }
+            // Near rocks and the stations are solid models of the shared scene, drawn below;
+            // far rocks are lit balls, then a marker.
+            BodyKind::Asteroid(_) if px > crate::scene_render::ROCK_PX => {}
+            BodyKind::Asteroid(_) if px > 1.5 => draw_ball(fb, &cam, v, i, col, false),
+            BodyKind::Asteroid(_) | BodyKind::Station => {}
         }
         // Marker + label for objects too small to see as shapes.
         if let Some((x, y)) = cam.project_world(b.pos, fb) {
@@ -535,15 +555,15 @@ pub(crate) fn draw_cockpit_scene(fb: &mut Framebuffer, v: &View) {
         }
     }
 
+    // Stations, rocks, ships and wrecks: the same models in the cockpit and outside.
+    crate::scene_render::draw_objects(fb, &cam, v, gr.as_ref(), ext);
     if ext {
-        crate::ext_view::draw_ships(fb, &cam, v, gr.as_ref());
         crate::cockpit::lights::draw(fb, &cam, v);
     }
-    let down = if ext {
-        ship.rot.col(2) * (crate::ext_view::ship_length(v.sim) * 0.5)
-    } else {
-        ship.rot.col(1) * -6.0
-    };
+    // The guns are at the nose of the hull, a little under the axis, seen from either camera.
+    let len = crate::ext_view::ship_length(v.sim);
+    let down = ship.rot.col(2) * (len * 0.5) - ship.rot.col(1) * (len * 0.1);
+
     for (a, b, mine) in &v.sim.beams {
         cam.draw_line(fb, *a + down, *b, if *mine { RED } else { AMBER });
     }
@@ -561,15 +581,17 @@ pub(crate) fn draw_cockpit_scene(fb: &mut Framebuffer, v: &View) {
     }
     for w in &v.sim.wrecks {
         if let Some((x, y)) = cam.project_world(w.pos, fb) {
-            fb.line(x - 4.0, y - 4.0, x + 4.0, y + 4.0, MINER);
-            fb.line(x - 4.0, y + 4.0, x + 4.0, y - 4.0, MINER);
+            let d = (w.pos - cam.pos).length().max(1.0);
+            if crate::scene_render::WRECK_R / d * focal < 6.0 {
+                fb.line(x - 4.0, y - 4.0, x + 4.0, y + 4.0, MINER);
+                fb.line(x - 4.0, y + 4.0, x + 4.0, y - 4.0, MINER);
+            }
             if (w.pos - ship.pos).length() < 2.0e5 {
                 fb.text_at(x as i32 + 8, y as i32 + 6, &w.name, MINER);
             }
         }
     }
     let see = 1.0e6 + 0.01 * v.sim.effective.scan_range;
-    let ship_wire = Wireframe::ship();
     for (k, n) in v.sim.npcs.iter().enumerate() {
         if !n.visible() {
             continue;
@@ -583,19 +605,6 @@ pub(crate) fn draw_cockpit_scene(fb: &mut Framebuffer, v: &View) {
         } else {
             npc_color(n.role)
         };
-        if d < 6.0e4 && !ext {
-            let fwd = if n.vel.length() > 1.0 {
-                n.vel
-            } else {
-                Vec3::new(0.0, 0.0, 1.0)
-            };
-            let rot = Mat3::look_at(fwd, Vec3::new(0.0, 1.0, 0.0));
-            let scaled = Wireframe {
-                verts: ship_wire.verts.iter().map(|p| *p * 80.0).collect(),
-                edges: ship_wire.edges.clone(),
-            };
-            scaled.draw(&cam, fb, &rot, n.pos, col);
-        }
         if let Some((x, y)) = cam.project_world(n.pos, fb) {
             if on_screen(fb, x, y, 12.0) {
                 v.game.hit(
@@ -840,7 +849,9 @@ fn draw_status(fb: &mut Framebuffer, v: &View) {
         ),
         if ship.assist { GREEN } else { AMBER },
     );
-    if sim.rules.is_modified() {
+    if sim.rules.creative {
+        fb.text(cols.saturating_sub(24), 1, "CREATIF (ARRET DEFIL)", RED);
+    } else if sim.rules.is_modified() {
         fb.text(cols.saturating_sub(18), 1, "PARTIE MODIFIEE", AMBER);
     }
     if let Some(ap) = &sim.autopilot {

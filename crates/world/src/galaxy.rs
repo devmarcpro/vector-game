@@ -10,12 +10,16 @@ pub const R_SUN_LY: f64 = 26_000.0;
 const SCALE_LEN: f64 = 9_000.0;
 const SCALE_HEIGHT: f64 = 300.0;
 const MAX_PER_SECTOR: usize = 40;
+/// Sectors kept in the per-thread cache.
+const CACHE_MAX: usize = 32_768;
 /// Edge of the cells holding one faction seed point.
 pub const TERRITORY_CELL_LY: f64 = 60.0;
 /// Beyond this radius from the centre the galaxy is empty.
 const EDGE_LY: f64 = 60_000.0;
 
 pub type SectorCoord = (i64, i64, i64);
+
+type SectorCache = std::collections::HashMap<(u64, SectorCoord), std::rc::Rc<Vec<StarEntry>>>;
 
 /// Identifies one star: its sector and index within it.
 #[derive(
@@ -135,8 +139,35 @@ impl Galaxy {
         ((lambda + g * lambda.sqrt()).round().max(0.0) as usize).min(MAX_PER_SECTOR)
     }
 
-    /// Stars of a sector. Sector (0,0,0) always contains the home region around the origin.
+    /// Stars of a sector (a copy of the cached list).
     pub fn sector(&self, coord: SectorCoord) -> Vec<StarEntry> {
+        self.sector_cached(coord).as_ref().clone()
+    }
+
+    /// Shared, cached stars of a sector: a thread-local table bounded at `CACHE_MAX` sectors
+    /// (cleared when full) so route planning never regenerates the same sector twice.
+    pub fn sector_cached(&self, coord: SectorCoord) -> std::rc::Rc<Vec<StarEntry>> {
+        thread_local! {
+            static CACHE: std::cell::RefCell<SectorCache> =
+                std::cell::RefCell::new(std::collections::HashMap::new());
+        }
+        let key = (self.seed, coord);
+        if let Some(v) = CACHE.with(|c| c.borrow().get(&key).cloned()) {
+            return v;
+        }
+        let v = std::rc::Rc::new(self.sector_raw(coord));
+        CACHE.with(|c| {
+            let mut c = c.borrow_mut();
+            if c.len() >= CACHE_MAX {
+                c.clear();
+            }
+            c.insert(key, v.clone());
+        });
+        v
+    }
+
+    /// Stars of a sector. Sector (0,0,0) always contains the home region around the origin.
+    pub fn sector_raw(&self, coord: SectorCoord) -> Vec<StarEntry> {
         let centre = [
             (coord.0 as f64 + 0.5) * SECTOR_LY,
             (coord.1 as f64 + 0.5) * SECTOR_LY,
@@ -173,9 +204,9 @@ impl Galaxy {
     }
 
     pub fn star(&self, id: StarRef) -> Option<StarEntry> {
-        self.sector(id.sector)
-            .into_iter()
-            .nth(usize::from(id.index))
+        self.sector_cached(id.sector)
+            .get(usize::from(id.index))
+            .cloned()
     }
 
     /// Which faction (0..n) claims the point `p`, or None for unclaimed frontier space.
@@ -224,9 +255,9 @@ impl Galaxy {
         for dx in -reach..=reach {
             for dy in -reach..=reach {
                 for dz in -reach..=reach {
-                    for s in self.sector((c.0 + dx, c.1 + dy, c.2 + dz)) {
+                    for s in self.sector_cached((c.0 + dx, c.1 + dy, c.2 + dz)).iter() {
                         if s.distance_to(p) <= radius {
-                            v.push(s);
+                            v.push(s.clone());
                         }
                     }
                 }

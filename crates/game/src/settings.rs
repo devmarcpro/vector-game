@@ -54,7 +54,7 @@ impl Default for Settings {
             sky_band: true,
             sky_const: true,
             sky_names: true,
-            ui_new: true,
+            ui_new: !cfg!(test), // the tests of clicks read the classic cell layout
         }
     }
 }

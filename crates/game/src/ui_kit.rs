@@ -241,8 +241,8 @@ mod tests {
     fn contrast_basics() {
         assert!(contrast(0, 0x00FF_FFFF) > 20.0);
         assert!((contrast(INK, INK) - 1.0).abs() < 1e-9);
-        for s in 0..8 {
-            let th = theme(SPACE_COLORS[s]);
+        for (s, &accent) in SPACE_COLORS.iter().enumerate() {
+            let th = theme(accent);
             for bg in [th.bg0, th.panel, th.panel2] {
                 assert!(contrast(INK, bg) >= 4.5, "INK on space {s}");
                 assert!(contrast(th.dim, th.panel) >= 4.5, "dim on panel, space {s}");

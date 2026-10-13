@@ -3185,3 +3185,35 @@ pub fn draw_dash(fb: &mut Framebuffer, g: &Game) {
         ],
     );
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Every new-style screen draws in both styles and several window sizes without panic.
+    #[test]
+    fn scenes_draw_in_both_styles_and_sizes() {
+        for name in [
+            "colony", "crew", "crew_med", "hub", "surface", "station", "dash",
+        ] {
+            for style in [true, false] {
+                for (w, h) in [(1024, 576), (1280, 720), (1920, 1080)] {
+                    let spec = crate::mock_ui::resolve(&format!("ui_{name}")).unwrap();
+                    let data = std::sync::Arc::new(
+                        vector_data::GameData::load(
+                            &std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../data"),
+                        )
+                        .expect("data"),
+                    );
+                    let mut g = Game::new(data, 7);
+                    g.new_game(7);
+                    crate::mock_ui::after_setup(&mut g, &spec);
+                    g.settings.ui_new = style;
+                    refresh(&mut g);
+                    let mut fb = Framebuffer::new(w, h);
+                    crate::draw_frame(&mut fb, &g);
+                }
+            }
+        }
+    }
+}

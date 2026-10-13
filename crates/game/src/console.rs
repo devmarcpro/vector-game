@@ -18,6 +18,10 @@ impl Console {
     }
 }
 
+fn one(r: Result<String, String>) -> Vec<String> {
+    vec![r.unwrap_or_else(|e| e)]
+}
+
 /// Execute one command; returns output lines. `timescale` is mutated by `time`.
 pub fn run(cmd: &str, sim: &mut Sim, timescale: &mut f64) -> Vec<String> {
     let parts: Vec<&str> = cmd.split_whitespace().collect();
@@ -30,7 +34,8 @@ pub fn run(cmd: &str, sim: &mut Sim, timescale: &mut f64) -> Vec<String> {
         None => vec![],
         Some("help") => vec![
             "help list tp x y z | tpbody NAME | stop | speed V".into(),
-            "fuel | repair | assist | time N".into(),
+            "fuel | repair | assist | time N | credits N | flag I on|off".into(),
+            "alltech | reveal | service | days N | spawn pirate|patrol|miner|trader | clearnpcs | recruit K | anchor | rewind I | flare S | jump K | fleetship H  (panneau: Arret defil)".into(),
         ],
         Some("list") => sim
             .bodies
@@ -43,28 +48,56 @@ pub fn run(cmd: &str, sim: &mut Sim, timescale: &mut f64) -> Vec<String> {
             })
             .collect(),
         Some("tp") => match (num(1), num(2), num(3)) {
-            (Some(x), Some(y), Some(z)) => {
-                sim.ship.pos = Vec3::new(x, y, z);
-                vec!["ok".into()]
-            }
+            (Some(x), Some(y), Some(z)) => one(sim.creative_teleport_pos(Vec3::new(x, y, z))),
             _ => vec!["usage: tp x y z".into()],
         },
         Some("tpbody") => {
             let name = parts[1..].join(" ").to_uppercase();
             match sim.bodies.iter().find(|b| b.name == name) {
                 Some(b) => {
-                    sim.ship.pos = b.pos - Vec3::new(0.0, 0.0, b.radius * 3.0 + 200.0);
-                    sim.ship.vel = Vec3::ZERO;
-                    vec!["ok".into()]
+                    let i = sim
+                        .bodies
+                        .iter()
+                        .position(|x| x.name == b.name)
+                        .unwrap_or(0);
+                    one(sim.creative_teleport_body(i))
                 }
                 None => vec![format!("unknown body '{name}'")],
             }
         }
-        Some("stop") => {
-            sim.ship.vel = Vec3::ZERO;
-            sim.ship.ang = Vec3::ZERO;
-            vec!["ok".into()]
+        Some("stop") => one(sim.creative_stop()),
+        Some("credits") => match num(1) {
+            Some(c) => one(sim.creative_give_credits(c)),
+            None => vec!["usage: credits N".into()],
+        },
+        Some("flag") => match (num(1), parts.get(2)) {
+            (Some(i), Some(v)) => one(sim.creative_set_flag(i as usize, *v == "on")),
+            _ => vec!["usage: flag 0..11 on|off".into()],
+        },
+        Some("spawn") => {
+            use vector_sim::npc::NpcRole::*;
+            let (role, hostile) = match parts.get(1).copied() {
+                Some("pirate") => (Pirate, true),
+                Some("patrol") => (Patrol, false),
+                Some("miner") => (Miner, false),
+                _ => (Trader, false),
+            };
+            one(sim.creative_spawn_npc(role, hostile))
         }
+        Some("clearnpcs") => one(sim.creative_clear_npcs()),
+        Some("recruit") => one(sim.creative_recruit_any(num(1).unwrap_or(0.0) as usize)),
+        Some("anchor") => one(sim.creative_set_anchor()),
+        Some("rewind") => one(sim.creative_rewind(num(1).unwrap_or(0.0) as usize)),
+        Some("flare") => one(sim.creative_flare(num(1).unwrap_or(1.0))),
+        Some("jump") => one(sim.creative_jump(num(1).unwrap_or(0.0) as usize)),
+        Some("fleetship") => one(sim.creative_add_fleet_ship(num(1).unwrap_or(0.0) as usize)),
+        Some("alltech") => one(sim.creative_unlock_all_tech()),
+        Some("reveal") => one(sim.creative_reveal_map()),
+        Some("service") => one(sim.creative_full_service()),
+        Some("days") => match num(1) {
+            Some(d) => one(sim.creative_advance_days(d)),
+            None => vec!["usage: days N".into()],
+        },
         Some("speed") => match num(1) {
             Some(v) => {
                 sim.ship.vel = sim.ship.forward() * v;

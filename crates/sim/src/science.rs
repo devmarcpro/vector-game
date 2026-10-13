@@ -71,7 +71,7 @@ impl Sim {
     // ---- technology -------------------------------------------------------
 
     pub fn is_unlocked(&self, kind: &str, id: &str) -> bool {
-        !self.rules.tech_locks
+        self.rules.tech_open()
             || self
                 .data
                 .unlocking_tech(kind, id)
@@ -269,7 +269,7 @@ impl Sim {
     /// enters the books (`Body::pending_dose`, then `acute_dose` and `total_dose`). The cabin
     /// dosimeter (`dosimeter_gy`) is a view on these.
     pub fn book_dose(&mut self, dose: f64) {
-        if dose <= 0.0 || self.rules.invulnerable {
+        if dose <= 0.0 || self.rules.no_radiation() {
             return;
         }
         for p in self.crew.members.iter_mut().filter(|p| p.alive) {
@@ -279,7 +279,7 @@ impl Sim {
 
     /// Apply a radiation dose (Gy) to the crew and, when severe, to electronics.
     pub fn irradiate(&mut self, dose: f64) {
-        if dose <= 0.0 || self.rules.invulnerable {
+        if dose <= 0.0 || self.rules.no_radiation() {
             return;
         }
         self.book_dose(dose);

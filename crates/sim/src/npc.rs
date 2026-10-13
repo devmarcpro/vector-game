@@ -114,7 +114,7 @@ fn smooth(u: f64) -> (f64, f64) {
 }
 
 impl Sim {
-    fn npc_name(&self, role: NpcRole, rng: &mut Rng, faction: Option<usize>) -> String {
+    pub(crate) fn npc_name(&self, role: NpcRole, rng: &mut Rng, faction: Option<usize>) -> String {
         use vector_world::names::{self, Spec};
         let culture = faction
             .and_then(|f| {

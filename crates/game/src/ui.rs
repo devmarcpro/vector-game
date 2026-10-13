@@ -85,6 +85,7 @@ pub fn draw(fb: &mut Framebuffer, g: &Game) {
         Screen::Fleet => draw_fleet(fb, g),
         Screen::Tech => crate::tech_view::draw(fb, g),
         Screen::Rules => draw_rules(fb, g),
+        Screen::Creative => crate::creative_view::draw(fb, g),
         Screen::Options => draw_options(fb, g),
         Screen::Codex => draw_codex(fb, g),
         Screen::Surface => crate::surface_view::draw(fb, g),

@@ -1173,7 +1173,7 @@ pub fn spark(values: &[f32], lo: f32, hi: f32) -> String {
 impl crate::Sim {
     /// Capacities the research has unlocked (all of them when the technology rule is off).
     pub fn capacity_mask(&self) -> u32 {
-        if !self.rules.tech_locks {
+        if self.rules.tech_open() {
             return (1u32 << CAPACITIES.len()) - 1;
         }
         let mut m = 0;

@@ -2507,7 +2507,8 @@ impl Sim {
             self.rogue_end_turn(r);
             return Ok(());
         }
-        if !r.walkable(r.x + dx, r.y + dy) {
+        let ghost = self.rules.ghost();
+        if !(r.walkable(r.x + dx, r.y + dy) || ghost && r.inside(r.x + dx, r.y + dy)) {
             return Err(if r.tile(r.x + dx, r.y + dy) == T_WATER {
                 "de l'eau"
             } else {
@@ -2530,7 +2531,7 @@ impl Sim {
                 }
                 break;
             }
-            if !r.walkable(nx, ny) {
+            if !(r.walkable(nx, ny) || ghost && r.inside(nx, ny)) {
                 break;
             }
             r.x = nx;

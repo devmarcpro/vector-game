@@ -326,3 +326,4 @@ logiciel en bandes paralleles (std::thread::scope, sans dependance). Toute fonct
 - `ui_new.rs` : dessin NOUVEAU de menu F10, colonie (onglet batiments), equipage (liste, medecine), surface, marche (onglet ouvert), tableau de bord. `ui_new::handles` decide ; les autres etats retombent sur le dessin classique. Reste a faire (vague 2) : tous les autres ecrans.
 - Scenes de capture : `ui_<nom>` (nouveau) et `ui_classic_<nom>` ; `VECTOR_SNAP_SIZE=1024x576` change la taille. `mock_ui.rs` n'est plus qu'un aiguillage (maquettes de cockpit gardees pour wt-cockpit).
 - Perf : toile reutilisee, table d'echantillonnage en cache, pas d'allocation par image ; cours de reference du marche rafraichis une fois par jour.
+Mode creatif : une seule API `Sim::creative_*` (jamais une 2e logique) et des accesseurs de `Rules` qui levent les restrictions des systemes normaux ; tous les drapeaux sont ignores si `Rules.creative` est faux, donc aucune incidence sur les parties normales.

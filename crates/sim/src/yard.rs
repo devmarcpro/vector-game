@@ -116,11 +116,7 @@ impl Sim {
         if self.bought_plans.contains(&d.id) {
             return Err("plan deja possede");
         }
-        let price = if self.rules.infinite_resources {
-            0.0
-        } else {
-            d.price
-        };
+        let price = if self.rules.free() { 0.0 } else { d.price };
         if price > self.credits {
             return Err("fonds insuffisants");
         }
@@ -218,7 +214,7 @@ impl Sim {
                 }
             }
         }
-        if self.rules.infinite_resources {
+        if self.rules.free() {
             q.credits = 0.0;
             if q.problem
                 .as_deref()

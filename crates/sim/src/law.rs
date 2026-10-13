@@ -55,9 +55,11 @@ impl Sim {
 
     /// Whether `faction` has a law against the act.
     pub fn is_illegal(&self, faction: usize, act: &str) -> bool {
-        self.data
-            .law_index(act)
-            .is_some_and(|l| self.laws_in_force(faction).contains(&l))
+        !self.rules.no_law()
+            && self
+                .data
+                .law_index(act)
+                .is_some_and(|l| self.laws_in_force(faction).contains(&l))
     }
 
     /// The treaty between two jurisdictions: the same people, or an alliance either way.

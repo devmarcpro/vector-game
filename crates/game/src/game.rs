@@ -89,6 +89,8 @@ pub enum Screen {
     Dashboard,
     /// The navigation computer: the queue of orders, the planner, the thresholds (see `nav_view`).
     NavAuto,
+    /// The creative panel (Insert): the one API of `Sim::creative_*`, by keys and mouse.
+    Creative,
 }
 
 /// The tabs of the one crew screen (`Screen::Crew`): the list with the sheet of the chosen
@@ -315,6 +317,8 @@ pub struct Game {
     pub rules_sel: usize,
     /// Rules for the next new game (edited live when opened from the pause menu).
     pub pending_rules: vector_sim::rules::Rules,
+    pub cx: crate::creative_view::CxState,
+    pub cx_back: Screen,
     /// Where the rules / options / codex screens return to.
     pub back_to: Screen,
     pub settings: crate::settings::Settings,
@@ -528,6 +532,8 @@ impl Game {
             tech_sel: 0,
             rules_sel: 0,
             pending_rules: vector_sim::rules::Rules::default(),
+            cx: Default::default(),
+            cx_back: Screen::Flight,
             back_to: Screen::MainMenu,
             settings: crate::settings::Settings::load(&PathBuf::from("saves").join("settings.cfg")),
             opt_sel: 0,
@@ -1263,6 +1269,20 @@ impl Game {
             self.say("TUTORIEL IGNORE (REACTIVABLE DANS OPTIONS)");
             return;
         }
+        if code == KeyCode::Insert
+            && !matches!(
+                self.screen,
+                Screen::MainMenu | Screen::NewGame | Screen::Destroyed
+            )
+        {
+            self.help_open = false;
+            if self.screen == Screen::Creative {
+                self.screen = self.cx_back;
+            } else {
+                self.open_creative();
+            }
+            return;
+        }
         // The menu is one key away from every screen of the game.
         if code == KeyCode::F10
             && !matches!(
@@ -1313,6 +1333,7 @@ impl Game {
             Screen::Fleet => self.fleet_key(code),
             Screen::Tech => self.tech_key(code),
             Screen::Rules => self.rules_key(code),
+            Screen::Creative => self.creative_key(code),
             Screen::Options => self.options_key(code),
             Screen::Codex => self.codex_key(code),
             Screen::Surface => self.surface_key(code),

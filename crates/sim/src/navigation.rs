@@ -492,7 +492,7 @@ impl Sim {
     /// Past the limit of the frame the hull tears in proportion to the excess.
     pub(crate) fn structural_tick(&mut self, dt: f64) {
         let load = self.structural_load_g();
-        if load > STRUCTURE_LIMIT_G && !self.rules.invulnerable {
+        if load > STRUCTURE_LIMIT_G && !self.rules.invuln() {
             let over = load / STRUCTURE_LIMIT_G - 1.0;
             let dmg = over.min(4.0) * 0.05 * self.ship.stats.hull_max * dt * self.rules.damage;
             self.ship.hull = (self.ship.hull - dmg).max(0.0);
@@ -519,7 +519,7 @@ impl Sim {
         let aero = self.aero_heat_kw;
         let armor = self.effective.armor;
         let blocked = aero * armor / (armor + ABLATION_K);
-        if blocked > 0.0 && !self.rules.invulnerable {
+        if blocked > 0.0 && !self.rules.invuln() {
             self.ship.hull =
                 (self.ship.hull - blocked * dt / 1000.0 / ABLATION_MJ_PER_POINT).max(0.0);
         }

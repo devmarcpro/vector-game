@@ -190,7 +190,7 @@ impl Sim {
         if !self.is_unlocked("hull", &h.id) {
             return Err("technologie non recherchee (F4, ou regle: technologies)");
         }
-        let price = if self.rules.infinite_resources {
+        let price = if self.rules.free() {
             0.0
         } else {
             h.cost * PURCHASE_FACTOR * self.rules.build_cost

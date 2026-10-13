@@ -313,3 +313,4 @@ pire cas), cout de simulation borne par pas, aucune allocation par image dans le
 avec invalidation correcte (textures de planete, cartes de surface, catalogues d'etoiles par secteur), rendu
 logiciel en bandes paralleles (std::thread::scope, sans dependance). Toute fonctionnalite livre sa mesure
 (profileur `--profile`, benchmarks headless, docs/PERFORMANCE.md) et ne fait pas regresser le budget.
+Mode creatif : une seule API `Sim::creative_*` (jamais une 2e logique) et des accesseurs de `Rules` qui levent les restrictions des systemes normaux ; tous les drapeaux sont ignores si `Rules.creative` est faux, donc aucune incidence sur les parties normales.

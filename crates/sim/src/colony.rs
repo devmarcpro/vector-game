@@ -1086,7 +1086,8 @@ impl Sim {
 
     /// Found a colony on body `i` using a colony kit from the hold.
     pub fn found_colony(&mut self, i: usize, name: Option<String>) -> Result<usize, &'static str> {
-        if self.docked.is_some() {
+        let cfree = self.rules.creative_free();
+        if self.docked.is_some() && !cfree {
             return Err("decollez d'abord");
         }
         let cb = self.system.bodies.get(i).ok_or("corps inconnu")?.clone();
@@ -1099,7 +1100,9 @@ impl Sim {
         if self.colony_at(i).is_some() {
             return Err("deja colonise");
         }
-        self.near_for_colony(i)?;
+        if !cfree {
+            self.near_for_colony(i)?;
+        }
         let data = std::sync::Arc::clone(&self.data);
         // Nowhere to house the founders (a gas giant): the kit and the colonists would be lost
         // at the first tick, when the population is clamped to a housing of zero.
@@ -1129,11 +1132,11 @@ impl Sim {
             if dormant && r == colon {
                 continue;
             }
-            if self.ship.cargo.kg[r] + 1e-6 < kg {
+            if !cfree && self.ship.cargo.kg[r] + 1e-6 < kg {
                 return Err("kit de colonisation incomplet (materiaux, colons, vivres, eau)");
             }
         }
-        if self.credits < PERMIT_COST {
+        if !cfree && self.credits < PERMIT_COST {
             return Err("permis de colonisation : fonds insuffisants");
         }
         let mut founders_pop = KIT_COLONISTS_KG / COLONIST_KG;
@@ -1142,12 +1145,16 @@ impl Sim {
             if dormant && r == colon {
                 continue;
             }
-            self.ship.cargo.remove(&data, r, kg);
+            if !cfree {
+                self.ship.cargo.remove(&data, r, kg);
+            }
         }
         if dormant {
             founders_pop = f64::from(self.cryo_thaw_colonists()).max(1.0);
         }
-        self.credits -= PERMIT_COST;
+        if !cfree {
+            self.credits -= PERMIT_COST;
+        }
         let mut tags = site_tags(&cb);
         let id = self.next_colony;
         self.next_colony += 1;
@@ -1351,7 +1358,11 @@ impl Sim {
         if !self.is_unlocked("building", &d.id) {
             return Err("technologie non recherchee (F4, ou regle: technologies)");
         }
-        let (mult, free) = (self.rules.build_cost, self.rules.infinite_resources);
+        let (mult, free, instant) = (
+            self.rules.build_cost,
+            self.rules.free(),
+            self.rules.instant_build(),
+        );
         let c = self.colonies.get_mut(ci).ok_or("colonie inconnue")?;
         if !d.sites.iter().any(|s| c.tags.contains(s)) {
             return Err("site inadapte a ce batiment");
@@ -1373,7 +1384,7 @@ impl Sim {
         }
         c.buildings.push(BuildingInst {
             def,
-            progress: 0.0,
+            progress: if instant { 1.0 } else { 0.0 },
             enabled: true,
             recipe: 0,
             health: 1.0,

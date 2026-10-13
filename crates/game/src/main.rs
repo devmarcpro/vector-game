@@ -6,6 +6,7 @@ mod codex_sky;
 mod console;
 mod context_menu;
 mod cosmos_view;
+mod creative_view;
 mod crew_net_view;
 mod cryo_view;
 mod dash_view;

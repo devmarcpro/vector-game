@@ -443,6 +443,9 @@ pub fn new_sim_with(cfg: &StartConfig, data: Arc<GameData>) -> Result<Sim, Strin
     let (home, _) = sc_::home_for(&galaxy, &data.start.systems[custom.world.system].id);
     let mut sim = crate::scene::base_sim_at(galaxy, &home, Arc::clone(&data));
     sim.set_rules(cfg.rules.clone());
+    if sc.creative {
+        sim.rules.creative = true;
+    }
     // The ship.
     let mut design = match custom.ship.mode {
         sc_::ShipMode::Scenario => {

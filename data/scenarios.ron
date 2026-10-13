@@ -55,4 +55,12 @@
   credits:0.0, cargo:[("food",25.0),("water",60.0)],
   crew:["engineer"], crew_points:2, techs:[], reputation:[], wanted_days:0.0, wreck:true,
   text:"Le vaisseau s'est ecrase sur un monde nu : moteur mort, reservoirs vides, plus un credit. A pied, il faut chercher des pieces detachees et du carburant dans les epaves et les ruines, laisser l'ingenieur reparer, puis decoller. Rien n'y oblige, tout y mene."),
+ (id:"creatif", name:"CREATIF / BAC A SABLE", difficulty:1, creative:true,
+  ships:[
+   ("explorer", ["torch_mk2","fusion_mk2","ftl_mk2","tank_mk3","cargo_mk3","lifesup_mk1","habitat_mk1","scanner_mk3","radiator_mk2","laser_mk1"]),
+   ("freighter", ["torch_mk2","fusion_mk2","ftl_mk1","cargo_mk4","cargo_mk4","tank_mk3","lifesup_mk1","habitat_mk1","radiator_mk3","rcs_mk1","pulselaser_mk1"]),
+  ],
+  credits:1000000.0, cargo:[("food",300.0),("water",500.0),("spare_parts",100.0),("medicine",20.0)],
+  crew:["pilot","engineer","scientist"], crew_points:8, techs:[], reputation:[], wanted_days:0.0, wreck:false,
+  text:"Aucune limite : panneau creatif (Insert), console (~), credits, constructions, voyages et savoir sans cout. Succes et classement desactives ; la partie reste sauvegardable."),
 ]

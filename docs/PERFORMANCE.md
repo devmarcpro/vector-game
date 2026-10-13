@@ -148,3 +148,17 @@ terminateur net du bon cote, meme image pour 1 et 5 fils, aucune panique pour to
 boule pixel par pixel (ecart moyen < 12/255 sur un monde avec nuages ; ~8) et plus rapide (budget < 250 ms
 en un fil sur une machine chargee), `sample_with` identique a `sample`, `render_par` identique a
 `render` (1 et 4 fils).
+
+## Monde unifie cockpit / vue externe (wt-scene)
+
+`vector-game --bench-scene` (release, 1280x720, meilleur de 3 a 5 series sur machine partagee tres bruitee). Colonne "objets" : couche `scene_render::draw_objects` seule. Avant : meme bench sur le binaire de a8a06d2 (objets non mesurables seuls, total par image).
+
+| Situation | Cockpit avant | Cockpit apres (objets) | Externe avant | Externe apres (objets) |
+|---|---|---|---|---|
+| Espace vide | 2,8 ms | 1,0 ms (0) | 7,5 ms | 2,8 ms (1,5 : vaisseau du joueur) |
+| Station proche | 2,6 ms (filaire) | 4,1 ms (2,6, modele plein) | 97,7 ms | 82 ms (3,7) |
+| 20 vaisseaux | 6,3 ms (filaire) | 4,5 ms (3,1, modeles pleins) | 95,6 ms | 74 ms (3,2) |
+| Ceinture d'asteroides | 4,3 ms | 2,8 ms (0,9) | 30,8 ms | 4,1 ms (2,4) |
+| Planete | 125 ms | 93 ms (0) | 161 ms | 108 ms (1,5) |
+
+Les 75 a 110 ms restants en vue externe pres d'un monde et en cockpit face a une planete sont le dessin du globe (`draw_world`/terrain, domaine de wt-perf) : la couche des objets reste a 1 a 4 ms. Ce qui a change : les modeles (station en deux parties fixe + anneau tourne par la pose, rochers, vaisseaux PNJ et vaisseau du joueur) sont construits une fois et gardes dans un cache par thread (cle quantifiee ; flammes animees a 6 Hz seulement pres de la camera) ; le tampon de profondeur est reutilise et vide seulement si un objet plein est dessine ; `ship_model::draw` n'alloue plus par triangle ; `raster_tri` est un balayage de lignes (un intervalle par ligne, 1/z incremental) au lieu d'un test barycentrique sur tout le rectangle ; culling d'un modele par sphere avant tout travail. Avant, la vue externe reconstruisait la station et chaque vaisseau a chaque image. Non fait : rasterisation en bandes paralleles (la couche tient dans le budget sans).

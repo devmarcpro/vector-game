@@ -3,7 +3,7 @@ use crate::console::Console;
 use crate::game::Game;
 use crate::mouse::Act;
 use vector_core::{Mat3, Vec3};
-use vector_render::{Camera, Framebuffer, Wireframe};
+use vector_render::{Camera, Framebuffer};
 use vector_sim::design::{T_DAMAGE, T_SCRAM};
 use vector_sim::npc::NpcRole;
 use vector_sim::voyage::{SCAN_FULL, SCAN_SURVEYED};
@@ -392,7 +392,7 @@ fn draw_ball(fb: &mut Framebuffer, cam: &Camera, v: &View, i: usize, col: u32, b
     );
 }
 
-fn body_color(v: &View, i: usize) -> u32 {
+pub(crate) fn body_color(v: &View, i: usize) -> u32 {
     if v.sim.scan[i] >= SCAN_SURVEYED {
         kind_color(v.sim.bodies[i].kind)
     } else {
@@ -434,15 +434,7 @@ pub(crate) fn draw_cockpit_scene(fb: &mut Framebuffer, v: &View) {
     } else {
         None
     };
-    let cam = if ext {
-        crate::ext_view::camera(v.game, v.sim, gr.as_ref())
-    } else {
-        Camera {
-            pos: ship.pos,
-            rot: v.game.view_rot(&ship.rot),
-            fov_y: if v.boost { 1.4 } else { 1.2 },
-        }
-    };
+    let cam = crate::scene_render::camera(v, ext, gr.as_ref());
     let focal = fb.h as f64 * 0.5 / (cam.fov_y * 0.5).tan();
 
     // Low in a thick air by day the sky hides the stars and the worlds beyond.
@@ -504,16 +496,11 @@ pub(crate) fn draw_cockpit_scene(fb: &mut Framebuffer, v: &View) {
                 let pulse = 1.0 + 0.08 * (v.sim.time * 0.7).sin();
                 cam.draw_sphere(fb, b.pos, b.radius * pulse, &spin, 3, 5, 0x00C0_60FF);
             }
-            BodyKind::Asteroid(_) if ext && px > 3.0 => draw_ball(fb, &cam, v, i, col, false),
-            BodyKind::Asteroid(_) => cam.draw_sphere(fb, b.pos, b.radius, &spin, 4, 6, col),
-            // Solid stations are drawn with the ships, below.
-            BodyKind::Station if ext => {}
-            BodyKind::Station => {
-                let r = Mat3::rot_y(v.sim.time * 0.2);
-                Wireframe::cube(b.radius * 0.5).draw(&cam, fb, &r, b.pos, col);
-                let ring = Mat3::rot_x(std::f64::consts::FRAC_PI_2).mul(&r);
-                cam.draw_sphere(fb, b.pos, b.radius * 0.9, &ring, 2, 0, col);
-            }
+            // Near rocks and the stations are solid models of the shared scene, drawn below;
+            // far rocks are lit balls, then a marker.
+            BodyKind::Asteroid(_) if px > crate::scene_render::ROCK_PX => {}
+            BodyKind::Asteroid(_) if px > 1.5 => draw_ball(fb, &cam, v, i, col, false),
+            BodyKind::Asteroid(_) | BodyKind::Station => {}
         }
         // Marker + label for objects too small to see as shapes.
         if let Some((x, y)) = cam.project_world(b.pos, fb) {
@@ -557,14 +544,11 @@ pub(crate) fn draw_cockpit_scene(fb: &mut Framebuffer, v: &View) {
         }
     }
 
-    if ext {
-        crate::ext_view::draw_ships(fb, &cam, v, gr.as_ref());
-    }
-    let down = if ext {
-        ship.rot.col(2) * (crate::ext_view::ship_length(v.sim) * 0.5)
-    } else {
-        ship.rot.col(1) * -6.0
-    };
+    // Stations, rocks, ships and wrecks: the same models in the cockpit and outside.
+    crate::scene_render::draw_objects(fb, &cam, v, gr.as_ref(), ext);
+    // The guns are at the nose of the hull, a little under the axis, seen from either camera.
+    let len = crate::ext_view::ship_length(v.sim);
+    let down = ship.rot.col(2) * (len * 0.5) - ship.rot.col(1) * (len * 0.1);
     for (a, b, mine) in &v.sim.beams {
         cam.draw_line(fb, *a + down, *b, if *mine { RED } else { AMBER });
     }
@@ -582,15 +566,17 @@ pub(crate) fn draw_cockpit_scene(fb: &mut Framebuffer, v: &View) {
     }
     for w in &v.sim.wrecks {
         if let Some((x, y)) = cam.project_world(w.pos, fb) {
-            fb.line(x - 4.0, y - 4.0, x + 4.0, y + 4.0, MINER);
-            fb.line(x - 4.0, y + 4.0, x + 4.0, y - 4.0, MINER);
+            let d = (w.pos - cam.pos).length().max(1.0);
+            if crate::scene_render::WRECK_R / d * focal < 6.0 {
+                fb.line(x - 4.0, y - 4.0, x + 4.0, y + 4.0, MINER);
+                fb.line(x - 4.0, y + 4.0, x + 4.0, y - 4.0, MINER);
+            }
             if (w.pos - ship.pos).length() < 2.0e5 {
                 fb.text_at(x as i32 + 8, y as i32 + 6, &w.name, MINER);
             }
         }
     }
     let see = 1.0e6 + 0.01 * v.sim.effective.scan_range;
-    let ship_wire = Wireframe::ship();
     for (k, n) in v.sim.npcs.iter().enumerate() {
         if !n.visible() {
             continue;
@@ -604,19 +590,6 @@ pub(crate) fn draw_cockpit_scene(fb: &mut Framebuffer, v: &View) {
         } else {
             npc_color(n.role)
         };
-        if d < 6.0e4 && !ext {
-            let fwd = if n.vel.length() > 1.0 {
-                n.vel
-            } else {
-                Vec3::new(0.0, 0.0, 1.0)
-            };
-            let rot = Mat3::look_at(fwd, Vec3::new(0.0, 1.0, 0.0));
-            let scaled = Wireframe {
-                verts: ship_wire.verts.iter().map(|p| *p * 80.0).collect(),
-                edges: ship_wire.edges.clone(),
-            };
-            scaled.draw(&cam, fb, &rot, n.pos, col);
-        }
         if let Some((x, y)) = cam.project_world(n.pos, fb) {
             if on_screen(fb, x, y, 12.0) {
                 v.game.hit(

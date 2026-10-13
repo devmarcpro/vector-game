@@ -3,12 +3,11 @@
 //! worlds, terrain are `hud`'s). The ship gets its shadow and dust on the ground when it is low,
 //! and its landing gear when it is slow and close to the ground.
 use crate::game::{Game, Screen};
-use crate::hud::{View, AMBER, DIM, GREEN};
+use crate::hud::{AMBER, DIM, GREEN};
 use crate::mouse::Act;
-use crate::ship_model::{self as sm, Light, Model, Pose, State, Zbuf};
+use crate::ship_model::{self as sm, Light, Model, Pose, State};
 use vector_core::{hash_coord, Mat3, Vec3};
 use vector_render::{Camera, Framebuffer, NEAR};
-use vector_sim::npc::{NpcRole, NpcState};
 use vector_sim::Sim;
 use winit::keyboard::KeyCode;
 
@@ -18,8 +17,6 @@ const ZOOM_MAX: f64 = 60.0;
 pub const ZOOM_START: f64 = 1.9;
 /// Default azimuth: three quarters from behind, so the ship reads as a shape.
 pub const ZOOM_YAW: f64 = 0.7;
-/// Models farther than this are only the markers of the cockpit (m).
-const SEE_NPC: f64 = 40_000.0;
 
 /// The ground under the ship, when there is one close enough to matter.
 pub struct Ground {
@@ -153,112 +150,16 @@ pub fn light(sim: &Sim) -> Light {
     }
 }
 
-fn npc_state(sim: &Sim, n: &vector_sim::npc::Npc) -> State {
-    let design = sm::npc_design(&sim.data, role_name(n.role), n.id);
-    let mut st = State::idle(&design);
-    let moving = n.vel.length() > 1.0 && !n.disabled;
-    st.thrust = if moving { 0.4 } else { 0.0 };
-    st.hull = (n.hull / n.hull_max.max(1.0)).clamp(0.0, 1.0);
-    st.shield = if n.shield_max > 0.0 {
-        (n.shield / n.shield_max).clamp(0.0, 1.0)
-    } else {
-        0.0
-    };
-    st.firing = n.hostile && matches!(n.state, NpcState::Combat { .. }) && !n.disabled;
-    st.deploy = if matches!(n.state, NpcState::Docked { .. }) {
-        0.0
-    } else {
-        1.0
-    };
-    st.time = sim.time + f64::from(n.id);
-    st
-}
-
-fn role_name(r: NpcRole) -> &'static str {
-    match r {
-        NpcRole::Trader => "trader",
-        NpcRole::Miner => "miner",
-        NpcRole::Pirate => "pirate",
-        NpcRole::Patrol => "patrol",
-    }
-}
-
-/// Draw the stations, the other ships and the player's ship, solid, over the scene.
-pub fn draw_ships(fb: &mut Framebuffer, cam: &Camera, v: &View, gr: Option<&Ground>) {
-    let sim = v.sim;
-    let g = v.game;
-    let mut zb = Zbuf::new(fb.w, fb.h);
-    let lit = light(sim);
-    let focal = fb.h as f64 * 0.5 / (cam.fov_y * 0.5).tan();
-    let ship = &sim.ship;
-    // Stations.
-    for b in &sim.bodies {
-        if b.kind != vector_world::BodyKind::Station || sim.scan.is_empty() {
-            continue;
-        }
-        let d = (b.pos - cam.pos).length();
-        if b.radius / d.max(1.0) * focal < 2.0 {
-            continue;
-        }
-        let m = sm::station_model(b.radius, sim.time * 0.05);
-        let pose = Pose {
-            pos: b.pos,
-            rot: Mat3::rot_y(0.4),
-            scale: 1.0,
-        };
-        sm::draw(fb, &mut zb, cam, &m, &pose, &lit);
-    }
-    // Other ships.
-    for n in &sim.npcs {
-        if !n.visible() {
-            continue;
-        }
-        let d = (n.pos - cam.pos).length();
-        if d > SEE_NPC || 30.0 / d.max(1.0) * focal < 1.5 {
-            continue;
-        }
-        let design = sm::npc_design(&sim.data, role_name(n.role), n.id);
-        let st = npc_state(sim, n);
-        let m = sm::build(&sim.data, &design, &st);
-        if f64::from(m.radius) / d.max(1.0) * focal < 1.0 {
-            continue;
-        }
-        let fwd = if n.vel.length() > 1.0 {
-            n.vel
-        } else {
-            ship.pos - n.pos
-        };
-        let pose = Pose {
-            pos: n.pos,
-            rot: Mat3::look_at(fwd, Vec3::new(0.0, 1.0, 0.0)),
-            scale: 1.0,
-        };
-        sm::draw(fb, &mut zb, cam, &m, &pose, &lit);
-    }
-    // The player's ship, its shadow and its dust.
-    let st = State::of_player(sim, gear_for(sim, gr));
-    let m = sm::build(&sim.data, &ship.design, &st);
-    let mut pose = Pose {
-        pos: ship.pos,
-        rot: ship.rot,
-        scale: 1.0,
-    };
-    if let Some(gr) = gr {
-        // Standing on its gear: the feet rest on the ground, not in it.
-        let keel = f64::from(-m.foot_y);
-        if st.gear > 0.95 && gr.h < keel {
-            pose.pos = pose.pos + gr.up * (keel - gr.h);
-        }
-        shadow(fb, cam, &m, &pose, &lit, gr);
-        dust(fb, cam, sim, &st, gr, f64::from(m.flame_len));
-    }
-    sm::draw(fb, &mut zb, cam, &m, &pose, &lit);
-    let _ = g;
-}
-
 /// The shadow of the ship on the ground: every triangle projected along the light on the plane
 /// of the ground under it, darkened once.
-fn shadow(fb: &mut Framebuffer, cam: &Camera, m: &Model, pose: &Pose, lit: &Light, gr: &Ground) {
+pub(crate) fn shadow(
+    fb: &mut Framebuffer,
+    cam: &Camera,
+    m: &Model,
+    pose: &Pose,
+    lit: &Light,
+    gr: &Ground,
+) {
     let s = lit.sun.normalized();
     let su = s.dot(gr.up);
     if su < 0.05 || gr.h > 900.0 || lit.intensity < 0.1 {
@@ -307,7 +208,14 @@ fn shadow(fb: &mut Framebuffer, cam: &Camera, m: &Model, pose: &Pose, lit: &Ligh
 }
 
 /// Dust and grit raised by the exhaust when the ship is low and burning.
-fn dust(fb: &mut Framebuffer, cam: &Camera, sim: &Sim, st: &State, gr: &Ground, flame: f64) {
+pub(crate) fn dust(
+    fb: &mut Framebuffer,
+    cam: &Camera,
+    sim: &Sim,
+    st: &State,
+    gr: &Ground,
+    flame: f64,
+) {
     if st.thrust < 0.05 || gr.h > 120.0 {
         return;
     }

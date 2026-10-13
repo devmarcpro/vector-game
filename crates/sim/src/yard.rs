@@ -214,6 +214,18 @@ impl Sim {
                 }
             }
         }
+        if self.rules.instant_build() {
+            // Creative: no yard, no materials, no money, no waiting.
+            q.credits = 0.0;
+            q.days = 0.0;
+            q.lines.clear();
+            if q.problem
+                .as_deref()
+                .is_some_and(|p| !p.starts_with("plan inconstructible"))
+            {
+                q.problem = None;
+            }
+        }
         if self.rules.free() {
             q.credits = 0.0;
             if q.problem
@@ -253,7 +265,12 @@ impl Sim {
         }
         self.credits += back;
         self.credits -= q.credits;
-        let site = q.site.ok_or("pas de chantier")?;
+        let instant = self.rules.instant_build();
+        let site = match q.site {
+            Some(s) => s,
+            None if instant => Site::Station(0),
+            None => return Err("pas de chantier".to_string()),
+        };
         for (res, _, from_stock, _) in &q.lines {
             match site {
                 Site::Colony(ci) => self.colonies[ci].storage[*res] -= from_stock,
@@ -274,6 +291,7 @@ impl Sim {
         let id = self.next_order;
         self.next_order += 1;
         let place = match site {
+            _ if instant => "CREATIF".to_string(),
             Site::Station(b) => self.bodies[b].name.clone(),
             Site::Colony(ci) => self.colonies[ci].name.clone(),
         };
@@ -287,6 +305,9 @@ impl Sim {
             place,
             refit: refit.is_some(),
         });
+        if instant {
+            self.update_yard();
+        }
         Ok(id)
     }
 
@@ -817,5 +838,25 @@ mod tests {
         let n = s.blueprints.len();
         s.delete_blueprint(di);
         assert_eq!(s.blueprints.len(), n - 1);
+    }
+
+    #[test]
+    fn creative_instant_build_needs_no_yard_materials_money_or_time() {
+        let mut s = docked();
+        let bi = s.buy_plan(0).expect("plan");
+        s.docked = None;
+        s.credits = 0.0;
+        let n = s.fleet.len();
+        assert!(
+            s.order_ship(bi, 1).is_err(),
+            "normal game: no yard, no money"
+        );
+        s.creative_enable(true);
+        s.creative_set_flag(2, true).unwrap();
+        s.creative_set_flag(1, true).unwrap();
+        s.order_ship(bi, 1).expect("creative build");
+        assert_eq!(s.fleet.len(), n + 1, "delivered at once");
+        assert_eq!(s.credits, 0.0);
+        assert!(s.yard_orders.is_empty());
     }
 }

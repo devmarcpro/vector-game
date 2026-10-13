@@ -681,6 +681,7 @@ pub fn items_for(g: &Game, ctx: Ctx) -> (String, Vec<Item>) {
         // A body or a ship that no longer exists.
         Ctx::Body(_) | Ctx::Npc(_) => {}
     }
+    crate::creative_view::context_items(g, ctx, &mut it);
     tail(g, &mut it);
     (title, it)
 }

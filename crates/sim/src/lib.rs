@@ -1200,6 +1200,9 @@ impl Sim {
         if cmd.z > 0.0 {
             acc_b.z = cmd.z * main_a;
         }
+        if self.rules.fly_free() {
+            acc_b = acc_b * crate::rules::FLY_FREE_MULT;
+        }
         // Propellant: main engine at its own isp, RCS-class motion at RCS isp.
         let main_force = if acc_b.z > 0.0 || z_max == main_a {
             acc_b.z.abs() * mass

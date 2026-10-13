@@ -26,6 +26,9 @@ pub struct CxState {
     /// Body picked for the teleport row.
     pub arg: usize,
     pub note: String,
+    /// Amount of the credit row (typed or stepped), and the star picked for the jump row.
+    pub amount: f64,
+    pub star: usize,
 }
 
 #[derive(Clone, Copy, PartialEq, Debug)]
@@ -46,6 +49,16 @@ pub enum Item {
     AllTech,
     Found,
     Console,
+    Amount,
+    JumpStar,
+    Npc(vector_sim::npc::NpcRole, bool),
+    ClearNpcs,
+    Recruit,
+    EditCrew(u8, f32),
+    Rewind,
+    Anchor,
+    FleetShip,
+    Flare,
 }
 
 pub fn label(it: Item) -> String {
@@ -66,13 +79,30 @@ pub fn label(it: Item) -> String {
         Item::AllTech => "TOUTES LES TECHNOLOGIES".into(),
         Item::Found => "FONDER UNE COLONIE SUR LA CIBLE".into(),
         Item::Console => "OUVRIR LA CONSOLE".into(),
+        Item::Amount => "CREDITS : MONTANT (CHIFFRES, < > x10)".into(),
+        Item::JumpStar => "SAUT SANS LIMITE VERS L'ETOILE VOISINE".into(),
+        Item::Npc(role, hostile) => format!(
+            "FAIRE APPARAITRE : {}{}",
+            role.label(),
+            if hostile { " HOSTILE" } else { "" }
+        ),
+        Item::ClearNpcs => "SUPPRIMER TOUS LES VAISSEAUX PNJ".into(),
+        Item::Recruit => "RECRUTER N'IMPORTE QUI (SANS COUT)".into(),
+        Item::EditCrew(0, _) => "EQUIPAGE : COMPETENCES +3".into(),
+        Item::EditCrew(1, _) => "EQUIPAGE : SANTE A 100 %".into(),
+        Item::EditCrew(2, d) => format!("EQUIPAGE : AGE {d:+.0} ANS"),
+        Item::EditCrew(..) => "EQUIPAGE : MORAL ET LOYAUTE AU MAXIMUM".into(),
+        Item::Rewind => "REMBOBINER A LA DERNIERE ANCRE".into(),
+        Item::Anchor => "POSER UNE ANCRE DE TEMPS".into(),
+        Item::FleetShip => "AJOUTER UN VAISSEAU A LA FLOTTE (COQUE N)".into(),
+        Item::Flare => "ERUPTION STELLAIRE DANS 10 S".into(),
     }
 }
 
 pub fn items(tab: usize) -> Vec<Item> {
     use Item::*;
     match tab {
-        0 => vec![Teleport, Reveal, Stop],
+        0 => vec![Teleport, JumpStar, Reveal, Stop, Flare],
         1 => vec![
             Pause,
             Scale(1.0),
@@ -81,6 +111,9 @@ pub fn items(tab: usize) -> Vec<Item> {
             Days(1.0),
             Days(30.0),
             Days(365.0),
+            Scale(1_000_000.0),
+            Anchor,
+            Rewind,
         ],
         2 => vec![
             Flag(0),
@@ -91,9 +124,25 @@ pub fn items(tab: usize) -> Vec<Item> {
             Service,
             Cargo,
             Credits(1e6),
+            FleetShip,
+            Npc(vector_sim::npc::NpcRole::Trader, false),
+            Npc(vector_sim::npc::NpcRole::Pirate, true),
+            Npc(vector_sim::npc::NpcRole::Patrol, false),
+            ClearNpcs,
         ],
-        3 => vec![Flag(4), Flag(5), Revive, Service],
+        3 => vec![
+            Flag(4),
+            Flag(5),
+            Revive,
+            Service,
+            Recruit,
+            EditCrew(0, 3.0),
+            EditCrew(1, 1.0),
+            EditCrew(2, -10.0),
+            EditCrew(3, 0.0),
+        ],
         4 => vec![
+            Amount,
             Credits(1e6),
             Credits(1e9),
             Credits(-1e6),
@@ -121,6 +170,8 @@ pub fn value(g: &Game, it: Item) -> String {
             .bodies
             .get(g.cx.arg)
             .map_or("?".into(), |b| format!("< {} >", b.name)),
+        Item::Amount => format!("< {:.0} >", g.cx.amount),
+        Item::JumpStar => format!("< {} >", g.cx.star),
         Item::Pause => if g.paused { "EN PAUSE" } else { "" }.into(),
         _ => String::new(),
     }
@@ -155,6 +206,30 @@ pub fn exec(g: &mut Game, it: Item) -> String {
             format!("vitesse x{v:.0}")
         }),
         Item::Days(d) => g.sim.creative_advance_days(d),
+        Item::Amount => g.sim.creative_give_credits(g.cx.amount),
+        Item::JumpStar => g.sim.creative_jump(g.cx.star),
+        Item::Npc(role, h) => g.sim.creative_spawn_npc(role, h),
+        Item::ClearNpcs => g.sim.creative_clear_npcs(),
+        Item::Recruit => g.sim.creative_recruit_any(g.cx.arg),
+        Item::EditCrew(f, d) => {
+            let n = g.sim.crew.members.len();
+            (0..n)
+                .try_for_each(|i| g.sim.creative_edit_crew(i, f, d).map(|_| ()))
+                .map(|_| "equipage modifie".to_string())
+        }
+        Item::Rewind => {
+            let n = g.sim.multiverse.anchors.len();
+            if n == 0 {
+                Err("aucune ancre".to_string())
+            } else {
+                g.sim.creative_rewind(n - 1)
+            }
+        }
+        Item::Anchor => g.sim.creative_set_anchor(),
+        Item::FleetShip => g
+            .sim
+            .creative_add_fleet_ship(g.cx.arg % g.data.hulls.len().max(1)),
+        Item::Flare => g.sim.creative_flare(1.0),
         Item::Credits(c) => g.sim.creative_give_credits(c),
         Item::Service => g.sim.creative_full_service(),
         Item::Cargo => g.sim.creative_fill_cargo(1000.0),
@@ -174,12 +249,77 @@ pub fn exec(g: &mut Game, it: Item) -> String {
     r.unwrap_or_else(|e| e)
 }
 
+/// Right-click entries on an object (only in creative mode): delete, edit, move, duplicate.
+pub fn context_items(
+    g: &Game,
+    ctx: crate::context_menu::Ctx,
+    it: &mut Vec<crate::context_menu::Item>,
+) {
+    use crate::context_menu::{Ctx, Item as MItem};
+    if !g.sim.rules.creative {
+        return;
+    }
+    match ctx {
+        Ctx::Npc(n) => {
+            it.push(MItem::new(
+                "CREATIF : SUPPRIMER",
+                "",
+                vec![Act::Call(Game::cx_ctx, n * 8)],
+            ));
+            it.push(MItem::new(
+                "CREATIF : REPARER / DEPLACER ICI",
+                "",
+                vec![Act::Call(Game::cx_ctx, n * 8 + 1)],
+            ));
+            it.push(MItem::new(
+                "CREATIF : DUPLIQUER",
+                "",
+                vec![Act::Call(Game::cx_ctx, n * 8 + 2)],
+            ));
+        }
+        Ctx::Body(i) => {
+            it.push(MItem::new(
+                "CREATIF : TELEPORTER ICI",
+                "",
+                vec![Act::Call(Game::cx_ctx, i * 8 + 3)],
+            ));
+        }
+        Ctx::Crew(i) => {
+            it.push(MItem::new(
+                "CREATIF : SOIGNER / COMPETENCES MAX",
+                "",
+                vec![Act::Call(Game::cx_ctx, i * 8 + 4)],
+            ));
+        }
+        _ => {}
+    }
+}
+
 impl Game {
+    /// Context action `code` = object x 8 + verb (0 delete, 1 move, 2 duplicate, 3 teleport, 4 crew).
+    pub fn cx_ctx(&mut self, code: usize) {
+        let (o, v) = (code / 8, code % 8);
+        let r = match v {
+            0 => self.sim.creative_delete_npc(o),
+            1 => self.sim.creative_move_npc(o),
+            2 => self.sim.creative_duplicate_npc(o),
+            3 => self.sim.creative_teleport_body(o),
+            _ => self
+                .sim
+                .creative_edit_crew(o, 1, 1.0)
+                .and_then(|_| self.sim.creative_edit_crew(o, 0, 10.0)),
+        };
+        self.say(r.unwrap_or_else(|e| e));
+    }
+
     pub fn open_creative(&mut self) {
         if self.screen != Screen::Creative {
             self.cx_back = self.screen;
         }
         self.cx.sel = 0;
+        if self.cx.amount < 1.0 {
+            self.cx.amount = 1e6;
+        }
         self.screen = Screen::Creative;
     }
 
@@ -203,8 +343,10 @@ impl Game {
     /// Click: 0..99 picks a tab, 100+n runs row n, 200 / 201 steps the teleport body.
     pub fn click_cx(&mut self, code: usize) {
         match code {
-            200 => self.cx_step(false),
-            201 => self.cx_step(true),
+            c if (300..500).contains(&c) => {
+                self.cx.sel = (c - 300) / 2;
+                self.cx_step(c % 2 == 1);
+            }
             c if c >= 100 => self.cx_run(c - 100),
             c => {
                 self.cx.tab = c.min(TABS.len() - 1);
@@ -214,6 +356,26 @@ impl Game {
     }
 
     fn cx_step(&mut self, up: bool) {
+        match self.cx_items().get(self.cx.sel) {
+            Some(Item::Amount) => {
+                let a = if up {
+                    self.cx.amount * 10.0
+                } else {
+                    self.cx.amount / 10.0
+                };
+                self.cx.amount = a.clamp(1.0, 1e15).round();
+                return;
+            }
+            Some(Item::JumpStar) => {
+                self.cx.star = if up {
+                    self.cx.star + 1
+                } else {
+                    self.cx.star.saturating_sub(1)
+                };
+                return;
+            }
+            _ => {}
+        }
         let n = self.sim.bodies.len().max(1);
         self.cx.arg = if up {
             (self.cx.arg + 1) % n
@@ -222,14 +384,23 @@ impl Game {
         };
     }
 
-    pub fn creative_key(&mut self, code: KeyCode) {
+    pub fn creative_key(&mut self, code: KeyCode, text: Option<&str>) {
         let n = self.cx_items().len().max(1);
         match code {
             KeyCode::ArrowUp => self.cx.sel = (self.cx.sel + n - 1) % n,
             KeyCode::ArrowDown => self.cx.sel = (self.cx.sel + 1) % n,
             KeyCode::ArrowLeft | KeyCode::ArrowRight => {
                 let up = code == KeyCode::ArrowRight;
-                if self.cx_items().get(self.cx.sel) == Some(&Item::Teleport) {
+                if matches!(
+                    self.cx_items().get(self.cx.sel),
+                    Some(
+                        Item::Teleport
+                            | Item::Amount
+                            | Item::JumpStar
+                            | Item::Recruit
+                            | Item::FleetShip
+                    )
+                ) {
                     self.cx_step(up);
                 } else if self.sim.rules.creative {
                     let t = TABS.len();
@@ -246,8 +417,21 @@ impl Game {
                 self.cx.sel = 0;
             }
             KeyCode::Enter => self.cx_run(self.cx.sel),
-            KeyCode::Escape | KeyCode::Insert => self.screen = self.cx_back,
-            _ => {}
+            KeyCode::Escape | KeyCode::ScrollLock => self.screen = self.cx_back,
+            KeyCode::Backspace if self.cx_items().get(self.cx.sel) == Some(&Item::Amount) => {
+                self.cx.amount = (self.cx.amount / 10.0).floor();
+            }
+            _ => {
+                // Digits typed on the amount row build the number.
+                if self.cx_items().get(self.cx.sel) == Some(&Item::Amount) {
+                    if let Some(d) = text
+                        .and_then(|t| t.chars().next())
+                        .and_then(|c| c.to_digit(10))
+                    {
+                        self.cx.amount = (self.cx.amount * 10.0 + f64::from(d)).min(1e15);
+                    }
+                }
+            }
         }
     }
 }
@@ -296,9 +480,16 @@ pub fn draw(fb: &mut Framebuffer, g: &Game) {
             c,
         );
         let v = value(g, *it);
-        if *it == Item::Teleport {
-            g.hit_cells(52, row, 2, 1, Act::Call(Game::click_cx, 200), None);
-            g.hit_cells(54, row, v.len(), 1, Act::Call(Game::click_cx, 201), None);
+        if v.starts_with('<') {
+            g.hit_cells(52, row, 2, 1, Act::Call(Game::click_cx, 300 + i * 2), None);
+            g.hit_cells(
+                54,
+                row,
+                v.len(),
+                1,
+                Act::Call(Game::click_cx, 301 + i * 2),
+                None,
+            );
         }
         fb.text(52, row, &v, c);
     }
@@ -334,7 +525,7 @@ mod tests {
     #[test]
     fn panel_opens_enables_runs_and_draws_every_tab() {
         let mut g = game();
-        g.key(KeyCode::Insert, None, true);
+        g.key(KeyCode::ScrollLock, None, true);
         assert_eq!(g.screen, Screen::Creative);
         let mut fb = Framebuffer::new(1280, 720);
         crate::draw_frame(&mut fb, &g);
@@ -353,7 +544,7 @@ mod tests {
             }
             crate::draw_frame(&mut fb, &g);
         }
-        g.key(KeyCode::Insert, None, true);
+        g.key(KeyCode::ScrollLock, None, true);
         assert_ne!(g.screen, Screen::Creative);
     }
 

@@ -36,6 +36,9 @@ pub struct Rules {
     pub cx: CreativeFlags,
 }
 
+/// Thrust multiplier of creative free flight.
+pub const FLY_FREE_MULT: f64 = 25.0;
+
 /// Creative-mode switches: each lifts one restriction in the normal game systems. Every
 /// accessor on `Rules` ignores them when `Rules::creative` is off, so a normal game is unchanged.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
@@ -165,6 +168,24 @@ impl Rules {
     /// Creative free build: distance, docking, kits and permits are ignored too.
     pub fn creative_free(&self) -> bool {
         self.cx_on() && self.cx.free_build
+    }
+    pub fn ghost(&self) -> bool {
+        self.cx_on() && self.cx.ghost
+    }
+    pub fn all_knowledge(&self) -> bool {
+        self.cx_on() && self.cx.all_knowledge
+    }
+    /// Highest time acceleration: lifted to x1e6 in creative mode.
+    pub fn max_ts(&self) -> f64 {
+        if self.cx_on() {
+            1_000_000.0
+        } else {
+            self.max_timescale
+        }
+    }
+    /// Free travel: jumps ignore range, wells, antimatter and propellant.
+    pub fn free_travel(&self) -> bool {
+        self.cx_on() && (self.cx.free_travel || self.cx.fly_free)
     }
     pub fn one_hit_kill(&self) -> bool {
         self.cx_on() && self.cx.one_hit_kill

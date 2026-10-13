@@ -35,7 +35,7 @@ pub fn run(cmd: &str, sim: &mut Sim, timescale: &mut f64) -> Vec<String> {
         Some("help") => vec![
             "help list tp x y z | tpbody NAME | stop | speed V".into(),
             "fuel | repair | assist | time N | credits N | flag I on|off".into(),
-            "alltech | reveal | service | days N  (panneau: Insert)".into(),
+            "alltech | reveal | service | days N | spawn pirate|patrol|miner|trader | clearnpcs | recruit K | anchor | rewind I | flare S | jump K | fleetship H  (panneau: Arret defil)".into(),
         ],
         Some("list") => sim
             .bodies
@@ -74,6 +74,23 @@ pub fn run(cmd: &str, sim: &mut Sim, timescale: &mut f64) -> Vec<String> {
             (Some(i), Some(v)) => one(sim.creative_set_flag(i as usize, *v == "on")),
             _ => vec!["usage: flag 0..11 on|off".into()],
         },
+        Some("spawn") => {
+            use vector_sim::npc::NpcRole::*;
+            let (role, hostile) = match parts.get(1).copied() {
+                Some("pirate") => (Pirate, true),
+                Some("patrol") => (Patrol, false),
+                Some("miner") => (Miner, false),
+                _ => (Trader, false),
+            };
+            one(sim.creative_spawn_npc(role, hostile))
+        }
+        Some("clearnpcs") => one(sim.creative_clear_npcs()),
+        Some("recruit") => one(sim.creative_recruit_any(num(1).unwrap_or(0.0) as usize)),
+        Some("anchor") => one(sim.creative_set_anchor()),
+        Some("rewind") => one(sim.creative_rewind(num(1).unwrap_or(0.0) as usize)),
+        Some("flare") => one(sim.creative_flare(num(1).unwrap_or(1.0))),
+        Some("jump") => one(sim.creative_jump(num(1).unwrap_or(0.0) as usize)),
+        Some("fleetship") => one(sim.creative_add_fleet_ship(num(1).unwrap_or(0.0) as usize)),
         Some("alltech") => one(sim.creative_unlock_all_tech()),
         Some("reveal") => one(sim.creative_reveal_map()),
         Some("service") => one(sim.creative_full_service()),

@@ -29,8 +29,18 @@ pub const PAUSE_MENU: [&str; 8] = [
     "MENU PRINCIPAL",
     "QUITTER",
 ];
-const TIME_LADDER: [f64; 10] = [
-    0.25, 0.5, 1.0, 2.0, 5.0, 10.0, 100.0, 1000.0, 10_000.0, 100_000.0,
+const TIME_LADDER: [f64; 11] = [
+    0.25,
+    0.5,
+    1.0,
+    2.0,
+    5.0,
+    10.0,
+    100.0,
+    1000.0,
+    10_000.0,
+    100_000.0,
+    1_000_000.0,
 ];
 
 /// Sort orders of the market list (`V` cycles them).
@@ -89,7 +99,7 @@ pub enum Screen {
     Dashboard,
     /// The navigation computer: the queue of orders, the planner, the thresholds (see `nav_view`).
     NavAuto,
-    /// The creative panel (Insert): the one API of `Sim::creative_*`, by keys and mouse.
+    /// The creative panel (ScrollLock): the one API of `Sim::creative_*`, by keys and mouse.
     Creative,
 }
 
@@ -1075,7 +1085,7 @@ impl Game {
     fn step_time(&mut self, up: bool) {
         let top = TIME_LADDER
             .iter()
-            .rposition(|&t| t <= self.sim.rules.max_timescale)
+            .rposition(|&t| t <= self.sim.rules.max_ts())
             .unwrap_or(2);
         let i = TIME_LADDER
             .iter()
@@ -1269,7 +1279,7 @@ impl Game {
             self.say("TUTORIEL IGNORE (REACTIVABLE DANS OPTIONS)");
             return;
         }
-        if code == KeyCode::Insert
+        if code == KeyCode::ScrollLock
             && !matches!(
                 self.screen,
                 Screen::MainMenu | Screen::NewGame | Screen::Destroyed
@@ -1333,7 +1343,7 @@ impl Game {
             Screen::Fleet => self.fleet_key(code),
             Screen::Tech => self.tech_key(code),
             Screen::Rules => self.rules_key(code),
-            Screen::Creative => self.creative_key(code),
+            Screen::Creative => self.creative_key(code, text),
             Screen::Options => self.options_key(code),
             Screen::Codex => self.codex_key(code),
             Screen::Surface => self.surface_key(code),

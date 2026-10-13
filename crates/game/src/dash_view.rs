@@ -1811,6 +1811,9 @@ pub fn draw(fb: &mut Framebuffer, g: &Game) {
     let cols = fb.cols();
     let alerts = g.alerts();
     fb.text(1, 1, "== TABLEAU DE BORD ==", AMBER);
+    if g.sim.rules.creative {
+        fb.text(cols.saturating_sub(12), 1, "CREATIF", crate::hud::RED);
+    }
     put(fb, 24, 1, cols.saturating_sub(48), &state_of(g), GREEN);
     hub::button(
         fb,

@@ -827,7 +827,7 @@ fn draw_status(fb: &mut Framebuffer, v: &View) {
         if ship.assist { GREEN } else { AMBER },
     );
     if sim.rules.creative {
-        fb.text(cols.saturating_sub(18), 1, "CREATIF (INSERT)", RED);
+        fb.text(cols.saturating_sub(24), 1, "CREATIF (ARRET DEFIL)", RED);
     } else if sim.rules.is_modified() {
         fb.text(cols.saturating_sub(18), 1, "PARTIE MODIFIEE", AMBER);
     }

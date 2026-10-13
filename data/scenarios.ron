@@ -62,5 +62,5 @@
   ],
   credits:1000000.0, cargo:[("food",300.0),("water",500.0),("spare_parts",100.0),("medicine",20.0)],
   crew:["pilot","engineer","scientist"], crew_points:8, techs:[], reputation:[], wanted_days:0.0, wreck:false,
-  text:"Aucune limite : panneau creatif (Insert), console (~), credits, constructions, voyages et savoir sans cout. Succes et classement desactives ; la partie reste sauvegardable."),
+  text:"Aucune limite : panneau creatif (Arret defil), console (~), credits, constructions, voyages et savoir sans cout. Succes et classement desactives ; la partie reste sauvegardable."),
 ]

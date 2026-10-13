@@ -427,7 +427,7 @@ pub fn help_lines(screen: Screen) -> &'static [&'static str] {
             "ESPRIT : Gauche/Droite regle le budget, Entree installe/met a jour, C/A/L contacter/allier/liberer une IA, S ancre",
         ],
         Screen::Creative => &[
-            "Insert : panneau creatif (tout essayer sans limite).",
+            "Arret defil : panneau creatif (tout essayer sans limite).",
             "Gauche/Droite : onglet   Entree : executer   Clic : tout est cliquable.",
             "Activer le creatif desactive succes et classement ; la partie reste sauvegardable.",
         ],

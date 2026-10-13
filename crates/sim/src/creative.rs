@@ -147,6 +147,183 @@ impl Sim {
             .map_err(String::from)
     }
 
+    /// A ship of `role` 2.5 km ahead, targeted (hostile ones attack at once).
+    pub fn creative_spawn_npc(&mut self, role: crate::npc::NpcRole, hostile: bool) -> CxResult {
+        self.creative_check()?;
+        let id = self.next_npc;
+        self.next_npc += 1;
+        let mut rng = vector_core::Rng::new(id as u64 ^ 0xC0FFEE);
+        let name = self.npc_name(role, &mut rng, self.faction);
+        let stats = crate::combat::npc_stats(role, 2);
+        let ahead = self.ship.rot.col(2) * 2500.0;
+        let state = if hostile {
+            crate::npc::NpcState::Combat {
+                mode: crate::npc::AiMode::Pursue,
+            }
+        } else {
+            crate::npc::NpcState::Orbit {
+                around: self.ref_body.unwrap_or(0),
+                phase: 0.0,
+            }
+        };
+        self.npcs.push(crate::npc::Npc {
+            id,
+            role,
+            name: name.clone(),
+            faction: self.faction,
+            pos: self.ship.pos + ahead,
+            vel: self.ship.vel,
+            state,
+            cargo: None,
+            last_scan: 0.0,
+            home: 0,
+            hull: stats.hull,
+            hull_max: stats.hull,
+            shield: stats.shield,
+            shield_max: stats.shield,
+            level: 2,
+            hostile,
+            disabled: false,
+            provoked: hostile,
+            hail_deadline: None,
+        });
+        self.target_npc = Some(self.npcs.len() - 1);
+        Ok(format!("{name} apparait"))
+    }
+
+    pub fn creative_clear_npcs(&mut self) -> CxResult {
+        self.creative_check()?;
+        let n = self.npcs.len();
+        self.npcs.clear();
+        self.target_npc = None;
+        Ok(format!("{n} vaisseaux supprimes"))
+    }
+
+    /// Recruit candidate `k` of an imaginary pool: no station, no cost, no berth limit.
+    pub fn creative_recruit_any(&mut self, k: usize) -> CxResult {
+        self.creative_check()?;
+        let pool =
+            crate::crew::candidates(&self.data, self.system.seed, 0, self.time, 6, &self.crew);
+        let p = pool.into_iter().nth(k % 6).ok_or("aucun candidat")?;
+        if self
+            .crew
+            .members
+            .iter()
+            .any(|m| m.alive && m.name == p.name)
+        {
+            return Err("deja a bord".into());
+        }
+        let (name, role) = (p.name.clone(), p.role);
+        self.crew.hire(&self.data, p, role, self.time);
+        Ok(format!("{name} rejoint l'equipage"))
+    }
+
+    /// Edit one crew member: field 0 skills to 10, 1 health, 2 age by `delta` years, 3 mood.
+    pub fn creative_edit_crew(&mut self, idx: usize, field: u8, delta: f32) -> CxResult {
+        self.creative_check()?;
+        let p = self.crew.members.get_mut(idx).ok_or("membre inconnu")?;
+        match field {
+            0 => p
+                .skills
+                .iter_mut()
+                .for_each(|s| *s = (*s + delta).clamp(0.0, 10.0)),
+            1 => p.health = (p.health + delta).clamp(0.0, 1.0),
+            2 => p.age = (p.age + delta).max(0.0),
+            _ => {
+                p.morale = 1.0;
+                p.stress = 0.0;
+                p.loyalty = 1.0;
+            }
+        }
+        Ok(format!("{} modifie", p.name))
+    }
+
+    /// Rewind to anchor `i` for nothing (and set anchors for nothing).
+    pub fn creative_rewind(&mut self, i: usize) -> CxResult {
+        self.creative_check()?;
+        let was = std::mem::replace(&mut self.rules.cx.free_build, true);
+        let r = self.rewind(i).map_err(String::from);
+        self.rules.cx.free_build = was;
+        r
+    }
+
+    pub fn creative_set_anchor(&mut self) -> CxResult {
+        self.creative_check()?;
+        let was = std::mem::replace(&mut self.rules.cx.free_build, true);
+        let r = self.set_anchor();
+        self.rules.cx.free_build = was;
+        r.map(|_| "ancre posee".to_string()).map_err(String::from)
+    }
+
+    /// A ship of hull `hull` joins the fleet at once.
+    pub fn creative_add_fleet_ship(&mut self, hull: usize) -> CxResult {
+        self.creative_check()?;
+        let was = std::mem::replace(&mut self.rules.cx.free_build, true);
+        let r = self.buy_fleet_ship(hull);
+        self.rules.cx.free_build = was;
+        r.map(|id| format!("vaisseau {id} ajoute"))
+            .map_err(String::from)
+    }
+
+    /// A stellar flare in ten seconds of the given severity (0.2..1).
+    pub fn creative_flare(&mut self, severity: f64) -> CxResult {
+        self.creative_check()?;
+        self.pending_flare = Some((self.time + 10.0, severity.clamp(0.2, 1.0), false));
+        Ok("eruption stellaire imminente".into())
+    }
+
+    /// Jump to the `k`-th nearest star (0 = nearest other than here): no range, no fuel.
+    pub fn creative_jump(&mut self, k: usize) -> CxResult {
+        self.creative_check()?;
+        let here = self.here;
+        let list: Vec<_> = self
+            .galaxy
+            .nearby(self.here_pos, 60.0)
+            .into_iter()
+            .filter(|e| e.id != here)
+            .collect();
+        let target = list.get(k).ok_or("aucune etoile")?.clone();
+        self.docked = None;
+        self.jump = None;
+        let was = std::mem::replace(&mut self.rules.cx.free_travel, true);
+        let r = self.start_jump(&target);
+        self.rules.cx.free_travel = was;
+        r.map(|_| "saut engage".to_string()).map_err(String::from)
+    }
+
+    pub fn creative_delete_npc(&mut self, k: usize) -> CxResult {
+        self.creative_check()?;
+        if k >= self.npcs.len() {
+            return Err("vaisseau inconnu".into());
+        }
+        self.npcs.remove(k);
+        self.target_npc = None;
+        Ok("supprime".into())
+    }
+
+    pub fn creative_duplicate_npc(&mut self, k: usize) -> CxResult {
+        self.creative_check()?;
+        let mut n = self.npcs.get(k).ok_or("vaisseau inconnu")?.clone();
+        n.id = self.next_npc;
+        self.next_npc += 1;
+        n.pos = n.pos + Vec3::new(300.0, 0.0, 0.0);
+        self.npcs.push(n);
+        Ok("duplique".into())
+    }
+
+    /// Bring NPC `k` 2.5 km ahead of the ship, repaired.
+    pub fn creative_move_npc(&mut self, k: usize) -> CxResult {
+        self.creative_check()?;
+        let (pos, vel, ahead) = (self.ship.pos, self.ship.vel, self.ship.rot.col(2) * 2500.0);
+        let n = self.npcs.get_mut(k).ok_or("vaisseau inconnu")?;
+        n.pos = pos + ahead;
+        n.vel = vel;
+        n.hull = n.hull_max;
+        n.shield = n.shield_max;
+        n.disabled = false;
+        Ok("deplace et repare".into())
+    }
+
     pub fn creative_stop(&mut self) -> CxResult {
         self.creative_check()?;
         self.ship.vel = Vec3::ZERO;
@@ -214,5 +391,81 @@ mod tests {
         let js = postcard::to_allocvec(&r).unwrap();
         let back: Rules = postcard::from_bytes(&js).unwrap();
         assert_eq!(back, r);
+    }
+
+    #[test]
+    fn effects_of_each_remaining_flag() {
+        use crate::npc::NpcRole;
+        let mut s = sim();
+        assert!(s.creative_spawn_npc(NpcRole::Pirate, true).is_err());
+        s.creative_enable(true);
+        // one_hit_kill
+        s.creative_spawn_npc(NpcRole::Pirate, true).unwrap();
+        let k = s.npcs.len() - 1;
+        let n = s.npcs.len();
+        s.creative_set_flag(11, true).unwrap();
+        assert!(s.damage_npc(k, 1.0), "destroyed by a scratch");
+        assert_eq!(s.npcs.len(), n - 1);
+        s.creative_set_flag(11, false).unwrap();
+        // delete / duplicate
+        s.creative_spawn_npc(NpcRole::Trader, false).unwrap();
+        let c = s.npcs.len();
+        s.creative_duplicate_npc(c - 1).unwrap();
+        assert_eq!(s.npcs.len(), c + 1);
+        s.creative_delete_npc(0).unwrap();
+        assert_eq!(s.npcs.len(), c);
+        // all_knowledge: every language is understood
+        s.creative_recruit_any(1).unwrap();
+        let p = s.crew.members[0].id;
+        s.creative_set_flag(8, true).unwrap();
+        assert_eq!(s.fluency(p, 0), 1.0);
+        // max timescale lifted, travel free
+        assert_eq!(s.rules.max_ts(), 1_000_000.0);
+        let normal = crate::rules::Rules::default();
+        assert_eq!(normal.max_ts(), normal.max_timescale);
+        // recruit
+        let n = s.crew.members.len();
+        s.creative_recruit_any(0).unwrap();
+        assert!(s.crew.members.len() >= n);
+        // fleet ship from nowhere
+        let f = s.fleet.len();
+        s.docked = None;
+        s.creative_add_fleet_ship(0).unwrap();
+        assert_eq!(s.fleet.len(), f + 1);
+        // flare
+        s.creative_flare(1.0).unwrap();
+        assert!(s.pending_flare.is_some());
+        // anchor and rewind cost nothing
+        s.credits = 0.0;
+        s.creative_set_anchor().unwrap();
+        s.creative_rewind(0).unwrap();
+    }
+
+    #[test]
+    fn fly_free_multiplies_thrust_and_ghost_is_a_flag() {
+        let mut a = sim();
+        let mut b = sim();
+        b.creative_enable(true);
+        b.creative_set_flag(9, true).unwrap();
+        let input = crate::ShipInput {
+            fwd: 1.0,
+            ..Default::default()
+        };
+        for s in [&mut a, &mut b] {
+            s.ship.vel = vector_core::Vec3::ZERO;
+            s.ship.assist = false;
+            s.docked = None;
+            s.ship.pos = vector_core::Vec3::new(0.0, 0.0, 1.0e13);
+            s.advance(10.0, &input);
+        }
+        assert!(
+            b.ship.vel.length() > 5.0 * a.ship.vel.length(),
+            "{} vs {}",
+            b.ship.vel.length(),
+            a.ship.vel.length()
+        );
+        assert!(!a.rules.ghost());
+        b.creative_set_flag(10, true).unwrap();
+        assert!(b.rules.ghost());
     }
 }

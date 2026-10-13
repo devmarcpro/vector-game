@@ -2388,4 +2388,32 @@ pub(crate) mod tests {
         assert!(c.stats.vital_sat < 1.0);
         assert!(c.log.iter().any(|(_, l)| l.contains("Panne generale")));
     }
+
+    #[test]
+    fn creative_free_build_founds_and_builds_without_kit_permit_or_proximity() {
+        let mut s = sim();
+        let b = rocky(&s);
+        s.credits = 0.0;
+        assert!(s.creative_found_colony(b).is_err(), "creative off");
+        assert!(s.found_colony(b, None).is_err());
+        s.creative_enable(true);
+        let ci = s.creative_found_colony(b).expect("founded for free");
+        assert_eq!(s.credits, 0.0, "no permit paid");
+        let def = (0..s.data.buildings.len())
+            .find(|&d| {
+                s.data.buildings[d]
+                    .sites
+                    .iter()
+                    .any(|t| s.colonies[0].tags.contains(t))
+                    && s.data.buildings[d].housing <= 0.0
+            })
+            .expect("a building");
+        let _ = ci;
+        s.colonies[0].storage.fill(0.0);
+        assert!(s.colony_build(0, def).is_err(), "no materials normally");
+        s.creative_set_flag(1, true).unwrap();
+        s.creative_set_flag(2, true).unwrap();
+        s.colony_build(0, def).expect("free and instant");
+        assert!(s.colonies[0].buildings.last().unwrap().built());
+    }
 }

@@ -180,6 +180,18 @@ pub static SPACES: [Space; 8] = [
                 },
             ),
             entry(
+                "ATTERRIR / DECOLLER",
+                "PAV4",
+                "Une commande : approche, descente, pose sur le terrain ; au sol, decollage vers l'orbite.",
+                None,
+                Need::Flying,
+                false,
+                |g| {
+                    g.screen = Screen::Flight;
+                    g.pilot_key();
+                },
+            ),
+            entry(
                 "RADIO : APPELER LA CIBLE",
                 "ENTREE",
                 "Parler a un vaisseau ou au peuple d'un monde cible (Tab, R, Maj+Tab pour cibler).",

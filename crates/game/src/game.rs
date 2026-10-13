@@ -381,6 +381,8 @@ pub struct Game {
     pub ctx_menu: Option<crate::context_menu::Menu>,
     /// The cockpit looks astern (at the ground of a ship landing tail first).
     pub rear_view: bool,
+    /// A landing whose warnings were shown: asking again confirms it (body, cell).
+    pub land_confirm: Option<(usize, Option<(usize, usize)>)>,
     pub tut_step: Option<usize>,
     /// Target whose autopilot cost was shown: the next G engages the economy plan.
     pub ap_pending: Option<usize>,
@@ -576,6 +578,7 @@ impl Game {
             help_for: None,
             ctx_menu: None,
             rear_view: false,
+            land_confirm: None,
             tut_step: None,
             ap_pending: None,
             tut_keys: Vec::new(),
@@ -838,6 +841,7 @@ impl Game {
                 Event::Toppled { .. }
                 | Event::PilotDone(_)
                 | Event::PilotFailed(_)
+                | Event::LandingEnded(_)
                 | Event::TooHeavy
                 | Event::HardDock { .. } => {}
                 Event::OutOfFuel => self.say("CARBURANT EPUISE"),
@@ -1743,6 +1747,8 @@ impl Game {
             // Zoom in: from the map of the region to the grid of the ground, on foot.
             KeyCode::KeyE | KeyCode::Equal | KeyCode::NumpadAdd => self.open_expedition(),
             KeyCode::KeyF => self.open_codex(Screen::Surface),
+            // Land on the chosen cell (Enter, outside the BIOSPHERE layer, or the word on screen).
+            KeyCode::Enter | KeyCode::KeyL => self.land_from_surface(),
             KeyCode::Escape | KeyCode::F8 => self.screen = Screen::Flight,
             _ => {}
         }

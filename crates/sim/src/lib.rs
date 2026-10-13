@@ -38,6 +38,7 @@ pub mod geo;
 pub mod history;
 pub mod incidents;
 pub mod intrusion;
+pub mod land_cmd;
 pub mod landing;
 pub mod lanes;
 pub mod law;
@@ -243,6 +244,8 @@ pub enum Event {
     /// A pilot (landing, ascent, docking) finished, or was taken back by the player.
     PilotDone(&'static str),
     PilotFailed(&'static str),
+    /// The ATTERRIR command ended (the ship stands on the world, or the computer gave up).
+    LandingEnded(String),
     /// The engines cannot lift the ship off the ground.
     TooHeavy,
     /// The port was captured too fast or crooked.
@@ -363,6 +366,8 @@ pub struct Sim {
     pub ground: Option<landing::Ground>,
     pub site: Option<landing::Site>,
     pub pilot: Option<landing::Pilot>,
+    /// The landing the ATTERRIR command is carrying out (not saved).
+    pub land_goal: Option<land_cmd::LandGoal>,
     /// The autopilot's plan for this step: (target, position and velocity relative to it).
     pub ride: Option<(usize, Vec3, Vec3)>,
     /// How every faction, people, cartel, contact and company feels about the player.
@@ -567,6 +572,7 @@ impl Sim {
             ground: None,
             site: None,
             pilot: None,
+            land_goal: None,
             ride: None,
             relations: relations::Relations::default(),
             surprises: surprises::SurpriseState::default(),
@@ -1286,6 +1292,7 @@ impl Sim {
         if riding.is_none() {
             self.collide();
         }
+        self.land_tick();
         self.charge_tick(dt);
         self.scan_tick(dt);
         self.expire_contracts();

@@ -76,9 +76,15 @@ fn controls(g: &Game) -> Vec<Entry> {
             Act::Key(KeyCode::Numpad3),
         ),
         (
-            "PILOTE SOL / STATION",
+            "ATTERRIR (CIBLE)",
             "PAV4".into(),
-            Act::Key(KeyCode::Numpad4),
+            Act::Call(Game::menu_land, 0),
+        ),
+        ("DECOLLER", "PAV4".into(), Act::Call(Game::menu_takeoff, 0)),
+        (
+            "DEBARQUER A PIED ICI",
+            "FIN".into(),
+            Act::Call(Game::menu_disembark, 0),
         ),
         ("SITE PLAT", "PAV7".into(), Act::Key(KeyCode::Numpad7)),
         ("TANGAGE HAUT (MAINT.)", nm(mv[0]), Act::Hold(mv[0])),

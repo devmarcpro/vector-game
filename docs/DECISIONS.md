@@ -305,3 +305,4 @@ des vaisseaux a torche de fusion/antimatiere (impulsion specifique 150 a 340 ks,
 jours et un systeme en quelques semaines, ce qui rend le jeu jouable sans temps mort. Diviser les
 impulsions par dix ramenerait la portee a 0,7 UA. L'interstellaire passe par les sauts FTL. Les moteurs
 exotiques (Bussard, antimatiere) restent sous 0,1 c, le delta-v s'affiche en km/s partout.
+- ATTERRIR : une seule commande de haut niveau qui s'appuie sur la navigation automatique existante (pas de second planificateur) et sur le pilote d'atterrissage ; tout est interruptible (toute commande manuelle met le plan en pause et le dit) ; le site est choisi avant la descente (jamais la mer) ; l'etat pose n'est pas sauvegarde mais retrouve au chargement par la geometrie (repose sur le sol, au repos par rapport a lui) pour ne pas toucher au format ; un transfert trop rapide pour le calculateur se termine par un arret propre avec la raison (la coque est intacte) plutot que par un plongeon.

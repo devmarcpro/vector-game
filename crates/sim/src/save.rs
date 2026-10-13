@@ -571,6 +571,7 @@ impl Sim {
         // Positions of the traffic derive from the clock and the bodies: only now are both right.
         sim.place_npcs();
         sim.update_ref();
+        sim.rest_on_ground_after_load();
         Ok(sim)
     }
 }

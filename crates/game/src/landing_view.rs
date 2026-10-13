@@ -3,13 +3,14 @@
 //! (radar altitude, speeds, time to impact, the altitude of the suicide burn), clickable words for
 //! the gear, the throttle and the attitude modes, and the link between the ground the cockpit
 //! draws and the ground the ship touches (one terrain function serves both).
-use crate::game::Game;
+use crate::game::{Game, Screen};
 use crate::hud::{View, AMBER, DIM, GREEN, RED};
 use crate::mouse::Act;
 use crate::terrain::Terrain;
 use vector_core::{Mat3, Vec3};
 use vector_render::{Camera, Framebuffer};
 use vector_sim::landing::{self, Ground, PilotKind, Sas, Site};
+use vector_world::BodyKind;
 use winit::keyboard::KeyCode;
 
 /// The ground is sampled for the physics under this height (m).
@@ -156,42 +157,138 @@ impl Game {
         ))
     }
 
-    /// The pilot key: take the controls back, or hand the ship to the pilot that fits the moment
-    /// (ascent when landed, landing when low over a world, docking near a station).
+    /// The world the ATTERRIR command means now: the target if it is a world, else the world the
+    /// ship is over.
+    pub fn land_target(&self) -> Option<usize> {
+        let world = |i: usize| {
+            matches!(
+                self.sim.bodies[i].kind,
+                BodyKind::Planet(_) | BodyKind::Moon(_) | BodyKind::Asteroid(_)
+            )
+        };
+        [self.sim.target, self.sim.ref_body]
+            .into_iter()
+            .flatten()
+            .find(|&i| world(i))
+    }
+
+    /// ATTERRIR: from anywhere, the ship plans the approach, comes down and stands on the ground
+    /// of `body` (at map cell `cell`, or where it is best). The warnings are shown first; asking
+    /// again confirms. Refusals say why.
+    pub fn land_request(&mut self, body: usize, cell: Option<(usize, usize)>) {
+        let brief = self.sim.land_brief(body, cell);
+        if let Some(why) = &brief.refusal {
+            self.say(format!("ATTERRISSAGE REFUSE : {why}"));
+            self.land_confirm = None;
+            return;
+        }
+        let key = (body, cell);
+        if !brief.warnings.is_empty() && self.land_confirm != Some(key) {
+            for w in &brief.warnings {
+                self.say(w.clone());
+            }
+            self.say(format!(
+                "ATTERRIR SUR {} : {:.0} M/S SUR {:.0} DISPONIBLES ({:.0} % DU RESERVOIR) : REPETEZ POUR CONFIRMER",
+                brief.name, brief.dv_need, brief.dv_have, brief.fuel_pct
+            ));
+            self.land_confirm = Some(key);
+            return;
+        }
+        self.land_confirm = None;
+        match self.sim.land_command(body, cell) {
+            Ok(b) => {
+                self.say(format!(
+                    "ATTERRISSAGE SUR {} ENGAGE : {:.0} M/S, {:.0} % DU RESERVOIR (UNE COMMANDE ET VOUS AVEZ LA MAIN)",
+                    b.name, b.dv_need, b.fuel_pct
+                ));
+                self.rear_view = false;
+            }
+            Err(e) => self.say(format!("ATTERRISSAGE REFUSE : {e}")),
+        }
+    }
+
+    /// The word ATTERRIR of the menus and the cockpit: land on the target world, or take the
+    /// landing back when it is under way.
+    pub fn menu_land(&mut self, _: usize) {
+        if self.sim.land_goal.is_some() {
+            self.sim.cancel_landing();
+            self.handle_events();
+            return;
+        }
+        if self.sim.landed_on().is_some() {
+            self.say("DEJA AU SOL : DECOLLER OU DEBARQUER");
+            return;
+        }
+        match self.land_target() {
+            Some(b) => self.land_request(b, None),
+            None => self.say("CIBLEZ UN MONDE (TAB / MAJ+TAB) POUR ATTERRIR"),
+        }
+    }
+
+    /// ATTERRIR ICI on the cell chosen on the surface map.
+    pub fn land_from_surface(&mut self) {
+        let Some(map) = self.surf.as_ref() else {
+            return;
+        };
+        let (body, cx, cy) = (map.body, self.surf_cx, self.surf_cy);
+        if map.surface.is_sea(cx, cy) || map.surface.is_lake(cx, cy) {
+            self.say("PAS DE TERRE FERME ICI : CHOISISSEZ UNE CASE SECHE");
+            return;
+        }
+        self.land_request(body, Some((cx, cy)));
+        if self.sim.land_goal.is_some() {
+            self.screen = Screen::Flight;
+        }
+    }
+
+    pub fn menu_takeoff(&mut self, _: usize) {
+        match self.sim.engage_pilot(PilotKind::Ascend) {
+            Ok(m) => self.say(m),
+            Err(e) => self.say(e.to_uppercase()),
+        }
+    }
+
+    /// DEBARQUER: the squad steps out at the point where the ship stands.
+    pub fn menu_disembark(&mut self, _: usize) {
+        match self.sim.disembark_here() {
+            Ok(()) => self.screen = Screen::Rogue,
+            Err(e) => self.say(e.to_uppercase()),
+        }
+    }
+
+    /// The pilot key: the one command that fits the moment. Landed: take off. Landing under way
+    /// or a pilot flying: take the controls back. Over or near a world (or with one targeted):
+    /// land on it from wherever the ship is. Near a station: dock.
     pub fn pilot_key(&mut self) {
         if self.sim.pilot.is_some() {
             self.sim.cancel_pilot();
             self.handle_events();
             return;
         }
-        let kind = if self.sim.landed_on().is_some() {
-            PilotKind::Ascend
-        } else if self.sim.surface_state().is_some() {
-            if self.sim.site.is_none() {
-                if let Ok(m) = self.find_site() {
-                    self.say(m);
-                }
-            }
-            PilotKind::Land
-        } else if self
+        if self.sim.land_goal.is_some() {
+            self.menu_land(0);
+            return;
+        }
+        if self.sim.landed_on().is_some() {
+            self.menu_takeoff(0);
+            return;
+        }
+        if let Some(b) = self.land_target() {
+            self.land_request(b, None);
+            return;
+        }
+        if self
             .sim
             .nearest_station()
             .is_some_and(|(_, r)| r < 20_000.0)
         {
-            PilotKind::Dock
-        } else {
-            self.say("AUCUN PILOTE POSSIBLE ICI (SOL OU STATION A PORTEE REQUIS)");
-            return;
-        };
-        match self.sim.engage_pilot(kind) {
-            Ok(m) => {
-                if kind == PilotKind::Land {
-                    self.rear_view = true;
-                }
-                self.say(m)
+            match self.sim.engage_pilot(PilotKind::Dock) {
+                Ok(m) => self.say(m),
+                Err(e) => self.say(e.to_uppercase()),
             }
-            Err(e) => self.say(e.to_uppercase()),
+            return;
         }
+        self.say("AUCUN MONDE CIBLE NI STATION A PORTEE : CIBLEZ UN MONDE (TAB)");
     }
 
     /// World-to-view rotation of the cockpit camera: ahead, or astern when the pilot looks at the
@@ -297,6 +394,11 @@ impl Game {
             }
             E::PilotFailed(s) => {
                 self.say(format!("{s} : LE PILOTE LACHE LES COMMANDES"));
+                self.timescale = 1.0;
+            }
+            E::LandingEnded(m) => {
+                self.say(m.clone());
+                self.note(m.to_lowercase());
                 self.timescale = 1.0;
             }
             E::TooHeavy => self.say("POUSSEE INSUFFISANTE : LE VAISSEAU NE DECOLLE PAS"),
@@ -759,5 +861,67 @@ mod tests {
         g.sim.time += 3600.0;
         let p1 = g.sim.site_position().expect("position");
         assert!((p1 - p0).length() > 1.0);
+    }
+
+    #[test]
+    fn the_land_command_from_the_menu_puts_the_ship_on_the_ground() {
+        let mut g = game();
+        g.sim.reveal_all();
+        let i = (0..g.sim.bodies.len())
+            .filter(|&i| g.sim.landable(i) && g.sim.system.bodies[i].pressure < 0.05)
+            .find(|&i| g.sim.bodies[i].radius > 4.0e5 && g.sim.system.bodies[i].orbit.is_some())
+            .expect("a world");
+        let b = g.sim.bodies[i].clone();
+        let r = b.radius * 1.04;
+        g.sim.ship.pos = b.pos + Vec3::new(r, 0.0, 0.0);
+        g.sim.ship.vel = b.vel + Vec3::new(0.0, 0.0, (b.gm / r).sqrt());
+        g.sim.update_ref_pub();
+        g.tut_step = None;
+        // Nothing targeted and nothing under the ship but a world: the command names it.
+        g.sim.target = Some(i);
+        g.key(KeyCode::Numpad4, None, true);
+        if g.sim.land_goal.is_none() {
+            // The warnings came first: asking again confirms.
+            g.key(KeyCode::Numpad4, None, true);
+        }
+        assert!(g.sim.land_goal.is_some(), "{:?}", g.messages);
+        for _ in 0..4000 {
+            g.advance(1.0);
+            if g.sim.land_goal.is_none() {
+                break;
+            }
+        }
+        assert_eq!(g.sim.landed_on(), Some(i), "{:?}", g.messages);
+        assert!(
+            g.messages.iter().any(|m| m.starts_with("POSE SUR")),
+            "{:?}",
+            g.messages
+        );
+        assert!(g
+            .sim
+            .ground_status()
+            .is_some_and(|s| s.starts_with("AU SOL")));
+        // On the ground the same key takes off, and the menu offers to step out.
+        g.key(KeyCode::Numpad4, None, true);
+        assert!(g.sim.pilot.is_some(), "the ascent pilot flies");
+    }
+
+    #[test]
+    fn a_landing_on_a_giant_or_a_station_is_refused_in_words() {
+        let mut g = game();
+        let st = g
+            .sim
+            .bodies
+            .iter()
+            .position(|b| b.kind == BodyKind::Station)
+            .expect("station");
+        g.sim.docked = None;
+        g.land_request(st, None);
+        assert!(
+            g.messages.iter().any(|m| m.contains("REFUSE")),
+            "{:?}",
+            g.messages
+        );
+        assert!(g.sim.land_goal.is_none());
     }
 }

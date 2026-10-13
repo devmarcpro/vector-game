@@ -290,7 +290,12 @@ fn landing_scene(g: &mut Game, stage: &str) {
     g.sim.reveal_all();
     let i = (0..g.sim.bodies.len())
         .filter(|&i| g.sim.landable(i))
-        .max_by(|&a, &b| g.sim.bodies[a].radius.total_cmp(&g.sim.bodies[b].radius))
+        .max_by(|&a, &b| {
+            let thin = |i: usize| g.sim.system.bodies[i].pressure < 0.05;
+            thin(a)
+                .cmp(&thin(b))
+                .then(g.sim.bodies[a].radius.total_cmp(&g.sim.bodies[b].radius))
+        })
         .expect("a solid world");
     let b = g.sim.bodies[i].clone();
     let up = Vec3::new(0.3, 0.8, 0.5).normalized();
@@ -309,6 +314,43 @@ fn landing_scene(g: &mut Game, stage: &str) {
     }
     g.sim.gear_down = true;
     g.sim.ship.assist = false;
+    if stage.starts_with("command") {
+        // From a low orbit: the ATTERRIR command, flown to the end.
+        let r = b.radius * 1.04;
+        // On the side of the world that faces the star, so that the ground is lit.
+        let sun = (b.pos * -1.0).normalized();
+        let tangent = sun.cross(Vec3::new(0.0, 1.0, 0.0)).normalized();
+        // Starting a third of a turn before the sub-solar point: the sun stays high but oblique.
+        let a: f64 = -0.6;
+        let d1 = sun * a.cos() + tangent * a.sin();
+        let v1 = tangent * a.cos() - sun * a.sin();
+        g.sim.ship.pos = b.pos + d1 * r;
+        g.sim.ship.vel = b.vel + v1 * (b.gm / r).sqrt();
+        g.sim.ship.rot = Mat3::IDENTITY;
+        g.sim.gear_down = false;
+        g.sim.ship.assist = true;
+        g.sim.update_ref_pub();
+        g.menu_land(0);
+        if g.sim.land_goal.is_none() {
+            g.menu_land(0);
+        }
+        for _ in 0..60_000 {
+            g.advance(0.1);
+            if g.sim.land_goal.is_none() {
+                break;
+            }
+        }
+        g.advance(2.0);
+        g.timescale = 1.0;
+        if stage == "command_ext" {
+            g.tut_step = None;
+            g.key(KeyCode::Delete, None, true);
+            g.advance(0.2);
+        } else {
+            g.rear_view = true;
+        }
+        return;
+    }
     match stage {
         "descent" => {
             g.sim.ship.vel = g.sim.ship.vel - up * 45.0;

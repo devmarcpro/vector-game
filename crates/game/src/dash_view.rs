@@ -483,10 +483,13 @@ fn draw_ship(fb: &mut Framebuffer, g: &Game, (x, y, w, h): Rect) {
         AMBER,
     );
     r += 1;
+    let mut state_buf = String::new();
     let state = if s.rogue.is_some() {
         "A PIED"
     } else if s.docked.is_some() {
         "AMARRE"
+    } else if let Some(g) = s.ground_status() {
+        return_state(&mut state_buf, g)
     } else if s.parked.is_some() {
         "POSE AU SOL"
     } else if s.in_transit() {
@@ -2256,4 +2259,10 @@ mod game_tests {
         g.sim.time += 2.0;
         assert_ne!(g.alerts(), a, "a second later: rebuilt");
     }
+}
+
+/// Keep a computed state in `buf` and borrow it (the dashboard line is built from `&str`s).
+fn return_state(buf: &mut String, s: String) -> &str {
+    *buf = s;
+    buf.as_str()
 }

@@ -39,6 +39,7 @@ mod project_view;
 mod proto_view;
 mod rogue_view;
 mod scene;
+mod scene_render;
 mod script;
 mod settings;
 mod ship_model;
@@ -364,6 +365,11 @@ fn snapshot(path: &str, scene: &str, data: Arc<GameData>) {
         }
     }
     match scene {
+        // The shared scene of the cockpit and of the third-person view ("ext_sc_station").
+        s if s.starts_with("sc_") => {
+            scene_render::setup(&mut g, &s[3..]);
+            g.ext_view = ext;
+        }
         "map" => {
             g.map = true;
             g.cycle_target(|_| true);
@@ -1821,6 +1827,30 @@ fn snapshot(path: &str, scene: &str, data: Arc<GameData>) {
     }
 }
 
+/// Cockpit and third-person view over the same five situations (ms per frame).
+fn bench_scene(data: Arc<GameData>) {
+    for kind in ["empty", "station", "ships20", "belt", "planet"] {
+        for ext in [false, true] {
+            let mut g = Game::new(data.clone(), DEFAULT_SEED);
+            g.new_game(DEFAULT_SEED);
+            scene_render::setup(&mut g, kind);
+            g.ext_view = ext;
+            let mut fb = Framebuffer::new(1280, 720);
+            draw_frame(&mut fb, &g);
+            let t = Instant::now();
+            for _ in 0..100 {
+                draw_frame(&mut fb, &g);
+            }
+            let frame = t.elapsed().as_secs_f64() * 10.0;
+            let objects = scene_render::bench_objects(&g, &mut fb, ext, 100);
+            println!(
+                "{kind:8} {}: {frame:.2} ms/frame (objets seuls {objects:.2} ms)",
+                if ext { "externe" } else { "cockpit" },
+            );
+        }
+    }
+}
+
 fn bench(data: Arc<GameData>) {
     let mut g = Game::new(data, DEFAULT_SEED);
     g.new_game(DEFAULT_SEED);
@@ -2083,6 +2113,10 @@ fn main() {
                 std::process::exit(2);
             }
         }
+        return;
+    }
+    if args.iter().any(|a| a == "--bench-scene") {
+        bench_scene(data);
         return;
     }
     if args.iter().any(|a| a == "--bench") {

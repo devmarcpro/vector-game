@@ -1550,6 +1550,13 @@ impl Zbuf {
             inv: vec![0.0; w * h],
         }
     }
+
+    /// Empty for a frame of `w` x `h`, reusing the memory.
+    pub fn reset(&mut self, w: usize, h: usize) {
+        self.w = w;
+        self.inv.clear();
+        self.inv.resize(w * h, 0.0);
+    }
 }
 
 fn shade(base: u32, k: f32) -> u32 {
@@ -1610,33 +1617,34 @@ pub fn draw(
                     lit
                 }
             };
-            // To view space and clip against the near plane.
+            // To view space and clip against the near plane (at most four corners).
             let vs = [cam.to_view(w[0]), cam.to_view(w[1]), cam.to_view(w[2])];
-            let mut poly: Vec<Vec3> = Vec::with_capacity(4);
+            let mut poly = [Vec3::ZERO; 4];
+            let mut n = 0;
             for i in 0..3 {
                 let (a, b) = (vs[i], vs[(i + 1) % 3]);
                 if a.z >= NEAR {
-                    poly.push(a);
+                    poly[n] = a;
+                    n += 1;
                 }
                 if (a.z >= NEAR) != (b.z >= NEAR) {
                     let k = (NEAR - a.z) / (b.z - a.z);
-                    poly.push(a + (b - a) * k);
+                    poly[n] = a + (b - a) * k;
+                    n += 1;
                 }
             }
-            if poly.len() < 3 {
+            if n < 3 {
                 continue;
             }
-            let pr: Vec<(f32, f32, f32)> = poly
-                .iter()
-                .map(|v| {
-                    (
-                        (cx + v.x / v.z * focal) as f32,
-                        (cy - v.y / v.z * focal) as f32,
-                        (1.0 / v.z) as f32,
-                    )
-                })
-                .collect();
-            for i in 1..pr.len() - 1 {
+            let mut pr = [(0.0f32, 0.0f32, 0.0f32); 4];
+            for (o, v) in pr.iter_mut().zip(&poly[..n]) {
+                *o = (
+                    (cx + v.x / v.z * focal) as f32,
+                    (cy - v.y / v.z * focal) as f32,
+                    (1.0 / v.z) as f32,
+                );
+            }
+            for i in 1..n - 1 {
                 fill(fb, zb, [pr[0], pr[i], pr[i + 1]], col, t.add);
             }
         }
@@ -1662,39 +1670,58 @@ fn fill(fb: &mut Framebuffer, zb: &mut Zbuf, p: [(f32, f32, f32); 3], col: u32, 
     });
 }
 
-/// Visit every pixel of a screen triangle (x, y, 1/z per corner) with its interpolated 1/z.
+/// Visit every pixel of a screen triangle (x, y, 1/z per corner) with its interpolated 1/z: one
+/// span per row between the two edges that cross it, 1/z stepped along the span.
 pub fn raster_tri(p: [(f32, f32, f32); 3], w: usize, h: usize, mut f: impl FnMut(i32, i32, f32)) {
-    let area = (p[1].0 - p[0].0) * (p[2].1 - p[0].1) - (p[1].1 - p[0].1) * (p[2].0 - p[0].0);
-    if area.abs() < 1e-6 {
+    let [mut a, mut b, mut c] = p;
+    if a.1 > b.1 {
+        std::mem::swap(&mut a, &mut b);
+    }
+    if b.1 > c.1 {
+        std::mem::swap(&mut b, &mut c);
+    }
+    if a.1 > b.1 {
+        std::mem::swap(&mut a, &mut b);
+    }
+    if c.1 - a.1 < 1e-6 || !(c.1 - a.1).is_finite() {
         return;
     }
-    let lo = |g: &dyn Fn(&(f32, f32, f32)) -> f32| {
-        p.iter().map(g).fold(f32::MAX, f32::min).floor().max(0.0) as i32
-    };
-    let hi = |g: &dyn Fn(&(f32, f32, f32)) -> f32, m: usize| {
-        p.iter()
-            .map(g)
-            .fold(f32::MIN, f32::max)
-            .ceil()
-            .min(m as f32 - 1.0) as i32
-    };
-    let (min_x, max_x) = (lo(&|q| q.0), hi(&|q| q.0, w));
-    let (min_y, max_y) = (lo(&|q| q.1), hi(&|q| q.1, h));
-    if min_x > max_x || min_y > max_y {
-        return;
-    }
-    let inv_area = 1.0 / area;
-    for y in min_y..=max_y {
+    let y0 = (a.1 - 0.5).ceil().max(0.0) as i32;
+    let y1 = (c.1 - 0.5).floor().min(h as f32 - 1.0) as i32;
+    let long = 1.0 / (c.1 - a.1);
+    let upper = 1.0 / (b.1 - a.1).max(1e-9);
+    let lower = 1.0 / (c.1 - b.1).max(1e-9);
+    let wmax = w as f32 - 1.0;
+    for y in y0..=y1 {
         let py = y as f32 + 0.5;
-        for x in min_x..=max_x {
-            let px = x as f32 + 0.5;
-            let w0 = ((p[1].0 - px) * (p[2].1 - py) - (p[1].1 - py) * (p[2].0 - px)) * inv_area;
-            let w1 = ((p[2].0 - px) * (p[0].1 - py) - (p[2].1 - py) * (p[0].0 - px)) * inv_area;
-            let w2 = 1.0 - w0 - w1;
-            if w0 < -0.0001 || w1 < -0.0001 || w2 < -0.0001 {
-                continue;
-            }
-            f(x, y, w0 * p[0].2 + w1 * p[1].2 + w2 * p[2].2);
+        let t = (py - a.1) * long;
+        let (xl, zl) = (a.0 + (c.0 - a.0) * t, a.2 + (c.2 - a.2) * t);
+        let (xs, zs) = if py < b.1 {
+            let t = (py - a.1) * upper;
+            (a.0 + (b.0 - a.0) * t, a.2 + (b.2 - a.2) * t)
+        } else {
+            let t = (py - b.1) * lower;
+            (b.0 + (c.0 - b.0) * t, b.2 + (c.2 - b.2) * t)
+        };
+        let (x0, z0, x1, z1) = if xl <= xs {
+            (xl, zl, xs, zs)
+        } else {
+            (xs, zs, xl, zl)
+        };
+        let xa = (x0 - 0.5).ceil().max(0.0);
+        let xb = (x1 - 0.5).floor().min(wmax);
+        if xa > xb {
+            continue;
+        }
+        let dz = if x1 - x0 > 1e-6 {
+            (z1 - z0) / (x1 - x0)
+        } else {
+            0.0
+        };
+        let mut z = z0 + dz * (xa + 0.5 - x0);
+        for x in xa as i32..=xb as i32 {
+            f(x, y, z);
+            z += dz;
         }
     }
 }
@@ -1832,89 +1859,176 @@ pub fn blueprint_view(
     }
 }
 
-/// A solid space station of radius `r`: a hub, a turning ring on spokes and solar vanes.
-pub fn station_model(r: f64, turn: f64) -> Model {
+/// A solid space station of radius `r` in two parts, built once: the fixed hub with its solar
+/// vanes, and the ring on its spokes (turn it about the z axis of the model to spin it).
+pub fn station_parts(r: f64) -> (Model, Model) {
     let r = r as f32;
+    let fixed = {
+        let mut b = B {
+            tris: Vec::new(),
+            lines: Vec::new(),
+            flame: 0.0,
+        };
+        b.cyl(
+            [0.0, 0.0, -0.9 * r],
+            [0.0, 0.0, 0.9 * r],
+            0.22 * r,
+            0.22 * r,
+            12,
+            0x00A8_B0B8,
+            0.0,
+            true,
+        );
+        b.cyl(
+            [0.0, 0.0, 0.9 * r],
+            [0.0, 0.0, 1.05 * r],
+            0.26 * r,
+            0.14 * r,
+            12,
+            0x00C8_B040,
+            0.0,
+            true,
+        );
+        for s in [-1.0f32, 1.0] {
+            for f in 0..3 {
+                b.abox(
+                    [s * (0.4 + 0.3 * f as f32) * r, 0.0, -0.75 * r],
+                    [0.13 * r, 0.01 * r, 0.14 * r],
+                    0x0020_3C78,
+                    0.0,
+                );
+            }
+        }
+        b
+    };
+    let ring = {
+        let mut b = B {
+            tris: Vec::new(),
+            lines: Vec::new(),
+            flame: 0.0,
+        };
+        let n = 24;
+        let at = |k: usize| {
+            let t = std::f32::consts::TAU * k as f32 / n as f32;
+            [0.8 * r * t.cos(), 0.8 * r * t.sin(), 0.0]
+        };
+        for k in 0..n {
+            b.cyl(
+                at(k),
+                at(k + 1),
+                0.09 * r,
+                0.09 * r,
+                6,
+                0x0090_98A0,
+                0.0,
+                true,
+            );
+            if k % 2 == 0 {
+                b.abox(at(k), [0.07 * r, 0.07 * r, 0.12 * r], 0x00D8_E0A0, 0.8);
+            }
+        }
+        for k in 0..4 {
+            let t = std::f32::consts::FRAC_PI_2 * k as f32;
+            b.cyl(
+                [0.0, 0.0, 0.0],
+                [0.8 * r * t.cos(), 0.8 * r * t.sin(), 0.0],
+                0.04 * r,
+                0.04 * r,
+                5,
+                0x0070_7880,
+                0.0,
+                true,
+            );
+        }
+        b
+    };
+    let part = |b: B| Model {
+        tris: b.tris,
+        lines: b.lines,
+        radius: r * 1.1,
+        foot_y: -r,
+        flame_len: 0.0,
+    };
+    (part(fixed), part(ring))
+}
+
+/// A rock: an icosphere whose corners are pushed in and out by `seed`, flat shaded in `col`,
+/// of radius 1 (scale it by the pose). One per (seed, colour), built once.
+pub fn rock_model(seed: u64, col: u32) -> Model {
+    let t = (1.0 + 5.0f32.sqrt()) / 2.0;
+    let mut v: Vec<V> = vec![
+        [-1.0, t, 0.0],
+        [1.0, t, 0.0],
+        [-1.0, -t, 0.0],
+        [1.0, -t, 0.0],
+        [0.0, -1.0, t],
+        [0.0, 1.0, t],
+        [0.0, -1.0, -t],
+        [0.0, 1.0, -t],
+        [t, 0.0, -1.0],
+        [t, 0.0, 1.0],
+        [-t, 0.0, -1.0],
+        [-t, 0.0, 1.0],
+    ];
+    let mut f: Vec<[usize; 3]> = vec![
+        [0, 11, 5],
+        [0, 5, 1],
+        [0, 1, 7],
+        [0, 7, 10],
+        [0, 10, 11],
+        [1, 5, 9],
+        [5, 11, 4],
+        [11, 10, 2],
+        [10, 7, 6],
+        [7, 1, 8],
+        [3, 9, 4],
+        [3, 4, 2],
+        [3, 2, 6],
+        [3, 6, 8],
+        [3, 8, 9],
+        [4, 9, 5],
+        [2, 4, 11],
+        [6, 2, 10],
+        [8, 6, 7],
+        [9, 8, 1],
+    ];
+    // One subdivision: 80 faces.
+    let mut mid = std::collections::HashMap::new();
+    let mut half = |v: &mut Vec<V>, a: usize, b: usize| -> usize {
+        let key = (a.min(b), a.max(b));
+        *mid.entry(key).or_insert_with(|| {
+            v.push(add(v[a], v[b]));
+            v.len() - 1
+        })
+    };
+    let mut g = Vec::new();
+    for [a, b, c] in f.drain(..) {
+        let (ab, bc, ca) = (half(&mut v, a, b), half(&mut v, b, c), half(&mut v, c, a));
+        g.extend([[a, ab, ca], [b, bc, ab], [c, ca, bc], [ab, bc, ca]]);
+    }
+    let pts: Vec<V> = v
+        .iter()
+        .enumerate()
+        .map(|(i, p)| {
+            let d = nrm(*p);
+            let k = 0.72 + 0.4 * hash01(seed, i as i64, 5);
+            mul(d, k)
+        })
+        .collect();
     let mut b = B {
         tris: Vec::new(),
         lines: Vec::new(),
         flame: 0.0,
     };
-    b.cyl(
-        [0.0, 0.0, -0.9 * r],
-        [0.0, 0.0, 0.9 * r],
-        0.22 * r,
-        0.22 * r,
-        12,
-        0x00A8_B0B8,
-        0.0,
-        true,
-    );
-    b.cyl(
-        [0.0, 0.0, 0.9 * r],
-        [0.0, 0.0, 1.05 * r],
-        0.26 * r,
-        0.14 * r,
-        12,
-        0x00C8_B040,
-        0.0,
-        true,
-    );
-    let n = 24;
-    let ring = |k: usize| {
-        let t = std::f32::consts::TAU * k as f32 / n as f32 + turn as f32;
-        [0.8 * r * t.cos(), 0.8 * r * t.sin(), 0.0]
-    };
-    for k in 0..n {
-        b.cyl(
-            ring(k),
-            ring(k + 1),
-            0.09 * r,
-            0.09 * r,
-            6,
-            0x0090_98A0,
-            0.0,
-            true,
-        );
-        if k % 2 == 0 {
-            let p = ring(k);
-            b.abox(
-                add(p, [0.0, 0.0, 0.0]),
-                [0.07 * r, 0.07 * r, 0.12 * r],
-                0x00D8_E0A0,
-                0.8,
-            );
-        }
+    for (n, [x, y, z]) in g.iter().enumerate() {
+        let shade = 0.85 + 0.3 * hash01(seed, n as i64, 9);
+        b.tri(pts[*x], pts[*y], pts[*z], scale_col(col, shade), 0.0);
     }
-    for k in 0..4 {
-        let t = std::f32::consts::FRAC_PI_2 * k as f32 + turn as f32;
-        b.cyl(
-            [0.0, 0.0, 0.0],
-            [0.8 * r * t.cos(), 0.8 * r * t.sin(), 0.0],
-            0.04 * r,
-            0.04 * r,
-            5,
-            0x0070_7880,
-            0.0,
-            true,
-        );
-    }
-    for s in [-1.0f32, 1.0] {
-        for f in 0..3 {
-            b.abox(
-                [s * (0.4 + 0.3 * f as f32) * r, 0.0, -0.75 * r],
-                [0.13 * r, 0.01 * r, 0.14 * r],
-                0x0020_3C78,
-                0.0,
-            );
-        }
-    }
-    let radius = r * 1.1;
     Model {
         tris: b.tris,
-        lines: b.lines,
-        radius,
-        foot_y: -r,
+        lines: Vec::new(),
+        radius: 1.15,
+        foot_y: -1.0,
         flame_len: 0.0,
     }
 }
@@ -2175,8 +2289,9 @@ mod tests {
     #[test]
     fn stations_and_npcs_have_models() {
         let d = data();
-        let s = station_model(500.0, 0.3);
-        assert!(s.tris.len() > 100);
+        let (hub, ring) = station_parts(500.0);
+        assert!(hub.tris.len() + ring.tris.len() > 100);
+        assert!(rock_model(3, 0x00A0_9078).tris.len() == 80);
         for role in ["trader", "miner", "pirate", "patrol"] {
             let des = npc_design(&d, role, 3);
             let m = build(&d, &des, &State::idle(&des));

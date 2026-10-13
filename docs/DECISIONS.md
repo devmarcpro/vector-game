@@ -305,3 +305,11 @@ des vaisseaux a torche de fusion/antimatiere (impulsion specifique 150 a 340 ks,
 jours et un systeme en quelques semaines, ce qui rend le jeu jouable sans temps mort. Diviser les
 impulsions par dix ramenerait la portee a 0,7 UA. L'interstellaire passe par les sauts FTL. Les moteurs
 exotiques (Bussard, antimatiere) restent sous 0,1 c, le delta-v s'affiche en km/s partout.
+
+## Performance: regle de projet
+
+Le jeu doit etre hyper optimise (demande explicite). Budget: >= 60 images/s en release a 1280x720 (>= 30 au
+pire cas), cout de simulation borne par pas, aucune allocation par image dans les boucles de rendu, caches
+avec invalidation correcte (textures de planete, cartes de surface, catalogues d'etoiles par secteur), rendu
+logiciel en bandes paralleles (std::thread::scope, sans dependance). Toute fonctionnalite livre sa mesure
+(profileur `--profile`, benchmarks headless, docs/PERFORMANCE.md) et ne fait pas regresser le budget.

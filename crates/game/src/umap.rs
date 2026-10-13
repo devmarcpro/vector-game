@@ -282,7 +282,7 @@ pub fn draw_backdrop(fb: &mut Framebuffer, g: &Game, cam: &Cam) {
     g.umap.ensure(&s.galaxy, s.here_pos, zoom);
     let c = g.umap.caches.borrow();
     // Far stars of the galaxy: warm yellow in the middle, blue-white on the rim.
-    let a = fade(zoom, 1.0e-5, 0.3).max(if zoom < 0.3 { 0.0 } else { 0.0 });
+    let a = fade(zoom, 1.0e-5, 0.3);
     let a = if zoom < 1.0e-5 { 0.6 } else { a };
     if a > 0.0 {
         for p in &c.cloud {
@@ -498,7 +498,8 @@ impl Game {
 
     pub fn umap_drag(&mut self, dx: i32, dy: i32) {
         self.umap.yaw += f64::from(dx) * 0.01;
-        self.umap.pitch = (self.umap.pitch + f64::from(dy) * 0.01).clamp(0.05, 1.5707);
+        self.umap.pitch =
+            (self.umap.pitch + f64::from(dy) * 0.01).clamp(0.05, std::f64::consts::FRAC_PI_2);
     }
 
     /// Centre the camera on the selected star (or galaxy at the far scales).
@@ -591,7 +592,7 @@ impl Game {
             K::Slash | K::KeyS => self.umap.search = Some(String::new()),
             K::ArrowLeft => self.umap.yaw -= 0.15,
             K::ArrowRight => self.umap.yaw += 0.15,
-            K::PageUp => self.umap.pitch = (self.umap.pitch + 0.1).min(1.5707),
+            K::PageUp => self.umap.pitch = (self.umap.pitch + 0.1).min(std::f64::consts::FRAC_PI_2),
             K::PageDown => self.umap.pitch = (self.umap.pitch - 0.1).max(0.05),
             _ => return false,
         }
@@ -607,7 +608,11 @@ mod tests {
     fn the_target_stays_at_the_centre_at_every_scale_and_angle() {
         let t = [123.0, -45.0, 6789.0];
         for z in PRESETS.iter().chain([ZOOM_MIN, ZOOM_MAX].iter()) {
-            for (yaw, pitch) in [(0.0, 1.25), (2.0, 0.05), (-3.0, 1.5707)] {
+            for (yaw, pitch) in [
+                (0.0, 1.25),
+                (2.0, 0.05),
+                (-3.0, std::f64::consts::FRAC_PI_2),
+            ] {
                 let cam = Cam::new(t, yaw, pitch, *z, 320.0, 200.0);
                 let (x, y) = cam.project(t);
                 assert!((x - 320.0).abs() < 1e-3 && (y - 200.0).abs() < 1e-3);
@@ -617,7 +622,7 @@ mod tests {
 
     #[test]
     fn looking_straight_down_is_the_plane_of_the_disc() {
-        let cam = Cam::new([0.0; 3], 0.0, 1.5707963, 2.0, 0.0, 0.0);
+        let cam = Cam::new([0.0; 3], 0.0, std::f64::consts::FRAC_PI_2, 2.0, 0.0, 0.0);
         let (x, y) = cam.project([10.0, 99.0, 5.0]);
         assert!((x - 20.0).abs() < 1e-2 && (y - 10.0).abs() < 1e-2);
     }

@@ -222,6 +222,7 @@ pub fn key_code(name: &str) -> Option<KeyCode> {
         "delete" => KeyCode::Delete,
         "f8" => KeyCode::F8,
         "backquote" => KeyCode::Backquote,
+        "scrolllock" => KeyCode::ScrollLock,
         "f1" => KeyCode::F1,
         "f2" => KeyCode::F2,
         "f3" => KeyCode::F3,
@@ -417,6 +418,7 @@ pub fn run(
                     .map_err(|e| format!("{at}: {e}"))?;
                 println!("shot -> {p}");
             }
+            "creative" => g.sim.creative_enable(true),
             "say" => println!("{}", w[1..].join(" ")),
             "near" => near(&mut g, w.get(1).copied().unwrap_or("")).map_err(|e| format!("{at}: {e}"))?,
             // Beyond every orbit: no reference body, so FTL is allowed.

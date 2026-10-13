@@ -29,8 +29,18 @@ pub const PAUSE_MENU: [&str; 8] = [
     "MENU PRINCIPAL",
     "QUITTER",
 ];
-const TIME_LADDER: [f64; 10] = [
-    0.25, 0.5, 1.0, 2.0, 5.0, 10.0, 100.0, 1000.0, 10_000.0, 100_000.0,
+const TIME_LADDER: [f64; 11] = [
+    0.25,
+    0.5,
+    1.0,
+    2.0,
+    5.0,
+    10.0,
+    100.0,
+    1000.0,
+    10_000.0,
+    100_000.0,
+    1_000_000.0,
 ];
 
 /// Sort orders of the market list (`V` cycles them).
@@ -89,6 +99,8 @@ pub enum Screen {
     Dashboard,
     /// The navigation computer: the queue of orders, the planner, the thresholds (see `nav_view`).
     NavAuto,
+    /// The creative panel (ScrollLock): the one API of `Sim::creative_*`, by keys and mouse.
+    Creative,
 }
 
 /// The tabs of the one crew screen (`Screen::Crew`): the list with the sheet of the chosen
@@ -319,6 +331,8 @@ pub struct Game {
     pub rules_sel: usize,
     /// Rules for the next new game (edited live when opened from the pause menu).
     pub pending_rules: vector_sim::rules::Rules,
+    pub cx: crate::creative_view::CxState,
+    pub cx_back: Screen,
     /// Where the rules / options / codex screens return to.
     pub back_to: Screen,
     pub settings: crate::settings::Settings,
@@ -534,6 +548,8 @@ impl Game {
             tech_sel: 0,
             rules_sel: 0,
             pending_rules: vector_sim::rules::Rules::default(),
+            cx: Default::default(),
+            cx_back: Screen::Flight,
             back_to: Screen::MainMenu,
             settings: crate::settings::Settings::load(&PathBuf::from("saves").join("settings.cfg")),
             opt_sel: 0,
@@ -1075,7 +1091,7 @@ impl Game {
     fn step_time(&mut self, up: bool) {
         let top = TIME_LADDER
             .iter()
-            .rposition(|&t| t <= self.sim.rules.max_timescale)
+            .rposition(|&t| t <= self.sim.rules.max_ts())
             .unwrap_or(2);
         let i = TIME_LADDER
             .iter()
@@ -1269,6 +1285,20 @@ impl Game {
             self.say("TUTORIEL IGNORE (REACTIVABLE DANS OPTIONS)");
             return;
         }
+        if code == KeyCode::ScrollLock
+            && !matches!(
+                self.screen,
+                Screen::MainMenu | Screen::NewGame | Screen::Destroyed
+            )
+        {
+            self.help_open = false;
+            if self.screen == Screen::Creative {
+                self.screen = self.cx_back;
+            } else {
+                self.open_creative();
+            }
+            return;
+        }
         // The menu is one key away from every screen of the game.
         if code == KeyCode::F10
             && !matches!(
@@ -1319,6 +1349,7 @@ impl Game {
             Screen::Fleet => self.fleet_key(code),
             Screen::Tech => self.tech_key(code),
             Screen::Rules => self.rules_key(code),
+            Screen::Creative => self.creative_key(code, text),
             Screen::Options => self.options_key(code),
             Screen::Codex => self.codex_key(code),
             Screen::Surface => self.surface_key(code),

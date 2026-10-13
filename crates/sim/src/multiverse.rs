@@ -330,10 +330,12 @@ impl Sim {
         if self.multiverse.anchors.len() >= MAX_ANCHORS {
             return Err("trois ancres au plus : levez-en une");
         }
-        if self.credits < ANCHOR_FEE {
+        if !self.rules.free() && self.credits < ANCHOR_FEE {
             return Err("fonds insuffisants");
         }
-        self.credits -= ANCHOR_FEE;
+        if !self.rules.free() {
+            self.credits -= ANCHOR_FEE;
+        }
         let anchors = std::mem::take(&mut self.multiverse.anchors);
         let saved = self.save_bytes();
         self.multiverse.anchors = anchors;
@@ -362,7 +364,8 @@ impl Sim {
             .get(i)
             .ok_or("ancre inconnue")?
             .clone();
-        if self.credits < REWIND_FEE {
+        let free = self.rules.free();
+        if !free && self.credits < REWIND_FEE {
             return Err("fonds insuffisants pour remonter le temps");
         }
         let now = self.time;
@@ -385,7 +388,9 @@ impl Sim {
         let gain = (self.credits - restored.credits).max(0.0);
         restored.multiverse.echo =
             (gain >= ECHO_MIN).then_some((gain, restored.time + ECHO_DELAY_DAYS * DAY));
-        restored.credits = (restored.credits - REWIND_FEE).max(0.0);
+        if !free {
+            restored.credits = (restored.credits - REWIND_FEE).max(0.0);
+        }
         let back = (now - anchor.time) / DAY;
         *self = restored;
         self.events.push(Event::MarketNews(format!(

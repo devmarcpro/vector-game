@@ -47,6 +47,7 @@
 | ~ (Backquote) | Console de debug : help, list, tp, tpbody, stop, speed, fuel, repair, assist, time |
 | F1 | Aide contextuelle de l'ecran courant (re-appuyer pour fermer) |
 | F6 | Codex (Gauche/Droite categorie, Haut/Bas entree ; categorie REACTIONS = laboratoire : L ou Entree lance un lot de 100 kg de reactifs tires de la soute) |
+| Arret defil (ScrollLock) ; aussi mot CREATIF du HUD et menu clic droit | PANNEAU CREATIF (onglets MONDE, TEMPS, VAISSEAU, EQUIPAGE, ECONOMIE, SAVOIR, COLONIES, EXPLORATION, DEBUG ; l'activer desactive succes et classement) ; console `~` : credits, flag, alltech, reveal, service, days |
 | F10 (tutoriel en cours) | Ignorer le tutoriel |
 | F10 | Ignorer le tutoriel |
 | F6 | Codex (Gauche/Droite categorie, Haut/Bas entree) |

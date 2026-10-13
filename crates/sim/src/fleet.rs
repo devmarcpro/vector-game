@@ -185,12 +185,14 @@ impl Sim {
 
     /// Buy a freighter (needs a station shipyard).
     pub fn buy_fleet_ship(&mut self, hull: usize) -> Result<u32, &'static str> {
-        self.docked_station()?;
+        if !self.rules.creative_free() {
+            self.docked_station()?;
+        }
         let h = self.data.hulls.get(hull).ok_or("coque inconnue")?;
         if !self.is_unlocked("hull", &h.id) {
             return Err("technologie non recherchee (F4, ou regle: technologies)");
         }
-        let price = if self.rules.infinite_resources {
+        let price = if self.rules.free() {
             0.0
         } else {
             h.cost * PURCHASE_FACTOR * self.rules.build_cost

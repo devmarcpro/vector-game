@@ -31,6 +31,83 @@ pub struct Rules {
     pub max_timescale: f64,
     /// Hulls, modules and buildings need their technology (off by default: a free sandbox, everything is available).
     pub tech_locks: bool,
+    /// Fine-grained creative switches (all inert unless `creative` is on).
+    #[serde(default)]
+    pub cx: CreativeFlags,
+}
+
+/// Thrust multiplier of creative free flight.
+pub const FLY_FREE_MULT: f64 = 25.0;
+
+/// Creative-mode switches: each lifts one restriction in the normal game systems. Every
+/// accessor on `Rules` ignores them when `Rules::creative` is off, so a normal game is unchanged.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct CreativeFlags {
+    pub invulnerable: bool,
+    /// Purchases, builds and ammunition cost nothing; no stock needed.
+    pub free_build: bool,
+    /// Construction and works complete at once.
+    pub instant_build: bool,
+    /// Jumps and burns use no propellant.
+    pub free_travel: bool,
+    pub no_hunger: bool,
+    pub no_radiation: bool,
+    /// No illegal acts, no wanted status.
+    pub no_law: bool,
+    /// Every technology counts as researched.
+    pub all_tech: bool,
+    pub all_knowledge: bool,
+    /// Unlimited thrust: no structural limit, no fuel.
+    pub fly_free: bool,
+    pub ghost: bool,
+    pub one_hit_kill: bool,
+}
+
+impl CreativeFlags {
+    pub const COUNT: usize = 12;
+
+    pub fn get_mut(&mut self, i: usize) -> Option<&mut bool> {
+        Some(match i {
+            0 => &mut self.invulnerable,
+            1 => &mut self.free_build,
+            2 => &mut self.instant_build,
+            3 => &mut self.free_travel,
+            4 => &mut self.no_hunger,
+            5 => &mut self.no_radiation,
+            6 => &mut self.no_law,
+            7 => &mut self.all_tech,
+            8 => &mut self.all_knowledge,
+            9 => &mut self.fly_free,
+            10 => &mut self.ghost,
+            11 => &mut self.one_hit_kill,
+            _ => return None,
+        })
+    }
+
+    pub fn get(&self, i: usize) -> bool {
+        self.clone().get_mut(i).is_some_and(|b| *b)
+    }
+
+    pub fn name(i: usize) -> &'static str {
+        [
+            "Invulnerable",
+            "Construction gratuite",
+            "Construction instantanee",
+            "Voyage sans carburant",
+            "Sans faim ni soif",
+            "Sans radiation",
+            "Sans loi ni police",
+            "Toutes les technologies",
+            "Tout le savoir",
+            "Vol libre (poussee infinie)",
+            "Mode fantome",
+            "Tout mourir en un coup",
+        ]
+        .get(i)
+        .copied()
+        .unwrap_or("?")
+    }
 }
 
 impl Default for Rules {
@@ -50,6 +127,7 @@ impl Default for Rules {
             creative: false,
             max_timescale: 100_000.0,
             tech_locks: false,
+            cx: CreativeFlags::default(),
         }
     }
 }
@@ -60,9 +138,65 @@ impl Rules {
         *self != Rules::default()
     }
 
+    fn cx_on(&self) -> bool {
+        self.creative
+    }
+    /// Purchases and builds are free (rule, or creative free-build).
+    pub fn free(&self) -> bool {
+        self.infinite_resources || (self.cx_on() && self.cx.free_build)
+    }
+    pub fn invuln(&self) -> bool {
+        self.invulnerable || (self.cx_on() && self.cx.invulnerable)
+    }
+    /// Whether crew needs apply.
+    pub fn needs(&self) -> bool {
+        self.crew_needs && !(self.cx_on() && self.cx.no_hunger)
+    }
+    pub fn no_radiation(&self) -> bool {
+        self.invuln() || (self.cx_on() && self.cx.no_radiation)
+    }
+    pub fn no_law(&self) -> bool {
+        self.cx_on() && self.cx.no_law
+    }
+    pub fn instant_build(&self) -> bool {
+        self.cx_on() && self.cx.instant_build
+    }
+    /// Technologies do not gate hulls, modules or buildings.
+    pub fn tech_open(&self) -> bool {
+        !self.tech_locks || (self.cx_on() && (self.cx.all_tech || self.cx.free_build))
+    }
+    /// Creative free build: distance, docking, kits and permits are ignored too.
+    pub fn creative_free(&self) -> bool {
+        self.cx_on() && self.cx.free_build
+    }
+    pub fn ghost(&self) -> bool {
+        self.cx_on() && self.cx.ghost
+    }
+    pub fn all_knowledge(&self) -> bool {
+        self.cx_on() && self.cx.all_knowledge
+    }
+    /// Highest time acceleration: lifted to x1e6 in creative mode.
+    pub fn max_ts(&self) -> f64 {
+        if self.cx_on() {
+            1_000_000.0
+        } else {
+            self.max_timescale
+        }
+    }
+    /// Free travel: jumps ignore range, wells, antimatter and propellant.
+    pub fn free_travel(&self) -> bool {
+        self.cx_on() && (self.cx.free_travel || self.cx.fly_free)
+    }
+    pub fn one_hit_kill(&self) -> bool {
+        self.cx_on() && self.cx.one_hit_kill
+    }
+    pub fn fly_free(&self) -> bool {
+        self.cx_on() && self.cx.fly_free
+    }
+
     /// Effective fuel multiplier.
     pub fn fuel_mult(&self) -> f64 {
-        if self.infinite_resources {
+        if self.infinite_resources || (self.cx_on() && (self.cx.free_travel || self.cx.fly_free)) {
             0.0
         } else {
             self.fuel_use
@@ -167,6 +301,19 @@ mod tests {
             assert!(up != base || down != base, "option {i} must be adjustable");
             assert_ne!(up.describe()[i].1, "", "option {i}");
         }
+    }
+
+    #[test]
+    fn creative_flags_are_inert_without_creative() {
+        let mut r = Rules::default();
+        for i in 0..CreativeFlags::COUNT {
+            *r.cx.get_mut(i).unwrap() = true;
+        }
+        assert!(!r.free() && !r.invuln() && r.needs() && !r.no_law());
+        assert_eq!(r.fuel_mult(), 1.0);
+        r.creative = true;
+        assert!(r.free() && r.invuln() && !r.needs() && r.no_law() && r.no_radiation());
+        assert_eq!(r.fuel_mult(), 0.0);
     }
 
     #[test]

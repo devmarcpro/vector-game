@@ -222,6 +222,7 @@ pub fn hint_line(g: &Game) -> String {
         }
         Screen::Destroyed => "ENTREE CONTINUER",
         Screen::Tech => "FLECHES GRAPHE (GAUCHE PREREQUIS, DROITE SUITE)  TAB RECHERCHE OU SUIVANTE  ENTREE RECHERCHER  E ESPRIT (CALCUL)  ECHAP RETOUR",
+        Screen::Creative => "HAUT/BAS CHOISIR  GAUCHE/DROITE ONGLET  ENTREE EXECUTER  ECHAP RETOUR",
         Screen::Rules => "HAUT/BAS REGLE  GAUCHE/DROITE MODIFIER  R DEFAUTS  ECHAP RETOUR",
         Screen::Options => "HAUT/BAS REGLAGE  GAUCHE/DROITE CHANGER  ENTREE/ECHAP RETOUR",
         Screen::Codex => "GAUCHE/DROITE CATEGORIE  HAUT/BAS ENTREE  ECHAP RETOUR",
@@ -424,6 +425,11 @@ pub fn help_lines(screen: Screen) -> &'static [&'static str] {
             "Vert : a portee  Ambre : en cours  Sombre : acquise  Rouge : verrouillee",
             "E : panneau ESPRIT (vous etes l'IA) : budget de calcul, logiciels, autres IA, ancres",
             "ESPRIT : Gauche/Droite regle le budget, Entree installe/met a jour, C/A/L contacter/allier/liberer une IA, S ancre",
+        ],
+        Screen::Creative => &[
+            "Arret defil : panneau creatif (tout essayer sans limite).",
+            "Gauche/Droite : onglet   Entree : executer   Clic : tout est cliquable.",
+            "Activer le creatif desactive succes et classement ; la partie reste sauvegardable.",
         ],
         Screen::Rules => &[
             "Gauche/Droite : modifier   R : valeurs par defaut",

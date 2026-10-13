@@ -1,0 +1,23 @@
+# Opens the creative panel and photographs every tab (docs/shots/creative_*.png).
+new 7
+key scrolllock
+shot docs/shots/creative_off.png
+key enter
+shot docs/shots/creative_monde.png
+key tab
+shot docs/shots/creative_temps.png
+key tab
+shot docs/shots/creative_vaisseau.png
+key tab
+shot docs/shots/creative_equipage.png
+key tab
+shot docs/shots/creative_economie.png
+key tab
+shot docs/shots/creative_savoir.png
+key tab
+shot docs/shots/creative_colonies.png
+key tab
+shot docs/shots/creative_exploration.png
+key tab
+shot docs/shots/creative_debug.png
+key tab

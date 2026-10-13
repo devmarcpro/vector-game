@@ -21,6 +21,7 @@ pub mod colony_life;
 pub mod colony_works;
 pub mod combat;
 pub mod companies;
+pub mod creative;
 pub mod crew;
 pub mod cryo;
 pub mod design;
@@ -983,7 +984,7 @@ impl Sim {
             workshop: eff.workshop,
             overheating: self.ship.sys.overheating,
             seed: self.system.seed,
-            needs: self.rules.crew_needs,
+            needs: self.rules.needs(),
             event_freq: self.rules.event_freq,
         };
         let out = self.crew.update(&mut ctx, self.time);
@@ -1198,6 +1199,9 @@ impl Sim {
         );
         if cmd.z > 0.0 {
             acc_b.z = cmd.z * main_a;
+        }
+        if self.rules.fly_free() {
+            acc_b = acc_b * crate::rules::FLY_FREE_MULT;
         }
         // Propellant: main engine at its own isp, RCS-class motion at RCS isp.
         let main_force = if acc_b.z > 0.0 || z_max == main_a {
@@ -1427,7 +1431,7 @@ impl Sim {
     /// Damage to the hull (scaled by the rules), to the modules and to the crew; none when
     /// invulnerable.
     pub(crate) fn hurt_ship(&mut self, damage: f64, source: usize) {
-        if self.rules.invulnerable {
+        if self.rules.invuln() {
             return;
         }
         let damage = damage * self.rules.damage;
@@ -1681,7 +1685,7 @@ impl Sim {
         if got > accepted {
             self.market(st).stock[res] += got - accepted;
         }
-        if !self.rules.infinite_resources {
+        if !self.rules.free() {
             self.credits -= cost - refund;
         }
         self.change_reputation(self.faction, ((cost - refund) / 20_000.0) as f32);
@@ -1704,7 +1708,7 @@ impl Sim {
         }
         let (got, cost) = self.market(st).buy(&data, fuel, kg, edge);
         self.ship.fuel += got;
-        if !self.rules.infinite_resources {
+        if !self.rules.free() {
             self.credits -= cost;
         }
         Ok((got, cost))
@@ -1803,7 +1807,7 @@ impl Sim {
         if !self.is_unlocked("module", &module.id) {
             return Err("technologie non recherchee (F4, ou regle: technologies)");
         }
-        let cost = if self.rules.infinite_resources {
+        let cost = if self.rules.free() {
             0.0
         } else {
             module.cost * self.rules.build_cost
@@ -1902,7 +1906,7 @@ impl Sim {
             return Err("videz la soute d'abord");
         }
         let trade_in = self.data.hulls[self.ship.design.hull].cost * RESALE;
-        let price = if self.rules.infinite_resources {
+        let price = if self.rules.free() {
             0.0
         } else {
             new.cost * self.rules.build_cost - trade_in

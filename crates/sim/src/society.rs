@@ -196,6 +196,9 @@ impl Sim {
     /// 0..1 fluency of a crew member in a language: the mother tongue is perfect, a learned one
     /// fades with the eras it drifted, a language of the same family is half understood.
     pub fn fluency(&self, person: u32, lang: usize) -> f32 {
+        if self.rules.all_knowledge() {
+            return 1.0;
+        }
         let Some(p) = self.crew.members.iter().find(|p| p.id == person) else {
             return 0.0;
         };

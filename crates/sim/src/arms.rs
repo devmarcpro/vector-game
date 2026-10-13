@@ -981,7 +981,7 @@ impl Sim {
         if self.ship.cargo.kg[ammo] + 1e-9 < m.ammo_use {
             return Err("plus de leurres en soute");
         }
-        if !self.rules.infinite_resources {
+        if !self.rules.free() {
             self.ship.cargo.remove(&data, ammo, m.ammo_use);
         }
         if let Some(cd) = self.weapon_cd.get_mut(slot) {

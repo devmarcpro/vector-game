@@ -310,3 +310,10 @@ exotiques (Bussard, antimatiere) restent sous 0,1 c, le delta-v s'affiche en km/
 - `vector_world::sky`: catalogue des etoiles a 90 al (magnitude apparente m = M + 5 log10(d/10 pc), couleur par classe) et bande galactique (directions tirees selon la densite en colonne de `Galaxy::density`), mis en cache par secteur (`SkyCache`), dessine en pixels opaques dans `hud::draw_real_sky`. Reglages : `Game::sky_mag_limit`, `Game::sky_band` (non sauvegardes).
 - `vector_world::universe`: galaxies voisines deterministes (`Universe::galaxies_near/galaxy/galaxy_seed`); la galaxie d'origine garde la graine de l'univers. Aucune structure sauvegardee modifiee.
 - Reste: carte zoomable multi-echelles, constellations, nebuleuses dans le ciel, menu contextuel (non faits).
+## Performance: regle de projet
+
+Le jeu doit etre hyper optimise (demande explicite). Budget: >= 60 images/s en release a 1280x720 (>= 30 au
+pire cas), cout de simulation borne par pas, aucune allocation par image dans les boucles de rendu, caches
+avec invalidation correcte (textures de planete, cartes de surface, catalogues d'etoiles par secteur), rendu
+logiciel en bandes paralleles (std::thread::scope, sans dependance). Toute fonctionnalite livre sa mesure
+(profileur `--profile`, benchmarks headless, docs/PERFORMANCE.md) et ne fait pas regresser le budget.

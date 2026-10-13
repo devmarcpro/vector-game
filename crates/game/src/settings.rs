@@ -33,6 +33,8 @@ pub struct Settings {
     pub sky_band: bool,
     pub sky_const: bool,
     pub sky_names: bool,
+    /// Style de l'interface : NOUVEAU (true, defaut) ou CLASSIQUE.
+    pub ui_new: bool,
 }
 
 impl Default for Settings {
@@ -52,12 +54,13 @@ impl Default for Settings {
             sky_band: true,
             sky_const: true,
             sky_names: true,
+            ui_new: true,
         }
     }
 }
 
 impl Settings {
-    pub const COUNT: usize = 14;
+    pub const COUNT: usize = 15;
 
     /// Limiting magnitude of the sky.
     pub fn sky_mag_limit(&self) -> f64 {
@@ -90,6 +93,10 @@ impl Settings {
             ("Ciel : bande galactique", yn(self.sky_band)),
             ("Ciel : constellations", yn(self.sky_const)),
             ("Ciel : noms des constellations", yn(self.sky_names)),
+            (
+                "Style de l'interface",
+                if self.ui_new { "NOUVEAU" } else { "CLASSIQUE" }.to_string(),
+            ),
         ]
     }
 
@@ -122,6 +129,7 @@ impl Settings {
             11 => self.sky_band = !self.sky_band,
             12 => self.sky_const = !self.sky_const,
             13 => self.sky_names = !self.sky_names,
+            14 => self.ui_new = !self.ui_new,
             _ => {}
         }
     }
@@ -183,7 +191,7 @@ impl Settings {
 
     pub fn to_text(&self) -> String {
         format!(
-            "scanlines={}\nglow={}\nscheme={}\nvolume={}\ntutorial={}\nhints={}\nazerty={}\nlang={}\nmenu={}\nticker={}\nskymag={}\nskyband={}\nskyconst={}\nskynames={}\n",
+            "scanlines={}\nglow={}\nscheme={}\nvolume={}\ntutorial={}\nhints={}\nazerty={}\nlang={}\nmenu={}\nticker={}\nskymag={}\nskyband={}\nskyconst={}\nskynames={}\nuistyle={}\n",
             u8::from(self.scanlines),
             u8::from(self.glow),
             self.scheme,
@@ -197,7 +205,8 @@ impl Settings {
             self.sky_mag,
             u8::from(self.sky_band),
             u8::from(self.sky_const),
-            u8::from(self.sky_names)
+            u8::from(self.sky_names),
+            u8::from(self.ui_new)
         )
     }
 
@@ -223,6 +232,7 @@ impl Settings {
                 "skyband" => s.sky_band = n != 0,
                 "skyconst" => s.sky_const = n != 0,
                 "skynames" => s.sky_names = n != 0,
+                "uistyle" => s.ui_new = n != 0,
                 "lang" => s.lang = n.min(LANGS.len() - 1),
                 "volume" => s.volume = n.min(10) as u8,
                 _ => {}

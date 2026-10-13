@@ -51,9 +51,12 @@ mod sprites;
 mod surface_view;
 mod tech_view;
 mod terrain;
+mod theme;
 mod trade_view;
 mod tutorial;
 mod ui;
+mod ui_kit;
+mod ui_new;
 mod umap;
 mod war_view;
 mod wire_shape;
@@ -91,6 +94,13 @@ fn load_data() -> Option<Arc<GameData>> {
 /// Render whichever screen is active.
 fn draw_frame(fb: &mut Framebuffer, g: &Game) {
     g.begin_frame();
+    if ui_new::handles(g) {
+        ui_kit::draw_canvas(fb, g, ui_new::draw);
+        hud::draw_console(fb, &g.console);
+        context_menu::draw(fb, g);
+        context_menu::draw_tooltip(fb, g);
+        return;
+    }
     match g.screen {
         Screen::Flight => hud::draw(fb, &g.view()),
         Screen::Pause => {
@@ -261,6 +271,7 @@ impl ApplicationHandler for App {
                     self.fb = Framebuffer::new(w.get() as usize, h.get() as usize);
                 }
                 self.audio.update(&self.game);
+                ui_new::refresh(&mut self.game);
                 draw_frame(&mut self.fb, &self.game);
                 let st = &self.game.settings;
                 if st.scanlines || st.glow || st.scheme > 0 {
@@ -1820,9 +1831,17 @@ fn snapshot(path: &str, scene: &str, data: Arc<GameData>) {
     if let Some(spec) = &spec {
         mock_ui::after_setup(&mut g, spec);
     }
-    let mut fb = Framebuffer::new(1280, 720);
+    // VECTOR_SNAP_SIZE=1024x576 : another window size (the new-style screens scale to it).
+    let (sw, sh) = std::env::var("VECTOR_SNAP_SIZE")
+        .ok()
+        .and_then(|v| {
+            let (a, b) = v.split_once('x')?;
+            Some((a.parse().ok()?, b.parse().ok()?))
+        })
+        .unwrap_or((1280, 720));
+    let mut fb = Framebuffer::new(sw, sh);
     match &spec {
-        Some(spec) => mock_ui::render(&mut fb, &g, spec),
+        Some(spec) => mock_ui::render(&mut fb, &mut g, spec),
         None => draw_frame(&mut fb, &g),
     }
     match std::fs::write(path, vector_render::png::encode(fb.w, fb.h, &fb.px)) {

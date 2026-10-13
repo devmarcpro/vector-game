@@ -49,6 +49,7 @@ impl Game {
     /// Forget the zones of the previous frame; called before drawing a frame.
     pub fn begin_frame(&self) {
         self.pointer.hits.borrow_mut().clear();
+        self.cockpit.organs.borrow_mut().clear();
     }
 
     /// Declare a clickable zone in pixels; returns whether the pointer is over it right now (so
@@ -94,6 +95,7 @@ impl Game {
 
     /// The left button was released: let go of what a held click was pressing.
     pub fn pointer_release(&mut self) {
+        self.cockpit.drag.set(false);
         if let Some(k) = self.pointer.holding.take() {
             self.key(k, None, false);
         }
@@ -101,6 +103,11 @@ impl Game {
 
     /// The pointer moved by (dx, dy) pixels with the left button down: it turns the globe.
     pub fn pointer_drag(&mut self, dx: i32, dy: i32) {
+        if self.cockpit.drag.get() {
+            // The thrust lever of the cockpit follows the pointer.
+            self.cockpit_drag(self.pointer.pos.1);
+            return;
+        }
         if self.ext_active() {
             self.ext_orbit(-f64::from(dx) * 0.008, f64::from(dy) * 0.008);
         }
@@ -464,6 +471,10 @@ impl Game {
             } else {
                 (m.sel + 1) % n
             };
+            return;
+        }
+        // Over the thrust lever or the trim of the cockpit, the wheel is theirs.
+        if self.screen == Screen::Flight && self.cockpit_wheel(lines) {
             return;
         }
         let steps = lines.abs().ceil().max(1.0) as usize;

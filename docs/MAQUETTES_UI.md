@@ -5,7 +5,9 @@ Ces maquettes montrent ce que pourraient devenir les ecrans de gestion et la vue
 (rasteriseur CPU, police 5x7 du jeu), avec les **vraies donnees d'une partie** (`new_game` plus
 quelques jours simules), a 1280x720. Rien dans le jeu normal ne les utilise.
 
-- Code : `crates/game/src/mock_ui.rs` (boite a outils + menus) et `crates/game/src/mock_cockpit.rs`
+**Mise a jour : le cockpit n'est plus une maquette.** Les trois dispositions A, B et C sont le vrai cockpit du jeu (`crates/game/src/cockpit/`), au choix dans Options > « Disposition du cockpit » (avec l'ancien HUD en quatrieme choix) ; `mock_cockpit.rs` est supprime. Les captures se font avec `vector-game --snapshot shots/x.png cockpit_a [1024x576]` (`cockpit_a`, `cockpit_b`, `cockpit_c`, `cockpit_c_open`, `cockpit_old`, et `cockpit_land_*` pour l'approche). Les maquettes des menus restent ci-dessous jusqu'a la refonte des menus.
+
+- Code : `crates/game/src/mock_ui.rs` (boite a outils + menus) et `crates/game/src/mock_cockpit.rs` (supprime)
   (cockpit). **A supprimer** apres decision : les deux fichiers, les deux `mod` et le bloc
   `mock_ui::resolve / after_setup / render` de `snapshot()` dans `main.rs`.
 - Chaque maquette a son pendant actuel pour comparer : `mock_<nom>` (maquette) et `now_<nom>`

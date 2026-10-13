@@ -65,6 +65,24 @@ fn controls(g: &Game) -> Vec<Entry> {
         ),
         ("SAUVER", "F5".into(), Act::Key(KeyCode::F5)),
         (
+            "BOUCLIER ON/OFF",
+            "PAV/".into(),
+            Act::Key(KeyCode::NumpadDivide),
+        ),
+        ("LUMIERES", "PAV.".into(), Act::Key(KeyCode::NumpadDecimal)),
+        (
+            "TRIM POUSSEE +",
+            "]".into(),
+            Act::Key(KeyCode::BracketRight),
+        ),
+        ("TRIM POUSSEE -", "[".into(), Act::Key(KeyCode::BracketLeft)),
+        (
+            "DISPOSITION COCKPIT",
+            "MAJ+F11".into(),
+            Act::Call(Game::cockpit_cycle, 0),
+        ),
+        ("CONSOLE REPLIABLE", "'".into(), Act::Key(KeyCode::Quote)),
+        (
             "ORBITE CIRCULAIRE",
             "INSER".into(),
             Act::Key(KeyCode::Insert),
@@ -132,6 +150,13 @@ pub fn visible(g: &Game) -> bool {
         && g.settings.flight_menu
         && !g.mouse_look
         && !g.console.open
+        // With the cockpit console the menu is an extra: F11 shows it over the window.
+        && (g.cockpit.last.get().is_none() || g.cockpit.menu.get())
+}
+
+/// Whether the column is unfolded: always when the cockpit shows it on request.
+fn unfolded(g: &Game) -> bool {
+    g.cockpit.last.get().is_some() || g.flight_menu_open
 }
 
 pub fn draw(fb: &mut Framebuffer, g: &Game) {
@@ -141,14 +166,14 @@ pub fn draw(fb: &mut Framebuffer, g: &Game) {
     let cols = fb.cols();
     let w = 30usize;
     let x = cols.saturating_sub(w + 1);
-    let title = if g.flight_menu_open {
+    let title = if unfolded(g) {
         "[-] PILOTAGE (F11)"
     } else {
         "[+] PILOTAGE (F11)"
     };
     let hover = g.hit_cells(x, 3, title.len(), 1, Act::Key(KeyCode::F11), None);
     fb.text(x, 3, title, if hover { HOVER } else { AMBER });
-    if !g.flight_menu_open {
+    if !unfolded(g) {
         return;
     }
     let mut row = 5;
@@ -176,6 +201,10 @@ impl Game {
     }
 
     pub fn toggle_flight_menu(&mut self) {
-        self.flight_menu_open = !self.flight_menu_open;
+        if self.cockpit.last.get().is_some() {
+            self.cockpit.menu.set(!self.cockpit.menu.get());
+        } else {
+            self.flight_menu_open = !self.flight_menu_open;
+        }
     }
 }

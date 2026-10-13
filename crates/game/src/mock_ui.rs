@@ -35,12 +35,9 @@ pub enum Kind {
     Surface,
     Station,
     Dash,
-    Cockpit(crate::mock_cockpit::Layout),
-    CockpitLand(crate::mock_cockpit::Layout),
 }
 
 pub fn resolve(name: &str) -> Option<Spec> {
-    use crate::mock_cockpit::Layout::{COpen, A, B, C};
     let (mock, rest) = match name.strip_prefix("mock_") {
         Some(r) => (true, r),
         None => (false, name.strip_prefix("now_")?),
@@ -53,15 +50,6 @@ pub fn resolve(name: &str) -> Option<Spec> {
         "surface" => ("surface", Kind::Surface),
         "station" => ("station", Kind::Station),
         "dash" => ("dash_dock", Kind::Dash),
-        "cockpit" | "cockpit_a" => ("cockpit", Kind::Cockpit(A)),
-        "cockpit_b" => ("cockpit", Kind::Cockpit(B)),
-        "cockpit_c" => ("cockpit", Kind::Cockpit(C)),
-        "cockpit_c_open" => ("cockpit", Kind::Cockpit(COpen)),
-        "cockpit_land" | "cockpit_land_a" => ("land_descent", Kind::CockpitLand(A)),
-        "cockpit_land_b" => ("land_descent", Kind::CockpitLand(B)),
-        "cockpit_land_c" => ("land_descent", Kind::CockpitLand(C)),
-        "cockpit_land_c_open" => ("land_descent", Kind::CockpitLand(COpen)),
-        "land" => ("land_descent", Kind::CockpitLand(A)),
         _ => return None,
     };
     Some(Spec { base, kind, mock })
@@ -106,8 +94,6 @@ pub fn after_setup(g: &mut Game, spec: &Spec) {
                 SERIES.with(|c| *c.borrow_mut() = s);
             }
         }
-        Kind::Cockpit(_) => crate::mock_cockpit::setup_free(g),
-        Kind::CockpitLand(_) => crate::mock_cockpit::setup_land(g),
         Kind::Hub | Kind::Surface | Kind::Dash => {}
     }
 }
@@ -128,7 +114,6 @@ pub fn render(fb: &mut Framebuffer, g: &Game, spec: &Spec) {
         Kind::Surface => draw_surface(fb, g),
         Kind::Station => draw_station(fb, g),
         Kind::Dash => draw_dash(fb, g),
-        Kind::Cockpit(l) | Kind::CockpitLand(l) => crate::mock_cockpit::draw(fb, g, l),
     }
 }
 
@@ -259,6 +244,7 @@ pub fn ring(fb: &mut Framebuffer, cx: i32, cy: i32, r: i32, c: u32) {
 }
 
 /// An arc of the circle (angles in radians, 0 = right, clockwise on the screen), `thick` pixels.
+#[allow(dead_code)]
 pub fn arc(fb: &mut Framebuffer, cx: i32, cy: i32, r: i32, a0: f32, a1: f32, thick: i32, c: u32) {
     let n = ((a1 - a0).abs() * r as f32 * 1.5).max(8.0) as i32;
     for i in 0..=n {
@@ -312,6 +298,7 @@ pub fn txt(fb: &mut Framebuffer, x: i32, y: i32, s: &str, c: u32) {
 }
 
 /// Opaque text running upwards from (x, y_bottom): a label along a vertical gauge.
+#[allow(dead_code)]
 pub fn txt_v(fb: &mut Framebuffer, x: i32, y_bottom: i32, s: &str, c: u32) {
     for (i, ch) in s.chars().enumerate() {
         let g = font::glyph(ch);
@@ -3663,21 +3650,7 @@ mod tests {
     #[test]
     fn every_mock_has_its_current_screen_to_compare_with() {
         for n in [
-            "colony",
-            "hub",
-            "crew",
-            "crew_med",
-            "surface",
-            "station",
-            "dash",
-            "cockpit_a",
-            "cockpit_b",
-            "cockpit_c",
-            "cockpit_c_open",
-            "cockpit_land",
-            "cockpit_land_b",
-            "cockpit_land_c",
-            "cockpit_land_c_open",
+            "colony", "hub", "crew", "crew_med", "surface", "station", "dash",
         ] {
             let m = resolve(&format!("mock_{n}")).unwrap_or_else(|| panic!("mock_{n}"));
             let w = resolve(&format!("now_{n}")).unwrap_or_else(|| panic!("now_{n}"));

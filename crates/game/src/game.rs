@@ -277,6 +277,8 @@ pub struct Game {
     pub organ_sel: usize,
     /// The piloting menu column is unfolded.
     pub flight_menu_open: bool,
+    /// What the cockpit keeps between two frames (organs, smoothing, caches).
+    pub cockpit: crate::cockpit::State,
     /// Third-person view of the ship (SUPPR): orbit angles, distance in ship lengths, chase or free.
     pub ext_view: bool,
     pub ext_yaw: f64,
@@ -502,6 +504,7 @@ impl Game {
             gear_sel: 0,
             organ_sel: 0,
             flight_menu_open: true,
+            cockpit: Default::default(),
             ext_view: false,
             ext_yaw: crate::ext_view::ZOOM_YAW,
             ext_pitch: 0.3,
@@ -3436,6 +3439,9 @@ impl Game {
         if self.pilot_aid_key(code) {
             return;
         }
+        if self.cockpit_key(code) {
+            return;
+        }
         match code {
             KeyCode::Delete => self.toggle_ext_view(),
             KeyCode::Home => self.screen = Screen::Cosmos,
@@ -4083,6 +4089,8 @@ mod tests {
         g.key(KeyCode::Enter, None, true);
         assert_eq!(g.screen, Screen::Flight);
         g.settings.tutorial = false;
+        // The old HUD: its scene fills the window (the cockpit has its own tests).
+        g.settings.cockpit = crate::cockpit::Disposition::Old.index();
         // The station sits at the middle of the first view: a click targets it.
         g.sim.target = None;
         frame(&g);
@@ -4611,6 +4619,8 @@ mod tests {
         let mut g = Game::new(data(), 1);
         g.key(KeyCode::Enter, None, true);
         g.settings.tutorial = false;
+        // With the old HUD the menu is unfolded by default (the cockpit shows it on request).
+        g.settings.cockpit = crate::cockpit::Disposition::Old.index();
         g.settings.flight_menu = true;
         frame(&g);
         // Words of the menu are zones: find them by their position (right column).

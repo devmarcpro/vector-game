@@ -73,6 +73,7 @@ pub mod start;
 pub mod start_custom;
 pub mod surgery;
 pub mod surprises;
+pub mod switches;
 pub mod terraform;
 #[cfg(test)]
 mod test_support;
@@ -360,6 +361,11 @@ pub struct Sim {
     pub sas_hold: Vec3,
     pub throttle: f64,
     pub gear_down: bool,
+    /// The switches of the console (see `switches`): shield on, floodlights, thrust trim notches.
+    /// Not saved: a loaded ship starts with the shield on, the lights off and the trim centred.
+    pub shield_on: bool,
+    pub lights_on: bool,
+    pub trim: i8,
     pub ground: Option<landing::Ground>,
     pub site: Option<landing::Site>,
     pub pilot: Option<landing::Pilot>,
@@ -564,6 +570,9 @@ impl Sim {
             sas_hold: Vec3::new(0.0, 0.0, 1.0),
             throttle: 1.0,
             gear_down: false,
+            shield_on: true,
+            lights_on: false,
+            trim: 0,
             ground: None,
             site: None,
             pilot: None,
@@ -905,6 +914,7 @@ impl Sim {
             ext_heat_kw,
             ..*act
         };
+        self.sync_switches();
         let mass = self.ship.mass();
         let was_hot = self.ship.sys.overheating;
         let lost_before: Vec<bool> = self.ship.sys.health.iter().map(|&h| h <= 0.0).collect();
@@ -917,6 +927,9 @@ impl Sim {
             flux,
             dt,
         );
+        if !self.shield_on {
+            self.effective.shield_cap = 0.0;
+        }
         if self.ship.sys.overheating && !was_hot {
             self.events.push(Event::Overheat);
         }

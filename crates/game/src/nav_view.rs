@@ -1530,6 +1530,8 @@ mod tests {
     #[test]
     fn the_cockpit_shows_the_panel_only_when_there_is_a_plan_and_the_map_the_path() {
         let mut g = started();
+        // The panel of the old HUD (the cockpit console has its own plan screen).
+        g.settings.cockpit = crate::cockpit::Disposition::Old.index();
         // Nothing planned: no panel; with a plan, the panel shows.
         let none = drawn(&g);
         g.sim.nav_add(Order::Wait(100.0)).unwrap();

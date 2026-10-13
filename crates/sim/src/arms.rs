@@ -929,6 +929,11 @@ impl Sim {
             } else {
                 0.0
             }
+            + if self.lights_on {
+                crate::switches::LIGHTS_EMISSION_KW
+            } else {
+                0.0
+            }
     }
 
     /// Whether a blow on NPC `k` is an ambush: the target is not on alert, was not provoked,
@@ -1059,7 +1064,13 @@ impl Sim {
         } else {
             0.0
         };
-        self.thermal_signature_kw() + radar
+        self.thermal_signature_kw()
+            + radar
+            + if self.lights_on {
+                crate::switches::LIGHTS_EMISSION_KW
+            } else {
+                0.0
+            }
     }
 
     /// How the player's sensors hold NPC `k`.

@@ -275,6 +275,8 @@ pub fn help_lines(screen: Screen) -> &'static [&'static str] {
             "/ : aborder a pied la cible neutralisee (combat dans ses coursives ; garnison tuee puis < = vaisseau capture)",
             "F8 : surface de la planete ou lune ciblee (releve niveau 2) ; Tab y change de couche (BIOSPHERE : V espece, Entree fiche de la variante)",
             "Souris : clic = cibler un objet, double clic = y aller ; molette = temps ; CLIC DROIT sur un objet = ses actions (cibler, aller, amarrer, atterrir, scanner, orbite, codex) ; dans le vide = menu du cockpit ; menu F11 = toutes les commandes",
+            "COCKPIT : Maj+F11 (ou Options, ou le menu F11) change la disposition : A console basse, B panneaux lateraux, C HUD minimal avec console repliable (apostrophe ou poignee CONSOLE), ANCIEN HUD",
+            "Console : chaque organe fait ce que fait sa touche (interrupteurs, boutons SAS, manette : glisser ou molette) ; Pav / bouclier ON/OFF, Pav . lumieres, [ et ] trim de poussee ; survol = infobulle, clic droit = actions, CIBLER ICI, aide sur l'organe",
         ],
         Screen::Station => &[
             "Haut/Bas : ressource   Entree : tout vendre",

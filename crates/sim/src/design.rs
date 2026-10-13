@@ -223,6 +223,12 @@ pub struct Systems {
     /// Current shield charge (damage points) and the time of the last hit.
     pub shield_pts: f64,
     pub last_hit: f64,
+    /// The shield generators are switched off at the console (no draw, no protection). Not saved.
+    #[serde(skip)]
+    pub shield_off: bool,
+    /// Extra electrical load (kW) asked by the console this step: the floodlights. Not saved.
+    #[serde(skip)]
+    pub extra_kw: f64,
 }
 
 impl Systems {
@@ -238,6 +244,8 @@ impl Systems {
             overheating: false,
             shield_pts: 0.0,
             last_hit: -1.0e9,
+            shield_off: false,
+            extra_kw: 0.0,
         }
     }
 
@@ -289,6 +297,8 @@ impl Systems {
                     "mining" => f64::from(u8::from(act.mining)),
                     "ftl" => f64::from(u8::from(act.jumping)),
                     "weapon" => f64::from(u8::from(act.firing)),
+                    // A shield switched off at the console draws nothing (and protects nothing).
+                    "shield" if self.shield_off => 0.0,
                     "gyro" | "rcs" => 0.2 + 0.8 * act.rcs_use.clamp(0.0, 1.0),
                     _ => 1.0,
                 };
@@ -301,7 +311,7 @@ impl Systems {
                 self.powered[i] = true; // passive modules
             }
         }
-        let mut demand: f64 = consumers.iter().map(|c| c.1).sum();
+        let mut demand: f64 = consumers.iter().map(|c| c.1).sum::<f64>() + self.extra_kw;
         let batt_avail_kw = self.battery_mj * 1000.0 / dt;
         if demand > supply + batt_avail_kw {
             // Shed lowest-priority consumers first (priority 3 before 0).
@@ -401,7 +411,9 @@ impl Systems {
                 e.cryo_temp += c * m.cryo_temp;
             }
             e.workshop += m.repair * k;
-            e.shield_cap += m.shield * k * SHIELD_PTS_PER_MJ;
+            if !self.shield_off {
+                e.shield_cap += m.shield * k * SHIELD_PTS_PER_MJ;
+            }
             e.armor += m.armor * k;
             e.scan_range = f64::max(e.scan_range, m.scan_range * k);
             if k > 0.5 {

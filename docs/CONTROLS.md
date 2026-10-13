@@ -19,6 +19,7 @@
 | 0 a 9 (rangee du haut) | Maintien d'attitude (SAS) : 0 coupe, 1 cap, 2 prograde, 3 retrograde, 4 normale, 5 anti-normale, 6 radial sortant, 7 radial entrant, 8 vers la cible, 9 verticale (normale du sol). La main sur tangage/lacet/roulis reprend la main ; le cap est retenu la ou on lache |
 | Pave num. 3 | Train d'atterrissage sorti / rentre (sorti : 6 m/s de contact sur et 3 m/s lateral ; rentre : 1,5 et 1) |
 | Pave num. 8 / 2 / 0 / 5 | Accelerateur +10 % / -10 % / coupure / plein (Espace pousse a ce taux) |
+| Pave num. / ; Pave num. . ; [ et ] ; Maj+F11 ; ' | Bouclier ON/OFF ; lumieres exterieures ; trim de poussee moins/plus (cran de 1 %, plus ou moins 10) ; disposition du cockpit suivante (A, B, C, ancien HUD) ; plier ou deplier la console (disposition C) : voir « Le cockpit » |
 | Pave num. 7 / 9 | Marquer le site d'atterrissage le plus plat pres du point sous le vaisseau / l'effacer |
 | Pave num. 4 | Pilote : pose le vaisseau (au-dessus d'un sol), le fait decoller jusqu'a l'orbite (pose), ou l'amene au port (pres d'une station) ; refaire F10 ou toucher aux commandes le debraye. |
 | I | Soute / inventaire (J = jeter la ressource) |
@@ -100,6 +101,25 @@ F10 ou un clic sur Â« MENU (F10) Â» (en haut a droite de tous les ecrans) ouvre 
 Un espace ouvre l'ecran existant par la meme fonction que sa touche : aucun ecran n'est duplique. Une ligne grisee dit pourquoi elle est indisponible (amarrage requis, decollage requis, a pied).
 **Echap remonte d'un niveau, partout** : un ecran ouvert depuis le menu revient a la page de son espace ; la page revient a la liste des espaces ; la liste ferme le menu, qui rend l'ecran d'ou il a ete ouvert (cockpit, quai ou marche a pied). Le clic droit fait de meme.
 A pied (equipe sur le terrain), seuls les ecrans d'information s'ouvrent (vaisseau, soute, equipage, journal, codex, technologies) et Echap revient a la marche.
+
+## Le cockpit (dispositions A, B, C et ancien HUD)
+La vue pilotage est un vrai tableau de bord : la scene (3D, vecteurs) dans une verriere, autour une console d'instruments (horizon artificiel, bande de cap, cadrans de vitesse et de vitesse verticale, jauges a LED, radar, ecrans de navigation, de plan, de cible, de descente et d'amarrage, voyants d'alerte) et d'organes de commande (interrupteurs a bascule, boutons-poussoirs lumineux, manette de poussee, touches de console). **Chaque organe fait exactement ce que fait sa touche** (une action = un identifiant) ; ceux qui ont une position (manette, contacts du radar) appellent la vraie commande avec cette position.
+
+**Choisir la disposition** : Options > « Disposition du cockpit » (fleches), menu F11 > DISPOSITION COCKPIT, la pastille « COCKPIT A » en haut a gauche, ou **Maj+F11** en vol ; le choix est sauvegarde avec les options (`saves/settings.cfg`). Quatre choix :
+- **A : console basse large** (type avion) : systemes (8 colonnes de LED) | commandes (6 interrupteurs, 8 boutons SAS, 8 voyants) | instruments de vol | radar, navigation, cible, plan | manette. La verriere est en forme de pare-brise.
+- **B : panneaux lateraux et console compacte** : colonnes de part et d'autre de la verriere (systemes, interrupteurs, SAS, navigation / radar, plan, cible, voyants), console basse reduite aux instruments de vol, a la manette et a huit touches.
+- **C : HUD minimal et console repliable** : scene plein ecran, HUD de verriere (bande de cap, bandes de vitesse et d'altitude, echelle de tangage, reticule) et un bandeau de 34 px (4 jauges, 8 voyants, 4 touches). La poignee CONSOLE (ou la touche **'**) deploie la console complete ; l'etat est memorise.
+- **ANCIEN HUD** : le texte et les panneaux d'avant.
+Les dispositions s'adaptent a la fenetre (1024x576 a plein ecran) : les modules s'etirent entre un minimum et un maximum, les organes secondaires disparaissent quand la place manque ; sous 900x500, A et B deviennent C ; sous 640x380, l'ancien HUD.
+
+**Organes et touches** : interrupteurs TRAIN (Pave num. 3), BOUCL (Pave num. /), RADAR (.), LEURR (,), LUMIE (Pave num. .), PILOT (G) ; boutons SAS 0 a 9 (double clic sur NORMAL = anti-normale, sur RADIAL = radial entrant) ; **manette** : clic ou glisser dans la fente, molette au-dessus, Pave num. 8/2/0/5 (c'est l'accelerateur reel, 0 a 100 %) ; **trim** : [ et ] (ou les moities de l'echelle, molette au-dessus, clic sur la valeur = zero) ajoute plus ou moins 10 % crans de 1 % a la manette ; cadran de vitesse : clic ou selecteur SOL / ORB / CIB ; radar : clic sur un contact = le cibler, ailleurs = Tab ; voyants : clic = tableau de bord ; touches de console CARTE, GALAXIE, SOUTE, EQUIPAGE, JOURNAL, CODEX, VAISSEAU, NAV AUTO, TECH, MENU.
+- **Bouclier ON/OFF** (`Sim::toggle_shield`) : arrete les generateurs : plus de consommation ni de protection (la charge tombe a zero), remis en marche le bouclier se recharge ; refuse sans generateur. Voyant BOUCLIER ambre quand il est arrete.
+- **Lumieres** (`Sim::toggle_lights`) : projecteurs exterieurs (40 kW sur le bus d'energie), visibles en vue externe (faisceaux et halos) ; un vaisseau eclaire emet 400 kW de plus pour les capteurs passifs : les pirates et les patrouilles le voient de plus loin et une embuscade devient impossible.
+- **Trim** (`Sim::trim_step`) : reglage fin de poussee, plus ou moins 10 crans de 1 % ajoutes a la manette pour la poussee reelle.
+Rien de cela n'est sauvegarde dans la partie (comme le train et le SAS) : bouclier en marche, lumieres eteintes, trim au centre au chargement.
+**Souris** : survol = infobulle (nom, etat, touche) ; clic droit = menu de l'organe (ses actions, CIBLER ICI sur le radar et dans la verriere, la disposition, AIDE SUR CET ORGANE qui ouvre une bulle d'explication, fermee par un clic ou une touche) ; clic droit dans le vide de la verriere = menu du cockpit avec CIBLER ICI.
+En approche d'un monde solide, l'ecran de navigation devient DESCENTE (altitude radar, impact, point d'allumage, poussee sur poids, pente, site) et l'ecran de plan devient PILOTE ET AIDES ; pres d'une station, AMARRAGE (distance, approche, derive, alignement). Voyants clignotants (rouge) ou fixes (ambre), aiguilles et barres qui lissent, balayage du radar, lueur des boutons actifs.
+Menu F11 : en cockpit (A, B, C) il s'ouvre sur demande par-dessus la verriere (il n'est plus deplie par defaut) ; il garde toutes les commandes et ajoute BOUCLIER, LUMIERES, TRIM, DISPOSITION COCKPIT, CONSOLE REPLIABLE.
 
 ## Navigation automatique (pave num. * ou F10 > NAVIGATION)
 L'ordinateur de bord execute une FILE D'ORDRES ; l'automatisme est une option, toujours debrayable : toucher a la poussee, a la translation, au frein ou faire tourner franchement le vaisseau met le plan en PAUSE. Un jeu charge ne repart jamais seul.

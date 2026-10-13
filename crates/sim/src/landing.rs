@@ -644,7 +644,7 @@ impl Sim {
             }
         }
         if input.fwd > 0.0 {
-            input.fwd *= self.throttle;
+            input.fwd *= self.effective_throttle();
         }
         if self.sas != Sas::Off {
             if rot_in > 0.0 {

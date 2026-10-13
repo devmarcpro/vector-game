@@ -1,6 +1,7 @@
 mod archive_view;
 mod audio;
 mod bourse_view;
+mod cockpit;
 mod codex;
 mod codex_sky;
 mod console;
@@ -30,7 +31,6 @@ mod hud;
 mod landing_view;
 mod medicine_view;
 mod mind_view;
-mod mock_cockpit;
 mod mock_ui;
 mod mouse;
 mod nav_view;
@@ -333,7 +333,7 @@ fn landing_scene(g: &mut Game, stage: &str) {
     }
 }
 
-fn snapshot(path: &str, scene: &str, data: Arc<GameData>) {
+fn snapshot(path: &str, scene: &str, size: &str, data: Arc<GameData>) {
     let mut g = Game::new(data, DEFAULT_SEED);
     // "ext_<scene>[@yaw,pitch,zoom]": the same scene seen from the third-person camera.
     let (scene, cam) = scene.split_once('@').unwrap_or((scene, ""));
@@ -344,6 +344,9 @@ fn snapshot(path: &str, scene: &str, data: Arc<GameData>) {
     let cam: Vec<f64> = cam.split(',').filter_map(|x| x.parse().ok()).collect();
     let spec = mock_ui::resolve(scene);
     let scene = spec.map_or(scene, |s| s.base);
+    // The scenes of the cockpit (`cockpit_a`, `cockpit_land_c_open`...).
+    let cockpit_spec = cockpit::scenes::resolve(scene);
+    let scene = cockpit_spec.map_or(scene, |s| s.base);
     if let [yaw, pitch, zoom] = cam[..] {
         (g.ext_yaw, g.ext_pitch, g.ext_zoom) = (yaw, pitch, zoom);
     }
@@ -1820,7 +1823,16 @@ fn snapshot(path: &str, scene: &str, data: Arc<GameData>) {
     if let Some(spec) = &spec {
         mock_ui::after_setup(&mut g, spec);
     }
-    let mut fb = Framebuffer::new(1280, 720);
+    // Size: `--snapshot file scene WxH` (default 1280x720).
+    let (sw, sh) = size.split_once('x').map_or((1280, 720), |(a, b)| {
+        (a.parse().unwrap_or(1280), b.parse().unwrap_or(720))
+    });
+    // The snapshots of the other scenes keep the old HUD; the cockpit scenes choose their own.
+    match &cockpit_spec {
+        Some(c) => cockpit::scenes::after_setup(&mut g, c, (sw, sh)),
+        None => g.settings.cockpit = cockpit::Disposition::Old.index(),
+    }
+    let mut fb = Framebuffer::new(sw, sh);
     match &spec {
         Some(spec) => mock_ui::render(&mut fb, &g, spec),
         None => draw_frame(&mut fb, &g),
@@ -1835,6 +1847,8 @@ fn bench(data: Arc<GameData>) {
     let mut g = Game::new(data, DEFAULT_SEED);
     g.new_game(DEFAULT_SEED);
     g.cycle_target(|_| true);
+    // The references below are those of the old HUD; the cockpit is measured on its own after.
+    g.settings.cockpit = cockpit::Disposition::Old.index();
     let mut fb = Framebuffer::new(1280, 720);
     let t = Instant::now();
     for _ in 0..200 {
@@ -1870,6 +1884,37 @@ fn bench(data: Arc<GameData>) {
             "cockpit with the real sky: {:.2} ms/frame",
             t.elapsed().as_secs_f64() * 1000.0 / 200.0
         );
+        // The cockpit console: each arrangement at three window sizes, first in empty space
+        // (the scene costs nothing: this is the console), then free flight over a world with a
+        // plan of burns (the scene of the planet dominates).
+        for (scene, frames) in [("empty space", 100), ("over a world", 12)] {
+            if scene == "over a world" {
+                cockpit::scenes::setup_free(&mut g);
+            }
+            for (w, h) in [(1024, 576), (1280, 720), (1920, 1080)] {
+                let mut fbc = Framebuffer::new(w, h);
+                for (name, d, open) in [
+                    ("old HUD", cockpit::Disposition::Old, false),
+                    ("A", cockpit::Disposition::A, false),
+                    ("B", cockpit::Disposition::B, false),
+                    ("C folded", cockpit::Disposition::C, false),
+                    ("C open", cockpit::Disposition::C, true),
+                ] {
+                    g.settings.cockpit = d.index();
+                    g.settings.cockpit_open = open;
+                    draw_frame(&mut fbc, &g);
+                    let t = Instant::now();
+                    for _ in 0..frames {
+                        draw_frame(&mut fbc, &g);
+                    }
+                    println!(
+                        "cockpit {name} {w}x{h} ({scene}): {:.2} ms/frame",
+                        t.elapsed().as_secs_f64() * 1000.0 / f64::from(frames)
+                    );
+                }
+            }
+        }
+        g.settings.cockpit = cockpit::Disposition::Old.index();
         g.sim.reveal_all();
         g.open_galaxy();
         for (i, z) in umap::PRESETS.iter().enumerate() {
@@ -2074,7 +2119,8 @@ fn main() {
             .map(String::as_str)
             .unwrap_or("snapshot.png");
         let scene = args.get(i + 2).map(String::as_str).unwrap_or("cockpit");
-        snapshot(path, scene, data);
+        let size = args.get(i + 3).map(String::as_str).unwrap_or("1280x720");
+        snapshot(path, scene, size, data);
         return;
     }
     if let Some(i) = args.iter().position(|a| a == "--script") {

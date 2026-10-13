@@ -868,10 +868,14 @@ impl Game {
             .find(|h| x >= h.rect.0 && x < h.rect.2 && y >= h.rect.1 && y < h.rect.3)
             .copied();
         let (title, items) = match hit {
-            Some(h) => {
-                let c = ctx_of(self, h.act, (x, y));
-                items_for(self, c)
-            }
+            Some(h) => match crate::cockpit::organ_under(self, (x, y)) {
+                // An organ of the cockpit console: its own actions, the layout, its help.
+                Some(o) => crate::cockpit::menu_for(self, o, (x, y)),
+                None => {
+                    let c = ctx_of(self, h.act, (x, y));
+                    items_for(self, c)
+                }
+            },
             None if was_open => return,
             None if self.screen == Screen::Flight => screen_items(self),
             None => {
@@ -960,7 +964,20 @@ fn screen_items(g: &Game) -> (String, Vec<Item>) {
         Item::new("MENU : TOUS LES ECRANS", "F10", vec![k(KeyCode::F10)]),
         Item::new("TABLEAU DE BORD", "\\", vec![k(KeyCode::Backslash)]),
         Item::new("CARTE DU SYSTEME", "M", vec![k(KeyCode::KeyM)]),
+        Item::new(
+            "CIBLER ICI",
+            "CLIC",
+            vec![call(
+                Game::cockpit_target_here,
+                crate::cockpit::pack(g.pointer.pos),
+            )],
+        ),
         Item::new("CIBLE LA PLUS PROCHE", "TAB", vec![k(KeyCode::Tab)]),
+        Item::new(
+            "DISPOSITION DU COCKPIT",
+            "MAJ+F11",
+            vec![call(Game::cockpit_cycle, 0)],
+        ),
         Item::new(
             if g.sim.autopilot.is_some() {
                 "COUPER LE PILOTE AUTO"
@@ -1090,6 +1107,9 @@ pub fn draw_help_button(fb: &mut Framebuffer, g: &Game) {
 pub fn tooltip(g: &Game) -> Option<Vec<(String, u32)>> {
     if g.ctx_menu.is_some() {
         return None;
+    }
+    if let Some(o) = crate::cockpit::organ_under(g, g.pointer.pos) {
+        return Some(crate::cockpit::tip_lines(g, o));
     }
     let (x, y) = g.pointer.pos;
     let act = g

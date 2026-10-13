@@ -126,6 +126,12 @@ pub fn fmt_time(s: f64) -> String {
 
 pub fn draw(fb: &mut Framebuffer, v: &View) {
     fb.clear();
+    // The cockpit (arrangements A, B, C of the options) draws the scene, the glass texts and the
+    // console itself; the old HUD below is the fourth choice, and the fallback of a tiny window.
+    if crate::cockpit::draw(fb, v) {
+        draw_console(fb, v.console);
+        return;
+    }
     if v.map {
         draw_map(fb, v);
     } else {
@@ -421,7 +427,12 @@ pub(crate) fn draw_cockpit_scene(fb: &mut Framebuffer, v: &View) {
         draw_real_sky(fb, &cam, v, clear as f32);
     }
     if let Some((name, p)) = layer {
-        fb.text(1, 12, &format!("ATMOSPHERE : {name}  {p:.4} BAR"), AMBER);
+        fb.text(
+            crate::cockpit::scene_text_col(v.game, fb.w),
+            12,
+            &format!("ATMOSPHERE : {name}  {p:.4} BAR"),
+            AMBER,
+        );
     }
     draw_dust(fb, &cam, v);
     for (i, b) in v.sim.bodies.iter().enumerate() {
@@ -526,6 +537,7 @@ pub(crate) fn draw_cockpit_scene(fb: &mut Framebuffer, v: &View) {
 
     if ext {
         crate::ext_view::draw_ships(fb, &cam, v, gr.as_ref());
+        crate::cockpit::lights::draw(fb, &cam, v);
     }
     let down = if ext {
         ship.rot.col(2) * (crate::ext_view::ship_length(v.sim) * 0.5)
@@ -687,7 +699,7 @@ pub(crate) fn draw_cockpit_scene(fb: &mut Framebuffer, v: &View) {
     }
 }
 
-fn draw_map(fb: &mut Framebuffer, v: &View) {
+pub(crate) fn draw_map(fb: &mut Framebuffer, v: &View) {
     let sim = v.sim;
     let center = if v.map_on_ship {
         sim.ship.pos

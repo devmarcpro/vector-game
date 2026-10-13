@@ -58,7 +58,7 @@ const GUARDS: [&str; 8] = [
     "SI EN VOL",
 ];
 
-const PAGES: [&str; 4] = ["PLAN", "PLANIFICATEUR", "SEUILS", "JOURNAL"];
+const PAGES: [&str; 5] = ["PLAN", "PLANIFICATEUR", "SEUILS", "JOURNAL", "VOYAGE"];
 
 /// The prediction shown in the cockpit and on the map, kept between frames.
 #[derive(Default)]
@@ -83,6 +83,10 @@ pub struct NavUi {
     pub options: Vec<PlanOption>,
     pub opt_sel: usize,
     pub route: Option<Result<Route, String>>,
+    /// Voyage page: the destinations offered, the chosen one and the plan computed for it.
+    pub vy_dests: Vec<(String, vector_sim::far::Dest)>,
+    pub vy_sel: usize,
+    pub vy_plan: Option<Result<vector_sim::far::VoyagePlan, String>>,
     /// Draw the predicted path (the plan has to be non-empty, or this on).
     pub preview: bool,
     pub cache: RefCell<PredCache>,
@@ -103,6 +107,9 @@ impl Default for NavUi {
             options: Vec::new(),
             opt_sel: 0,
             route: None,
+            vy_dests: Vec::new(),
+            vy_sel: 0,
+            vy_plan: None,
             preview: false,
             cache: RefCell::new(PredCache::default()),
         }
@@ -510,7 +517,24 @@ impl Game {
             }
             8 => self.nav_ui.waypoints.clear(),
             9 => self.nav_ui.preview = !self.nav_ui.preview,
-            10..=13 => self.nav_ui.page = id - 10,
+            10..=14 => {
+                self.nav_ui.page = id - 10;
+                if id == 14 && self.nav_ui.vy_dests.is_empty() {
+                    self.voyage_refresh();
+                }
+            }
+            90 => self.voyage_compute(),
+            91 => self.voyage_start(),
+            92 => match self.sim.voyage_resume() {
+                Ok(_) => self.say("VOYAGE REPRIS"),
+                Err(e) => self.say(e),
+            },
+            93 => {
+                self.sim.voyage_cancel();
+                self.say("VOYAGE ANNULE");
+            }
+            94 => self.voyage_refresh(),
+            100..=115 => self.nav_ui.vy_sel = id - 100,
             20 => {
                 self.nav_ui.kind = (self.nav_ui.kind + KINDS.len() - 1) % KINDS.len();
                 self.nav_ui.reset_values();
@@ -649,6 +673,24 @@ impl Game {
                     };
                     self.nav_ui.slot = k.min(self.nav_ui.params().len().saturating_sub(1));
                 }
+                _ => {}
+            },
+            _ if self.nav_ui.page == 4 => match code {
+                KeyCode::ArrowUp => {
+                    let n = self.nav_ui.vy_dests.len().max(1);
+                    self.nav_ui.vy_sel = (self.nav_ui.vy_sel + n - 1) % n;
+                    self.nav_ui.vy_plan = None;
+                }
+                KeyCode::ArrowDown => {
+                    let n = self.nav_ui.vy_dests.len().max(1);
+                    self.nav_ui.vy_sel = (self.nav_ui.vy_sel + 1) % n;
+                    self.nav_ui.vy_plan = None;
+                }
+                KeyCode::Enter => self.nav_click(90),
+                KeyCode::Space => self.nav_click(91),
+                KeyCode::KeyP => self.nav_click(92),
+                KeyCode::KeyX => self.nav_click(93),
+                KeyCode::KeyR => self.nav_click(94),
                 _ => {}
             },
             _ if self.nav_ui.page == 1 => match code {
@@ -972,7 +1014,8 @@ pub fn draw(fb: &mut Framebuffer, g: &Game) {
         0 => draw_plan(fb, g),
         1 => draw_planner(fb, g),
         2 => draw_limits(fb, g),
-        _ => draw_log(fb, g),
+        3 => draw_log(fb, g),
+        _ => draw_voyage(fb, g),
     }
 }
 
@@ -1426,7 +1469,304 @@ pub fn hint(g: &Game) -> &'static str {
     match g.nav_ui.page {
         0 => "HAUT/BAS ORDRE  ESPACE LANCER/PAUSE  SUPPR RETIRER  GAUCHE/DROITE TYPE  +/- VALEUR  ENTREE AJOUTER  TAB PAGE  ECHAP",
         1 => "ENTREE CALCULER  HAUT/BAS OPTION  ESPACE ADOPTER  R ROUTE FTL  +/- ALTITUDE  TAB PAGE  ECHAP RETOUR",
+        4 => "HAUT/BAS DESTINATION  ENTREE CALCULER  ESPACE PARTIR  P REPRENDRE  X ANNULER  R ACTUALISER  TAB PAGE  ECHAP",
         _ => "CLIC SUR LES TEXTES VERTS  TAB PAGE  ECHAP RETOUR",
+    }
+}
+
+// ---- the voyage page ----------------------------------------------------------------------------
+
+impl Game {
+    /// List the destinations: the star picked on the map, galactic landmarks, the galaxies around
+    /// and the way home.
+    pub fn voyage_refresh(&mut self) {
+        use vector_sim::far::Dest;
+        let s = &self.sim;
+        let mut v: Vec<(String, Dest)> = Vec::new();
+        if let Some(t) = self.gal_cache.get(self.gal_sel) {
+            v.push((
+                format!("ETOILE CHOISIE : {}", t.header.name.to_uppercase()),
+                Dest::Star(t.id),
+            ));
+        }
+        for (label, p) in [
+            ("CENTRE GALACTIQUE", [-26_000.0, 0.0, 0.0]),
+            ("BRAS OPPOSE", [-26_000.0, 0.0, 26_000.0]),
+            ("MARCHES EXTERIEURES", [-26_000.0, 0.0, -34_000.0]),
+            ("A 5000 AL VERS LE CENTRE", [-5000.0, 0.0, 0.0]),
+        ] {
+            if let Some(e) = [40.0, 90.0]
+                .iter()
+                .find_map(|r| s.galaxy.nearby(p, *r).into_iter().next())
+            {
+                if e.id != s.here {
+                    v.push((
+                        format!("{label} : {}", e.header.name.to_uppercase()),
+                        Dest::Star(e.id),
+                    ));
+                }
+            }
+        }
+        let uni = s.universe();
+        let here = uni.galaxy(s.galaxy_id);
+        if s.galaxy_id != 0 {
+            let home = uni.galaxy(0);
+            v.push((
+                format!(
+                    "RETOUR A LA GALAXIE D'ORIGINE : {} ({:.1} MAL)",
+                    home.name().to_uppercase(),
+                    here.distance_to(home.pos) / 1.0e6
+                ),
+                Dest::Galaxy(0),
+            ));
+        }
+        for gx in uni
+            .galaxies_near(here.pos, 9.0e6)
+            .into_iter()
+            .filter(|g| g.id != s.galaxy_id && g.id != 0)
+            .take(8)
+        {
+            v.push((
+                format!(
+                    "GALAXIE {} ({}, {:.1} MAL)",
+                    gx.name().to_uppercase(),
+                    gx.kind.label(),
+                    here.distance_to(gx.pos) / 1.0e6
+                ),
+                Dest::Galaxy(gx.id),
+            ));
+        }
+        self.nav_ui.vy_dests = v;
+        self.nav_ui.vy_sel = self
+            .nav_ui
+            .vy_sel
+            .min(self.nav_ui.vy_dests.len().saturating_sub(1));
+        self.nav_ui.vy_plan = None;
+    }
+
+    pub fn voyage_compute(&mut self) {
+        if self.nav_ui.vy_dests.is_empty() {
+            self.voyage_refresh();
+        }
+        if let Some((_, d)) = self.nav_ui.vy_dests.get(self.nav_ui.vy_sel).cloned() {
+            self.nav_ui.vy_plan = Some(self.sim.voyage_plan(d));
+        }
+    }
+
+    pub fn voyage_start(&mut self) {
+        if self.nav_ui.vy_plan.is_none() {
+            self.voyage_compute();
+        }
+        match self.nav_ui.vy_plan.clone() {
+            Some(Ok(plan)) => match self.sim.voyage_begin(plan) {
+                Ok(m) => {
+                    self.say(m);
+                    self.voyage_seen = self.sim.voyage.as_ref().map_or(0, |v| v.log.len());
+                    self.screen = Screen::Flight;
+                }
+                Err(e) => self.say(e),
+            },
+            Some(Err(e)) => self.say(e),
+            None => self.say("AUCUNE DESTINATION"),
+        }
+    }
+
+    /// "ALLER A": plan and run the whole trip to `dest` in one command.
+    pub fn voyage_to(&mut self, dest: vector_sim::far::Dest) {
+        match self.sim.voyage_go(dest) {
+            Ok(m) => {
+                self.say(m);
+                self.voyage_seen = self.sim.voyage.as_ref().map_or(0, |v| v.log.len());
+                self.screen = Screen::Flight;
+            }
+            Err(e) => self.say(format!("VOYAGE IMPOSSIBLE : {e}")),
+        }
+    }
+
+    /// Say the new lines of the voyage log and drop the time warp when it stops.
+    pub fn forward_voyage(&mut self) {
+        let Some(v) = self.sim.voyage.as_ref() else {
+            return;
+        };
+        let len = v.log.len();
+        if len < self.voyage_seen {
+            self.voyage_seen = 0;
+        }
+        let new: Vec<String> = v.log[self.voyage_seen..]
+            .iter()
+            .map(|l| l.1.clone())
+            .collect();
+        self.voyage_seen = len;
+        let stop = !v.running();
+        for m in new {
+            if m.starts_with("ARRET") || m.starts_with("DESTINATION") || m.starts_with("DEPART") {
+                self.say(m);
+            }
+        }
+        if stop {
+            self.timescale = 1.0;
+        }
+    }
+}
+
+fn draw_voyage(fb: &mut Framebuffer, g: &Game) {
+    let ui = &g.nav_ui;
+    fb.text(1, 5, "VOYAGE : ALLER A", AMBER);
+    fb.text(
+        1,
+        6,
+        "UNE COMMANDE : ROUTE, RAVITAILLEMENTS, CRYOSOMMEIL ET TEMPS ACCELERE SONT AUTOMATIQUES. LE VOYAGE S'ARRETE SUR DANGER.",
+        DIM,
+    );
+    let s = &g.sim;
+    let dp = s.drive_profile();
+    fb.text(
+        1,
+        8,
+        &format!(
+            "PROPULSEUR : CLASSE {}  PORTEE {:.0} AL",
+            dp.class.to_uppercase(),
+            dp.range
+        ),
+        GREEN,
+    );
+    let gname: String = s.galaxy_name().to_uppercase().chars().take(40).collect();
+    fb.text(1, 9, &format!("GALAXIE : {gname}"), DIM);
+    for (i, (label, _)) in ui.vy_dests.iter().enumerate().take(16) {
+        let on = i == ui.vy_sel;
+        let t: String = label.chars().take(58).collect();
+        let hov = g.hit_cells(2, 10 + i, 58, 1, Act::Call(Game::nav_click, 100 + i), None);
+        fb.text(
+            2,
+            10 + i,
+            &format!("{}{}", if on { ">" } else { " " }, t),
+            if hov {
+                HOVER
+            } else if on {
+                AMBER
+            } else {
+                GREEN
+            },
+        );
+    }
+    if ui.vy_dests.is_empty() {
+        fb.text(2, 10, "(AUCUNE DESTINATION : ACTUALISER)", DIM);
+    }
+    let mut x = 2;
+    for (label, id) in [
+        ("[CALCULER]", 90),
+        ("[PARTIR]", 91),
+        ("[REPRENDRE]", 92),
+        ("[ANNULER]", 93),
+        ("[ACTUALISER]", 94),
+    ] {
+        x = button(fb, g, x, 28, label, id, false);
+    }
+    // Right side: the voyage under way, or the plan computed.
+    let rx = 64;
+    if let Some(v) = s
+        .voyage
+        .as_ref()
+        .filter(|v| !v.done || ui.vy_plan.is_none())
+    {
+        let n = v.plan.legs.len().max(1);
+        let frac = v.next as f64 / n as f64;
+        let state = match (&v.paused, v.done, v.refueling, v.repairing) {
+            (_, true, _, _) => "TERMINE".to_string(),
+            (Some(w), _, _, _) => format!("ARRETE : {w}"),
+            (_, _, true, _) => "RAVITAILLEMENT".into(),
+            (_, _, _, true) => "REPARATION".into(),
+            _ => "EN ROUTE".into(),
+        };
+        fb.text(
+            rx,
+            8,
+            &format!("VERS {}", v.plan.dest_name.to_uppercase()),
+            AMBER,
+        );
+        fb.text(rx, 9, &state, if v.paused.is_some() { RED } else { GREEN });
+        let w = 40usize;
+        let fill = ((frac * w as f64) as usize).min(w);
+        fb.text(
+            rx,
+            10,
+            &format!("[{}{}]", "#".repeat(fill), "-".repeat(w - fill)),
+            GREEN,
+        );
+        let left = (1.0 - frac) * v.plan.total_s();
+        fb.text(
+            rx,
+            11,
+            &format!(
+                "SAUT {}/{}  RESTE {}  DEPUIS {}",
+                v.next,
+                v.plan.legs.len(),
+                vector_sim::far::span_text(left),
+                vector_sim::far::span_text(s.time - v.started)
+            ),
+            GREEN,
+        );
+        fb.text(rx, 12, &format!("CARBURANT {:.0} KG", s.ship.fuel), GREEN);
+        for (i, (_, m)) in v.log.iter().rev().take(14).enumerate() {
+            let t: String = m.chars().take(70).collect();
+            fb.text(rx, 14 + i, &t, if i == 0 { GREEN } else { DIM });
+        }
+    } else if let Some(p) = &ui.vy_plan {
+        match p {
+            Ok(p) => {
+                fb.text(
+                    rx,
+                    8,
+                    &format!("PLAN VERS {}", p.dest_name.to_uppercase()),
+                    AMBER,
+                );
+                fb.text(
+                    rx,
+                    9,
+                    &format!(
+                        "{} SAUTS  {:.0} AL  PLUS LONG {:.0} AL",
+                        p.legs.len(),
+                        p.total_ly,
+                        p.max_hop
+                    ),
+                    GREEN,
+                );
+                fb.text(
+                    rx,
+                    10,
+                    &format!(
+                        "DUREE {}  (HALTES {})  {} RAVITAILLEMENTS",
+                        vector_sim::far::span_text(p.total_s()),
+                        vector_sim::far::span_text(p.halt_s),
+                        p.refuels
+                    ),
+                    GREEN,
+                );
+                fb.text(
+                    rx,
+                    11,
+                    &format!(
+                        "CARBURANT BRULE {:.0} KG  ANTIMATIERE {:.1} KG  COUT ~{:.0} CR",
+                        p.fuel, p.antimatter, p.credits
+                    ),
+                    GREEN,
+                );
+                if p.total_s() >= vector_sim::far::CRYO_THRESHOLD_S {
+                    fb.text(
+                        rx,
+                        12,
+                        "TRAJET LONG : L'EQUIPAGE SERA MIS EN CRYOSOMMEIL",
+                        AMBER,
+                    );
+                }
+                if let Some(w) = &p.why {
+                    fb.text(rx, 13, w, RED);
+                }
+            }
+            Err(e) => fb.text(rx, 8, e, RED),
+        }
+    } else {
+        fb.text(rx, 8, "CHOISISSEZ UNE DESTINATION PUIS CALCULER.", DIM);
     }
 }
 
@@ -1616,5 +1956,54 @@ mod tests {
         assert_ne!(after.emergency, before.emergency);
         g.nav_ui.page = 2;
         drawn(&g);
+    }
+
+    #[test]
+    fn the_voyage_page_lists_destinations_plans_starts_and_stops_the_trip() {
+        let mut g = started();
+        let slot = g
+            .sim
+            .ship
+            .design
+            .modules(&g.sim.data)
+            .find(|(_, m)| m.jump_range > 0.0)
+            .map(|(i, _)| i)
+            .expect("an FTL drive");
+        g.sim.ship.design.slots[slot] = g.sim.data.module_index("ftl_mk5");
+        let data = Arc::clone(&g.sim.data);
+        g.sim.ship.refresh_stats(&data);
+        g.sim.ship.fuel = g.sim.ship.stats.fuel_cap;
+        g.sim.docked = None;
+        g.sim.ship.pos = Vec3::new(4.0e11, 0.0, 0.0);
+        g.open_nav_auto();
+        g.nav_click(14);
+        assert_eq!(g.nav_ui.page, 4);
+        assert!(g.nav_ui.vy_dests.len() >= 3, "{:?}", g.nav_ui.vy_dests);
+        drawn(&g);
+        // The first landmark: plan, then go.
+        g.nav_click(101);
+        g.nav_click(90);
+        assert!(
+            matches!(g.nav_ui.vy_plan, Some(Ok(_))),
+            "{:?}",
+            g.nav_ui.vy_plan
+        );
+        drawn(&g);
+        g.nav_click(91);
+        assert!(g.sim.voyage.is_some(), "the trip starts");
+        assert_eq!(g.screen, Screen::Flight);
+        // The voyage asks for the time warp and the screen draws its progress.
+        assert!(g.sim.voyage_warp().is_some(), "the voyage wants the warp");
+        g.advance(1.0);
+        g.open_nav_auto();
+        g.nav_ui.page = 4;
+        drawn(&g);
+        g.nav_click(93);
+        assert!(g.sim.voyage.as_ref().is_some_and(|v| v.done));
+        g.advance(1.0);
+        assert_eq!(
+            g.timescale, 1.0,
+            "no voyage, no forced acceleration: back to 1"
+        );
     }
 }

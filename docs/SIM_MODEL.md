@@ -414,3 +414,10 @@ Modules : `cryo` (places), `cryo_temp` (C), `reliability` (0,5..1), `cryo_upkeep
 - Colons : 80 kg de colons en soute = 1 dormeur en masse, 1 kg de cryoprotecteur ; ils prennent les places laissees par l'equipage ; survivants au reveil = tirage par colon avec la meme probabilite (age 30) ; `found_colony` consomme des colons endormis au lieu du kit de colons et la population de depart est celle des survivants.
 - Naissances : la gestation est suspendue (la date d'echeance recule chaque jour), un dormeur ne concoit pas. Passagers de contrat : les places libres s'ajoutent aux couchettes libres, la paie des passagers est reduite de 25 % x part en caisson.
 - Alertes : CRITIQUE si des dormeurs depassent les places alimentees ; ATTENTION sans pieces detachees.
+
+## Voyages longue distance (`sim/far.rs`)
+
+- Propulseur : `drive_profile()` = meilleur module FTL en etat (`jump_range` max, sante > 0) ; duree de transit = d x `jump_hours_per_ly`, charge = `jump_charge`, carburant = `FUEL_PER_LY_PER_KG` x `jump_fuel_mult` x masse x d, antimatiere = `jump_antimatter` x d (en plus de la bulle d'Alcubierre), risque d'incident = `jump_risk` x d x (1,6 - sante du propulseur) x facteur du pilote (0,6 a 1,25), plafonne a 50 %.
+- Plan : `voyage_plan(Dest)` -> `VoyagePlan` (sauts, distance, carburant, antimatiere, secondes de route et de halte, credits aux prix de base, ok/pourquoi). Dest::Star dans la galaxie courante (glouton par secteurs, cache), Dest::Galaxy (sauts intergalactiques par les galaxies voisines a portee).
+- Execution : `voyage_begin`, `voyage_tick` (par pas, quand aucun saut n'est en cours : ravitaillement, reparation, depart du saut suivant), `voyage_arrived` (fin de saut : journal, incident, rencontre deterministe par hash du secteur, suite). `voyage_warp()` = acceleration souhaitee.
+- Galaxies : `Universe` (monde) place une galaxie par cellule de 2 millions d'al ; `switch_galaxy` echange visites/deltas/relations avec `galaxy_stash`.

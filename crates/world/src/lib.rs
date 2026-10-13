@@ -9,6 +9,7 @@ pub mod orbit;
 pub mod physics;
 pub mod stellar;
 pub mod surface;
+pub mod universe;
 
 use names::{pick, roman, Spec};
 use orbit::{Orbit, AU, G, M_EARTH, M_SUN, R_EARTH, R_SUN};

@@ -292,6 +292,14 @@ pub fn items_for(g: &Game, ctx: Ctx) -> (String, Vec<Item>) {
                 )
                 .off_if(!s.readiness().can_fly(), "LE VAISSEAU NE PEUT PAS VOLER"),
             );
+            it.push(
+                Item::new(
+                    "VOYAGER ICI (ROUTE AUTOMATIQUE)",
+                    "V",
+                    vec![call(Game::click_star, n), k(KeyCode::KeyV)],
+                )
+                .off_if(!s.readiness().can_fly(), "LE VAISSEAU NE PEUT PAS VOLER"),
+            );
         }
         Ctx::Crew(n) => {
             title = s

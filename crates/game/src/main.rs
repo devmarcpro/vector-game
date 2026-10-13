@@ -443,6 +443,52 @@ fn snapshot(path: &str, scene: &str, data: Arc<GameData>) {
                     g.open_nav_auto();
                     g.nav_ui.page = 2;
                 }
+                "nav_voyage" | "nav_voyage_run" => {
+                    // A long-range drive in the FTL slot, the voyage page with a plan (or the
+                    // voyage under way, a few jumps in).
+                    let slot = g
+                        .sim
+                        .ship
+                        .design
+                        .modules(&g.sim.data)
+                        .find(|(_, m)| m.jump_range > 0.0)
+                        .map(|(i, _)| i);
+                    if let Some(slot) = slot {
+                        g.sim.ship.design.slots[slot] = g.sim.data.module_index("ftl_mk5");
+                        let data = std::sync::Arc::clone(&g.sim.data);
+                        g.sim.ship.refresh_stats(&data);
+                        g.sim.ship.fuel = g.sim.ship.stats.fuel_cap;
+                    }
+                    // Enough power for the drive: the void reactor in every core reactor slot.
+                    let void = g.sim.data.module_index("exo_void_reactor");
+                    for i in 0..g.sim.ship.design.slots.len() {
+                        let hull = &g.sim.data.hulls[g.sim.ship.design.hull];
+                        let reactor = g.sim.ship.design.slots[i].is_some_and(|m| {
+                            g.sim.data.modules[m].category == "reactor" && hull.slots[i].1 >= 2
+                        });
+                        if reactor {
+                            g.sim.ship.design.slots[i] = void;
+                        }
+                    }
+                    let data = std::sync::Arc::clone(&g.sim.data);
+                    g.sim.ship.refresh_stats(&data);
+                    g.sim.ship.fuel = g.sim.ship.stats.fuel_cap;
+                    g.sim.docked = None;
+                    g.sim.ship.pos = vector_core::Vec3::new(4.0e11, 0.0, 0.0);
+                    g.gal_cache.clear();
+                    g.open_nav_auto();
+                    g.nav_ui.page = 4;
+                    g.voyage_refresh();
+                    g.nav_ui.vy_sel = g.nav_ui.vy_dests.len().min(3).saturating_sub(1);
+                    g.voyage_compute();
+                    if scene == "nav_voyage_run" {
+                        g.voyage_start();
+                        g.screen = Screen::NavAuto;
+                        for _ in 0..30 {
+                            g.sim.advance(50_000.0, &ShipInput::default());
+                        }
+                    }
+                }
                 _ => {}
             }
         }

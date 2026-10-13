@@ -2,7 +2,7 @@
 //! weapon, faction, anomaly and condition, generated from the real data (no hand-written numbers).
 use vector_data::GameData;
 
-pub const CATEGORIES: [&str; 68] = [
+pub const CATEGORIES: [&str; 69] = [
     "RESSOURCES",
     "MODULES",
     "ARMES",
@@ -71,6 +71,7 @@ pub const CATEGORIES: [&str; 68] = [
     "CRYOGENISATION",
     "CREATION DE PARTIE",
     "NAVIGATION AUTO",
+    "VOYAGES LONGUE DISTANCE",
 ];
 
 /// The cards of the new-game options, generated from `data/start_options.ron`: the AI cores and
@@ -331,6 +332,86 @@ fn cryo_topics() -> Vec<(String, Vec<String>)> {
             vec![
                 format!("Endormir quelqu'un de mecontent (loyaute sous {:.0} %) et en bonne sante est un crime (loi Cryogenisation non consentie) : amende et notoriete, moral de la victime - {:.0} %, des autres - {:.0} %, loyaute de tous - {:.0} %.", c::UNWILLING_LOYALTY * 100.0, c::FORCED_MORALE_VICTIM * 100.0, c::FORCED_MORALE_OTHERS * 100.0, c::FORCED_LOYALTY * 100.0),
                 s("Certains peuples interdisent la congelation des vivants. Soigner un blesse en attendant l'infirmerie n'est pas un enlevement."),
+            ],
+        ),
+    ]
+}
+
+/// Long voyages: the drive classes (read from `data/modules.ron`), the one-command trip, the
+/// halts, the cryosleep and the crossing between galaxies, written from the constants of
+/// `vector_sim::far` so that the codex cannot disagree with the rules.
+fn voyage_topics(data: &GameData) -> Vec<(String, Vec<String>)> {
+    use vector_sim::far as f;
+    let t = |s: &str| s.to_string();
+    let drives: Vec<String> = data
+        .modules
+        .iter()
+        .filter(|m| m.jump_range > 0.0)
+        .map(|m| {
+            let p = f::DriveProfile::of(m);
+            format!(
+                "{} : classe {}, portee {:.0} al, {:.3} h par al, carburant x{:.4}, risque {:.5} par al, charge {:.0} s{}.",
+                m.name,
+                p.class,
+                p.range,
+                p.hours_per_ly,
+                p.fuel_mult,
+                p.risk,
+                p.charge,
+                if p.antimatter_per_ly > 0.0 {
+                    format!(", antimatiere {:.5} kg par al", p.antimatter_per_ly)
+                } else {
+                    String::new()
+                }
+            )
+        })
+        .collect();
+    vec![
+        (
+            t("ALLER A : UNE COMMANDE"),
+            vec![
+                t("ALLER A planifie et execute tout le trajet, des dizaines ou des centaines de sauts, sans micro-gestion."),
+                t("Ou : page VOYAGE de la navigation (F10, pave num. *, onglet VOYAGE), touche V sur la carte galactique (L), clic droit sur une etoile : VOYAGER ICI."),
+                format!(
+                    "La route va vers le but par la meilleure etoile a portee (loin des etoiles dangereuses et des territoires hostiles) ; le temps passe a x{:.0} tout seul.",
+                    f::VOYAGE_WARP
+                ),
+                t("Le voyage s'arrete sur : combat, alerte critique, incident de saut sans atelier, pirates, trou noir, vide sans etoile avec le reservoir bas, panne seche. Entree/P reprend, X annule."),
+            ],
+        ),
+        (
+            t("CLASSES DE PROPULSEURS FTL"),
+            std::iter::once(t("Courte (quelques al), longue (centaines), galactique (milliers : traverser la galaxie en dizaines de sauts), intergalactique (millions : une autre galaxie)."))
+                .chain(drives)
+                .collect(),
+        ),
+        (
+            t("RAVITAILLEMENT ET HALTES"),
+            vec![
+                format!(
+                    "Une etoile de classe A a M se scoope : un plein reservoir en {:.0} heures. Les trous noirs, pulsars, naines blanches et mondes errants ne donnent rien.",
+                    f::SCOOP_FULL_S / 3600.0
+                ),
+                t("Le plan choisit des etoiles scoopables quand le reservoir s'annonce bas ; l'arret de ravitaillement compte dans la duree."),
+                t("Un incident de saut abime le propulseur : avec un atelier a bord il est repare en route, sinon le voyage s'arrete."),
+            ],
+        ),
+        (
+            t("CRYOSOMMEIL AUTOMATIQUE"),
+            vec![
+                format!(
+                    "Au-dela de {:.0} jours de route, l'equipage est endormi (sauf un veilleur) et reveille a l'arrivee ; il ne vieillit pas pendant le trajet.",
+                    f::CRYO_THRESHOLD_S / 86_400.0
+                ),
+                t("Il faut des caissons libres (voir CRYOGENISATION) ; sans caisson le voyage part quand meme et l'equipage vieillit."),
+            ],
+        ),
+        (
+            t("TRAVERSEE INTERGALACTIQUE"),
+            vec![
+                t("Reservee au propulseur intergalactique (tech du meme nom) : de l'ordre de 2 millions d'al entre voisines, des mois a des annees de route et de l'antimatiere."),
+                t("En arrivant, le vaisseau est un etranger : pas de reputation, d'autres factions, d'autres lois et d'autres prix, un ciel neuf. La galaxie quittee garde son etat : en revenant, tout est retrouve."),
+                t("Les nouvelles de la galaxie d'origine arrivent avec le retard du courrier, au rythme de la distance."),
             ],
         ),
     ]
@@ -717,6 +798,7 @@ fn entries(data: &GameData, cat: usize) -> Vec<usize> {
         65 => (0..cryo_topics().len()).collect(),
         66 => (0..start_cards(data).len()).collect(),
         67 => (0..nav_topics().len()).collect(),
+        68 => (0..voyage_topics(data).len()).collect(),
         _ => Vec::new(),
     }
 }
@@ -794,6 +876,7 @@ pub fn names(data: &GameData, cat: usize) -> Vec<String> {
             65 => cryo_topics()[i].0.clone(),
             66 => start_cards(data)[i].0.clone(),
             67 => nav_topics()[i].0.clone(),
+            68 => voyage_topics(data)[i].0.clone(),
             18 => format!(
                 "Appeler : {}",
                 vector_data::dialogue::ROLES[i].to_lowercase()
@@ -2932,6 +3015,7 @@ pub fn entry(data: &GameData, cat: usize, k: usize) -> Vec<String> {
             out.extend(c.1);
         }
         67 => out.extend(nav_topics()[i].1.iter().cloned()),
+        68 => out.extend(voyage_topics(data)[i].1.iter().cloned()),
         _ => {
             let n = &data.industries[i];
             out.push(n.name.clone());

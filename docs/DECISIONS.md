@@ -325,6 +325,13 @@ logiciel en bandes paralleles (std::thread::scope, sans dependance). Toute fonct
 (profileur `--profile`, benchmarks headless, docs/PERFORMANCE.md) et ne fait pas regresser le budget.
 
 - Carte de l'univers : l'ecran Galaxie (L) est etendu, pas double. Le zoom est en pixels par annee-lumiere (`gal_zoom`, 5e-6 a 80), les cinq echelles sont les touches 1 a 5. Aux grandes echelles la camera tourne autour du centre de la galaxie. Le ciel est un cache par secteur (`SkyCache`), jamais recalcule a l'image. Non fait : phases des planetes dans le ciel (draw_world appartient a wt-perf), filaments de l'univers, voyage vers une autre galaxie (wt-far).
+
+## Refonte visuelle des menus : style NOUVEAU / CLASSIQUE (vague 1)
+- Option « Style de l'interface » (Options, ligne 15, `uistyle` dans settings.cfg, defaut NOUVEAU). CLASSIQUE = l'ancien rendu en cellules, inchange.
+- Boite a outils : `theme.rs` (palette par espace du menu F10, fonds, panneaux, jauges, sparklines, barre de commandes, en-tete) et `ui_kit.rs` (toile logique 1280x720 projetee sur la fenetre en bilineaire, zones cliquables transformees dans `Game::hit`, contraste WCAG, KPI, tableaux, bandeau de didacticiel).
+- `ui_new.rs` : dessin NOUVEAU de menu F10, colonie (onglet batiments), equipage (liste, medecine), surface, marche (onglet ouvert), tableau de bord. `ui_new::handles` decide ; les autres etats retombent sur le dessin classique. Reste a faire (vague 2) : tous les autres ecrans.
+- Scenes de capture : `ui_<nom>` (nouveau) et `ui_classic_<nom>` ; `VECTOR_SNAP_SIZE=1024x576` change la taille. `mock_ui.rs` n'est plus qu'un aiguillage (maquettes de cockpit gardees pour wt-cockpit).
+- Perf : toile reutilisee, table d'echantillonnage en cache, pas d'allocation par image ; cours de reference du marche rafraichis une fois par jour.
 Mode creatif : une seule API `Sim::creative_*` (jamais une 2e logique) et des accesseurs de `Rules` qui levent les restrictions des systemes normaux ; tous les drapeaux sont ignores si `Rules.creative` est faux, donc aucune incidence sur les parties normales.
 ## Performance
 

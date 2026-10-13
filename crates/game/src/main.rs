@@ -56,9 +56,12 @@ mod sprites;
 mod surface_view;
 mod tech_view;
 mod terrain;
+mod theme;
 mod trade_view;
 mod tutorial;
 mod ui;
+mod ui_kit;
+mod ui_new;
 mod umap;
 mod war_view;
 mod wire_shape;
@@ -96,6 +99,13 @@ fn load_data() -> Option<Arc<GameData>> {
 /// Render whichever screen is active.
 fn draw_frame(fb: &mut Framebuffer, g: &Game) {
     g.begin_frame();
+    if ui_new::handles(g) {
+        ui_kit::draw_canvas(fb, g, ui_new::draw);
+        hud::draw_console(fb, &g.console);
+        context_menu::draw(fb, g);
+        context_menu::draw_tooltip(fb, g);
+        return;
+    }
     match g.screen {
         Screen::Flight => hud::draw(fb, &g.view()),
         Screen::Pause => {
@@ -279,6 +289,7 @@ impl ApplicationHandler for App {
                 }
                 self.audio.update(&self.game);
                 let draw_t = Instant::now();
+                ui_new::refresh(&mut self.game);
                 draw_frame(&mut self.fb, &self.game);
                 if perf::enabled() {
                     perf::add("draw_total", draw_t.elapsed().as_secs_f64() * 1000.0);
@@ -1946,14 +1957,22 @@ fn scene_game(scene: &str, data: Arc<GameData>) -> Game {
 }
 
 fn snapshot(path: &str, scene: &str, data: Arc<GameData>) {
-    let g = scene_game(scene, data);
+    let mut g = scene_game(scene, data);
     let spec = {
         let base = scene.split_once('@').map_or(scene, |x| x.0);
         mock_ui::resolve(base.strip_prefix("ext_").unwrap_or(base))
     };
-    let mut fb = Framebuffer::new(1280, 720);
+    // VECTOR_SNAP_SIZE=1024x576 : another window size (the new-style screens scale to it).
+    let (sw, sh) = std::env::var("VECTOR_SNAP_SIZE")
+        .ok()
+        .and_then(|v| {
+            let (a, b) = v.split_once('x')?;
+            Some((a.parse().ok()?, b.parse().ok()?))
+        })
+        .unwrap_or((1280, 720));
+    let mut fb = Framebuffer::new(sw, sh);
     match &spec {
-        Some(spec) => mock_ui::render(&mut fb, &g, spec),
+        Some(spec) => mock_ui::render(&mut fb, &mut g, spec),
         None => draw_frame(&mut fb, &g),
     }
     match std::fs::write(path, vector_render::png::encode(fb.w, fb.h, &fb.px)) {

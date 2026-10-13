@@ -234,3 +234,4 @@ Barre d'onglets en haut du chantier : COQUES, CONCEPTION, EQUIPEMENT, PLANS ET C
 - Clic droit sur une etoile : VOYAGER ICI (ROUTE AUTOMATIQUE).
 - NAVIGATION AUTO (pave num. *, F10 espace NAVIGATION) page VOYAGE : Haut/Bas choisit la destination (etoile choisie, reperes galactiques, galaxies voisines, retour a la galaxie d'origine), Entree calcule le plan (sauts, duree, carburant, antimatiere, cout), Espace PART, P reprend apres un arret, X annule, R actualise ; la page montre la progression, les haltes et le journal du voyage.
 - Le tableau de bord (panneau VAISSEAU) affiche VOYAGE n/m EN COURS ou ARRETE.
+- **Style de l'interface** (Options, derniere ligne) : NOUVEAU (defaut : fonds teintes par espace, en-tete commun avec credits, alertes, ? AIDE et MENU, barre de commandes cliquable) ou CLASSIQUE (ancien rendu). Les clics, touches, clic droit et infobulles sont identiques. Fenetre redimensionnable : le style NOUVEAU s'adapte (1024x576 minimum).

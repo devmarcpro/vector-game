@@ -90,6 +90,7 @@ pub fn run(cmd: &str, sim: &mut Sim, timescale: &mut f64) -> Vec<String> {
         Some("rewind") => one(sim.creative_rewind(num(1).unwrap_or(0.0) as usize)),
         Some("flare") => one(sim.creative_flare(num(1).unwrap_or(1.0))),
         Some("jump") => one(sim.creative_jump(num(1).unwrap_or(0.0) as usize)),
+        Some("galaxy") => one(sim.creative_galaxy(num(1).unwrap_or(0.0) as usize)),
         Some("fleetship") => one(sim.creative_add_fleet_ship(num(1).unwrap_or(0.0) as usize)),
         Some("alltech") => one(sim.creative_unlock_all_tech()),
         Some("reveal") => one(sim.creative_reveal_map()),

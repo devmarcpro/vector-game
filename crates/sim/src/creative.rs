@@ -291,6 +291,31 @@ impl Sim {
         r.map(|_| "saut engage".to_string()).map_err(String::from)
     }
 
+    /// Jump to the `k`-th nearest galaxy not visited yet (0 = nearest): no range, no fuel, no drive.
+    pub fn creative_galaxy(&mut self, k: usize) -> CxResult {
+        self.creative_check()?;
+        let uni = self.universe();
+        let here = uni.galaxy(self.galaxy_id).map_or([0.0; 3], |g| g.pos);
+        let mut list: Vec<_> = uni
+            .galaxies_near(here, 9.0)
+            .into_iter()
+            .filter(|g| g.id != self.galaxy_id && !self.galaxy_stash.contains_key(&g.id))
+            .collect();
+        list.sort_by(|a, b| {
+            let d = |p: [f64; 3]| (0..3).map(|i| (p[i] - here[i]).powi(2)).sum::<f64>();
+            d(a.pos).total_cmp(&d(b.pos)).then(a.id.cmp(&b.id))
+        });
+        let g = list.get(k).ok_or("aucune galaxie")?.id;
+        let entry = self.galaxy_entry_star(g).ok_or("galaxie vide")?;
+        self.docked = None;
+        self.jump = None;
+        let was = std::mem::replace(&mut self.rules.cx.free_travel, true);
+        let r = self.start_jump_to(&entry, 0.0, Some(g));
+        self.rules.cx.free_travel = was;
+        r.map(|_| "saut intergalactique engage".to_string())
+            .map_err(String::from)
+    }
+
     pub fn creative_delete_npc(&mut self, k: usize) -> CxResult {
         self.creative_check()?;
         if k >= self.npcs.len() {
@@ -354,6 +379,23 @@ mod tests {
         s.creative_enable(true);
         s.creative_give_credits(1e6).unwrap();
         assert_eq!(s.credits, c0 + 1e6);
+    }
+
+    #[test]
+    fn creative_galaxy_hop_changes_galaxy_and_refuses_when_off() {
+        let mut s = sim();
+        assert!(s.creative_galaxy(0).is_err());
+        s.creative_enable(true);
+        let before = s.galaxy_id;
+        s.creative_galaxy(0).unwrap();
+        for _ in 0..4000 {
+            if s.jump.is_none() {
+                break;
+            }
+            s.advance(1000.0, &crate::ShipInput::default());
+        }
+        assert!(s.jump.is_none(), "the jump finished");
+        assert_ne!(s.galaxy_id, before, "we are in another galaxy");
     }
 
     #[test]

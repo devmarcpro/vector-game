@@ -1945,6 +1945,22 @@ fn scene_game(scene: &str, data: Arc<GameData>) -> Game {
             };
             g.ext_view = false;
         }
+        s if s.starts_with("cx_gal") => {
+            // Creative mode: hop through 1 to 3 galaxies, one after the other.
+            let n: usize = s[6..].parse().unwrap_or(1);
+            g.sim.creative_enable(true);
+            for _ in 0..n {
+                if g.sim.creative_galaxy(0).is_ok() {
+                    for _ in 0..4000 {
+                        if g.sim.jump.is_none() {
+                            break;
+                        }
+                        g.sim.advance(1000.0, &ShipInput::default());
+                    }
+                }
+            }
+            g.gal_cache.clear();
+        }
         s if s.starts_with("umap") => {
             // The map of the universe at one of its five scales (umap1 to umap5), optionally
             // "@yaw,pitch" to turn it.

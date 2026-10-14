@@ -324,7 +324,12 @@ impl Sim {
         let up = rel * (1.0 / d);
         let (height, normal, rough) = self.local_ground(i);
         let alt = d - b.radius - height - SHIP_RADIUS;
-        if alt > (b.radius * 0.1).clamp(RANGE_MIN, RANGE_MAX) {
+        let air_top = self.air_of(i).map_or(0.0, |a| a.top());
+        if alt
+            > (b.radius * 0.1)
+                .clamp(RANGE_MIN, RANGE_MAX)
+                .max(air_top * 1.3)
+        {
             return None;
         }
         let v = self.ship.vel - b.vel - self.surface_velocity(i, rel);

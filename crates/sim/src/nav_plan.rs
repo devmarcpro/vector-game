@@ -252,7 +252,7 @@ impl Sim {
         stage: u8,
     ) -> Result<Vec<Order>, String> {
         let b = &self.bodies[body];
-        if self.ref_body != Some(body) {
+        if self.ref_body != Some(body) && self.nav_center() != body {
             return Err(format!(
                 "HORS DE LA SPHERE D'INFLUENCE DE {}",
                 b.name.to_uppercase()

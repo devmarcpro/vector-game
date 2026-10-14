@@ -1172,6 +1172,8 @@ impl Sim {
         let lin_assist = brake
             || (self.ship.assist
                 && self.autopilot.is_none()
+                // The navigation computer flies its own burns: station-keeping would undo them.
+                && !matches!(self.nav.run, crate::nav_auto::Run::Running)
                 && self.ref_body.is_some()
                 && self.near_well()
                 && !self.low_over_gravity()

@@ -47,7 +47,8 @@ impl Sim {
         let r = self.bodies[body].radius;
         let reach = (r * 0.1).clamp(5_000.0, 150_000.0) * 0.8;
         let top = self.air_of(body).map_or(0.0, |a| a.top());
-        (top * 1.15).max(12_000.0).min(reach)
+        // Never inside the air: the orbit is the place to stop before the fall.
+        (top * 1.15).max(12_000.0).min(reach.max(top * 1.15))
     }
 
     /// Latitude and longitude (degrees) of the point of world `i` under the ship.
@@ -146,7 +147,7 @@ impl Sim {
             let v_up = s.v.dot(s.up);
             let v_h = (s.v - s.up * v_up).length();
             approach = -land_dv + v_h + (v_up * v_up + 2.0 * g * s.alt.max(0.0)).sqrt();
-        } else if self.ref_body == Some(body) {
+        } else if self.ref_body == Some(body) || self.nav_center() == body {
             let v_here = (b.gm / (self.ship.pos - b.pos).length().max(1.0)).sqrt();
             approach = (v_here - v_circ).abs() * 2.0;
         } else {
@@ -317,7 +318,7 @@ impl Sim {
             let near = self.surface_state().is_some_and(|s| s.body == body);
             if !near {
                 let alt = brief.orbit_alt;
-                if self.ref_body == Some(body) {
+                if self.ref_body == Some(body) || self.nav_center() == body {
                     orders.push(Order::Orbit {
                         body,
                         peri_alt: alt,
@@ -838,5 +839,30 @@ mod tests {
             return;
         }
         panic!("no world with seas");
+    }
+
+    #[test]
+    fn landing_from_beside_the_home_station_reaches_its_planet() {
+        let mut s = new_sim(24263, crate::test_support::data());
+        let st = (0..s.bodies.len())
+            .find(|&i| matches!(s.bodies[i].kind, BodyKind::Station))
+            .expect("a station");
+        let planet = s.system.bodies[st].orbit.as_ref().expect("orbit").parent;
+        assert!(
+            s.landable(planet),
+            "the station orbits a world we can land on"
+        );
+        let b = s.bodies[st].clone();
+        s.ship.pos = b.pos + Vec3::new(300.0, 0.0, 0.0);
+        s.ship.vel = b.vel;
+        s.update_ref_pub();
+        s.ship.fuel = s.ship.stats.fuel_cap;
+        s.nav.limits.dose_return = 1.0e9;
+        s.nav.limits.emergency = false;
+        let (hull0, fuel0) = (s.ship.hull, s.ship.fuel);
+        s.land_command(planet, None)
+            .expect("the landing is accepted");
+        let evs = fly(&mut s, 40.0 * 86400.0, 600.0);
+        assert_standing(&s, planet, hull0, fuel0, &evs);
     }
 }
